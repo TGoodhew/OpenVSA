@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Dsp</RootNamespace>
+    <AssemblyTitle>OpenVSA.Dsp</AssemblyTitle>
+    <Description>L3 analysis core: FFT providers, window functions, resampling, filtering, averaging, statistics and gating.</Description>
+  </PropertyGroup>
+
+  <!--
+    REQ-ARC-001: this assembly must NOT reference OpenVSA.Hal.Visa, .File or .Sim.
+    It consumes IqBlock values only and cannot tell a live instrument from a file or simulator.
+    OpenVSA.Architecture.Tests enforces this.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Hal.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Hosts the REQ-DAT-001 front-end conformance suite, which runs against EVERY IFrontEnd
+    implementation and asserts metadata completeness and self-consistency.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Hal.File\OpenVSA.Hal.File.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Hal.Sim\OpenVSA.Hal.Sim.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Hal.Visa\OpenVSA.Hal.Visa.csproj" />
+  </ItemGroup>
+
+</Project>

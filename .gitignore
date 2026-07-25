@@ -1,0 +1,66 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+BenchmarkDotNet.Artifacts/
+TestResults/
+*.binlog
+
+## Visual Studio / Rider / VS Code
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.sample
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+project.lock.json
+project.fragment.lock.json
+.nuget/
+
+## Test / coverage
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+## OpenVSA data artefacts
+#
+# IQ recordings are routinely multi-gigabyte (REQ-REC-008 segments at 2 GB by default) and
+# must never enter git history. Golden recordings for CI live in an artefact store, not here
+# (REQ-TST-005).
+*.ovsa
+*.binf
+*.sdf
+*.cap
+*.pcap
+*.pcapng
+recordings/
+captures/
+
+## User-specific configuration that must not be shared
+*.dspx
+LocalSettings.json
+
+## OS noise
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

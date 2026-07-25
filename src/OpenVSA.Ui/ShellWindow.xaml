@@ -1,0 +1,49 @@
+<Window x:Class="OpenVSA.Ui.ShellWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OpenVSA" Height="720" Width="1280">
+
+    <!--
+        Shell anatomy, per REQ-UI-001, top to bottom:
+            title bar -> menu bar -> toolbar band -> document area (trace tab groups, with
+            tool windows docked around its edges) -> status bar.
+
+        There is deliberately NO right-hand softkey column. That belongs to the 89400-series
+        hardware, not the software, and adding one would be a retro affectation.
+
+        Menu names follow the modern (PathWave) bar of REQ-UI-060, not the Agilent-era one:
+            File | Edit | Hardware | Acquisition | Analysis | Trace | Marker | Utilities | Window | Help
+    -->
+    <DockPanel>
+
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File" />
+            <MenuItem Header="_Edit" />
+            <MenuItem Header="_Hardware" />
+            <MenuItem Header="_Acquisition" />
+            <MenuItem Header="Ana_lysis" />
+            <MenuItem Header="_Trace" />
+            <MenuItem Header="_Marker" />
+            <MenuItem Header="_Utilities" />
+            <MenuItem Header="_Window" />
+            <MenuItem Header="_Help" />
+        </Menu>
+
+        <ToolBarTray DockPanel.Dock="Top">
+            <ToolBar Band="0" BandIndex="0" />
+        </ToolBarTray>
+
+        <!--
+            REQ-UI-006: measurement status messages sit specifically at the bottom left.
+            OpenVSA adds dropped-frame count (REQ-NFR-012) and measured front-end transfer
+            rate / duty cycle (REQ-NFR-027) to the reference product's status bar contents.
+        -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem Content="Ready" />
+        </StatusBar>
+
+        <!-- Document area. The plot surface and hot-spot framework land here in Phase 0. -->
+        <Grid />
+
+    </DockPanel>
+</Window>

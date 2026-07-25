@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Demod.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Demod\OpenVSA.Demod.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Hal.Sim\OpenVSA.Hal.Sim.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,12 @@
+<Application x:Class="OpenVSA.Ui.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="ShellWindow.xaml">
+    <Application.Resources>
+        <!--
+            Display colours live here, not in code. REQ-UI-010 defines three independently
+            coloured zones — TraceBackground, Grid/Annotation and AnnotationBackground —
+            and REQ-UI-022 enumerates the full themeable element set.
+        -->
+    </Application.Resources>
+</Application>

@@ -1,0 +1,42 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    # WPF on .NET Framework 4.7.2 needs full MSBuild and the Windows SDK, so this cannot
+    # run on a Linux runner.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: msbuild OpenVSA.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
+
+      - name: Build
+        run: msbuild OpenVSA.slnx /p:Configuration=Release /p:Platform=x64 /v:minimal
+
+      - name: Test
+        run: dotnet test OpenVSA.slnx -c Release --no-build --logger "trx;LogFileName=results.trx"
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore

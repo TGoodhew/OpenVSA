@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Hal.Sim</RootNamespace>
+    <AssemblyTitle>OpenVSA.Hal.Sim</AssemblyTitle>
+    <Description>L0 synthetic signal source with controllable impairments. Underpins REQ-TST-002, the impairment round-trip matrix that is the primary correctness proof for the whole metrics engine.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+  </ItemGroup>
+
+</Project>

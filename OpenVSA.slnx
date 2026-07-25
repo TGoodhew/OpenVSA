@@ -1,0 +1,44 @@
+<Solution>
+
+  <!--
+    x64 is the only platform. REQ-NFR-001 forbids AnyCPU and x86 output: a 30 s capture at
+    25.6 MS/s of Complex32 is 6.1 GB, so 32-bit is categorically unusable.
+  -->
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+
+  <Folder Name="/src/">
+    <Project Path="src/OpenVSA.Core/OpenVSA.Core.csproj" />
+    <Project Path="src/OpenVSA.Hal/OpenVSA.Hal.csproj" />
+    <Project Path="src/OpenVSA.Hal.Visa/OpenVSA.Hal.Visa.csproj" />
+    <Project Path="src/OpenVSA.Hal.File/OpenVSA.Hal.File.csproj" />
+    <Project Path="src/OpenVSA.Hal.Sim/OpenVSA.Hal.Sim.csproj" />
+    <Project Path="src/OpenVSA.Capture/OpenVSA.Capture.csproj" />
+    <Project Path="src/OpenVSA.Dsp/OpenVSA.Dsp.csproj" />
+    <Project Path="src/OpenVSA.Demod/OpenVSA.Demod.csproj" />
+    <Project Path="src/OpenVSA.Measurement/OpenVSA.Measurement.csproj" />
+    <Project Path="src/OpenVSA.Personality/OpenVSA.Personality.csproj" />
+    <Project Path="src/OpenVSA.Licensing/OpenVSA.Licensing.csproj" />
+    <Project Path="src/OpenVSA.Api/OpenVSA.Api.csproj" />
+    <Project Path="src/OpenVSA.Ui/OpenVSA.Ui.csproj" />
+  </Folder>
+
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenVSA.Architecture.Tests/OpenVSA.Architecture.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Core.Tests/OpenVSA.Core.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Dsp.Tests/OpenVSA.Dsp.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Demod.Tests/OpenVSA.Demod.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Hal.Tests/OpenVSA.Hal.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Measurement.Tests/OpenVSA.Measurement.Tests.csproj" />
+  </Folder>
+
+  <Folder Name="/solution items/">
+    <File Path="Directory.Build.props" />
+    <File Path="README.md" />
+    <File Path="DEPENDENCIES.md" />
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+  </Folder>
+
+</Solution>

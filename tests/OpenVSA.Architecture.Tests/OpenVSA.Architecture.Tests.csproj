@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Architecture.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    REQ-ARC-001 is an architectural rule, so it needs an automated guard rather than good
+    intentions. These tests fail the build if any L3+ assembly acquires a reference to a
+    concrete transport assembly.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Demod\OpenVSA.Demod.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Personality\OpenVSA.Personality.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Api\OpenVSA.Api.csproj" />
+  </ItemGroup>
+
+</Project>

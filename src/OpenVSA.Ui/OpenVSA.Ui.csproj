@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>OpenVSA.Ui</RootNamespace>
+    <AssemblyTitle>OpenVSA.Ui</AssemblyTitle>
+    <AssemblyName>OpenVSA</AssemblyName>
+    <Description>L5 WPF shell: docking layout, trace windows, the three-zone plot surface and the hot-spot in-place editing model.</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <!--
+    REQ-HAL-002: capability-driven UI. This project must contain NO instrument-specific
+    conditionals and therefore does NOT reference OpenVSA.Hal.Visa. A code search for
+    instrument model names in this assembly must return no matches.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+    <ProjectReference Include="..\OpenVSA.Capture\OpenVSA.Capture.csproj" />
+    <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
+    <ProjectReference Include="..\OpenVSA.Personality\OpenVSA.Personality.csproj" />
+    <ProjectReference Include="..\OpenVSA.Api\OpenVSA.Api.csproj" />
+    <ProjectReference Include="..\OpenVSA.Licensing\OpenVSA.Licensing.csproj" />
+  </ItemGroup>
+
+</Project>

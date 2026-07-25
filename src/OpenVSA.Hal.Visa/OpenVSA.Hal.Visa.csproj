@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Hal.Visa</RootNamespace>
+    <AssemblyTitle>OpenVSA.Hal.Visa</AssemblyTitle>
+    <Description>L0 VISA transport and instrument drivers, including the Agilent E4406A.</Description>
+  </PropertyGroup>
+
+  <!--
+    REQ-VISA-001: reference Ivi.Visa.dll ALONE (the IVI Foundation VISA.NET Shared Components)
+    and open every session through Ivi.Visa.GlobalResourceManager. Direct references to
+    NationalInstruments.Visa.dll or Keysight.Visa.dll are PROHIBITED — they hard-bind the
+    binary to one vendor and make REQ-VISA-002 unachievable. VISA-COM must not be used.
+
+    The reference below is commented out until the IVI Shared Components are confirmed present
+    on the build agent; see Phase 3 of the delivery plan.
+  -->
+  <!--
+  <ItemGroup>
+    <Reference Include="Ivi.Visa" />
+  </ItemGroup>
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+  </ItemGroup>
+
+</Project>

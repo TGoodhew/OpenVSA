@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Hal.File</RootNamespace>
+    <AssemblyTitle>OpenVSA.Hal.File</AssemblyTitle>
+    <Description>L0 recording and playback front end. Playback is a first-class front end, not a special case (REQ-REC-003).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+  </ItemGroup>
+
+</Project>

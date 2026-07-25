@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Personality</RootNamespace>
+    <AssemblyTitle>OpenVSA.Personality</AssemblyTitle>
+    <Description>Personality SDK. Standard-specific measurements are plug-ins, never core code (REQ-ARC-003), and are loaded only from configured directories (REQ-NFR-041).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+    <ProjectReference Include="..\OpenVSA.Demod\OpenVSA.Demod.csproj" />
+    <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
+  </ItemGroup>
+
+</Project>

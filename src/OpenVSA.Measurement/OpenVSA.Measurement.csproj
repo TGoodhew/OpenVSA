@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Measurement</RootNamespace>
+    <AssemblyTitle>OpenVSA.Measurement</AssemblyTitle>
+    <Description>L4 measurement orchestration: measurement contexts, the sweep/arm state machine, averaging policy, the trace graph, markers, limit tests and personality hosting.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+    <ProjectReference Include="..\OpenVSA.Capture\OpenVSA.Capture.csproj" />
+    <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+    <ProjectReference Include="..\OpenVSA.Demod\OpenVSA.Demod.csproj" />
+  </ItemGroup>
+
+</Project>

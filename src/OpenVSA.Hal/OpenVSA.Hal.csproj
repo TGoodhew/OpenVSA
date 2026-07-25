@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Hal</RootNamespace>
+    <AssemblyTitle>OpenVSA.Hal</AssemblyTitle>
+    <Description>L1 front-end abstraction. The ONLY assembly below L3 that the DSP and measurement layers may reference (REQ-ARC-001). Contains contracts only — no transport, no instrument knowledge.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+  </ItemGroup>
+
+</Project>

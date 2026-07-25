@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+
+  <assemblyIdentity version="1.0.0.0" name="OpenVSA.app" />
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11. REQ-NFR-030 requires Windows 10 21H2 or later. -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!--
+        REQ-NFR-007: per-monitor DPI awareness V1 only. PerMonitorV2 must NOT be declared —
+        WPF on .NET Framework 4.7.2 does not implement its non-client-area scaling, child-HWND
+        WM_DPICHANGED propagation or dialog scaling.
+
+        Consequence to budget for: an HwndHost/D3DImage plot surface (REQ-NFR-005) will not
+        receive child-window DPI-change notifications and must be recreated on DPI change.
+      -->
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">True/PM</dpiAware>
+    </windowsSettings>
+  </application>
+
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!-- REQ-NFR-031: no administrative rights required. -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+</assembly>

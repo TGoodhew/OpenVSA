@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Demod</RootNamespace>
+    <AssemblyTitle>OpenVSA.Demod</AssemblyTitle>
+    <Description>L3 flexible digital demodulation: modulation formats, pulse-shaping filters, block estimation, sync and pulse search, adaptive equalisation and the error-metric suite.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+  </ItemGroup>
+
+</Project>

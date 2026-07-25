@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Licensing</RootNamespace>
+    <AssemblyTitle>OpenVSA.Licensing</AssemblyTitle>
+    <Description>Entitlement-based feature gating. An ANALOGOUS mechanism to the reference product's, never an interoperable one — Keysight licence files, licence servers and entitlement cryptography are explicitly out of scope.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+  </ItemGroup>
+
+</Project>

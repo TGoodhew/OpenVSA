@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Dsp.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Home of REQ-TST-001: every DSP primitive tested against a closed-form analytic result,
+    never against a previous run of itself.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+  </ItemGroup>
+
+</Project>

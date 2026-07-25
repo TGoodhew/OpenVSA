@@ -1,0 +1,51 @@
+<Project>
+
+  <!--
+    Common build settings for every project in the OpenVSA solution.
+
+    The platform constraints below are mandated by the requirements specification and are
+    NOT free choices:
+
+      REQ-NFR-030  Windows 10 21H2 or later, x64; .NET Framework 4.7.2
+      RISK-05      .NET Framework 4.7.2 / C# 7.3 is a hard constraint, required in order to
+                   consume the IVI/NI-VISA .NET assemblies. Do not raise TargetFramework or
+                   LangVersion without re-opening that decision (see Requirements §20 Q7).
+      REQ-NFR-001  x64 only. A 30 s capture at 25.6 MS/s of Complex32 is 6.1 GB, so 32-bit
+                   is categorically unusable.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <Prefer32Bit>false</Prefer32Bit>
+
+    <AssemblyCompany>OpenVSA</AssemblyCompany>
+    <AssemblyProduct>OpenVSA</AssemblyProduct>
+    <Copyright>Copyright (c) OpenVSA contributors</Copyright>
+    <Version>0.1.0</Version>
+
+    <NeutralLanguage>en-GB</NeutralLanguage>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+
+    <!-- REQ-NFR-037: deterministic output is a prerequisite for reproducible results. -->
+    <Deterministic>true</Deterministic>
+
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);DEBUG;TRACE;OPENVSA_THREAD_ASSERTS</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DefineConstants>$(DefineConstants);TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+</Project>

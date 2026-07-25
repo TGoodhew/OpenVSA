@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Core</RootNamespace>
+    <AssemblyTitle>OpenVSA.Core</AssemblyTitle>
+    <Description>L0 primitives: complex sample types, units, buffer pooling, event log. Referenced by every other assembly and references none.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Memory" Version="4.6.0" />
+  </ItemGroup>
+
+</Project>
