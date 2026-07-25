@@ -199,7 +199,8 @@ def build_body(rec):
     lines += [
         "---",
         "",
-        "_Do not implement yet — this issue exists to track the requirement._",
+        "_Generated from the specification. To change this issue, change the specification "
+        "and re-sync — a hand-edit here is reverted by the next `sync_issues.py` run._",
     ]
     return "\n".join(lines)
 

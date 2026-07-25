@@ -15,4 +15,17 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
+  <!--
+    Gives AutoGenerateBindingRedirects somewhere to write. Without an App.config it silently
+    generates nothing for a library project, and tests touching ArrayPool or Span fail at run
+    time with a System.Memory manifest mismatch. See the comment in tests/App.config.
+
+    This must be the AppConfig *property*, not a None item: MSBuild reads redirects out of
+    the file this property names. A linked None item is copied to the output untouched, which
+    looks like it worked and is not.
+  -->
+  <PropertyGroup>
+    <AppConfig>$(MSBuildThisFileDirectory)App.config</AppConfig>
+  </PropertyGroup>
+
 </Project>
