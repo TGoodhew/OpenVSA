@@ -84,12 +84,14 @@ normative wording and the acceptance criteria, so it must not be dropped.
 and skips anything that does not match, reporting `no matching requirement — skipped`. That
 makes hand-written tracking issues safe to keep alongside the generated backlog.
 
-Issue **#387, "Phase follow-up"**, was one such: it collected open items raised while
+Issue **#387, "Phase follow-up"**, was the first: it collected open items raised while
 authoring acceptance criteria that did not block the phase they came from. Both were
-resolved and it is closed. If a later phase raises a non-blocking open item, open a fresh
-follow-up issue and note it here. Cross-links from requirement issues are *comments*, not
-body edits — the generator rewrites bodies and would discard them, but leaves comments
-alone.
+resolved and it is closed.
+
+Issue **#391, "Implementation follow-up"**, is its successor and is where non-blocking open
+items go now. Anything that actually blocks work is fixed at the time instead. Cross-links
+from requirement issues are *comments*, not body edits — the generator rewrites bodies and
+would discard them, but leaves comments alone.
 
 ## The one requirement with no open issue
 
