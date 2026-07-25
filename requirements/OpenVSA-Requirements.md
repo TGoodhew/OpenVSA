@@ -2673,7 +2673,7 @@ full-window captures in the PathWave technical overview (5992-4210) and the 8960
 (5990-6553) are the best candidates if pixel fidelity is ever required.*
 ---
 
-### 13.3 State management
+### 13.12 State management
 
 **`REQ-STA-001` (P0) — Setup save and recall.**
 A saved state shall contain, matching the reference product's documented content:
