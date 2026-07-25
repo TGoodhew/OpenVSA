@@ -1,6 +1,7 @@
 <Window x:Class="OpenVSA.Ui.ShellWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
         Title="OpenVSA" Height="720" Width="1280">
 
     <!--
@@ -48,28 +49,50 @@
             REQ-NFR-032 - the application starts with no hardware and says what is available
             and what is not, rather than failing or silently offering nothing.
         -->
-        <ScrollViewer>
-            <StackPanel Margin="16">
-                <TextBlock x:Name="DiscoveryHeading" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
-                <ItemsControl x:Name="ProviderList" Margin="0,0,0,16">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}" Margin="0,2" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock x:Name="FailureHeading" FontWeight="SemiBold" Margin="0,0,0,8" />
-                <ItemsControl x:Name="FailureList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-                <TextBlock x:Name="CapabilitiesText" Margin="0,16,0,0" TextWrapping="Wrap"
-                           FontFamily="Consolas" />
-            </StackPanel>
-        </ScrollViewer>
+        <!--
+            Document area. Syncfusion DockingManager provides the tool-window/document-container
+            arrangement of REQ-UI-001: trace windows as documents, tool windows docked around
+            them. This is generic shell furniture and not where the clone earns its keep, which
+            is exactly why it is bought rather than built - see DEPENDENCIES.md.
+
+            The plot surface itself is NOT a chart control. Trace geometry is drawn by the
+            software rasteriser in Rendering\, because REQ-NFR-006's decimation and REQ-UI-042's
+            hot-spot framework have to be ours either way.
+        -->
+        <syncfusion:DockingManager x:Name="Docking" UseDocumentContainer="True">
+
+            <ScrollViewer syncfusion:DockingManager.Header="Hardware"
+                          syncfusion:DockingManager.SideInDockedMode="Left"
+                          syncfusion:DockingManager.DesiredWidthInDockedMode="380">
+                <StackPanel Margin="12">
+                    <TextBlock x:Name="DiscoveryHeading" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <ItemsControl x:Name="ProviderList" Margin="0,0,0,16">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock x:Name="FailureHeading" FontWeight="SemiBold" Margin="0,0,0,8" />
+                    <ItemsControl x:Name="FailureList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock x:Name="CapabilitiesText" Margin="0,16,0,0" TextWrapping="Wrap"
+                               FontFamily="Consolas" FontSize="11" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <ContentControl syncfusion:DockingManager.Header="Trace 1"
+                            syncfusion:DockingManager.State="Document">
+                <TextBlock x:Name="DocumentPlaceholder" Margin="24"
+                           TextWrapping="Wrap" Foreground="Gray" />
+            </ContentControl>
+
+        </syncfusion:DockingManager>
 
     </DockPanel>
 </Window>

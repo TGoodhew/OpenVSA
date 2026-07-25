@@ -15,6 +15,19 @@
     conditionals and therefore does NOT reference OpenVSA.Hal.Visa. A code search for
     instrument model names in this assembly must return no matches.
   -->
+  <!--
+    Syncfusion WPF, for the generic shell furniture only: docking, grids, editors, ribbon.
+    Trace geometry is NOT drawn by a chart control - REQ-NFR-006's decimation and REQ-UI-042's
+    hot-spot framework have to be ours regardless, which leaves a chart control very little to
+    contribute, and the software rasteriser already verifies REQ-UI-010 headlessly. See
+    DEPENDENCIES.md for the decision and the contributor key-registration step.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Syncfusion.Tools.WPF" Version="34.1.32" />
+    <PackageReference Include="Syncfusion.SfGrid.WPF" Version="34.1.32" />
+    <PackageReference Include="Syncfusion.Shared.WPF" Version="34.1.32" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
     <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />

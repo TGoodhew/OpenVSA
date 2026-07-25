@@ -16,6 +16,24 @@ restrictive terms.
 | `xunit` | 2.9.2 | Apache-2.0 | Test framework. Test-only, not shipped. |
 | `xunit.runner.visualstudio` | 2.8.2 | Apache-2.0 | Test runner. Test-only, not shipped. |
 | `Microsoft.NET.Test.Sdk` | 17.11.1 | MIT | Test host. Test-only, not shipped. |
+| `BenchmarkDotNet` | 0.15.8 | MIT | The performance gates of `REQ-NFR-020`–`026`. Test-only, not shipped. |
+| `Syncfusion.Tools.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | `DockingManager` and Ribbon for the shell furniture of `REQ-UI-001`/`REQ-UI-060`. See the decision below. |
+| `Syncfusion.SfGrid.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Marker, limit-line and demod error-summary tables. |
+| `Syncfusion.Shared.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Numeric editors, used as the entry control inside the `REQ-UI-042` hot-spot framework. |
+
+### Contributor step: the Syncfusion licence key
+
+Syncfusion controls require a key registered at start-up or they display an unlicensed banner.
+The key is a **per-developer credential and is never committed** — this is a public repository,
+so a key in source control is a leaked credential regardless of what it costs. `SyncfusionLicense`
+reads it from the `SYNCFUSION_LICENSE_KEY` environment variable, or from a `syncfusion.license`
+file beside the executable.
+
+**A missing key is not fatal.** The application starts and runs; the controls show their banner
+and the reason appears in the shell. A contributor who has not yet registered for a free
+Community key still gets a working build. This matters because OpenVSA ships as one free edition
+with everything included: the key is a build-time step for contributors, never a gate on anything
+a user receives, and redistribution is royalty-free.
 
 ## Planned, and the licensing decision attached to each
 
@@ -25,4 +43,44 @@ restrictive terms.
 | **VISA** (`REQ-VISA-001`) | Reference `Ivi.Visa.dll` **alone** — the IVI Foundation VISA.NET Shared Components, authored by the IVI Foundation and installed by NI-VISA and Keysight IO Libraries alike. Referencing `NationalInstruments.Visa.dll` or `Keysight.Visa.dll` is prohibited: it hard-binds the binary to one vendor and is the most common way vendor neutrality is lost in practice. |
 | **HDF5 / MAT v7.3** (`REQ-REC-005`) | Licence must be checked before selection; some tooling is GPL. |
 | **BenchmarkDotNet** | MIT. Test-only, for the performance regression gates of `REQ-NFR-020`–`026`. |
-| **Docking window library** (`REQ-UI-001`) | Licence to be assessed. AvalonDock (MS-PL) is the leading candidate. |
+| **Docking window library** (`REQ-UI-001`) | **Settled: Syncfusion `DockingManager`.** Free and royalty-free under the Community licence, actively maintained, and covers ribbon, grids and editors from the same vendor. AvalonDock (MS-PL) was the alternative and is thinly maintained. |
+
+
+## Decision: Syncfusion for the shell, our own rasteriser for trace geometry
+
+Syncfusion is taken for the **generic shell furniture** — docking, grids, editors, ribbon — and
+deliberately **not** for drawing traces.
+
+The reasoning is not about the licence, which is free and royalty-free and imposes only the
+contributor step above. It is that a chart control has very little left to contribute once two
+requirements are honoured:
+
+- **`REQ-NFR-006` requires min/max envelope decimation to be ours and verifiable.** Its criterion
+  demands that a one-bin −60 dBc spur survive at its correct amplitude *and* that point-skipping
+  demonstrably fail. A control's own "fast series" downsampling is typically undocumented and
+  often point-skipping, so we would pre-decimate and then fight the control not to decimate again.
+- **`REQ-UI-042`'s hot spots are not a charting feature.** Hover-underline, click-to-numeric-pad,
+  wheel adjust and in-place editing across the annotation band have to be our own elements
+  whichever control draws the trace. That requirement is explicit that retrofitting in-place
+  editing later is the expensive path.
+
+What is left for a chart control is axes, gridlines and zoom — against which the software
+rasteriser already verifies `REQ-UI-010` by sampling rendered pixels **headlessly in CI**, which a
+third-party control could not do without standing up a WPF render host in the test suite.
+
+**The measurements support this.** One 2²⁰-point spectrum frame, measured stage by stage
+(`OpenVSA.Benchmarks`, short job, x64 Release):
+
+| Stage | 8 192 points | 2²⁰ points | Share of the 2²⁰ frame |
+|---|---:|---:|---:|
+| Window | 9.8 µs | 2.15 ms | 3.0 % |
+| **FFT (double)** | 210 µs | **60.96 ms** | **84.4 %** |
+| Magnitude → dB | 7.7 µs | 1.16 ms | 1.6 % |
+| Decimate | 9.8 µs | 0.77 ms | 1.1 % |
+| **Rasterise whole frame** | 924 µs | **1.00 ms** | **1.4 %** |
+| **Whole frame** | **1.21 ms** | **72.2 ms** | |
+
+`REQ-NFR-021` allows 100 ms and `REQ-NFR-020` allows 16.7 ms; both are met. Rendering is **1.4 %**
+of the 2²⁰ frame and is essentially **constant** in point count (1.00 ms at 2²⁰ against 924 µs at
+8 192) because decimation has already reduced the trace to one span per column. Choosing a faster
+renderer would optimise 1.4 % of the budget; the transform is 84 %.
