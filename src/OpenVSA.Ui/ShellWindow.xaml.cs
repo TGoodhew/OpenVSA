@@ -3,9 +3,14 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
+using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
+using OpenVSA.Measurement;
+using OpenVSA.Ui.Rendering;
 
 namespace OpenVSA.Ui
 {
@@ -29,8 +34,28 @@ namespace OpenVSA.Ui
     /// </remarks>
     public partial class ShellWindow : Window
     {
+        /// <summary>
+        /// The measurement the shell starts with.
+        /// </summary>
+        /// <remarks>
+        /// Fixed for now, and deliberately not hidden behind a settings dialogue that does not
+        /// exist yet: the point of this build is that the analysis chain can be seen running
+        /// against a source. The reference level is the top of the graticule, so it is set a
+        /// division above the simulator's full-scale tone rather than exactly at it.
+        /// </remarks>
+        private static readonly AcquisitionRequest DefaultRequest =
+            new AcquisitionRequest(
+                centerFrequencyHz: 1e9,
+                spanHz: 10e6,
+                samplesPerBlock: 8192,
+                referenceLevelDbm: 20.0);
+
         private readonly FrontEndRegistry _registry;
+        private readonly RenderMarshal _marshal = new RenderMarshal();
+        private readonly DispatcherTimer _statusTimer;
+
         private IFrontEnd _activeFrontEnd;
+        private SpectrumEngine _engine;
 
         /// <summary>Creates the shell window.</summary>
         public ShellWindow()
@@ -40,10 +65,27 @@ namespace OpenVSA.Ui
             _registry = FrontEndRegistry.CreateDefault();
             PopulateSourcesMenu();
             ShowDiscoveryResults();
+
+            Plot.GraticuleColumnsChanged += (sender, e) => _marshal.Columns = Plot.GraticuleColumns;
+            _marshal.Columns = Plot.GraticuleColumns;
+
+            // The measured rate and the dropped-frame count of REQ-NFR-012 are status-bar figures,
+            // not per-frame ones: updating them from the frame handler would put text layout on the
+            // display path sixty times a second to show a number nobody can read that fast.
+            _statusTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromSeconds(1.0),
+            };
+            _statusTimer.Tick += (sender, e) => ShowRunningStatistics();
+
+            Closed += (sender, e) => ShutDown();
         }
 
         /// <summary>The front end currently selected, or null if none has been chosen.</summary>
         public IFrontEnd ActiveFrontEnd => _activeFrontEnd;
+
+        /// <summary>The running measurement, or null if none is running.</summary>
+        public SpectrumEngine Engine => _engine;
 
         private void PopulateSourcesMenu()
         {
@@ -67,7 +109,7 @@ namespace OpenVSA.Ui
             HardwareMenu.Items.Add(sources);
         }
 
-        private void SelectFrontEnd(FrontEndDescriptor descriptor, MenuItem clicked)
+        private async void SelectFrontEnd(FrontEndDescriptor descriptor, MenuItem clicked)
         {
             IFrontEnd created;
 
@@ -85,6 +127,8 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            await StopAcquisitionAsync().ConfigureAwait(true);
+
             if (_activeFrontEnd != null)
             {
                 _activeFrontEnd.Dispose();
@@ -99,6 +143,8 @@ namespace OpenVSA.Ui
 
             StatusText.Content = descriptor.DisplayName + " selected";
             CapabilitiesText.Text = DescribeCapabilities(created);
+            PlanText.Text = string.Empty;
+            StartItem.IsEnabled = true;
         }
 
         private IEnumerable<MenuItem> SourceMenuItems() =>
@@ -187,16 +233,215 @@ namespace OpenVSA.Ui
                 .Select(f => "  " + f.Source + " — " + f.Reason)
                 .ToArray();
 
-            DocumentPlaceholder.Text =
-                "The plot surface lands here. Trace geometry is drawn by the software rasteriser " +
-                "in Rendering\\, not by a chart control: REQ-NFR-006's min/max decimation and " +
-                "REQ-UI-042's hot-spot framework have to be ours either way, and the rasteriser " +
-                "already verifies REQ-UI-010 by sampling rendered pixels in CI.\n\n" +
-                SyncfusionLicense.StatusMessage;
+            DocumentPlaceholder.Text = _registry.Providers.Count == 0
+                ? "No signal source was discovered, so there is nothing to measure. " +
+                  SyncfusionLicense.StatusMessage
+                : "Choose a source under Hardware, then Acquisition → Start.\n\n" +
+                  SyncfusionLicense.StatusMessage;
 
             StatusText.Content = _registry.Providers.Count == 0
                 ? "No signal source available"
                 : "Ready";
+        }
+
+        // ---- Acquisition ----------------------------------------------------------------------
+
+        /// <summary>
+        /// Starts a measurement against the selected front end.
+        /// </summary>
+        /// <remarks>
+        /// The whole of the analysis chain runs behind this one call: the engine negotiates a plan,
+        /// pumps blocks on a pool thread, computes each one's spectrum there, and the render marshal
+        /// reduces it to a pixel-column envelope before anything reaches the dispatcher. What the
+        /// UI thread does per frame is a <c>WritePixels</c> and six strings.
+        /// </remarks>
+        private async void OnStart(object sender, RoutedEventArgs e)
+        {
+            if (_activeFrontEnd == null || _engine != null)
+            {
+                return;
+            }
+
+            var engine = new SpectrumEngine(_activeFrontEnd, new SpectrumComputer());
+            engine.FrameComputed += OnFrameComputed;
+            engine.Faulted += OnEngineFaulted;
+            engine.Completed += OnEngineCompleted;
+
+            AcquisitionPlan plan;
+
+            try
+            {
+                plan = await engine.StartAsync(DefaultRequest, CancellationToken.None)
+                    .ConfigureAwait(true);
+            }
+            catch (Exception failure)
+            {
+                engine.Dispose();
+                StatusText.Content = "Could not start";
+                PlanText.Text = failure.Message;
+                return;
+            }
+
+            _engine = engine;
+
+            DocumentPlaceholder.Visibility = Visibility.Collapsed;
+            StartItem.IsEnabled = false;
+            StopItem.IsEnabled = true;
+            StatusText.Content = "Measuring";
+            PlanText.Text = DescribePlan(plan);
+            _statusTimer.Start();
+        }
+
+        private async void OnStop(object sender, RoutedEventArgs e)
+        {
+            await StopAcquisitionAsync().ConfigureAwait(true);
+            StatusText.Content = "Stopped";
+        }
+
+        /// <summary>
+        /// Receives a frame on the pump thread, reduces it, and posts a draw.
+        /// </summary>
+        /// <remarks>
+        /// <strong>This runs off the UI thread and must stay that way.</strong> The decimation
+        /// inside <see cref="RenderMarshal.Offer"/> is the one stage whose cost is proportional to
+        /// the point count, so doing it here rather than in the draw callback is what keeps a
+        /// 2²⁰-point trace off the dispatcher (<c>REQ-NFR-010</c>, <c>REQ-NFR-021</c>).
+        /// </remarks>
+        private void OnFrameComputed(object sender, SpectrumFrame frame)
+        {
+            if (_marshal.Offer(frame))
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(DrawPending));
+            }
+        }
+
+        private void DrawPending()
+        {
+            TraceSnapshot snapshot = _marshal.TakeForRender();
+
+            if (snapshot != null)
+            {
+                Plot.Show(snapshot);
+            }
+        }
+
+        private void OnEngineFaulted(object sender, Exception failure)
+        {
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                await StopAcquisitionAsync().ConfigureAwait(true);
+                StatusText.Content = "Acquisition failed";
+                PlanText.Text = failure.Message;
+            }));
+        }
+
+        private void OnEngineCompleted(object sender, EventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                await StopAcquisitionAsync().ConfigureAwait(true);
+                StatusText.Content = "Source exhausted";
+            }));
+        }
+
+        private async System.Threading.Tasks.Task StopAcquisitionAsync()
+        {
+            SpectrumEngine engine = _engine;
+
+            if (engine == null)
+            {
+                return;
+            }
+
+            _engine = null;
+            _statusTimer.Stop();
+
+            engine.FrameComputed -= OnFrameComputed;
+            engine.Faulted -= OnEngineFaulted;
+            engine.Completed -= OnEngineCompleted;
+
+            await engine.StopAsync().ConfigureAwait(true);
+            engine.Dispose();
+
+            _marshal.Reset();
+            ShowRunningStatistics();
+
+            StartItem.IsEnabled = _activeFrontEnd != null;
+            StopItem.IsEnabled = false;
+        }
+
+        private void ShowRunningStatistics()
+        {
+            SpectrumEngine engine = _engine;
+
+            RateText.Content = engine == null
+                ? string.Empty
+                : engine.MeasuredUpdatesPerSecond.ToString("0.0", CultureInfo.CurrentCulture) +
+                  " updates/s";
+
+            // REQ-NFR-012: the dropped-frame count is displayed, not merely counted.
+            DroppedText.Content = _marshal.FramesDropped == 0
+                ? string.Empty
+                : _marshal.FramesDropped.ToString(CultureInfo.CurrentCulture) + " frames dropped";
+        }
+
+        /// <summary>
+        /// Renders the negotiated plan and every coercion it carries (<c>REQ-HAL-001</c>).
+        /// </summary>
+        private static string DescribePlan(AcquisitionPlan plan)
+        {
+            var text = new StringBuilder();
+            text.AppendLine("Negotiated plan:");
+            text.AppendLine();
+            Append(text, "Centre frequency", Hz(plan.CenterFrequencyHz));
+            Append(text, "Span", Hz(plan.SpanHz));
+            Append(text, "Sample rate", Hz(plan.SampleRateHz));
+            Append(text, "Block size", plan.SamplesPerBlock.ToString(CultureInfo.InvariantCulture) + " samples");
+            Append(text, "Reference level", plan.ReferenceLevelDbm.ToString("0.##", CultureInfo.InvariantCulture) + " dBm");
+            Append(text, "Gap-free", plan.SupportsGapFreeStreaming ? "yes" : "no");
+
+            text.AppendLine();
+
+            if (plan.Coercions.Count == 0)
+            {
+                text.AppendLine("Every requested value was honoured.");
+                return text.ToString();
+            }
+
+            text.AppendLine(plan.Coercions.Count == 1
+                ? "One request was coerced:"
+                : plan.Coercions.Count + " requests were coerced:");
+
+            foreach (ParameterCoercion coercion in plan.Coercions)
+            {
+                text.AppendLine(
+                    "  " + coercion.Parameter + ": asked " +
+                    coercion.Requested.ToString("G6", CultureInfo.InvariantCulture) + ", got " +
+                    coercion.Honoured.ToString("G6", CultureInfo.InvariantCulture) +
+                    " — " + coercion.Reason);
+            }
+
+            return text.ToString();
+        }
+
+        private void ShutDown()
+        {
+            SpectrumEngine engine = _engine;
+            _engine = null;
+
+            if (engine != null)
+            {
+                // Not awaited: the window is gone and there is nothing left to marshal back to.
+                // Dispose cancels the pump, and the front end is disposed below either way.
+                engine.FrameComputed -= OnFrameComputed;
+                engine.Dispose();
+            }
+
+            if (_activeFrontEnd != null)
+            {
+                _activeFrontEnd.Dispose();
+                _activeFrontEnd = null;
+            }
         }
     }
 }

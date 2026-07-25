@@ -3,8 +3,11 @@
 An open, from-scratch vector signal analyser for Windows — a behavioural reimplementation of
 the Keysight/Agilent 89600 VSA software line (89601A/B, now PathWave VSA).
 
-> **Status: Phase 0, scaffold only.** No measurement functionality is implemented yet. Work is
-> tracked as GitHub issues, one per requirement, grouped into milestones by delivery phase.
+> **Status: Phase 0.** The first measurement runs end to end: pick the simulated source under
+> **Hardware**, then **Acquisition → Start**, and a live calibrated spectrum is displayed. Most
+> of the product is still absent — no markers, no demodulation, no real front end, one fixed
+> measurement setup. Work is tracked as GitHub issues, one per requirement, grouped into
+> milestones by delivery phase.
 
 ## What this is
 
