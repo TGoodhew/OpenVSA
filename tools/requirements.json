@@ -1573,10 +1573,10 @@
   "num": "001",
   "priority": "P0",
   "title": "Documented processing order",
-  "body": "**`REQ-DEM-001` (P0) — Documented processing order.**\nThe demodulator shall implement the following chain, and the order shall be documented in\ncode and in user help:\n\n```\n1.  Extract Search Length window from Main Time\n2.  Burst / pulse search        (optional) ─┐ locate region of interest\n3.  Coarse carrier estimate                │\n4.  Resample to N points/symbol            │\n5.  Measurement (matched) filter           │\n6.  Sync-pattern search         (optional) ┘\n7.  Position Result Length window\n8.  Joint refinement, iterated to convergence:\n        carrier frequency · carrier phase · symbol timing · amplitude\n9.  Symbol decisions → detected bits\n10. Reference regeneration: bits → ideal symbols → reference filter → ideal waveform\n11. Adaptive equaliser            (optional; re-enters at 8 on update)\n12. Impairment estimation: IQ offset, gain imbalance, quadrature skew, amplitude droop\n13. Error metric computation at symbol instants\n14. Result trace generation\n```",
+  "body": "**`REQ-DEM-001` (P0) — Documented processing order.**\nThe demodulator shall implement the following chain, and the order shall be documented in\ncode and in user help:\n\n```\n1.  Extract Search Length window from Main Time\n2.  Burst / pulse search        (optional) ─┐ locate region of interest\n3.  Coarse carrier estimate                │\n4.  Resample to N points/symbol            │\n5.  Measurement (matched) filter           │\n6.  Sync-pattern search         (optional) ┘\n7.  Position Result Length window\n8.  Joint refinement, iterated to convergence:\n        carrier frequency · carrier phase · symbol timing · amplitude\n9.  Symbol decisions → detected bits\n10. Reference regeneration: bits → ideal symbols → reference filter → ideal waveform\n11. Adaptive equaliser            (optional; re-enters at 8 on update)\n12. Impairment estimation: IQ offset, gain imbalance, quadrature skew, amplitude droop\n13. Error metric computation at symbol instants\n14. Result trace generation\n```\n\n**AC:** The order is declared once and the implementation is driven by that declaration, as\nfor `REQ-TRC-003`; a test fails if any step executes out of declared order. The optional\nsteps (2, 6, 11) are skippable without disturbing the order of the rest. Step 11's re-entry\nat step 8 is a genuine loop: with the equaliser on, the joint refinement of step 8 runs again\nafter coefficients update, verified by a signal whose EVM improves on the second pass. Step 8\niterates to a stated convergence criterion with a bounded iteration count, and reaching that\nbound is reported rather than silently accepted. The same order appears in the user help, and\na test compares the documented sequence against the declaration so the two cannot drift.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
   "line": 1760
  },
@@ -1593,7 +1593,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1782
+  "line": 1791
  },
  {
   "id": "REQ-DEM-010",
@@ -1609,7 +1609,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1800
+  "line": 1809
  },
  {
   "id": "REQ-DEM-010a",
@@ -1622,7 +1622,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1825
+  "line": 1834
  },
  {
   "id": "REQ-DEM-011",
@@ -1635,7 +1635,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1838
+  "line": 1847
  },
  {
   "id": "REQ-DEM-012",
@@ -1643,14 +1643,14 @@
   "num": "012",
   "priority": "P1",
   "title": "Differential and offset handling",
-  "body": "**`REQ-DEM-012` (P1) — Differential and offset handling.**\nDifferential formats shall support differential decoding with a selectable reference; offset\nformats (OQPSK and relatives) shall be processed at **2 points per symbol**, because I and Q\nare offset by half a symbol. **[V]**",
+  "body": "**`REQ-DEM-012` (P1) — Differential and offset handling.**\nDifferential formats shall support differential decoding with a selectable reference; offset\nformats (OQPSK and relatives) shall be processed at **2 points per symbol**, because I and Q\nare offset by half a symbol. **[V]**\n**AC:** A differentially encoded signal demodulates to the transmitted bits with the correct\nreference selected, and to a predictably wrong bit stream with the wrong one — so the\nreference selection is shown to be effective rather than ignored. Offset formats are\nprocessed internally at 2 points per symbol regardless of the display points-per-symbol of\n`REQ-DEM-034`; a test asserts the internal rate, since processing OQPSK at 1 point per symbol\nyields plausible-looking but wrong EVM. An OQPSK signal generated with a known half-symbol\nI/Q offset demodulates to near-zero EVM, which it cannot do if the offset is mishandled.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1845
+  "line": 1854
  },
  {
   "id": "REQ-DEM-013",
@@ -1658,14 +1658,14 @@
   "num": "013",
   "priority": "P2",
   "title": "Low SNR enhancement",
-  "body": "**`REQ-DEM-013` (P2) — Low SNR enhancement.** An option extending maximum Result Length\nfor offset formats from ~2 048 to ~40 000 symbols, matching the reference product. **[V]**",
+  "body": "**`REQ-DEM-013` (P2) — Low SNR enhancement.** An option extending maximum Result Length\nfor offset formats from ~2 048 to ~40 000 symbols, matching the reference product. **[V]**\n**AC:** With the option off, Result Length for offset formats is capped near 2 048 symbols;\nwith it on, at least 40 000 symbols are accepted and demodulated. The longer length delivers\nthe SNR benefit it exists for: on a low-SNR signal the EVM estimate's variance falls\napproximately as $1/\\sqrt{N}$ between the two lengths, which distinguishes a genuinely longer\nanalysis from a raised limit that truncates internally.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1850
+  "line": 1866
  },
  {
   "id": "REQ-DEM-020",
@@ -1673,14 +1673,14 @@
   "num": "020",
   "priority": "P0",
   "title": "Separate measurement and reference filters",
-  "body": "**`REQ-DEM-020` (P0) — Separate measurement and reference filters.**\nThe measurement filter (applied to the acquired signal) and the reference filter (shaping\nthe ideal waveform) shall be independently selectable in type and parameter. **[V]**\n*Rationale, to be reproduced in help text:* matched root-raised-cosine filters split\nNyquist filtering between transmitter and receiver for optimum SNR; the analyser emulates\nthe receiver half, so its measurement filter must match the transmitter's shaping, and the\ncomposite response must be the full Nyquist filter for zero ISI at symbol centres.",
+  "body": "**`REQ-DEM-020` (P0) — Separate measurement and reference filters.**\nThe measurement filter (applied to the acquired signal) and the reference filter (shaping\nthe ideal waveform) shall be independently selectable in type and parameter. **[V]**\n*Rationale, to be reproduced in help text:* matched root-raised-cosine filters split\nNyquist filtering between transmitter and receiver for optimum SNR; the analyser emulates\nthe receiver half, so its measurement filter must match the transmitter's shaping, and the\ncomposite response must be the full Nyquist filter for zero ISI at symbol centres.\n**AC:** Measurement and reference filters are independently settable in both type and\nparameter — a test sets them to different types with different alphas and asserts each takes\neffect on its own path. The Nyquist relationship is verified numerically: RRC measurement and\nRRC reference at matched alpha give a composite response equal to the raised cosine to within\n1e-9, with zero ISI at symbol centres, whereas a mismatched pair does not. The help text\nstates the transmitter/receiver split.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1855
+  "line": 1876
  },
  {
   "id": "REQ-DEM-021",
@@ -1688,14 +1688,14 @@
   "num": "021",
   "priority": "P0",
   "title": "Filter catalogue",
-  "body": "**`REQ-DEM-021` (P0) — Filter catalogue.**\nRoot Raised Cosine · Raised Cosine · Gaussian · **EDGE** · Half Sine · Rectangular ·\nLow-pass · User-defined FIR · None. **[V]**\nParameters: **alpha** (excess-bandwidth roll-off, for RC/RRC) and **BT** (bandwidth–time\nproduct, for Gaussian).\n\n> **The EDGE filter is not a Gaussian.** It is the **linearised-GMSK main pulse $c_0(t)$**\n> defined in 3GPP TS 45.004 — the principal component of the Laurent decomposition of the GMSK\n> modulator, used as the transmit pulse for 3π/8-8PSK EDGE. It must be implemented from that\n> definition as a distinct filter type, not as a Gaussian with a particular BT.",
+  "body": "**`REQ-DEM-021` (P0) — Filter catalogue.**\nRoot Raised Cosine · Raised Cosine · Gaussian · **EDGE** · Half Sine · Rectangular ·\nLow-pass · User-defined FIR · None. **[V]**\nParameters: **alpha** (excess-bandwidth roll-off, for RC/RRC) and **BT** (bandwidth–time\nproduct, for Gaussian).\n\n> **The EDGE filter is not a Gaussian.** It is the **linearised-GMSK main pulse $c_0(t)$**\n> defined in 3GPP TS 45.004 — the principal component of the Laurent decomposition of the GMSK\n> modulator, used as the transmit pulse for 3π/8-8PSK EDGE. It must be implemented from that\n> definition as a distinct filter type, not as a Gaussian with a particular BT.\n\n**AC:** All nine filter types are selectable for both measurement and reference roles, with\nalpha exposed for RC/RRC and BT for Gaussian, and each parameter demonstrably changing the\nresponse. The EDGE filter is a distinct type whose coefficients match the linearised-GMSK\nmain pulse $c_0(t)$ of 3GPP TS 45.004 to within 1e-6 — a test compares against those\npublished coefficients and fails a Gaussian approximation at any BT, since substituting one\nis the specific error this note exists to prevent. `None` applies no shaping, verified by an\noutput identical to the input.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1863
+  "line": 1890
  },
  {
   "id": "REQ-DEM-022",
@@ -1703,12 +1703,12 @@
   "num": "022",
   "priority": "P1",
   "title": "Filter mathematics",
-  "body": "**`REQ-DEM-022` (P1) — Filter mathematics.**\nRaised cosine, in the time domain:\n\n$$h_{RC}(t)=\\operatorname{sinc}\\!\\left(\\frac{t}{T}\\right)\\frac{\\cos\\left(\\pi\\alpha t/T\\right)}{1-\\left(2\\alpha t/T\\right)^{2}}$$\n\nRoot raised cosine:\n\n$$h_{RRC}(t)=\\frac{\\sin\\!\\left(\\pi\\frac{t}{T}(1-\\alpha)\\right)+4\\alpha\\frac{t}{T}\\cos\\!\\left(\\pi\\frac{t}{T}(1+\\alpha)\\right)}{\\pi\\frac{t}{T}\\left(1-\\left(4\\alpha\\frac{t}{T}\\right)^{2}\\right)}$$\n\nGaussian, with bandwidth–time product $BT$:\n\n$$h_{G}(t)=\\frac{1}{\\sqrt{2\\pi}\\sigma T}e^{-t^{2}/(2\\sigma^{2}T^{2})},\\qquad \\sigma=\\frac{\\sqrt{\\ln 2}}{2\\pi \\cdot BT}$$",
+  "body": "**`REQ-DEM-022` (P1) — Filter mathematics.**\nRaised cosine, in the time domain:\n\n$$h_{RC}(t)=\\operatorname{sinc}\\!\\left(\\frac{t}{T}\\right)\\frac{\\cos\\left(\\pi\\alpha t/T\\right)}{1-\\left(2\\alpha t/T\\right)^{2}}$$\n\nRoot raised cosine:\n\n$$h_{RRC}(t)=\\frac{\\sin\\!\\left(\\pi\\frac{t}{T}(1-\\alpha)\\right)+4\\alpha\\frac{t}{T}\\cos\\!\\left(\\pi\\frac{t}{T}(1+\\alpha)\\right)}{\\pi\\frac{t}{T}\\left(1-\\left(4\\alpha\\frac{t}{T}\\right)^{2}\\right)}$$\n\nGaussian, with bandwidth–time product $BT$:\n\n$$h_{G}(t)=\\frac{1}{\\sqrt{2\\pi}\\sigma T}e^{-t^{2}/(2\\sigma^{2}T^{2})},\\qquad \\sigma=\\frac{\\sqrt{\\ln 2}}{2\\pi \\cdot BT}$$\n\n**AC:** Each filter's coefficients match its formula above to within 1e-12 relative at every\ntap, evaluated independently rather than by the implementation under test. The removable\nsingularities are checked explicitly — $t=0$ for all three, $t = \\pm T/(2\\alpha)$ for raised\ncosine and $t = \\pm T/(4\\alpha)$ for root raised cosine — and each returns the analytic limit\nrather than `NaN` or a divide-by-zero, which is where a formula transcribed correctly still\nfails in practice. $\\alpha = 0$ reduces the raised cosine to a sinc.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1874
+  "line": 1909
  },
  {
   "id": "REQ-DEM-022a",
@@ -1721,7 +1721,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1887
+  "line": 1929
  },
  {
   "id": "REQ-DEM-023",
@@ -1729,12 +1729,12 @@
   "num": "023",
   "priority": "P1",
   "title": "Filter length and truncation",
-  "body": "**`REQ-DEM-023` (P1) — Filter length and truncation.** Filter span (in symbols) shall be\nuser-settable with a documented default (≥ 8 symbols each side recommended for RRC), windowed\ntruncation, and the normalisation of `REQ-DEM-022a`. The filter-span/accuracy trade shown\nabove shall be reproduced in the user help so the default is an informed choice.",
+  "body": "**`REQ-DEM-023` (P1) — Filter length and truncation.** Filter span (in symbols) shall be\nuser-settable with a documented default (≥ 8 symbols each side recommended for RRC), windowed\ntruncation, and the normalisation of `REQ-DEM-022a`. The filter-span/accuracy trade shown\nabove shall be reproduced in the user help so the default is an informed choice.\n**AC:** Filter span is user-settable in symbols with a documented default of at least 8\nsymbols each side for RRC. Truncation is windowed, not abrupt: the truncated response's\nstopband sidelobes are below those of a rectangularly truncated filter of the same span, and\nnormalisation follows `REQ-DEM-022a` so changing the span does not change the measured\namplitude of a CW tone by more than 0.01 dB. Reducing the span degrades EVM on a\nknown-clean signal in the direction and magnitude the filter-span/accuracy trade predicts,\nand that trade appears in the user help.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1909
+  "line": 1951
  },
  {
   "id": "REQ-DEM-030",
@@ -1742,14 +1742,14 @@
   "num": "030",
   "priority": "P0",
   "title": "Symbol rate is supplied, never estimated",
-  "body": "**`REQ-DEM-030` (P0) — Symbol rate is supplied, never estimated.**\nThe symbol rate shall be a user parameter, applied exactly as entered; the demodulator shall\n**not** estimate or correct it. On first selection of digital demodulation the default shall\nbe Span/2. **[V]**\n**AC — the signature test:** With a deliberate symbol-rate error of 100 ppm, EVM versus symbol\nindex shall exhibit a minimum near the centre of the Result Length, growing approximately\nlinearly toward both ends. This reproduces the reference product's documented diagnostic\nbehaviour and is a **strong indicator** that `REQ-DEM-002`'s block estimator behaves as\nintended. *(It is a necessary, not a sufficient, condition — see the honesty note under\n`REQ-DEM-002`. Treat a failure as conclusive and a pass as corroborating.)*",
+  "body": "**`REQ-DEM-030` (P0) — Symbol rate is supplied, never estimated.**\nThe symbol rate shall be a user parameter, applied exactly as entered; the demodulator shall\n**not** estimate or correct it. On first selection of digital demodulation the default shall\nbe Span/2. **[V]**\n**AC:** *The signature test.* With a deliberate symbol-rate error of 100 ppm, EVM versus symbol\nindex shall exhibit a minimum near the centre of the Result Length, growing approximately\nlinearly toward both ends. This reproduces the reference product's documented diagnostic\nbehaviour and is a **strong indicator** that `REQ-DEM-002`'s block estimator behaves as\nintended. *(It is a necessary, not a sufficient, condition — see the honesty note under\n`REQ-DEM-002`. Treat a failure as conclusive and a pass as corroborating.)*",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1916
+  "line": 1965
  },
  {
   "id": "REQ-DEM-031",
@@ -1764,7 +1764,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1927
+  "line": 1976
  },
  {
   "id": "REQ-DEM-032",
@@ -1772,14 +1772,14 @@
   "num": "032",
   "priority": "P1",
   "title": "Pre-demodulation trace window",
-  "body": "**`REQ-DEM-032` (P1) — Pre-demodulation trace window.**\nPre-demodulation traces (Time, Spectrum, Instantaneous Spectrum) shall use a window **20 %\nlarger** than the Result Length so transition regions are visible. **[V]**",
+  "body": "**`REQ-DEM-032` (P1) — Pre-demodulation trace window.**\nPre-demodulation traces (Time, Spectrum, Instantaneous Spectrum) shall use a window **20 %\nlarger** than the Result Length so transition regions are visible. **[V]**\n**AC:** For each of the three pre-demodulation traces the analysed window spans 1.2 × Result\nLength, checked across several Result Lengths so the factor is proportional rather than a\nfixed padding. Result traces are unaffected: EVM computed over the Result Length is identical\nwhether or not a pre-demodulation trace is displayed. On a bursted signal the transition\nregions are visible in the pre-demodulation trace and absent from the result traces, which is\nthe point of the wider window.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1935
+  "line": 1984
  },
  {
   "id": "REQ-DEM-033",
@@ -1787,14 +1787,14 @@
   "num": "033",
   "priority": "P0",
   "title": "Search Length",
-  "body": "**`REQ-DEM-033` (P0) — Search Length.**\nThe window searched for sync or burst, expressed in symbols, shall be ≥ Result Length. For\npulse search, Search Length shall satisfy\n$\\text{Search Length} \\geq 2 \\times \\text{MaxOn} + \\text{MaxOff}$. **[V]**\n*(The relationship is the **minimum** needed to guarantee one complete pulse falls inside the\nwindow; enforcing equality would prohibit longer searches for no reason.)*",
+  "body": "**`REQ-DEM-033` (P0) — Search Length.**\nThe window searched for sync or burst, expressed in symbols, shall be ≥ Result Length. For\npulse search, Search Length shall satisfy\n$\\text{Search Length} \\geq 2 \\times \\text{MaxOn} + \\text{MaxOff}$. **[V]**\n*(The relationship is the **minimum** needed to guarantee one complete pulse falls inside the\nwindow; enforcing equality would prohibit longer searches for no reason.)*\n**AC:** Search Length is expressed in symbols and a value below Result Length is rejected\nwith the minimum reported. For pulse search the constraint\n$\\text{Search Length} \\geq 2\\,\\text{MaxOn} + \\text{MaxOff}$ is enforced as an inequality, not\nan equality — a longer Search Length is accepted, and a test asserts that, since enforcing\nequality is the plausible misreading. At exactly the minimum, a pulse placed at the least\nfavourable phase relative to the window is still found complete.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1939
+  "line": 1994
  },
  {
   "id": "REQ-DEM-034",
@@ -1802,14 +1802,14 @@
   "num": "034",
   "priority": "P1",
   "title": "Points per symbol is a display parameter",
-  "body": "**`REQ-DEM-034` (P1) — Points per symbol is a display parameter.**\nPoints per symbol shall be settable (typically 1, 2, 4, 5, 10, 20) and shall affect **trace\nresolution only**. It shall have **no effect on computed EVM**, since EVM is evaluated at\nsymbol decision instants. **[V]**",
+  "body": "**`REQ-DEM-034` (P1) — Points per symbol is a display parameter.**\nPoints per symbol shall be settable (typically 1, 2, 4, 5, 10, 20) and shall affect **trace\nresolution only**. It shall have **no effect on computed EVM**, since EVM is evaluated at\nsymbol decision instants. **[V]**\n**AC:** All of 1, 2, 4, 5, 10 and 20 points per symbol are settable, and each changes the\npoint count of the IQ Measured Time and trajectory traces accordingly. EVM, magnitude error,\nphase error and every other symbol-instant metric are **bit-identical** across all six\nsettings for the same input — asserted as exact equality rather than a tolerance, because any\ndifference means metrics are being evaluated somewhere other than the decision instants.\nOffset formats retain their internal 2 points per symbol per `REQ-DEM-012` regardless of this\ndisplay setting.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1946
+  "line": 2007
  },
  {
   "id": "REQ-DEM-034a",
@@ -1822,7 +1822,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1951
+  "line": 2019
  },
  {
   "id": "REQ-DEM-035",
@@ -1830,14 +1830,14 @@
   "num": "035",
   "priority": "P1",
   "title": "Mirror frequency spectrum",
-  "body": "**`REQ-DEM-035` (P1) — Mirror frequency spectrum.** An option conjugating the input\nspectrum, required for e.g. VSB signals with a high-side pilot. **[V]**",
+  "body": "**`REQ-DEM-035` (P1) — Mirror frequency spectrum.** An option conjugating the input\nspectrum, required for e.g. VSB signals with a high-side pilot. **[V]**\n**AC:** With the option on, the analysed spectrum is the conjugate of the input: a tone at\n$+f$ appears at $-f$, and applying the option twice returns the original to bit-identical\nvalues. A spectrally inverted signal that fails to demodulate with the option off demodulates\nto the correct bits with it on, which is the case the option exists for. The option is\nrecorded in the metric provenance of `REQ-DEM-072`.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1963
+  "line": 2031
  },
  {
   "id": "REQ-DEM-036",
@@ -1852,7 +1852,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1966
+  "line": 2039
  },
  {
   "id": "REQ-DEM-040",
@@ -1867,7 +1867,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1976
+  "line": 2049
  },
  {
   "id": "REQ-DEM-041",
@@ -1882,7 +1882,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1984
+  "line": 2057
  },
  {
   "id": "REQ-DEM-050",
@@ -1890,14 +1890,14 @@
   "num": "050",
   "priority": "P1",
   "title": "Adaptive equaliser",
-  "body": "**`REQ-DEM-050` (P1) — Adaptive equaliser.**\nAn adaptive equaliser shall derive its coefficients from the measured signal, correcting\nlinear channel impairments: group-delay distortion, frequency-response error, and\nreflections/multipath. **[V]**",
+  "body": "**`REQ-DEM-050` (P1) — Adaptive equaliser.**\nAn adaptive equaliser shall derive its coefficients from the measured signal, correcting\nlinear channel impairments: group-delay distortion, frequency-response error, and\nreflections/multipath. **[V]**\n**AC:** Each of the three impairment classes is injected separately by the generator of\n`REQ-SIM-002` at a known magnitude — group-delay distortion, frequency-response tilt, and a\ntwo-ray multipath channel — and in each case enabling the equaliser reduces EVM to within\n1 dB of the unimpaired value. Coefficients derive from the measured signal, not from the\ninjected channel: the test supplies no knowledge of the impairment. On an unimpaired signal\nthe equaliser leaves EVM unchanged to within 0.1 dB rather than degrading it, and the\nestimated channel response matches the injected one to within 0.5 dB and 5° in band.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1995
+  "line": 2068
  },
  {
   "id": "REQ-DEM-051",
@@ -1905,14 +1905,14 @@
   "num": "051",
   "priority": "P1",
   "title": "Equaliser parameters and modes",
-  "body": "**`REQ-DEM-051` (P1) — Equaliser parameters and modes.**\n**Filter Length** in symbols; **Convergence factor** (LMS step size); modes **Run** (update\ncoefficients from the current measurement for use on the next), **Hold** (freeze), **Reset**\n(return to a unit-impulse response). **[V]**\nImpulse-position behaviour shall match the documented behaviour: for short filter lengths\nthe impulse sits at the filter centre; as length grows the impulse \"moves proportionally\ntowards the start of the filter\" to accommodate channels with large delay spread. **[V]**",
+  "body": "**`REQ-DEM-051` (P1) — Equaliser parameters and modes.**\n**Filter Length** in symbols; **Convergence factor** (LMS step size); modes **Run** (update\ncoefficients from the current measurement for use on the next), **Hold** (freeze), **Reset**\n(return to a unit-impulse response). **[V]**\nImpulse-position behaviour shall match the documented behaviour: for short filter lengths\nthe impulse sits at the filter centre; as length grows the impulse \"moves proportionally\ntowards the start of the filter\" to accommodate channels with large delay spread. **[V]**\n**AC:** Filter Length is settable in symbols and Convergence factor as a step size. **Run**\nupdates coefficients from the current measurement and applies them to the next, so\ncoefficients change between successive measurements; **Hold** freezes them, asserted by\nbit-identical coefficients across measurements; **Reset** returns a unit-impulse response.\nThe impulse position follows the documented behaviour: at short filter lengths the impulse\nsits at the centre, and as length grows its index moves proportionally toward the start —\nmeasured across at least three lengths and checked as a trend, since a fixed-centre\nimplementation passes the short case and fails the long one.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2000
+  "line": 2080
  },
  {
   "id": "REQ-DEM-052",
@@ -1920,14 +1920,14 @@
   "num": "052",
   "priority": "P1",
   "title": "Equaliser algorithm: least-squares primary, LMS for parity",
-  "body": "**`REQ-DEM-052` (P1) — Equaliser algorithm: least-squares primary, LMS for parity.**\n**[DESIGN CHOICE]**\n\n*Primary solution.* Because `REQ-DSP-001`/`REQ-DEM-002` mandate whole-block, non-causal\nprocessing **and** step 10 of `REQ-DEM-001` already regenerates the full reference sequence\n$r_k$, the equaliser shall by default compute the **exact regularised least-squares (Wiener)\nsolution** in one shot:\n\n$$\\mathbf{w}=\\left(\\mathbf{X}^{H}\\mathbf{X}+\\lambda\\mathbf{I}\\right)^{-1}\\mathbf{X}^{H}\\mathbf{d}$$\n\nThis is optimal, deterministic, has no convergence dependence, and needs no step size. With\nthe reference already in hand, an iterative gradient method is strictly worse here.\n\n*LMS mode, retained for behavioural parity.* A decision-directed complex LMS mode shall also be\nprovided, since the reference product's exposed controls (filter length, convergence factor,\nRun/Hold/Reset) imply incremental adaptation and users may depend on its transient behaviour:\n\n$$y_n=\\mathbf{w}^{H}\\mathbf{x}_n,\\qquad e_n=d_n-y_n,\\qquad \\mathbf{w}\\leftarrow\\mathbf{w}+\\mu\\, e_n^{*}\\,\\mathbf{x}_n$$\n\nRequired additions, absent from the reference documentation and specified here:\n\n- **Stability bound** $0 < \\mu < 2/(L\\,P_x)$, enforced and reported, or **NLMS**\n  ($\\mu_n = \\tilde\\mu/(\\varepsilon + \\|\\mathbf{x}_n\\|^2)$) selected instead.\n- **Acquisition mode** for when decisions are unreliable at start-up: CMA (blind) or\n  data-aided from a known sync sequence, switching to decision-directed once EVM falls below a\n  threshold.\n- **Tap count disambiguation:** \"Filter Length in symbols\" at T/2 spacing means **2N taps for\n  an N-symbol filter**. State this in the UI; it is a frequent source of confusion.\n\n*Honesty note:* the reference product does not publish its adaptation algorithm. The exposed\nparameter set (length, convergence factor, run/hold/reset) is equally consistent with LMS,\nNLMS, CMA and RLS-with-forgetting-factor, so it constitutes **no evidence** for any particular\nchoice. The selection above is made on engineering grounds.",
+  "body": "**`REQ-DEM-052` (P1) — Equaliser algorithm: least-squares primary, LMS for parity.**\n**[DESIGN CHOICE]**\n\n*Primary solution.* Because `REQ-DSP-001`/`REQ-DEM-002` mandate whole-block, non-causal\nprocessing **and** step 10 of `REQ-DEM-001` already regenerates the full reference sequence\n$r_k$, the equaliser shall by default compute the **exact regularised least-squares (Wiener)\nsolution** in one shot:\n\n$$\\mathbf{w}=\\left(\\mathbf{X}^{H}\\mathbf{X}+\\lambda\\mathbf{I}\\right)^{-1}\\mathbf{X}^{H}\\mathbf{d}$$\n\nThis is optimal, deterministic, has no convergence dependence, and needs no step size. With\nthe reference already in hand, an iterative gradient method is strictly worse here.\n\n*LMS mode, retained for behavioural parity.* A decision-directed complex LMS mode shall also be\nprovided, since the reference product's exposed controls (filter length, convergence factor,\nRun/Hold/Reset) imply incremental adaptation and users may depend on its transient behaviour:\n\n$$y_n=\\mathbf{w}^{H}\\mathbf{x}_n,\\qquad e_n=d_n-y_n,\\qquad \\mathbf{w}\\leftarrow\\mathbf{w}+\\mu\\, e_n^{*}\\,\\mathbf{x}_n$$\n\nRequired additions, absent from the reference documentation and specified here:\n\n- **Stability bound** $0 < \\mu < 2/(L\\,P_x)$, enforced and reported, or **NLMS**\n  ($\\mu_n = \\tilde\\mu/(\\varepsilon + \\|\\mathbf{x}_n\\|^2)$) selected instead.\n- **Acquisition mode** for when decisions are unreliable at start-up: CMA (blind) or\n  data-aided from a known sync sequence, switching to decision-directed once EVM falls below a\n  threshold.\n- **Tap count disambiguation:** \"Filter Length in symbols\" at T/2 spacing means **2N taps for\n  an N-symbol filter**. State this in the UI; it is a frequent source of confusion.\n\n*Honesty note:* the reference product does not publish its adaptation algorithm. The exposed\nparameter set (length, convergence factor, run/hold/reset) is equally consistent with LMS,\nNLMS, CMA and RLS-with-forgetting-factor, so it constitutes **no evidence** for any particular\nchoice. The selection above is made on engineering grounds.\n\n**AC:** The least-squares solution is the default and is exact: on a channel with a known\nfinite-impulse-response, the computed $\\mathbf{w}$ matches the analytic regularised solution\nto within 1e-9, and repeated runs on identical input give bit-identical coefficients — it has\nno convergence dependence, so any run-to-run variation is a defect. LMS mode converges on the\nsame channel to within 1 dB of the least-squares EVM. The stability bound\n$0 < \\mu < 2/(L P_x)$ is enforced and a violating step size is rejected with the bound\nreported, or NLMS is selected instead; a test drives $\\mu$ past the bound and asserts the\nequaliser does not diverge. Both acquisition modes — CMA and data-aided — bring a signal\nwhose initial decisions are unreliable to a locked state, then hand over to\ndecision-directed at the stated EVM threshold. An N-symbol filter at T/2 spacing reports\n**2N taps**, and the UI states that relationship.",
   "phase": 2,
   "evidence": [
    "design-choice"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2008
+  "line": 2096
  },
  {
   "id": "REQ-DEM-053",
@@ -1942,7 +1942,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2042
+  "line": 2142
  },
  {
   "id": "REQ-DEM-060",
@@ -1950,14 +1950,14 @@
   "num": "060",
   "priority": "P0",
   "title": "EVM",
-  "body": "**`REQ-DEM-060` (P0) — EVM.**\n\n$$\\mathrm{EVM_{RMS}}=\\frac{\\sqrt{\\dfrac{1}{N}\\displaystyle\\sum_{k=1}^{N}\\left|z_k-r_k\\right|^{2}}}{V_{\\text{norm}}}\\times100\\%$$\n\nEVM shall be computed **only at symbol decision instants**. **[V]** Peak EVM shall be reported\nas\n\n$$\\mathrm{EVM_{peak}}=\\frac{\\max_k\\left|z_k-r_k\\right|}{V_{\\text{norm}}}\\times100\\%$$\n\ntogether with the index $k$ at which it occurs. **[V]**",
+  "body": "**`REQ-DEM-060` (P0) — EVM.**\n\n$$\\mathrm{EVM_{RMS}}=\\frac{\\sqrt{\\dfrac{1}{N}\\displaystyle\\sum_{k=1}^{N}\\left|z_k-r_k\\right|^{2}}}{V_{\\text{norm}}}\\times100\\%$$\n\nEVM shall be computed **only at symbol decision instants**. **[V]** Peak EVM shall be reported\nas\n\n$$\\mathrm{EVM_{peak}}=\\frac{\\max_k\\left|z_k-r_k\\right|}{V_{\\text{norm}}}\\times100\\%$$\n\ntogether with the index $k$ at which it occurs. **[V]**\n\n**AC:** For a constellation impaired by additive noise of known variance, EVM matches the\nclosed-form value to within 0.1 % relative — the closed-form check `REQ-TST-001` requires.\nA single symbol displaced by a known amount produces the analytically predictable\n$\\mathrm{EVM_{peak}}$, and the reported index $k$ is that symbol's index exactly. EVM is\ncomputed only at decision instants, which `REQ-DEM-034`'s points-per-symbol invariance\nestablishes. An unimpaired reference signal returns EVM below 1e-6 %, confirming no error is\nintroduced by the measurement chain itself.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2064
+  "line": 2164
  },
  {
   "id": "REQ-DEM-061",
@@ -1972,7 +1972,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2075
+  "line": 2183
  },
  {
   "id": "REQ-DEM-062",
@@ -1980,14 +1980,14 @@
   "num": "062",
   "priority": "P1",
   "title": "Offset EVM",
-  "body": "**`REQ-DEM-062` (P1) — Offset EVM.** For offset formats, an **Offset EVM** variant shall\nbe computed using one point per symbol formed from a complex point whose real and imaginary\nparts are taken from different time locations. **[V]**",
+  "body": "**`REQ-DEM-062` (P1) — Offset EVM.** For offset formats, an **Offset EVM** variant shall\nbe computed using one point per symbol formed from a complex point whose real and imaginary\nparts are taken from different time locations. **[V]**\n**AC:** For offset formats, Offset EVM forms one point per symbol from I and Q sampled half a\nsymbol apart, and on a clean OQPSK signal returns near-zero where conventional EVM computed\nat a common instant does not — the difference between the two is what shows the half-symbol\nstagger is honoured. On a non-offset format the variant is unavailable rather than computing\na meaningless value.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2089
+  "line": 2197
  },
  {
   "id": "REQ-DEM-063",
@@ -1995,14 +1995,14 @@
   "num": "063",
   "priority": "P0",
   "title": "Magnitude error",
-  "body": "**`REQ-DEM-063` (P0) — Magnitude error.**\n\n$$\\mathrm{MagErr}=\\frac{\\sqrt{\\dfrac{1}{N}\\displaystyle\\sum_{k}\\left(\\left|z_k\\right|-\\left|r_k\\right|\\right)^{2}}}{V_{\\text{norm}}}\\times100\\%$$\n\nNot applicable to FSK/CPM-FM formats, where amplitude is not the modulated parameter. **[V]**",
+  "body": "**`REQ-DEM-063` (P0) — Magnitude error.**\n\n$$\\mathrm{MagErr}=\\frac{\\sqrt{\\dfrac{1}{N}\\displaystyle\\sum_{k}\\left(\\left|z_k\\right|-\\left|r_k\\right|\\right)^{2}}}{V_{\\text{norm}}}\\times100\\%$$\n\nNot applicable to FSK/CPM-FM formats, where amplitude is not the modulated parameter. **[V]**\n**AC:** A constellation impaired by a known pure magnitude error returns that value to within\n0.1 % relative, and a signal impaired by pure phase error returns a magnitude error near zero\n— the pair establishes that the metric separates magnitude from phase rather than mixing\nthem. For FSK and CPM-FM formats the row is absent from the error summary per `REQ-DEM-071`,\nnot shown as zero or `NAN`.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2093
+  "line": 2206
  },
  {
   "id": "REQ-DEM-064",
@@ -2010,12 +2010,12 @@
   "num": "064",
   "priority": "P0",
   "title": "Phase error",
-  "body": "**`REQ-DEM-064` (P0) — Phase error.**\n\n$$\\mathrm{PhErr}=\\frac{180}{\\pi}\\sqrt{\\dfrac{1}{N}\\sum_{k}\\left[\\arg\\!\\left(z_k r_k^{*}\\right)\\right]^{2}}\\quad\\text{degrees}$$\n\nwith $\\arg(\\cdot)$ returning the principal value in $(-\\pi, \\pi]$. The explicit $180/\\pi$ is\nnot decoration — the bare expression returns radians and the reported quantity is degrees.",
+  "body": "**`REQ-DEM-064` (P0) — Phase error.**\n\n$$\\mathrm{PhErr}=\\frac{180}{\\pi}\\sqrt{\\dfrac{1}{N}\\sum_{k}\\left[\\arg\\!\\left(z_k r_k^{*}\\right)\\right]^{2}}\\quad\\text{degrees}$$\n\nwith $\\arg(\\cdot)$ returning the principal value in $(-\\pi, \\pi]$. The explicit $180/\\pi$ is\nnot decoration — the bare expression returns radians and the reported quantity is degrees.\n**AC:** A constellation impaired by a known pure phase error returns that value **in\ndegrees** to within 0.1 % relative. The units check is explicit: a signal with a 1 radian\nerror reports approximately 57.3, not 1 — the radians/degrees slip is the defect this\nrequirement calls out, so it is asserted rather than left to inspection. Symbols whose error\napproaches $\\pm\\pi$ are handled by the principal-value branch without wrapping to the wrong\nsign, tested at the boundary.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2099
+  "line": 2217
  },
  {
   "id": "REQ-DEM-065",
@@ -2030,7 +2030,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2106
+  "line": 2230
  },
  {
   "id": "REQ-DEM-066",
@@ -2038,14 +2038,14 @@
   "num": "066",
   "priority": "P0",
   "title": "IQ origin offset (carrier feedthrough)",
-  "body": "**`REQ-DEM-066` (P0) — IQ origin offset (carrier feedthrough).**\n\n$$\\mathrm{IQoffset}=20\\log_{10}\\!\\left(\\frac{\\left|c\\right|}{V_{\\mathrm{ref,RMS}}}\\right)\\ \\mathrm{dB},\\qquad c = c_I + j c_Q$$\n\nwhere $(c_I, c_Q)$ are the offset terms from the impairment fit of `REQ-DEM-067` and\n$V_{\\mathrm{ref,RMS}}$ is the **RMS magnitude of the reference constellation**. Zero carrier\nfeedthrough gives $-\\infty$ dB. Computed at symbol times, **except for MSK, which uniquely uses\nall points rather than only symbol instants**. **[V]**\n\nTwo deliberate choices here, both departing from the obvious implementation:\n\n- **Normalise to a fixed reference, not to $V_{\\text{norm}}$.** Using the EVM normalisation\n  reference would make the reported IQ offset depend on an unrelated user setting — the same\n  signal would report two values 2.55 dB apart for 16-QAM depending on the EVM normalisation\n  selection. IQ offset is a property of the signal and must not move when an EVM display option\n  changes.\n- **Take the offset from the impairment fit, not from $\\frac1N\\sum_k z_k$.** The raw mean is\n  biased whenever a short block carries an unbalanced symbol sequence; $\\frac1N\\sum_k (z_k-r_k)$\n  or the fitted $(c_I,c_Q)$ is unbiased and stays consistent with the gain-imbalance and skew\n  estimates, which are derived from the same fit.",
+  "body": "**`REQ-DEM-066` (P0) — IQ origin offset (carrier feedthrough).**\n\n$$\\mathrm{IQoffset}=20\\log_{10}\\!\\left(\\frac{\\left|c\\right|}{V_{\\mathrm{ref,RMS}}}\\right)\\ \\mathrm{dB},\\qquad c = c_I + j c_Q$$\n\nwhere $(c_I, c_Q)$ are the offset terms from the impairment fit of `REQ-DEM-067` and\n$V_{\\mathrm{ref,RMS}}$ is the **RMS magnitude of the reference constellation**. Zero carrier\nfeedthrough gives $-\\infty$ dB. Computed at symbol times, **except for MSK, which uniquely uses\nall points rather than only symbol instants**. **[V]**\n\nTwo deliberate choices here, both departing from the obvious implementation:\n\n- **Normalise to a fixed reference, not to $V_{\\text{norm}}$.** Using the EVM normalisation\n  reference would make the reported IQ offset depend on an unrelated user setting — the same\n  signal would report two values 2.55 dB apart for 16-QAM depending on the EVM normalisation\n  selection. IQ offset is a property of the signal and must not move when an EVM display option\n  changes.\n- **Take the offset from the impairment fit, not from $\\frac1N\\sum_k z_k$.** The raw mean is\n  biased whenever a short block carries an unbalanced symbol sequence; $\\frac1N\\sum_k (z_k-r_k)$\n  or the fitted $(c_I,c_Q)$ is unbiased and stays consistent with the gain-imbalance and skew\n  estimates, which are derived from the same fit.\n\n**AC:** A signal with a known injected carrier feedthrough returns that value to within\n0.1 dB, and a signal with none returns $-\\infty$ dB (or the stated floor) rather than a large\nnegative artefact. Both departures are asserted directly. First, changing the EVM\nnormalisation selection leaves the reported IQ offset **bit-identical** — for 16-QAM the\nnaive implementation shifts by 2.55 dB, so this test discriminates. Second, on a short block\nwith a deliberately unbalanced symbol sequence the reported offset matches the injected value\nwithin tolerance, where $\\frac1N\\sum_k z_k$ would be measurably biased. MSK is computed over\nall points rather than symbol instants, and a test asserts MSK differs from the\nsymbol-instant computation for the same signal.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2111
+  "line": 2235
  },
  {
   "id": "REQ-DEM-067",
@@ -2053,12 +2053,12 @@
   "num": "067",
   "priority": "P1",
   "title": "IQ gain imbalance and quadrature skew",
-  "body": "**`REQ-DEM-067` (P1) — IQ gain imbalance and quadrature skew.** **[DESIGN CHOICE for the\nestimator]**\nFit, by least squares over the symbol set, the **symmetric** affine impairment model — each\naxis rotated by half the skew angle:\n\n$$\\Re\\{z_k\\}=g_I\\left(\\Re\\{r_k\\}\\cos\\tfrac{\\psi}{2}+\\Im\\{r_k\\}\\sin\\tfrac{\\psi}{2}\\right)+c_I$$\n$$\\Im\\{z_k\\}=g_Q\\left(\\Re\\{r_k\\}\\sin\\tfrac{\\psi}{2}+\\Im\\{r_k\\}\\cos\\tfrac{\\psi}{2}\\right)+c_Q$$\n\nthen report **gain imbalance** $=20\\log_{10}(g_Q/g_I)$ dB and **quadrature error** $=\\psi$\ndegrees. Gain imbalance manifests as a rectangular stretch along the ideal I/Q axes;\nquadrature skew as a stretch along a 45° line. **[V for the geometric descriptions]**\n\n**Why symmetric and not a one-sided shear.** Putting the whole skew on Q\n($\\Im\\{z\\}=g_Q(\\Re\\{r\\}\\sin\\psi+\\Im\\{r\\}\\cos\\psi)$) is a *shear*, and a shear decomposes as a\nrotation by $\\psi/2$ composed with the symmetric skew. That $\\psi/2$ rotation is\nindistinguishable from carrier phase and is silently absorbed by the step-8 phase estimate —\nso $\\psi$ becomes unidentifiable and the reported value depends on estimator ordering. The\nsymmetric form has no rotational component, which makes $\\psi$ identifiable. It also matches\nthe \"stretch along a 45° line\" description, which the shear form does not.",
+  "body": "**`REQ-DEM-067` (P1) — IQ gain imbalance and quadrature skew.** **[DESIGN CHOICE for the\nestimator]**\nFit, by least squares over the symbol set, the **symmetric** affine impairment model — each\naxis rotated by half the skew angle:\n\n$$\\Re\\{z_k\\}=g_I\\left(\\Re\\{r_k\\}\\cos\\tfrac{\\psi}{2}+\\Im\\{r_k\\}\\sin\\tfrac{\\psi}{2}\\right)+c_I$$\n$$\\Im\\{z_k\\}=g_Q\\left(\\Re\\{r_k\\}\\sin\\tfrac{\\psi}{2}+\\Im\\{r_k\\}\\cos\\tfrac{\\psi}{2}\\right)+c_Q$$\n\nthen report **gain imbalance** $=20\\log_{10}(g_Q/g_I)$ dB and **quadrature error** $=\\psi$\ndegrees. Gain imbalance manifests as a rectangular stretch along the ideal I/Q axes;\nquadrature skew as a stretch along a 45° line. **[V for the geometric descriptions]**\n\n**Why symmetric and not a one-sided shear.** Putting the whole skew on Q\n($\\Im\\{z\\}=g_Q(\\Re\\{r\\}\\sin\\psi+\\Im\\{r\\}\\cos\\psi)$) is a *shear*, and a shear decomposes as a\nrotation by $\\psi/2$ composed with the symmetric skew. That $\\psi/2$ rotation is\nindistinguishable from carrier phase and is silently absorbed by the step-8 phase estimate —\nso $\\psi$ becomes unidentifiable and the reported value depends on estimator ordering. The\nsymmetric form has no rotational component, which makes $\\psi$ identifiable. It also matches\nthe \"stretch along a 45° line\" description, which the shear form does not.\n\n**AC:** Signals with known injected gain imbalance and quadrature skew return those values to\nwithin 0.05 dB and 0.1° respectively, including when both are present together — the\ncross-term case, where a one-at-a-time estimator passes the singles and fails the pair. The\nmodel fitted is the symmetric one: injecting pure quadrature skew and then estimating carrier\nphase returns a phase near zero, whereas the one-sided shear model absorbs $\\psi/2$ into\nphase and reports a non-zero value, so this test distinguishes the two forms directly. Gain\nimbalance is positive when Q exceeds I, asserted against the stated convention.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2132
+  "line": 2266
  },
  {
   "id": "REQ-DEM-067a",
@@ -2066,14 +2066,14 @@
   "num": "067a",
   "priority": "P1",
   "title": "Joint estimation of phase and skew",
-  "body": "**`REQ-DEM-067a` (P1) — Joint estimation of phase and skew.**\nCarrier phase (step 8) and quadrature skew shall be **jointly fitted**, or the phase estimate\nshall be explicitly constrained, so that the $\\psi/2$ ambiguity above is resolved\ndeterministically. The chosen convention shall be documented and asserted in tests.\n\n> **Documented interaction that must be reproduced.** Quadrature skew can be mis-attributed as\n> gain imbalance (and vice versa) depending on the transmitter's symbol-mapping convention\n> relative to the receiver's reference axes. **[V]** The UI shall document this, and the test\n> suite shall include the ambiguous case so the behaviour is characterised and stable rather\n> than accidental. The sign convention for gain imbalance shall be stated explicitly\n> (positive = Q larger than I, per the formula above).",
+  "body": "**`REQ-DEM-067a` (P1) — Joint estimation of phase and skew.**\nCarrier phase (step 8) and quadrature skew shall be **jointly fitted**, or the phase estimate\nshall be explicitly constrained, so that the $\\psi/2$ ambiguity above is resolved\ndeterministically. The chosen convention shall be documented and asserted in tests.\n\n> **Documented interaction that must be reproduced.** Quadrature skew can be mis-attributed as\n> gain imbalance (and vice versa) depending on the transmitter's symbol-mapping convention\n> relative to the receiver's reference axes. **[V]** The UI shall document this, and the test\n> suite shall include the ambiguous case so the behaviour is characterised and stable rather\n> than accidental. The sign convention for gain imbalance shall be stated explicitly\n> (positive = Q larger than I, per the formula above).\n\n**AC:** Phase and skew are estimated from one joint fit, or the phase estimate carries an\nexplicit documented constraint; either way, estimating the same signal twice from different\ninitial conditions returns the same split between phase and skew to within 0.01°, which is\nwhat \"resolved deterministically\" means and what an unconstrained sequential estimator cannot\ndeliver. The documented convention is asserted in tests rather than only described. The\nambiguous case — a symbol-mapping convention under which skew and gain imbalance trade off —\nis in the test suite with its outcome pinned, so the behaviour is characterised and a change\nto it shows up as a test failure rather than as a silently different number.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2152
+  "line": 2294
  },
  {
   "id": "REQ-DEM-068",
@@ -2081,14 +2081,14 @@
   "num": "068",
   "priority": "P1",
   "title": "Rho",
-  "body": "**`REQ-DEM-068` (P1) — Rho.**\n\n$$\\rho=\\frac{\\left|\\sum_k z_k r_k^{*}\\right|^{2}}{\\left(\\sum_k\\left|z_k\\right|^{2}\\right)\\left(\\sum_k\\left|r_k\\right|^{2}\\right)}$$\n\nThe normalised correlated power between measured and reference signals — the waveform\nquality factor, maximum 1.0 for a perfect match. **[V]**",
+  "body": "**`REQ-DEM-068` (P1) — Rho.**\n\n$$\\rho=\\frac{\\left|\\sum_k z_k r_k^{*}\\right|^{2}}{\\left(\\sum_k\\left|z_k\\right|^{2}\\right)\\left(\\sum_k\\left|r_k\\right|^{2}\\right)}$$\n\nThe normalised correlated power between measured and reference signals — the waveform\nquality factor, maximum 1.0 for a perfect match. **[V]**\n**AC:** A perfect match returns $\\rho = 1.0$ to within 1e-12, and $\\rho$ never exceeds 1.0\nfor any input — asserted over randomised impairments, since a normalisation error shows up as\n$\\rho > 1$. For a signal impaired by additive noise of known SNR, $\\rho$ matches the\nclosed-form relation to EVM to within 1e-6. $\\rho$ is invariant to a common scaling or a\ncommon phase rotation of the measured signal, which is what makes it a waveform-quality\nfigure rather than an amplitude comparison.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2164
+  "line": 2315
  },
  {
   "id": "REQ-DEM-069",
@@ -2096,14 +2096,14 @@
   "num": "069",
   "priority": "P1",
   "title": "SNR (MER)",
-  "body": "**`REQ-DEM-069` (P1) — SNR (MER).**\n\n$$\\mathrm{SNR_{dB}}=10\\log_{10}\\frac{\\sum_k\\left|r_k\\right|^{2}}{\\sum_k\\left|z_k-r_k\\right|^{2}}$$\n\nDefined by the reference product as the ratio of average symbol power to noise power, where\n\"noise power includes anything that causes the symbol to deviate from the ideal state\nposition, including additive noise, distortion, and ISI.\" **[V]** Applicable to QAM,\nDVB-QAM, 8PSK, QPSK, APSK and VSB; VSB uses a real-only variant. **[V]**\n*Naming note:* the wider industry calls this MER. The reference product calls it SNR.\nOpenVSA shall display \"SNR (MER)\" to avoid ambiguity.",
+  "body": "**`REQ-DEM-069` (P1) — SNR (MER).**\n\n$$\\mathrm{SNR_{dB}}=10\\log_{10}\\frac{\\sum_k\\left|r_k\\right|^{2}}{\\sum_k\\left|z_k-r_k\\right|^{2}}$$\n\nDefined by the reference product as the ratio of average symbol power to noise power, where\n\"noise power includes anything that causes the symbol to deviate from the ideal state\nposition, including additive noise, distortion, and ISI.\" **[V]** Applicable to QAM,\nDVB-QAM, 8PSK, QPSK, APSK and VSB; VSB uses a real-only variant. **[V]**\n*Naming note:* the wider industry calls this MER. The reference product calls it SNR.\nOpenVSA shall display \"SNR (MER)\" to avoid ambiguity.\n**AC:** For a signal with additive noise at a known SNR the reported value matches to within\n0.1 dB, and it satisfies the closed-form identity with EVM to within 1e-6. Distortion and ISI\ncount as noise: a signal degraded by ISI alone, with no additive noise, reports a finite SNR\nrather than infinity — the check that the definition quoted here was implemented rather than\na conventional additive-noise-only one. The label renders exactly `SNR (MER)`. It is offered\nfor QAM, DVB-QAM, 8PSK, QPSK, APSK and VSB, with VSB using the real-only variant, and is\nabsent for other formats.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2171
+  "line": 2328
  },
  {
   "id": "REQ-DEM-070",
@@ -2111,14 +2111,14 @@
   "num": "070",
   "priority": "P1",
   "title": "Format-specific metrics",
-  "body": "**`REQ-DEM-070` (P1) — Format-specific metrics.**\n**Amplitude droop** (dB/symbol, from a linear fit of log magnitude versus symbol index —\nMSK/GSM class), **FSK error** and **FSK deviation** (FSK formats), **carrier offset**,\n**pilot level** (VSB), and **time offset** shall be computed where applicable to the\nselected format. **[V]**",
+  "body": "**`REQ-DEM-070` (P1) — Format-specific metrics.**\n**Amplitude droop** (dB/symbol, from a linear fit of log magnitude versus symbol index —\nMSK/GSM class), **FSK error** and **FSK deviation** (FSK formats), **carrier offset**,\n**pilot level** (VSB), and **time offset** shall be computed where applicable to the\nselected format. **[V]**\n**AC:** Each metric is checked against a deliberately injected impairment of known magnitude\nand matches within the `REQ-SIM-002` tolerance: amplitude droop in dB/symbol from a signal\nwith a known log-magnitude slope, FSK error and deviation against a generated FSK signal of\nknown deviation, carrier offset against a known frequency offset, pilot level against a VSB\nsignal with a known pilot, and time offset against a known timing shift. Amplitude droop\ncomes from a linear fit of log magnitude versus symbol index, verified by a signal whose\ndroop is exactly linear returning a fit residual near zero. Each metric appears only for\nformats it applies to, per `REQ-DEM-071`.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2182
+  "line": 2346
  },
  {
   "id": "REQ-DEM-071",
@@ -2126,14 +2126,14 @@
   "num": "071",
   "priority": "P0",
   "title": "Error summary table",
-  "body": "**`REQ-DEM-071` (P0) — Error summary table.**\nAll applicable metrics shall be presented in an Error Summary table trace, with units,\nand with rows automatically shown or hidden according to format applicability. **[V]**",
+  "body": "**`REQ-DEM-071` (P0) — Error summary table.**\nAll applicable metrics shall be presented in an Error Summary table trace, with units,\nand with rows automatically shown or hidden according to format applicability. **[V]**\n**AC:** For each supported format the visible rows are exactly the applicable metrics —\nenumerated per format, so an inapplicable row appearing (magnitude error on FSK, say) fails,\nas does an applicable row missing. Rows appear and disappear on a format change with no\nmanual step. Every row carries units, and the layout follows `REQ-UI-053`. A metric that is\napplicable but not yet computed shows `NAN` per `REQ-UI-032` rather than a stale value from\nthe previous format.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2188
+  "line": 2360
  },
  {
   "id": "REQ-DEM-072",
@@ -2141,12 +2141,12 @@
   "num": "072",
   "priority": "P1",
   "title": "Metric provenance",
-  "body": "**`REQ-DEM-072` (P1) — Metric provenance.**\nThe UI shall make visible, for the active measurement, which normalisation reference, which\nfilters, and which compensations (equaliser on/off, IQ offset removed or not) were in force\nwhen the metrics were computed.\n*Rationale:* EVM numbers are meaningless without this context, and disagreements between\ninstruments almost always trace to it.",
+  "body": "**`REQ-DEM-072` (P1) — Metric provenance.**\nThe UI shall make visible, for the active measurement, which normalisation reference, which\nfilters, and which compensations (equaliser on/off, IQ offset removed or not) were in force\nwhen the metrics were computed.\n*Rationale:* EVM numbers are meaningless without this context, and disagreements between\ninstruments almost always trace to it.\n**AC:** For the active measurement the UI shows the normalisation reference in force, both\nfilter selections with their parameters, and the state of each compensation — equaliser on or\noff, IQ offset removed or not, mirror spectrum on or off. Changing any of them updates the\ndisplayed provenance in the same measurement cycle as the metric it qualifies, so the two can\nnever disagree; a test changes a compensation and asserts the metric and its provenance\nupdate together. The provenance travels with exported results and saved states, since a\nnumber recalled without its context is the failure this prevents.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2192
+  "line": 2370
  },
  {
   "id": "REQ-DEM-080",
@@ -2154,15 +2154,15 @@
   "num": "080",
   "priority": "P0",
   "title": "Result trace catalogue",
-  "body": "**`REQ-DEM-080` (P0) — Result trace catalogue.**\nThe following shall be available as trace data sources: **[V]**\n\n| Trace | Content |\n|---|---|\n| IQ Measured Time | Measured complex waveform |\n| IQ Reference Time | Regenerated ideal complex waveform |\n| Constellation | Symbol-instant points in the I/Q plane |\n| IQ Vector / Trajectory | Continuous inter-symbol path in the I/Q plane |\n| Eye Diagram (I-Eye, Q-Eye) | I or Q versus time, folded on the symbol clock |\n| Trellis | Phase versus time, folded — **[U]**, not confirmed in the reference product but conventional and cheap to provide |\n| Error Vector Time | $|z_k - r_k|$ versus time/symbol |\n| Error Vector Spectrum | Spectrum of the error vector sequence — reveals systematic/periodic impairments |\n| Magnitude Error | Magnitude error versus time/symbol |\n| Phase Error | Phase error versus time/symbol |\n| Symbol Table / Bit Stream | Detected symbols and bits, hex or binary, with sync-pattern highlighting |\n| Error Summary | The metrics of §11.7 |\n| Equalizer Impulse Response | Equaliser coefficients |\n| Channel Frequency Response | Estimated channel magnitude/phase |",
+  "body": "**`REQ-DEM-080` (P0) — Result trace catalogue.**\nThe following shall be available as trace data sources: **[V]**\n\n| Trace | Content |\n|---|---|\n| IQ Measured Time | Measured complex waveform |\n| IQ Reference Time | Regenerated ideal complex waveform |\n| Constellation | Symbol-instant points in the I/Q plane |\n| IQ Vector / Trajectory | Continuous inter-symbol path in the I/Q plane |\n| Eye Diagram (I-Eye, Q-Eye) | I or Q versus time, folded on the symbol clock |\n| Trellis | Phase versus time, folded — **[U]**, not confirmed in the reference product but conventional and cheap to provide |\n| Error Vector Time | $|z_k - r_k|$ versus time/symbol |\n| Error Vector Spectrum | Spectrum of the error vector sequence — reveals systematic/periodic impairments |\n| Magnitude Error | Magnitude error versus time/symbol |\n| Phase Error | Phase error versus time/symbol |\n| Symbol Table / Bit Stream | Detected symbols and bits, hex or binary, with sync-pattern highlighting |\n| Error Summary | The metrics of §11.7 |\n| Equalizer Impulse Response | Equaliser coefficients |\n| Channel Frequency Response | Estimated channel magnitude/phase |\n\n**AC:** Every listed trace is selectable as a data source and produces data for a demodulated\nsignal. Each is checked for correctness rather than mere presence, against a signal with one\nknown injected impairment: Error Vector Time peaks at the symbol carrying the injected error,\nError Vector Spectrum shows a line at the rate of a periodic impairment, IQ Reference Time\nmatches the generator's ideal waveform to within 1e-9, and Constellation and IQ Vector differ\nexactly as `REQ-UI-050` requires. Traces that depend on an optional stage — Equalizer Impulse\nResponse, Channel Frequency Response — are unavailable rather than empty when the equaliser\nis off. Trellis is provided per the **[U]** note and is not claimed as reference parity.",
   "phase": 2,
   "evidence": [
    "verified",
    "unverified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2201
+  "line": 2386
  },
  {
   "id": "REQ-DEM-081",
@@ -2170,14 +2170,14 @@
   "num": "081",
   "priority": "P1",
   "title": "Eye diagram construction",
-  "body": "**`REQ-DEM-081` (P1) — Eye diagram construction.**\nThe eye shall be built by superimposing the measured I (or Q) waveform across the Result\nLength, folded on the symbol clock, with a configurable eye length in symbols (default 2)\nand optional persistence shading. **[V]**",
+  "body": "**`REQ-DEM-081` (P1) — Eye diagram construction.**\nThe eye shall be built by superimposing the measured I (or Q) waveform across the Result\nLength, folded on the symbol clock, with a configurable eye length in symbols (default 2)\nand optional persistence shading. **[V]**\n**AC:** The eye is built from the measured waveform across the whole Result Length, folded on\nthe symbol clock — the trace count equals the number of folds the Result Length and eye\nlength imply, so a partial build fails. Eye length defaults to 2 symbols and is configurable\nover the `REQ-UI-051` range. Persistence shading, when on, makes frequently traversed paths\nvisibly denser than rare ones, and turning it off leaves the eye's geometry unchanged. The\nrendered eye satisfies `REQ-UI-051`'s centring and reference-line criteria.",
   "phase": 2,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2221
+  "line": 2415
  },
  {
   "id": "REQ-DEM-082",
@@ -2190,7 +2190,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2226
+  "line": 2426
  },
  {
   "id": "REQ-DEM-083",
@@ -2198,12 +2198,12 @@
   "num": "083",
   "priority": "P2",
   "title": "Symbol table interaction",
-  "body": "**`REQ-DEM-083` (P2) — Symbol table interaction.** Selecting a symbol in the table shall\nhighlight the corresponding point in the constellation and position in the eye, and vice\nversa.",
+  "body": "**`REQ-DEM-083` (P2) — Symbol table interaction.** Selecting a symbol in the table shall\nhighlight the corresponding point in the constellation and position in the eye, and vice\nversa.\n**AC:** Selecting symbol $k$ in the table highlights the constellation point and eye position\nfor symbol $k$ specifically — verified against a signal in which one symbol is displaced so\nthe correct point is identifiable, which an off-by-one selection fails. Selection propagates\nin both directions and settles: selecting in the constellation highlights the table row\nwithout re-triggering a further selection. Selection survives a measurement update if the\nsymbol still exists, and clears cleanly if it does not.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2232
+  "line": 2432
  },
  {
   "id": "REQ-PER-001",
@@ -2216,7 +2216,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2242
+  "line": 2448
  },
  {
   "id": "REQ-PER-002",
@@ -2229,7 +2229,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2272
+  "line": 2478
  },
  {
   "id": "REQ-PER-003",
@@ -2244,7 +2244,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2276
+  "line": 2482
  },
  {
   "id": "REQ-PER-010",
@@ -2257,7 +2257,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2306
+  "line": 2512
  },
  {
   "id": "REQ-PER-011",
@@ -2270,7 +2270,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2309
+  "line": 2515
  },
  {
   "id": "REQ-UI-001",
@@ -2285,7 +2285,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2333
+  "line": 2539
  },
  {
   "id": "REQ-UI-002",
@@ -2300,7 +2300,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2356
+  "line": 2562
  },
  {
   "id": "REQ-UI-003",
@@ -2315,7 +2315,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2362
+  "line": 2568
  },
  {
   "id": "REQ-UI-004",
@@ -2330,7 +2330,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2371
+  "line": 2577
  },
  {
   "id": "REQ-UI-005",
@@ -2345,7 +2345,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2386
+  "line": 2592
  },
  {
   "id": "REQ-UI-006",
@@ -2360,7 +2360,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2410
+  "line": 2616
  },
  {
   "id": "REQ-UI-007",
@@ -2373,7 +2373,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2432
+  "line": 2638
  },
  {
   "id": "REQ-UI-010",
@@ -2388,7 +2388,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2448
+  "line": 2654
  },
  {
   "id": "REQ-UI-011",
@@ -2403,7 +2403,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2478
+  "line": 2684
  },
  {
   "id": "REQ-UI-012",
@@ -2416,7 +2416,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2485
+  "line": 2691
  },
  {
   "id": "REQ-UI-013",
@@ -2431,7 +2431,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2501
+  "line": 2707
  },
  {
   "id": "REQ-UI-014",
@@ -2446,7 +2446,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2515
+  "line": 2721
  },
  {
   "id": "REQ-UI-015",
@@ -2459,7 +2459,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2524
+  "line": 2730
  },
  {
   "id": "REQ-UI-020",
@@ -2474,7 +2474,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2542
+  "line": 2748
  },
  {
   "id": "REQ-UI-021",
@@ -2489,7 +2489,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2553
+  "line": 2759
  },
  {
   "id": "REQ-UI-022",
@@ -2502,7 +2502,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2566
+  "line": 2772
  },
  {
   "id": "REQ-UI-023",
@@ -2517,7 +2517,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2586
+  "line": 2792
  },
  {
   "id": "REQ-UI-024",
@@ -2532,7 +2532,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2604
+  "line": 2810
  },
  {
   "id": "REQ-UI-030",
@@ -2547,7 +2547,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2630
+  "line": 2836
  },
  {
   "id": "REQ-UI-031",
@@ -2562,7 +2562,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2650
+  "line": 2856
  },
  {
   "id": "REQ-UI-032",
@@ -2577,7 +2577,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2661
+  "line": 2867
  },
  {
   "id": "REQ-UI-033",
@@ -2592,7 +2592,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2675
+  "line": 2881
  },
  {
   "id": "REQ-UI-040",
@@ -2605,7 +2605,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2686
+  "line": 2892
  },
  {
   "id": "REQ-UI-041",
@@ -2620,7 +2620,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2709
+  "line": 2915
  },
  {
   "id": "REQ-UI-042",
@@ -2635,7 +2635,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2728
+  "line": 2934
  },
  {
   "id": "REQ-UI-050",
@@ -2650,7 +2650,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2758
+  "line": 2964
  },
  {
   "id": "REQ-UI-051",
@@ -2665,7 +2665,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2774
+  "line": 2980
  },
  {
   "id": "REQ-UI-052",
@@ -2680,7 +2680,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2790
+  "line": 2996
  },
  {
   "id": "REQ-UI-053",
@@ -2695,7 +2695,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2813
+  "line": 3019
  },
  {
   "id": "REQ-UI-054",
@@ -2710,7 +2710,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2839
+  "line": 3045
  },
  {
   "id": "REQ-UI-060",
@@ -2723,7 +2723,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2855
+  "line": 3061
  },
  {
   "id": "REQ-UI-061",
@@ -2738,7 +2738,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2873
+  "line": 3079
  },
  {
   "id": "REQ-UI-062",
@@ -2753,7 +2753,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2911
+  "line": 3117
  },
  {
   "id": "REQ-UI-063",
@@ -2768,7 +2768,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2923
+  "line": 3129
  },
  {
   "id": "REQ-UI-064",
@@ -2783,7 +2783,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2945
+  "line": 3151
  },
  {
   "id": "REQ-UI-065",
@@ -2798,7 +2798,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2953
+  "line": 3159
  },
  {
   "id": "REQ-UI-070",
@@ -2813,7 +2813,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2979
+  "line": 3185
  },
  {
   "id": "REQ-UI-071",
@@ -2828,7 +2828,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2991
+  "line": 3197
  },
  {
   "id": "REQ-UI-072",
@@ -2843,7 +2843,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3014
+  "line": 3220
  },
  {
   "id": "REQ-UI-073",
@@ -2858,7 +2858,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3020
+  "line": 3226
  },
  {
   "id": "REQ-UI-080",
@@ -2874,7 +2874,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3031
+  "line": 3237
  },
  {
   "id": "REQ-UI-081",
@@ -2889,7 +2889,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3048
+  "line": 3254
  },
  {
   "id": "REQ-UI-082",
@@ -2904,7 +2904,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3069
+  "line": 3275
  },
  {
   "id": "REQ-UI-090",
@@ -2917,7 +2917,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3084
+  "line": 3290
  },
  {
   "id": "REQ-UI-091",
@@ -2930,7 +2930,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3097
+  "line": 3303
  },
  {
   "id": "REQ-STA-001",
@@ -2945,7 +2945,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3161
+  "line": 3367
  },
  {
   "id": "REQ-STA-002",
@@ -2960,7 +2960,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3175
+  "line": 3381
  },
  {
   "id": "REQ-STA-003",
@@ -2975,7 +2975,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3185
+  "line": 3391
  },
  {
   "id": "REQ-STA-004",
@@ -2990,7 +2990,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3193
+  "line": 3399
  },
  {
   "id": "REQ-STA-005",
@@ -3003,7 +3003,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3203
+  "line": 3409
  },
  {
   "id": "REQ-API-001",
@@ -3018,7 +3018,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3215
+  "line": 3421
  },
  {
   "id": "REQ-API-002",
@@ -3031,7 +3031,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3229
+  "line": 3435
  },
  {
   "id": "REQ-API-003",
@@ -3046,7 +3046,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3235
+  "line": 3441
  },
  {
   "id": "REQ-API-004",
@@ -3059,7 +3059,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3241
+  "line": 3447
  },
  {
   "id": "REQ-API-005",
@@ -3074,7 +3074,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3245
+  "line": 3451
  },
  {
   "id": "REQ-API-006",
@@ -3089,7 +3089,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3249
+  "line": 3455
  },
  {
   "id": "REQ-API-007",
@@ -3104,7 +3104,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3254
+  "line": 3460
  },
  {
   "id": "REQ-NFR-030",
@@ -3117,7 +3117,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3266
+  "line": 3472
  },
  {
   "id": "REQ-NFR-031",
@@ -3130,7 +3130,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3267
+  "line": 3473
  },
  {
   "id": "REQ-NFR-032",
@@ -3143,7 +3143,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3268
+  "line": 3474
  },
  {
   "id": "REQ-NFR-033",
@@ -3156,7 +3156,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3269
+  "line": 3475
  },
  {
   "id": "REQ-NFR-034",
@@ -3169,7 +3169,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3270
+  "line": 3476
  },
  {
   "id": "REQ-NFR-035",
@@ -3182,7 +3182,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3271
+  "line": 3477
  },
  {
   "id": "REQ-NFR-036",
@@ -3195,7 +3195,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3272
+  "line": 3478
  },
  {
   "id": "REQ-NFR-037",
@@ -3208,7 +3208,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3273
+  "line": 3479
  },
  {
   "id": "REQ-NFR-040",
@@ -3221,7 +3221,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3274
+  "line": 3480
  },
  {
   "id": "REQ-NFR-041",
@@ -3234,7 +3234,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3275
+  "line": 3481
  },
  {
   "id": "REQ-NFR-042",
@@ -3247,7 +3247,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3276
+  "line": 3482
  },
  {
   "id": "REQ-NFR-038",
@@ -3260,7 +3260,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3277
+  "line": 3483
  },
  {
   "id": "REQ-NFR-039",
@@ -3273,7 +3273,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3278
+  "line": 3484
  },
  {
   "id": "REQ-LIC-001",
@@ -3288,7 +3288,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3308
+  "line": 3514
  },
  {
   "id": "REQ-LIC-002",
@@ -3303,7 +3303,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3314
+  "line": 3520
  },
  {
   "id": "REQ-LIC-003",
@@ -3318,7 +3318,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3318
+  "line": 3524
  },
  {
   "id": "REQ-LIC-004",
@@ -3331,7 +3331,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3322
+  "line": 3528
  },
  {
   "id": "REQ-TST-001",
@@ -3339,12 +3339,12 @@
   "num": "001",
   "priority": "P0",
   "title": "DSP primitives tested against closed-form analytic results",
-  "body": "**`REQ-TST-001` (P0)** — Every DSP primitive shall be tested against a closed-form\nanalytic result, not against a previous run of itself.\n\n| Component | Analytic reference |\n|---|---|\n| FFT | Known transform pairs; Parseval's theorem to **1e-12 for the double-precision provider, 1e-5 for single** (`REQ-NFR-004a`) |\n| Windows | ENBW and coherent gain computed from coefficients, against §9.2 table |\n| RRC/RC filters | Cascade identity; analytic values at singular points |\n| Resampler | Pure tone in, pure tone out; measured SFDR against design target |\n| Averaging | Coherent vs incoherent SNR behaviour (`REQ-DSP-030` AC) |\n| CCDF | Rayleigh/Gaussian analytic distribution |\n| Metrics | Closed-form values for deliberately impaired constellations |",
+  "body": "**`REQ-TST-001` (P0)** — Every DSP primitive shall be tested against a closed-form\nanalytic result, not against a previous run of itself.\n\n| Component | Analytic reference |\n|---|---|\n| FFT | Known transform pairs; Parseval's theorem to **1e-12 for the double-precision provider, 1e-5 for single** (`REQ-NFR-004a`) |\n| Windows | ENBW and coherent gain computed from coefficients, against §9.2 table |\n| RRC/RC filters | Cascade identity; analytic values at singular points |\n| Resampler | Pure tone in, pure tone out; measured SFDR against design target |\n| Averaging | Coherent vs incoherent SNR behaviour (`REQ-DSP-030` AC) |\n| CCDF | Rayleigh/Gaussian analytic distribution |\n| Metrics | Closed-form values for deliberately impaired constellations |\n\n**AC:** Every component in the table has at least one test whose expected value is computed\nfrom the analytic reference named beside it, independently of the implementation under test.\nThe prohibition is enforced, not merely stated: no DSP test compares against a stored output\nof a previous run, asserted by a check that fails on a golden-output or approved-file\ncomparison anywhere in the DSP test suite — that pattern is exactly how a wrong result\nbecomes the baseline it is later validated against. A DSP primitive with no closed-form test\nfails the build rather than passing untested, so the table is a floor and not a sample. Where\na primitive genuinely has no closed form, the fallback is a property-based test asserting an\ninvariant (linearity, energy conservation, an inverse round trip), never a recorded output.",
   "phase": 2,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3335
+  "line": 3541
  },
  {
   "id": "REQ-TST-002",
@@ -3357,7 +3357,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3350
+  "line": 3566
  },
  {
   "id": "REQ-TST-003",
@@ -3370,7 +3370,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3377
+  "line": 3593
  },
  {
   "id": "REQ-TST-004",
@@ -3383,7 +3383,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3385
+  "line": 3601
  },
  {
   "id": "REQ-TST-004a",
@@ -3396,7 +3396,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3392
+  "line": 3608
  },
  {
   "id": "REQ-TST-005",
@@ -3409,7 +3409,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3402
+  "line": 3618
  },
  {
   "id": "REQ-TST-006",
@@ -3422,7 +3422,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3408
+  "line": 3624
  },
  {
   "id": "REQ-TST-007",
@@ -3435,7 +3435,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3412
+  "line": 3628
  },
  {
   "id": "REQ-TST-008",
@@ -3448,7 +3448,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3415
+  "line": 3631
  },
  {
   "id": "REQ-TST-009",
@@ -3461,7 +3461,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3418
+  "line": 3634
  },
  {
   "id": "REQ-PLN-001",
@@ -3474,6 +3474,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 3448
+  "line": 3664
  }
 ]
