@@ -81,6 +81,8 @@
                       ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\OpenVSA.Hal.File\OpenVSA.Hal.File.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\OpenVSA.Hal.Visa\OpenVSA.Hal.Visa.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <!--
@@ -95,6 +97,17 @@
       <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.Sim\$(OutputPath)OpenVSA.Hal.Sim.pdb" />
       <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.File\$(OutputPath)OpenVSA.Hal.File.dll" />
       <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.File\$(OutputPath)OpenVSA.Hal.File.pdb" />
+      <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.Visa\$(OutputPath)OpenVSA.Hal.Visa.dll" />
+      <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.Visa\$(OutputPath)OpenVSA.Hal.Visa.pdb" />
+
+      <!--
+        Ivi.Visa is deliberately NOT copied. The IviFoundation.Visa package supplies only a
+        reference assembly for .NET Framework; the implementation is installed into the GAC by the
+        VISA Shared Components that ship with NI-VISA and Keysight IO Libraries alike. So the VISA
+        plug-in resolves it at run time on a machine that has VISA, and fails to load on one that
+        does not - which is precisely the degradation REQ-NFR-032 asks for, reported by the
+        registry as an unavailable source rather than as a startup failure.
+      -->
     </ItemGroup>
     <Copy SourceFiles="@(FrontEndPlugin)"
           DestinationFolder="$(OutDir)FrontEnds"

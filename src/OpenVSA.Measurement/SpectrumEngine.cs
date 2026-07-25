@@ -125,14 +125,25 @@ namespace OpenVSA.Measurement
                 throw new InvalidOperationException("The engine is already running.");
             }
 
-            if (_frontEnd.State == FrontEndState.Disconnected)
-            {
-                await _frontEnd.ConnectAsync(ct).ConfigureAwait(false);
-            }
+            // Off the caller's thread, which is the dispatcher. A front end may implement these
+            // synchronously - the simulator does, and a VISA one does seconds of GPIB traffic
+            // before returning - and awaiting a completed Task runs all of it inline. That is
+            // REQ-NFR-010's "no blocking wait over 16 ms" broken by a method that looks async.
+            AcquisitionPlan plan = await Task.Run(
+                async () =>
+                {
+                    if (_frontEnd.State == FrontEndState.Disconnected)
+                    {
+                        await _frontEnd.ConnectAsync(ct).ConfigureAwait(false);
+                    }
 
-            AcquisitionPlan plan = _frontEnd.Negotiate(request);
-            await _frontEnd.ConfigureAsync(plan, ct).ConfigureAwait(false);
-            await _frontEnd.ArmAsync(ct).ConfigureAwait(false);
+                    AcquisitionPlan negotiated = _frontEnd.Negotiate(request);
+                    await _frontEnd.ConfigureAsync(negotiated, ct).ConfigureAwait(false);
+                    await _frontEnd.ArmAsync(ct).ConfigureAwait(false);
+
+                    return negotiated;
+                },
+                ct).ConfigureAwait(false);
 
             Plan = plan;
 

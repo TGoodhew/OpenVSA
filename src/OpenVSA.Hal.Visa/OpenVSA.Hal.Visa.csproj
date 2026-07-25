@@ -12,14 +12,19 @@
     NationalInstruments.Visa.dll or Keysight.Visa.dll are PROHIBITED — they hard-bind the
     binary to one vendor and make REQ-VISA-002 unachievable. VISA-COM must not be used.
 
-    The reference below is commented out until the IVI Shared Components are confirmed present
-    on the build agent; see Phase 3 of the delivery plan.
+    Taken as the IVI Foundation's own NuGet package rather than as a path reference to the
+    installed Shared Components, so the build does not depend on VISA being installed on the
+    build agent. The package carries Ivi.Visa.dll alone; the vendor's native VISA runtime is a
+    deployment-time dependency, and its absence is what REQ-NFR-032 requires be survivable.
   -->
-  <!--
   <ItemGroup>
-    <Reference Include="Ivi.Visa" />
+    <PackageReference Include="IviFoundation.Visa" Version="8.0.2" />
   </ItemGroup>
-  -->
+
+  <!-- VisaConfiguration reads the resource name from appSettings. -->
+  <ItemGroup>
+    <Reference Include="System.Configuration" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />

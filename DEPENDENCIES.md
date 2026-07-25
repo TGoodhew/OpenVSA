@@ -20,6 +20,19 @@ restrictive terms.
 | `Syncfusion.Tools.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | `DockingManager` and Ribbon for the shell furniture of `REQ-UI-001`/`REQ-UI-060`. See the decision below. |
 | `Syncfusion.SfGrid.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Marker, limit-line and demod error-summary tables. |
 | `Syncfusion.Shared.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Numeric editors, used as the entry control inside the `REQ-UI-042` hot-spot framework. |
+| `IviFoundation.Visa` | 8.0.2 | IVI Foundation (permissive; redistribution of the shared components permitted) | `REQ-VISA-001`: `Ivi.Visa.dll` alone, referenced by `OpenVSA.Hal.Visa`. See the note below on why nothing is shipped. |
+
+### Note: the VISA package ships nothing
+
+For .NET Framework the package supplies a **reference assembly only** (`ref/net40`); the
+implementation is installed into the GAC by the VISA.NET Shared Components that come with NI-VISA
+and Keysight IO Libraries alike. Nothing is copied into the output, and no VISA assembly is
+redistributed with OpenVSA.
+
+That is also what makes `REQ-NFR-032` work without special handling. On a machine with no VISA
+installed, the GAC has no `Ivi.Visa`, so `OpenVSA.Hal.Visa` fails to load, and `FrontEndRegistry`
+lists it among the unavailable sources with the reason — the application still starts and the
+simulated source still works.
 
 ### Contributor step: the Syncfusion licence key
 
