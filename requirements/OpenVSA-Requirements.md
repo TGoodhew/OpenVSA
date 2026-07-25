@@ -1779,6 +1779,15 @@ code and in user help:
 14. Result trace generation
 ```
 
+**AC:** The order is declared once and the implementation is driven by that declaration, as
+for `REQ-TRC-003`; a test fails if any step executes out of declared order. The optional
+steps (2, 6, 11) are skippable without disturbing the order of the rest. Step 11's re-entry
+at step 8 is a genuine loop: with the equaliser on, the joint refinement of step 8 runs again
+after coefficients update, verified by a signal whose EVM improves on the second pass. Step 8
+iterates to a stated convergence criterion with a bounded iteration count, and reaching that
+bound is reported rather than silently accepted. The same order appears in the user help, and
+a test compares the documented sequence against the declaration so the two cannot drift.
+
 **`REQ-DEM-002` (P0) — Whole-block estimation, not tracking loops.** **[DESIGN CHOICE]**
 Steps 3 and 8 shall use block-based maximum-likelihood / least-squares estimation over the
 Result Length, not causal PLL/DLL tracking.
@@ -1846,9 +1855,21 @@ simulator.
 Differential formats shall support differential decoding with a selectable reference; offset
 formats (OQPSK and relatives) shall be processed at **2 points per symbol**, because I and Q
 are offset by half a symbol. **[V]**
+**AC:** A differentially encoded signal demodulates to the transmitted bits with the correct
+reference selected, and to a predictably wrong bit stream with the wrong one — so the
+reference selection is shown to be effective rather than ignored. Offset formats are
+processed internally at 2 points per symbol regardless of the display points-per-symbol of
+`REQ-DEM-034`; a test asserts the internal rate, since processing OQPSK at 1 point per symbol
+yields plausible-looking but wrong EVM. An OQPSK signal generated with a known half-symbol
+I/Q offset demodulates to near-zero EVM, which it cannot do if the offset is mishandled.
 
 **`REQ-DEM-013` (P2) — Low SNR enhancement.** An option extending maximum Result Length
 for offset formats from ~2 048 to ~40 000 symbols, matching the reference product. **[V]**
+**AC:** With the option off, Result Length for offset formats is capped near 2 048 symbols;
+with it on, at least 40 000 symbols are accepted and demodulated. The longer length delivers
+the SNR benefit it exists for: on a low-SNR signal the EVM estimate's variance falls
+approximately as $1/\sqrt{N}$ between the two lengths, which distinguishes a genuinely longer
+analysis from a raised limit that truncates internally.
 
 ### 11.3 Pulse-shaping filters
 
@@ -1859,6 +1880,12 @@ the ideal waveform) shall be independently selectable in type and parameter. **[
 Nyquist filtering between transmitter and receiver for optimum SNR; the analyser emulates
 the receiver half, so its measurement filter must match the transmitter's shaping, and the
 composite response must be the full Nyquist filter for zero ISI at symbol centres.
+**AC:** Measurement and reference filters are independently settable in both type and
+parameter — a test sets them to different types with different alphas and asserts each takes
+effect on its own path. The Nyquist relationship is verified numerically: RRC measurement and
+RRC reference at matched alpha give a composite response equal to the raised cosine to within
+1e-9, with zero ISI at symbol centres, whereas a mismatched pair does not. The help text
+states the transmitter/receiver split.
 
 **`REQ-DEM-021` (P0) — Filter catalogue.**
 Root Raised Cosine · Raised Cosine · Gaussian · **EDGE** · Half Sine · Rectangular ·
@@ -1870,6 +1897,14 @@ product, for Gaussian).
 > defined in 3GPP TS 45.004 — the principal component of the Laurent decomposition of the GMSK
 > modulator, used as the transmit pulse for 3π/8-8PSK EDGE. It must be implemented from that
 > definition as a distinct filter type, not as a Gaussian with a particular BT.
+
+**AC:** All nine filter types are selectable for both measurement and reference roles, with
+alpha exposed for RC/RRC and BT for Gaussian, and each parameter demonstrably changing the
+response. The EDGE filter is a distinct type whose coefficients match the linearised-GMSK
+main pulse $c_0(t)$ of 3GPP TS 45.004 to within 1e-6 — a test compares against those
+published coefficients and fails a Gaussian approximation at any BT, since substituting one
+is the specific error this note exists to prevent. `None` applies no shaping, verified by an
+output identical to the input.
 
 **`REQ-DEM-022` (P1) — Filter mathematics.**
 Raised cosine, in the time domain:
@@ -1883,6 +1918,13 @@ $$h_{RRC}(t)=\frac{\sin\!\left(\pi\frac{t}{T}(1-\alpha)\right)+4\alpha\frac{t}{T
 Gaussian, with bandwidth–time product $BT$:
 
 $$h_{G}(t)=\frac{1}{\sqrt{2\pi}\sigma T}e^{-t^{2}/(2\sigma^{2}T^{2})},\qquad \sigma=\frac{\sqrt{\ln 2}}{2\pi \cdot BT}$$
+
+**AC:** Each filter's coefficients match its formula above to within 1e-12 relative at every
+tap, evaluated independently rather than by the implementation under test. The removable
+singularities are checked explicitly — $t=0$ for all three, $t = \pm T/(2\alpha)$ for raised
+cosine and $t = \pm T/(4\alpha)$ for root raised cosine — and each returns the analytic limit
+rather than `NaN` or a divide-by-zero, which is where a formula transcribed correctly still
+fails in practice. $\alpha = 0$ reduces the raised cosine to a sinc.
 
 **`REQ-DEM-022a` (P0) — One normalisation convention, stated once.**
 The three expressions above are written in their conventional analytic forms — RC and RRC at
@@ -1910,6 +1952,13 @@ implementation.
 user-settable with a documented default (≥ 8 symbols each side recommended for RRC), windowed
 truncation, and the normalisation of `REQ-DEM-022a`. The filter-span/accuracy trade shown
 above shall be reproduced in the user help so the default is an informed choice.
+**AC:** Filter span is user-settable in symbols with a documented default of at least 8
+symbols each side for RRC. Truncation is windowed, not abrupt: the truncated response's
+stopband sidelobes are below those of a rectangularly truncated filter of the same span, and
+normalisation follows `REQ-DEM-022a` so changing the span does not change the measured
+amplitude of a CW tone by more than 0.01 dB. Reducing the span degrades EVM on a
+known-clean signal in the direction and magnitude the filter-span/accuracy trade predicts,
+and that trade appears in the user help.
 
 ### 11.4 Demodulation parameters
 
@@ -1917,7 +1966,7 @@ above shall be reproduced in the user help so the default is an informed choice.
 The symbol rate shall be a user parameter, applied exactly as entered; the demodulator shall
 **not** estimate or correct it. On first selection of digital demodulation the default shall
 be Span/2. **[V]**
-**AC — the signature test:** With a deliberate symbol-rate error of 100 ppm, EVM versus symbol
+**AC:** *The signature test.* With a deliberate symbol-rate error of 100 ppm, EVM versus symbol
 index shall exhibit a minimum near the centre of the Result Length, growing approximately
 linearly toward both ends. This reproduces the reference product's documented diagnostic
 behaviour and is a **strong indicator** that `REQ-DEM-002`'s block estimator behaves as
@@ -1935,6 +1984,12 @@ the recommended minimum.
 **`REQ-DEM-032` (P1) — Pre-demodulation trace window.**
 Pre-demodulation traces (Time, Spectrum, Instantaneous Spectrum) shall use a window **20 %
 larger** than the Result Length so transition regions are visible. **[V]**
+**AC:** For each of the three pre-demodulation traces the analysed window spans 1.2 × Result
+Length, checked across several Result Lengths so the factor is proportional rather than a
+fixed padding. Result traces are unaffected: EVM computed over the Result Length is identical
+whether or not a pre-demodulation trace is displayed. On a bursted signal the transition
+regions are visible in the pre-demodulation trace and absent from the result traces, which is
+the point of the wider window.
 
 **`REQ-DEM-033` (P0) — Search Length.**
 The window searched for sync or burst, expressed in symbols, shall be ≥ Result Length. For
@@ -1942,11 +1997,24 @@ pulse search, Search Length shall satisfy
 $\text{Search Length} \geq 2 \times \text{MaxOn} + \text{MaxOff}$. **[V]**
 *(The relationship is the **minimum** needed to guarantee one complete pulse falls inside the
 window; enforcing equality would prohibit longer searches for no reason.)*
+**AC:** Search Length is expressed in symbols and a value below Result Length is rejected
+with the minimum reported. For pulse search the constraint
+$\text{Search Length} \geq 2\,\text{MaxOn} + \text{MaxOff}$ is enforced as an inequality, not
+an equality — a longer Search Length is accepted, and a test asserts that, since enforcing
+equality is the plausible misreading. At exactly the minimum, a pulse placed at the least
+favourable phase relative to the window is still found complete.
 
 **`REQ-DEM-034` (P1) — Points per symbol is a display parameter.**
 Points per symbol shall be settable (typically 1, 2, 4, 5, 10, 20) and shall affect **trace
 resolution only**. It shall have **no effect on computed EVM**, since EVM is evaluated at
 symbol decision instants. **[V]**
+**AC:** All of 1, 2, 4, 5, 10 and 20 points per symbol are settable, and each changes the
+point count of the IQ Measured Time and trajectory traces accordingly. EVM, magnitude error,
+phase error and every other symbol-instant metric are **bit-identical** across all six
+settings for the same input — asserted as exact equality rather than a tolerance, because any
+difference means metrics are being evaluated somewhere other than the decision instants.
+Offset formats retain their internal 2 points per symbol per `REQ-DEM-012` regardless of this
+display setting.
 
 **`REQ-DEM-034a` (P0) — Internal processing rate is independent of the display setting.**
 The demodulator shall internally resample to **≥ 4 samples/symbol** (≥ 2 absolute minimum)
@@ -1962,6 +2030,11 @@ cases.
 
 **`REQ-DEM-035` (P1) — Mirror frequency spectrum.** An option conjugating the input
 spectrum, required for e.g. VSB signals with a high-side pilot. **[V]**
+**AC:** With the option on, the analysed spectrum is the conjugate of the input: a tone at
+$+f$ appears at $-f$, and applying the option twice returns the original to bit-identical
+values. A spectrally inverted signal that fails to demodulate with the option off demodulates
+to the correct bits with it on, which is the case the option exists for. The option is
+recorded in the metric provenance of `REQ-DEM-072`.
 
 **`REQ-DEM-036` (P1) — Carrier lock tolerance and diagnostics.**
 Centre frequency must be within roughly ±10 % of the symbol rate of the true carrier for
@@ -1996,6 +2069,13 @@ above noise is reported as not found, rather than silently mis-locating.
 An adaptive equaliser shall derive its coefficients from the measured signal, correcting
 linear channel impairments: group-delay distortion, frequency-response error, and
 reflections/multipath. **[V]**
+**AC:** Each of the three impairment classes is injected separately by the generator of
+`REQ-SIM-002` at a known magnitude — group-delay distortion, frequency-response tilt, and a
+two-ray multipath channel — and in each case enabling the equaliser reduces EVM to within
+1 dB of the unimpaired value. Coefficients derive from the measured signal, not from the
+injected channel: the test supplies no knowledge of the impairment. On an unimpaired signal
+the equaliser leaves EVM unchanged to within 0.1 dB rather than degrading it, and the
+estimated channel response matches the injected one to within 0.5 dB and 5° in band.
 
 **`REQ-DEM-051` (P1) — Equaliser parameters and modes.**
 **Filter Length** in symbols; **Convergence factor** (LMS step size); modes **Run** (update
@@ -2004,6 +2084,14 @@ coefficients from the current measurement for use on the next), **Hold** (freeze
 Impulse-position behaviour shall match the documented behaviour: for short filter lengths
 the impulse sits at the filter centre; as length grows the impulse "moves proportionally
 towards the start of the filter" to accommodate channels with large delay spread. **[V]**
+**AC:** Filter Length is settable in symbols and Convergence factor as a step size. **Run**
+updates coefficients from the current measurement and applies them to the next, so
+coefficients change between successive measurements; **Hold** freezes them, asserted by
+bit-identical coefficients across measurements; **Reset** returns a unit-impulse response.
+The impulse position follows the documented behaviour: at short filter lengths the impulse
+sits at the centre, and as length grows its index moves proportionally toward the start —
+measured across at least three lengths and checked as a trend, since a fixed-centre
+implementation passes the short case and fails the long one.
 
 **`REQ-DEM-052` (P1) — Equaliser algorithm: least-squares primary, LMS for parity.**
 **[DESIGN CHOICE]**
@@ -2039,6 +2127,18 @@ parameter set (length, convergence factor, run/hold/reset) is equally consistent
 NLMS, CMA and RLS-with-forgetting-factor, so it constitutes **no evidence** for any particular
 choice. The selection above is made on engineering grounds.
 
+**AC:** The least-squares solution is the default and is exact: on a channel with a known
+finite-impulse-response, the computed $\mathbf{w}$ matches the analytic regularised solution
+to within 1e-9, and repeated runs on identical input give bit-identical coefficients — it has
+no convergence dependence, so any run-to-run variation is a defect. LMS mode converges on the
+same channel to within 1 dB of the least-squares EVM. The stability bound
+$0 < \mu < 2/(L P_x)$ is enforced and a violating step size is rejected with the bound
+reported, or NLMS is selected instead; a test drives $\mu$ past the bound and asserts the
+equaliser does not diverge. Both acquisition modes — CMA and data-aided — bring a signal
+whose initial decisions are unreliable to a locked state, then hand over to
+decision-directed at the stated EVM threshold. An N-symbol filter at T/2 spacing reports
+**2N taps**, and the UI states that relationship.
+
 **`REQ-DEM-053` (P1) — Equaliser output traces.**
 **Equalizer Impulse Response** and **Channel Frequency Response** shall be available as trace
 data. The channel response is the inverse of the equaliser response, with magnitude and phase
@@ -2072,6 +2172,14 @@ $$\mathrm{EVM_{peak}}=\frac{\max_k\left|z_k-r_k\right|}{V_{\text{norm}}}\times10
 
 together with the index $k$ at which it occurs. **[V]**
 
+**AC:** For a constellation impaired by additive noise of known variance, EVM matches the
+closed-form value to within 0.1 % relative — the closed-form check `REQ-TST-001` requires.
+A single symbol displaced by a known amount produces the analytically predictable
+$\mathrm{EVM_{peak}}$, and the reported index $k$ is that symbol's index exactly. EVM is
+computed only at decision instants, which `REQ-DEM-034`'s points-per-symbol invariance
+establishes. An unimpaired reference signal returns EVM below 1e-6 %, confirming no error is
+introduced by the measurement chain itself.
+
 **`REQ-DEM-061` (P0) — EVM normalisation reference.**
 $V_{\text{norm}}$ shall be user-selectable among **maximum constellation magnitude**, **RMS
 (mean power) of the reference constellation**, and a **user-specified value**. **[V]**
@@ -2089,12 +2197,22 @@ must be explicit in the UI readout.*
 **`REQ-DEM-062` (P1) — Offset EVM.** For offset formats, an **Offset EVM** variant shall
 be computed using one point per symbol formed from a complex point whose real and imaginary
 parts are taken from different time locations. **[V]**
+**AC:** For offset formats, Offset EVM forms one point per symbol from I and Q sampled half a
+symbol apart, and on a clean OQPSK signal returns near-zero where conventional EVM computed
+at a common instant does not — the difference between the two is what shows the half-symbol
+stagger is honoured. On a non-offset format the variant is unavailable rather than computing
+a meaningless value.
 
 **`REQ-DEM-063` (P0) — Magnitude error.**
 
 $$\mathrm{MagErr}=\frac{\sqrt{\dfrac{1}{N}\displaystyle\sum_{k}\left(\left|z_k\right|-\left|r_k\right|\right)^{2}}}{V_{\text{norm}}}\times100\%$$
 
 Not applicable to FSK/CPM-FM formats, where amplitude is not the modulated parameter. **[V]**
+**AC:** A constellation impaired by a known pure magnitude error returns that value to within
+0.1 % relative, and a signal impaired by pure phase error returns a magnitude error near zero
+— the pair establishes that the metric separates magnitude from phase rather than mixing
+them. For FSK and CPM-FM formats the row is absent from the error summary per `REQ-DEM-071`,
+not shown as zero or `NAN`.
 
 **`REQ-DEM-064` (P0) — Phase error.**
 
@@ -2102,6 +2220,12 @@ $$\mathrm{PhErr}=\frac{180}{\pi}\sqrt{\dfrac{1}{N}\sum_{k}\left[\arg\!\left(z_k 
 
 with $\arg(\cdot)$ returning the principal value in $(-\pi, \pi]$. The explicit $180/\pi$ is
 not decoration — the bare expression returns radians and the reported quantity is degrees.
+**AC:** A constellation impaired by a known pure phase error returns that value **in
+degrees** to within 0.1 % relative. The units check is explicit: a signal with a 1 radian
+error reports approximately 57.3, not 1 — the radians/degrees slip is the defect this
+requirement calls out, so it is asserted rather than left to inspection. Symbols whose error
+approaches $\pm\pi$ are handled by the principal-value branch without wrapping to the wrong
+sign, tested at the boundary.
 
 **`REQ-DEM-065` (P0) — Frequency error.**
 The carrier frequency error relative to the analyser centre frequency, in Hz — equivalently
@@ -2129,6 +2253,16 @@ Two deliberate choices here, both departing from the obvious implementation:
   or the fitted $(c_I,c_Q)$ is unbiased and stays consistent with the gain-imbalance and skew
   estimates, which are derived from the same fit.
 
+**AC:** A signal with a known injected carrier feedthrough returns that value to within
+0.1 dB, and a signal with none returns $-\infty$ dB (or the stated floor) rather than a large
+negative artefact. Both departures are asserted directly. First, changing the EVM
+normalisation selection leaves the reported IQ offset **bit-identical** — for 16-QAM the
+naive implementation shifts by 2.55 dB, so this test discriminates. Second, on a short block
+with a deliberately unbalanced symbol sequence the reported offset matches the injected value
+within tolerance, where $\frac1N\sum_k z_k$ would be measurably biased. MSK is computed over
+all points rather than symbol instants, and a test asserts MSK differs from the
+symbol-instant computation for the same signal.
+
 **`REQ-DEM-067` (P1) — IQ gain imbalance and quadrature skew.** **[DESIGN CHOICE for the
 estimator]**
 Fit, by least squares over the symbol set, the **symmetric** affine impairment model — each
@@ -2149,6 +2283,14 @@ so $\psi$ becomes unidentifiable and the reported value depends on estimator ord
 symmetric form has no rotational component, which makes $\psi$ identifiable. It also matches
 the "stretch along a 45° line" description, which the shear form does not.
 
+**AC:** Signals with known injected gain imbalance and quadrature skew return those values to
+within 0.05 dB and 0.1° respectively, including when both are present together — the
+cross-term case, where a one-at-a-time estimator passes the singles and fails the pair. The
+model fitted is the symmetric one: injecting pure quadrature skew and then estimating carrier
+phase returns a phase near zero, whereas the one-sided shear model absorbs $\psi/2$ into
+phase and reports a non-zero value, so this test distinguishes the two forms directly. Gain
+imbalance is positive when Q exceeds I, asserted against the stated convention.
+
 **`REQ-DEM-067a` (P1) — Joint estimation of phase and skew.**
 Carrier phase (step 8) and quadrature skew shall be **jointly fitted**, or the phase estimate
 shall be explicitly constrained, so that the $\psi/2$ ambiguity above is resolved
@@ -2161,12 +2303,27 @@ deterministically. The chosen convention shall be documented and asserted in tes
 > than accidental. The sign convention for gain imbalance shall be stated explicitly
 > (positive = Q larger than I, per the formula above).
 
+**AC:** Phase and skew are estimated from one joint fit, or the phase estimate carries an
+explicit documented constraint; either way, estimating the same signal twice from different
+initial conditions returns the same split between phase and skew to within 0.01°, which is
+what "resolved deterministically" means and what an unconstrained sequential estimator cannot
+deliver. The documented convention is asserted in tests rather than only described. The
+ambiguous case — a symbol-mapping convention under which skew and gain imbalance trade off —
+is in the test suite with its outcome pinned, so the behaviour is characterised and a change
+to it shows up as a test failure rather than as a silently different number.
+
 **`REQ-DEM-068` (P1) — Rho.**
 
 $$\rho=\frac{\left|\sum_k z_k r_k^{*}\right|^{2}}{\left(\sum_k\left|z_k\right|^{2}\right)\left(\sum_k\left|r_k\right|^{2}\right)}$$
 
 The normalised correlated power between measured and reference signals — the waveform
 quality factor, maximum 1.0 for a perfect match. **[V]**
+**AC:** A perfect match returns $\rho = 1.0$ to within 1e-12, and $\rho$ never exceeds 1.0
+for any input — asserted over randomised impairments, since a normalisation error shows up as
+$\rho > 1$. For a signal impaired by additive noise of known SNR, $\rho$ matches the
+closed-form relation to EVM to within 1e-6. $\rho$ is invariant to a common scaling or a
+common phase rotation of the measured signal, which is what makes it a waveform-quality
+figure rather than an amplitude comparison.
 
 **`REQ-DEM-069` (P1) — SNR (MER).**
 
@@ -2178,16 +2335,37 @@ position, including additive noise, distortion, and ISI." **[V]** Applicable to 
 DVB-QAM, 8PSK, QPSK, APSK and VSB; VSB uses a real-only variant. **[V]**
 *Naming note:* the wider industry calls this MER. The reference product calls it SNR.
 OpenVSA shall display "SNR (MER)" to avoid ambiguity.
+**AC:** For a signal with additive noise at a known SNR the reported value matches to within
+0.1 dB, and it satisfies the closed-form identity with EVM to within 1e-6. Distortion and ISI
+count as noise: a signal degraded by ISI alone, with no additive noise, reports a finite SNR
+rather than infinity — the check that the definition quoted here was implemented rather than
+a conventional additive-noise-only one. The label renders exactly `SNR (MER)`. It is offered
+for QAM, DVB-QAM, 8PSK, QPSK, APSK and VSB, with VSB using the real-only variant, and is
+absent for other formats.
 
 **`REQ-DEM-070` (P1) — Format-specific metrics.**
 **Amplitude droop** (dB/symbol, from a linear fit of log magnitude versus symbol index —
 MSK/GSM class), **FSK error** and **FSK deviation** (FSK formats), **carrier offset**,
 **pilot level** (VSB), and **time offset** shall be computed where applicable to the
 selected format. **[V]**
+**AC:** Each metric is checked against a deliberately injected impairment of known magnitude
+and matches within the `REQ-SIM-002` tolerance: amplitude droop in dB/symbol from a signal
+with a known log-magnitude slope, FSK error and deviation against a generated FSK signal of
+known deviation, carrier offset against a known frequency offset, pilot level against a VSB
+signal with a known pilot, and time offset against a known timing shift. Amplitude droop
+comes from a linear fit of log magnitude versus symbol index, verified by a signal whose
+droop is exactly linear returning a fit residual near zero. Each metric appears only for
+formats it applies to, per `REQ-DEM-071`.
 
 **`REQ-DEM-071` (P0) — Error summary table.**
 All applicable metrics shall be presented in an Error Summary table trace, with units,
 and with rows automatically shown or hidden according to format applicability. **[V]**
+**AC:** For each supported format the visible rows are exactly the applicable metrics —
+enumerated per format, so an inapplicable row appearing (magnitude error on FSK, say) fails,
+as does an applicable row missing. Rows appear and disappear on a format change with no
+manual step. Every row carries units, and the layout follows `REQ-UI-053`. A metric that is
+applicable but not yet computed shows `NAN` per `REQ-UI-032` rather than a stale value from
+the previous format.
 
 **`REQ-DEM-072` (P1) — Metric provenance.**
 The UI shall make visible, for the active measurement, which normalisation reference, which
@@ -2195,6 +2373,13 @@ filters, and which compensations (equaliser on/off, IQ offset removed or not) we
 when the metrics were computed.
 *Rationale:* EVM numbers are meaningless without this context, and disagreements between
 instruments almost always trace to it.
+**AC:** For the active measurement the UI shows the normalisation reference in force, both
+filter selections with their parameters, and the state of each compensation — equaliser on or
+off, IQ offset removed or not, mirror spectrum on or off. Changing any of them updates the
+displayed provenance in the same measurement cycle as the metric it qualifies, so the two can
+never disagree; a test changes a compensation and asserts the metric and its provenance
+update together. The provenance travels with exported results and saved states, since a
+number recalled without its context is the failure this prevents.
 
 ### 11.8 Demodulation result traces
 
@@ -2218,10 +2403,25 @@ The following shall be available as trace data sources: **[V]**
 | Equalizer Impulse Response | Equaliser coefficients |
 | Channel Frequency Response | Estimated channel magnitude/phase |
 
+**AC:** Every listed trace is selectable as a data source and produces data for a demodulated
+signal. Each is checked for correctness rather than mere presence, against a signal with one
+known injected impairment: Error Vector Time peaks at the symbol carrying the injected error,
+Error Vector Spectrum shows a line at the rate of a periodic impairment, IQ Reference Time
+matches the generator's ideal waveform to within 1e-9, and Constellation and IQ Vector differ
+exactly as `REQ-UI-050` requires. Traces that depend on an optional stage — Equalizer Impulse
+Response, Channel Frequency Response — are unavailable rather than empty when the equaliser
+is off. Trellis is provided per the **[U]** note and is not claimed as reference parity.
+
 **`REQ-DEM-081` (P1) — Eye diagram construction.**
 The eye shall be built by superimposing the measured I (or Q) waveform across the Result
 Length, folded on the symbol clock, with a configurable eye length in symbols (default 2)
 and optional persistence shading. **[V]**
+**AC:** The eye is built from the measured waveform across the whole Result Length, folded on
+the symbol clock — the trace count equals the number of folds the Result Length and eye
+length imply, so a partial build fails. Eye length defaults to 2 symbols and is configurable
+over the `REQ-UI-051` range. Persistence shading, when on, makes frequently traversed paths
+visibly denser than rare ones, and turning it off leaves the eye's geometry unchanged. The
+rendered eye satisfies `REQ-UI-051`'s centring and reference-line criteria.
 
 **`REQ-DEM-082` (P1) — Constellation rendering quality.**
 Constellation and vector traces shall support: ideal-point overlay, per-point colouring by
@@ -2232,6 +2432,12 @@ optional density (heat-map) rendering for large symbol counts.
 **`REQ-DEM-083` (P2) — Symbol table interaction.** Selecting a symbol in the table shall
 highlight the corresponding point in the constellation and position in the eye, and vice
 versa.
+**AC:** Selecting symbol $k$ in the table highlights the constellation point and eye position
+for symbol $k$ specifically — verified against a signal in which one symbol is displaced so
+the correct point is identifiable, which an off-by-one selection fails. Selection propagates
+in both directions and settles: selecting in the constellation highlights the table row
+without re-triggering a further selection. Selection survives a measurement update if the
+symbol still exists, and clears cleanly if it does not.
 
 ---
 
@@ -3344,6 +3550,16 @@ analytic result, not against a previous run of itself.
 | Averaging | Coherent vs incoherent SNR behaviour (`REQ-DSP-030` AC) |
 | CCDF | Rayleigh/Gaussian analytic distribution |
 | Metrics | Closed-form values for deliberately impaired constellations |
+
+**AC:** Every component in the table has at least one test whose expected value is computed
+from the analytic reference named beside it, independently of the implementation under test.
+The prohibition is enforced, not merely stated: no DSP test compares against a stored output
+of a previous run, asserted by a check that fails on a golden-output or approved-file
+comparison anywhere in the DSP test suite — that pattern is exactly how a wrong result
+becomes the baseline it is later validated against. A DSP primitive with no closed-form test
+fails the build rather than passing untested, so the table is a floor and not a sample. Where
+a primitive genuinely has no closed form, the fallback is a property-based test asserting an
+invariant (linearity, energy conservation, an inverse round trip), never a recorded output.
 
 ### 17.2 Impairment round-trip — the primary correctness proof
 
