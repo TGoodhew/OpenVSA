@@ -24,16 +24,30 @@ restrictive terms.
 ### Contributor step: the Syncfusion licence key
 
 Syncfusion controls require a key registered at start-up or they display an unlicensed banner.
-The key is a **per-developer credential and is never committed** — this is a public repository,
-so a key in source control is a leaked credential regardless of what it costs. `SyncfusionLicense`
-reads it from the `SYNCFUSION_LICENSE_KEY` environment variable, or from a `syncfusion.license`
-file beside the executable.
+The key is a **per-developer credential and is never committed** — this repository is public, so
+a key in the tree is a leaked credential regardless of what it costs.
 
-**A missing key is not fatal.** The application starts and runs; the controls show their banner
-and the reason appears in the shell. A contributor who has not yet registered for a free
-Community key still gets a working build. This matters because OpenVSA ships as one free edition
-with everything included: the key is a build-time step for contributors, never a gate on anything
-a user receives, and redistribution is royalty-free.
+`SyncfusionLicense.ResolveKey()` checks, in order:
+
+1. the `SYNCFUSION_LICENSE_KEY` environment variable;
+2. `appSettings["SyncfusionLicenseKey"]`, which `App.config` merges in from
+   `local.secrets.config` via its `file` attribute. That file is git-ignored; copy
+   `local.secrets.config.example` to create one. The `file` attribute ignores a missing file
+   silently, which is the normal state of a fresh clone.
+
+Registration happens in the **`App` constructor, not `OnStartup`** — and there is a comment
+saying so, because it looks like the wrong place. The generated entry point runs `new App()`
+before `app.InitializeComponent()`, and `InitializeComponent` is what loads `App.xaml` and its
+merged resource dictionaries; `OnStartup` runs later still, during `Run()`. If a Syncfusion theme
+dictionary is ever merged into `App.xaml`, registering in `OnStartup` would come after those
+controls were constructed — producing a banner despite a valid key, with the cause some distance
+from the symptom.
+
+**A missing key is not fatal.** Registration is skipped and the application launches in trial
+mode. A contributor who has not yet obtained a free Community key still gets a working build.
+This matters because OpenVSA ships as one free edition with everything included: the key is a
+build-time step for contributors, never a gate on anything a user receives, and redistribution
+is royalty-free.
 
 ## Planned, and the licensing decision attached to each
 

@@ -22,7 +22,35 @@
     contribute, and the software rasteriser already verifies REQ-UI-010 headlessly. See
     DEPENDENCIES.md for the decision and the contributor key-registration step.
   -->
+  <!--
+    System.Configuration for the appSettings fallback in SyncfusionLicense, which reads the key
+    that App.config merges in from the git-ignored local.secrets.config.
+  -->
   <ItemGroup>
+    <Reference Include="System.Configuration" />
+  </ItemGroup>
+
+  <!--
+    The example secrets file is copied so a contributor finds it beside the executable, next to
+    where the real one belongs. The real local.secrets.config is git-ignored and never copied by
+    the build - it is placed by hand.
+  -->
+  <ItemGroup>
+    <None Include="local.secrets.config.example" CopyToOutputDirectory="PreserveNewest" />
+
+    <!--
+      App.config's file attribute resolves relative to the running executable's config file, so
+      the real secrets file has to reach the output directory too. Guarded by Exists: it is
+      git-ignored and absent in a fresh clone, and an unconditional item for a missing file is a
+      build warning on every build.
+    -->
+    <None Include="local.secrets.config"
+          Condition="Exists('$(MSBuildThisFileDirectory)local.secrets.config')"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Syncfusion.Licensing" Version="34.1.32" />
     <PackageReference Include="Syncfusion.Tools.WPF" Version="34.1.32" />
     <PackageReference Include="Syncfusion.SfGrid.WPF" Version="34.1.32" />
     <PackageReference Include="Syncfusion.Shared.WPF" Version="34.1.32" />

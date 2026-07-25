@@ -5,6 +5,14 @@
     <RootNamespace>OpenVSA.Benchmarks</RootNamespace>
     <AssemblyName>OpenVSA.Benchmarks</AssemblyName>
     <IsPackable>false</IsPackable>
+
+    <!--
+      Not a test project, despite living under tests\. IsTestProject would have `dotnet test`
+      try to run it, and the shared test App.config pins a System.Runtime.CompilerServices.Unsafe
+      redirect that conflicts with the newer one Syncfusion brings in through OpenVSA.Ui.
+    -->
+    <IsTestProject>false</IsTestProject>
+    <AppConfig />
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
