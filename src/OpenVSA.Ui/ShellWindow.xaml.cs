@@ -191,25 +191,7 @@ namespace OpenVSA.Ui
             text.AppendLine("  " + label.PadRight(22) + value);
         }
 
-        private static string Hz(double hertz)
-        {
-            if (hertz >= 1e9)
-            {
-                return (hertz / 1e9).ToString("0.###", CultureInfo.InvariantCulture) + " GHz";
-            }
-
-            if (hertz >= 1e6)
-            {
-                return (hertz / 1e6).ToString("0.###", CultureInfo.InvariantCulture) + " MHz";
-            }
-
-            if (hertz >= 1e3)
-            {
-                return (hertz / 1e3).ToString("0.###", CultureInfo.InvariantCulture) + " kHz";
-            }
-
-            return hertz.ToString("0.###", CultureInfo.InvariantCulture) + " Hz";
-        }
+        private static string Hz(double hertz) => PlanSummary.Frequency(hertz);
 
         private void ShowDiscoveryResults()
         {
@@ -288,7 +270,7 @@ namespace OpenVSA.Ui
             StartItem.IsEnabled = false;
             StopItem.IsEnabled = true;
             StatusText.Content = "Measuring";
-            PlanText.Text = DescribePlan(plan);
+            PlanText.Text = PlanSummary.Describe(plan);
             _statusTimer.Start();
         }
 
@@ -383,45 +365,6 @@ namespace OpenVSA.Ui
             DroppedText.Content = _marshal.FramesDropped == 0
                 ? string.Empty
                 : _marshal.FramesDropped.ToString(CultureInfo.CurrentCulture) + " frames dropped";
-        }
-
-        /// <summary>
-        /// Renders the negotiated plan and every coercion it carries (<c>REQ-HAL-001</c>).
-        /// </summary>
-        private static string DescribePlan(AcquisitionPlan plan)
-        {
-            var text = new StringBuilder();
-            text.AppendLine("Negotiated plan:");
-            text.AppendLine();
-            Append(text, "Centre frequency", Hz(plan.CenterFrequencyHz));
-            Append(text, "Span", Hz(plan.SpanHz));
-            Append(text, "Sample rate", Hz(plan.SampleRateHz));
-            Append(text, "Block size", plan.SamplesPerBlock.ToString(CultureInfo.InvariantCulture) + " samples");
-            Append(text, "Reference level", plan.ReferenceLevelDbm.ToString("0.##", CultureInfo.InvariantCulture) + " dBm");
-            Append(text, "Gap-free", plan.SupportsGapFreeStreaming ? "yes" : "no");
-
-            text.AppendLine();
-
-            if (plan.Coercions.Count == 0)
-            {
-                text.AppendLine("Every requested value was honoured.");
-                return text.ToString();
-            }
-
-            text.AppendLine(plan.Coercions.Count == 1
-                ? "One request was coerced:"
-                : plan.Coercions.Count + " requests were coerced:");
-
-            foreach (ParameterCoercion coercion in plan.Coercions)
-            {
-                text.AppendLine(
-                    "  " + coercion.Parameter + ": asked " +
-                    coercion.Requested.ToString("G6", CultureInfo.InvariantCulture) + ", got " +
-                    coercion.Honoured.ToString("G6", CultureInfo.InvariantCulture) +
-                    " — " + coercion.Reason);
-            }
-
-            return text.ToString();
         }
 
         private void ShutDown()
