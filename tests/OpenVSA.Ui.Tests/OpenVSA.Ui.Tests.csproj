@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Ui.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    The render core is deliberately free of WPF types, which is what lets REQ-UI-010's acceptance
+    criterion - set four colours, render, sample the frame - run headlessly here rather than
+    needing a window and a message pump. UseWPF is still required to reference the project.
+  -->
+  <PropertyGroup>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
+  </ItemGroup>
+
+</Project>
