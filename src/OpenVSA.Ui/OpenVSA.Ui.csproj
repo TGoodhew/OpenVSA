@@ -59,6 +59,7 @@
   <ItemGroup>
     <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
     <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+    <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
     <ProjectReference Include="..\OpenVSA.Capture\OpenVSA.Capture.csproj" />
     <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
     <ProjectReference Include="..\OpenVSA.Personality\OpenVSA.Personality.csproj" />

@@ -1,4 +1,5 @@
 using System.Windows;
+using OpenVSA.Core.Threading;
 using Syncfusion.Licensing;
 
 namespace OpenVSA.Ui
@@ -27,6 +28,11 @@ namespace OpenVSA.Ui
         /// </remarks>
         public App()
         {
+            // REQ-NFR-010: the thread this runs on is the dispatcher thread, and marking it here is
+            // what lets every layer below assert that it is not doing DSP or I/O on it. Debug
+            // builds only - the call compiles away in Release.
+            ThreadAffinity.MarkUiThread();
+
             string key = SyncfusionLicense.ResolveKey();
 
             if (!string.IsNullOrEmpty(key))

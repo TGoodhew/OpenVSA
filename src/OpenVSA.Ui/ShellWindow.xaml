@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
+        xmlns:rendering="clr-namespace:OpenVSA.Ui.Rendering"
         Title="OpenVSA" Height="720" Width="1280">
 
     <!--
@@ -21,7 +22,10 @@
             <MenuItem Header="_File" />
             <MenuItem Header="_Edit" />
             <MenuItem x:Name="HardwareMenu" Header="_Hardware" />
-            <MenuItem Header="_Acquisition" />
+            <MenuItem Header="_Acquisition">
+                <MenuItem x:Name="StartItem" Header="_Start" Click="OnStart" IsEnabled="False" />
+                <MenuItem x:Name="StopItem" Header="Sto_p" Click="OnStop" IsEnabled="False" />
+            </MenuItem>
             <MenuItem Header="Ana_lysis" />
             <MenuItem Header="_Trace" />
             <MenuItem Header="_Marker" />
@@ -41,6 +45,10 @@
         -->
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem x:Name="StatusText" Content="Ready" />
+            <Separator />
+            <StatusBarItem x:Name="RateText" />
+            <Separator />
+            <StatusBarItem x:Name="DroppedText" />
         </StatusBar>
 
         <!--
@@ -83,13 +91,32 @@
                     </ItemsControl>
                     <TextBlock x:Name="CapabilitiesText" Margin="0,16,0,0" TextWrapping="Wrap"
                                FontFamily="Consolas" FontSize="11" />
+
+                    <!--
+                        REQ-HAL-001: negotiation is only half the requirement. What the front end
+                        coerced, and why, has to be visible - a span silently reduced to what the
+                        hardware can manage is a measurement the user will read as if they had got
+                        what they asked for.
+                    -->
+                    <TextBlock x:Name="PlanText" Margin="0,16,0,0" TextWrapping="Wrap"
+                               FontFamily="Consolas" FontSize="11" />
                 </StackPanel>
             </ScrollViewer>
 
             <ContentControl syncfusion:DockingManager.Header="Trace 1"
                             syncfusion:DockingManager.State="Document">
-                <TextBlock x:Name="DocumentPlaceholder" Margin="24"
-                           TextWrapping="Wrap" Foreground="Gray" />
+                <Grid>
+                    <rendering:TracePlot x:Name="Plot" />
+
+                    <!--
+                        Shown until a source is selected and started, and hidden thereafter. The
+                        plot draws its own empty graticule, so this sits over it rather than
+                        replacing it.
+                    -->
+                    <TextBlock x:Name="DocumentPlaceholder" Margin="72"
+                               TextWrapping="Wrap" Foreground="Gray"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
             </ContentControl>
 
         </syncfusion:DockingManager>
