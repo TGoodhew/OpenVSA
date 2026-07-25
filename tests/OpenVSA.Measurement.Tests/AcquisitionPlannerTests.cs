@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using OpenVSA.Core;
+using OpenVSA.Dsp.Windowing;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
 using Xunit;
@@ -152,6 +153,96 @@ namespace OpenVSA.Measurement.Tests
                 new Capabilities { MaxSamplesPerBlock = 256 }, 1e9, 10e6, 0.0);
             Assert.Equal(201, cramped.FrequencyPoints);
             Assert.True(cramped.Coerced);
+        }
+
+        // ---- Auto point count from RBW (REQ-DSP-022 Auto, REQ-DSP-020) -------------------------
+
+        [Fact]
+        public void AutoDerivesThePointCountFromTheWantedResolutionBandwidth()
+        {
+            // Hann, 10 MHz span, 30 kHz RBW: T_rec = 1.5 / 30e3 = 50 us, so 500 intervals are
+            // needed and the next available count up is 801 - which gives 800 intervals, an 80 us
+            // record and therefore 18.75 kHz. Finer than asked, which is the direction rounding up
+            // guarantees.
+            PlannedAcquisition planned = AcquisitionPlanner.PlanForResolutionBandwidth(
+                new Capabilities(), 1e9, 10e6, 30e3, 0.0, AnalysisPath.ComplexZoom, WindowType.Hann);
+
+            Assert.True(planned.PointsWereAutomatic);
+            Assert.Equal(801, planned.FrequencyPoints);
+            Assert.Equal(80e-6, planned.MaxTimeSeconds, 12);
+            Assert.Equal(18.75e3, planned.ResolutionBandwidthHz, 6);
+        }
+
+        [Fact]
+        public void AutoRoundsUp_SoTheResolutionIsNeverCoarserThanAsked()
+        {
+            // The direction that matters. A user who asks for 30 kHz and is given 37.5 kHz has been
+            // handed a different measurement without being told; one given 18.75 kHz has not.
+            foreach (double wanted in new[] { 30e3, 20e3, 11e3, 5e3 })
+            {
+                PlannedAcquisition planned = AcquisitionPlanner.PlanForResolutionBandwidth(
+                    new Capabilities(), 1e9, 10e6, wanted, 0.0, AnalysisPath.ComplexZoom,
+                    WindowType.Hann);
+
+                Assert.False(planned.Coerced);
+                Assert.True(
+                    planned.ResolutionBandwidthHz <= wanted,
+                    "Asked for " + wanted + " Hz and got " + planned.ResolutionBandwidthHz + " Hz.");
+            }
+        }
+
+        [Fact]
+        public void AutoIsBoundedByTheInstrumentToo_AndSaysWhatResolutionResults()
+        {
+            // A fine RBW needs a long record, and a front end with a small block cannot give one.
+            // The coercion names the RBW that results rather than only the point count, because
+            // RBW is the setting the user was expressing.
+            PlannedAcquisition planned = AcquisitionPlanner.PlanForResolutionBandwidth(
+                new Capabilities { MaxSamplesPerBlock = 1024 }, 1e9, 10e6, 1e3, 0.0,
+                AnalysisPath.ComplexZoom, WindowType.Hann);
+
+            Assert.True(planned.Coerced);
+            Assert.Equal(801, planned.FrequencyPoints);
+            Assert.True(planned.ResolutionBandwidthHz > 1e3);
+        }
+
+        [Fact]
+        public void AnRbwFinerThanTheRelationsAllowIsReportedRatherThanSilentlyMissed()
+        {
+            // Not the instrument's limit but the relations' own: no available point count can
+            // resolve this over this span, whatever hardware is attached.
+            PlannedAcquisition planned = AcquisitionPlanner.PlanForResolutionBandwidth(
+                new Capabilities
+                {
+                    MaxSamplesPerBlock = int.MaxValue,
+                    MaxCaptureSamples = long.MaxValue,
+                },
+                1e9, 40e6, 0.001, 0.0, AnalysisPath.ComplexZoom, WindowType.Hann);
+
+            Assert.Equal(FrequencyPoints.Maximum, planned.FrequencyPoints);
+            Assert.Contains(planned.Coercions, c => c.Parameter == "ResolutionBandwidth");
+        }
+
+        [Fact]
+        public void TheAchievedResolutionIsReportedEvenWhenThePointCountWasChosen()
+        {
+            // RBW is what says whether two signals can be told apart, so it is computed for every
+            // plan and not only for the ones that were expressed in terms of it.
+            PlannedAcquisition planned = AcquisitionPlanner.Plan(
+                new Capabilities(), 1e9, 10e6, 801, 0.0, AnalysisPath.ComplexZoom, WindowType.Hann);
+
+            Assert.False(planned.PointsWereAutomatic);
+            Assert.Equal(1.5 * 10e6 / 800.0, planned.ResolutionBandwidthHz, 6);
+            Assert.Equal(WindowType.Hann, planned.Window);
+        }
+
+        [Fact]
+        public void TheDefaultWindowIsTheOneTheSpecificationMandates()
+        {
+            PlannedAcquisition planned = AcquisitionPlanner.Plan(new Capabilities(), 1e9, 10e6, 0.0);
+
+            Assert.Equal(WindowType.FlatTop, planned.Window);
+            Assert.Equal(3.8194 * 10e6 / 800.0, planned.ResolutionBandwidthHz, 0);
         }
 
         [Fact]

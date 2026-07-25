@@ -338,7 +338,7 @@ namespace OpenVSA.Ui.Rendering
                 : "Peak  " + Frequency(frame.FrequencyAt(peak)) + "   " + Level(frame.LevelsDbm[peak]);
 
             _analysisText.Text =
-                WindowName(frame) + Environment.NewLine +
+                WindowText.Describe(frame.Window) + Environment.NewLine +
                 "RBW " + Frequency(frame.ResolutionBandwidthHz) + "   " +
                 frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts";
 
@@ -348,52 +348,17 @@ namespace OpenVSA.Ui.Rendering
                 "Center " + Frequency(frame.CenterFrequencyHz) + "   Span " + Frequency(frame.SpanHz);
         }
 
-        private static string WindowName(SpectrumFrame frame)
-        {
-            // Split the enum name at its internal capitals: "FlatTop" reads as "Flat Top", which is
-            // how REQ-DSP-010 names the windows and how a user will look for them.
-            string name = frame.Window.ToString();
-            var spaced = new System.Text.StringBuilder(name.Length + 4);
-
-            for (int i = 0; i < name.Length; i++)
-            {
-                if (i > 0 && char.IsUpper(name[i]))
-                {
-                    spaced.Append(' ');
-                }
-
-                spaced.Append(name[i]);
-            }
-
-            return spaced.ToString();
-        }
-
         private static string Level(double dbm) =>
             dbm <= AmplitudeScale.FloorDbm
                 ? "-- dBm"
                 : dbm.ToString("+0.00;-0.00;0.00", CultureInfo.CurrentCulture) + " dBm";
 
-        /// <summary>Engineering-notation frequency, to a resolution a spectrum axis needs.</summary>
-        private static string Frequency(double hertz)
-        {
-            double magnitude = Math.Abs(hertz);
-
-            if (magnitude >= 1e9)
-            {
-                return (hertz / 1e9).ToString("0.000000", CultureInfo.CurrentCulture) + " GHz";
-            }
-
-            if (magnitude >= 1e6)
-            {
-                return (hertz / 1e6).ToString("0.000000", CultureInfo.CurrentCulture) + " MHz";
-            }
-
-            if (magnitude >= 1e3)
-            {
-                return (hertz / 1e3).ToString("0.000000", CultureInfo.CurrentCulture) + " kHz";
-            }
-
-            return hertz.ToString("0.000", CultureInfo.CurrentCulture) + " Hz";
-        }
+        /// <summary>Engineering-notation frequency, to the resolution a spectrum axis needs.</summary>
+        /// <remarks>
+        /// Six decimals, where the hardware pane uses three: an axis end and a marker readout are
+        /// where a hertz matters, and rounding them to the pane's precision would make a 1 Hz span
+        /// read as though both ends were the same frequency.
+        /// </remarks>
+        private static string Frequency(double hertz) => EngineeringText.Frequency(hertz, 6);
     }
 }

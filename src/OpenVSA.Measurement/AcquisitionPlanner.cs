@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using OpenVSA.Core;
+using OpenVSA.Dsp.Spectrum;
+using OpenVSA.Dsp.Windowing;
 using OpenVSA.Hal;
 
 namespace OpenVSA.Measurement
@@ -23,6 +25,9 @@ namespace OpenVSA.Measurement
             int requestedFrequencyPoints,
             int transformLength,
             double maxTimeSeconds,
+            WindowType window,
+            double resolutionBandwidthHz,
+            bool pointsWereAutomatic,
             IList<ParameterCoercion> coercions)
         {
             Request = request;
@@ -30,6 +35,9 @@ namespace OpenVSA.Measurement
             RequestedFrequencyPoints = requestedFrequencyPoints;
             TransformLength = transformLength;
             MaxTimeSeconds = maxTimeSeconds;
+            Window = window;
+            ResolutionBandwidthHz = resolutionBandwidthHz;
+            PointsWereAutomatic = pointsWereAutomatic;
             Coercions = new ReadOnlyCollection<ParameterCoercion>(coercions);
         }
 
@@ -47,6 +55,22 @@ namespace OpenVSA.Measurement
 
         /// <summary>Longest analysable time record, in seconds: <c>(N_f − 1) / Span</c>.</summary>
         public double MaxTimeSeconds { get; }
+
+        /// <summary>The analysis window these figures assume.</summary>
+        public WindowType Window { get; }
+
+        /// <summary>
+        /// Resolution bandwidth this setting achieves, in hertz (<c>REQ-DSP-020</c>).
+        /// </summary>
+        /// <remarks>
+        /// Always computed, whether the point count was chosen or derived, because RBW is the
+        /// figure that says what the measurement can actually resolve — and under the default Flat
+        /// Top window it is nearly four times the spacing between displayed points.
+        /// </remarks>
+        public double ResolutionBandwidthHz { get; }
+
+        /// <summary>Whether the point count was derived from an RBW rather than given.</summary>
+        public bool PointsWereAutomatic { get; }
 
         /// <summary>Settings the planner had to change, and why. Never <c>null</c>.</summary>
         /// <remarks>
@@ -143,6 +167,7 @@ namespace OpenVSA.Measurement
         /// <param name="frequencyPoints">Requested displayed points; must be an available count.</param>
         /// <param name="referenceLevelDbm">Requested reference level, in dBm.</param>
         /// <param name="path">Requested acquisition path.</param>
+        /// <param name="window">Analysis window, for the resolution bandwidth these settings give.</param>
         /// <returns>The request to negotiate, and what the planner had to change to get there.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="capabilities"/> is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException">
@@ -155,7 +180,8 @@ namespace OpenVSA.Measurement
             double spanHz,
             int frequencyPoints,
             double referenceLevelDbm,
-            AnalysisPath path)
+            AnalysisPath path,
+            WindowType window = Window.Default)
         {
             if (capabilities == null)
             {
@@ -167,8 +193,107 @@ namespace OpenVSA.Measurement
             // got 409 601 and never learned that the number they believed in does not exist.
             FrequencyPoints.Validate(frequencyPoints, nameof(frequencyPoints));
 
+            return Build(
+                capabilities, centerFrequencyHz, spanHz, frequencyPoints, referenceLevelDbm, path,
+                window, automatic: false, coercions: new List<ParameterCoercion>());
+        }
+
+        /// <summary>
+        /// Plans an acquisition from a resolution bandwidth, deriving the point count
+        /// (<c>REQ-DSP-022</c> Auto, <c>REQ-DSP-020</c>).
+        /// </summary>
+        /// <param name="capabilities">The front end's declared capabilities.</param>
+        /// <param name="centerFrequencyHz">Requested centre frequency, in hertz.</param>
+        /// <param name="spanHz">Requested span, in hertz.</param>
+        /// <param name="resolutionBandwidthHz">Wanted resolution bandwidth, in hertz.</param>
+        /// <param name="referenceLevelDbm">Requested reference level, in dBm.</param>
+        /// <param name="path">Requested acquisition path.</param>
+        /// <param name="window">Analysis window; its ENBW is what couples RBW to record length.</param>
+        /// <returns>The request to negotiate, and the RBW actually achieved.</returns>
+        /// <remarks>
+        /// <para>
+        /// The count is rounded <strong>up</strong> to the next available one, so the RBW achieved
+        /// is at least as fine as the one asked for. Rounding to nearest would hand back a coarser
+        /// measurement than the one requested without saying so, and RBW is the setting a user is
+        /// least willing to have quietly relaxed.
+        /// </para>
+        /// <para>
+        /// Where the instrument cannot capture enough samples for the wanted RBW, the count is
+        /// reduced to what it can and the coercion names the RBW that results — the one case where
+        /// the answer is coarser, and the one case where the user is told.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="capabilities"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">A value is out of range, or the front end cannot capture the minimum count.</exception>
+        public static PlannedAcquisition PlanForResolutionBandwidth(
+            IFrontEndCapabilities capabilities,
+            double centerFrequencyHz,
+            double spanHz,
+            double resolutionBandwidthHz,
+            double referenceLevelDbm,
+            AnalysisPath path,
+            WindowType window = Window.Default)
+        {
+            if (capabilities == null)
+            {
+                throw new ArgumentNullException(nameof(capabilities));
+            }
+
+            // ENBW at a nominal length. It is a property of the window's shape rather than of its
+            // length - periodic Hann is exactly 1.5 at every N - so this is not an approximation
+            // that needs iterating, and the figure reported below is recomputed at the length
+            // actually chosen in any case.
+            double enbw = Window.Get(window, EnbwReferenceLength).Enbw;
+            double intervals = ResolutionBandwidth.RequiredIntervals(enbw, spanHz, resolutionBandwidthHz);
+
+            int wanted = SmallestCountCovering(intervals);
             var coercions = new List<ParameterCoercion>();
-            int points = frequencyPoints;
+
+            if (wanted == 0)
+            {
+                // Finer than the relations themselves allow, whatever the instrument can do.
+                wanted = FrequencyPoints.Maximum;
+                coercions.Add(new ParameterCoercion(
+                    "ResolutionBandwidth", resolutionBandwidthHz,
+                    ResolutionBandwidth.ForSpan(enbw, spanHz, wanted),
+                    "finer than " + FrequencyPoints.Maximum.ToString(CultureInfo.CurrentCulture) +
+                    " frequency points can resolve over this span"));
+            }
+
+            return Build(
+                capabilities, centerFrequencyHz, spanHz, wanted, referenceLevelDbm, path,
+                window, automatic: true, coercions: coercions);
+        }
+
+        /// <summary>Length at which a window's ENBW is evaluated before the transform size is known.</summary>
+        private const int EnbwReferenceLength = 4096;
+
+        /// <summary>The smallest available count whose intervals cover a requirement, or 0 if none does.</summary>
+        private static int SmallestCountCovering(double intervals)
+        {
+            foreach (int candidate in FrequencyPoints.Supported)
+            {
+                if (candidate - 1 >= intervals)
+                {
+                    return candidate;
+                }
+            }
+
+            return 0;
+        }
+
+        private static PlannedAcquisition Build(
+            IFrontEndCapabilities capabilities,
+            double centerFrequencyHz,
+            double spanHz,
+            int wantedPoints,
+            double referenceLevelDbm,
+            AnalysisPath path,
+            WindowType window,
+            bool automatic,
+            List<ParameterCoercion> coercions)
+        {
+            int points = wantedPoints;
             int available = MaximumPointsFor(capabilities, path);
 
             if (available == 0)
@@ -196,12 +321,19 @@ namespace OpenVSA.Measurement
             var request = new AcquisitionRequest(
                 centerFrequencyHz, spanHz, transformLength, referenceLevelDbm, path);
 
+            // Recomputed at the length actually chosen, so the figure reported is the one the
+            // measurement will have rather than the one the estimate assumed.
+            double achievedEnbw = Window.Get(window, transformLength).Enbw;
+
             return new PlannedAcquisition(
                 request,
                 points,
-                frequencyPoints,
+                wantedPoints,
                 transformLength,
                 AcquisitionLaw.MaxTimeSeconds(points, spanHz),
+                window,
+                ResolutionBandwidth.ForSpan(achievedEnbw, spanHz, points),
+                automatic,
                 coercions);
         }
 
