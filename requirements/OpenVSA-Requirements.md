@@ -566,6 +566,13 @@ Bulk trace/IQ transfers shall use **IEEE 488.2 definite-length arbitrary block r
 faster and far cheaper to parse. *(Note: ASCII at 8+ significant digits actually carries
 **more** precision than `REAL,32` — throughput and parse cost are the reasons to prefer
 binary, not accuracy.)*
+**AC:** Bulk transfers issue `FORMat:DATA REAL,32` and set `FORMat:BORDer`, and the reader
+parses the `#<nd><len><payload>` definite-length header correctly for header lengths across
+the full 1–9 digit range. Byte order is honoured: a payload transferred under each
+`FORMat:BORDer` setting decodes to the same values, which a hard-coded endianness fails. No
+bulk path falls back to ASCII — a test fails on an ASCII bulk transfer. Measured throughput
+is at least 4× the ASCII equivalent for the same record, per `REQ-NFR-027`'s measured figures
+rather than a nominal one.
 
 **`REQ-VISA-005` (P0) — Termination-character handling for binary reads.**
 Read termination-character detection shall be **disabled**
@@ -1066,6 +1073,16 @@ using the three result suffixes below.
 | 6 | Maximum point, dBm | `-8.67805890E+001` |
 | 7 | Minimum point, dBm | `-1.09926433E+002` |
 
+**AC:** The driver selects Basic mode and configures the Waveform measurement, and all three
+result suffixes parse: `WAVeform0?` yields exactly $2N$ interleaved values with $N$ taken
+from scalar 4, `WAVeform1?` yields exactly 7 scalars in the documented order, and
+`WAVeform2?` yields $N$ power values. Scalar order is asserted positionally against a live
+capture, since a transposed pair — mean power and burst power are equal on an ungated
+capture — would otherwise pass unnoticed; the test uses a gated capture where they differ.
+`:READ:WAVeform<n>?` arms and acquires where `:FETCh` does not, verified by fetching twice
+and reading once and comparing which data changes. The driver restores the instrument's prior
+mode and centre frequency on disconnect, as the bench procedure did.
+
 **`REQ-E44-002a` (P0) — I/Q scaling. [V]**
 The values returned by `:FETCh:WAVeform0?` are **volts, peak-referenced**. Instantaneous power
 is therefore
@@ -1078,6 +1095,13 @@ to three decimal places (mean −90.685 dBm vs −90.6845 reported; peak-to-mean
 max −86.781 vs −86.781; min −109.926 vs −109.926). Treating the values as RMS volts gives
 −87.674 dBm and is **wrong by 3.01 dB** — exactly the factor-of-two trap this requirement
 exists to prevent.
+**AC:** The bench capture recorded in this requirement is kept as a fixture, and the driver's
+scaling reproduces all four instrument-reported scalars from its raw I/Q to three decimal
+places: mean −90.685 dBm, peak-to-mean 3.904 dB, max −86.781 dBm, min −109.926 dBm. The
+same test asserts that an RMS interpretation yields −87.674 dBm and **fails** — the wrong
+answer is pinned as well as the right one, because the two differ by exactly 3.01 dB and
+nothing else in the system would reveal the substitution. Power is computed as
+$(I^2+Q^2)/2R$ with $R = 50\,\Omega$.
 
 **`REQ-E44-002b` (P0) — Sample rate is quantised, and is set by RBW. [V]**
 $T_s$ is always an integer multiple of **1/15 MHz ≈ 66.667 ns**, giving a maximum sample rate
@@ -1098,6 +1122,13 @@ report the coercion.
 *Note this is a different law from the reference product's $F_s = 1.28\,\text{Span}$
 (§2.2) — the E4406A's waveform path is RBW-driven with integer decimation, which is precisely
 why the HAL negotiates rather than assumes.*
+**AC:** `IqBlock.SampleRateHz` is derived from $T_s$ **read back from scalar 1**, never from
+the requested rate — a test requests a rate the instrument cannot honour and asserts the
+block carries the coerced value, with the coercion reported through `REQ-HAL-001`'s
+negotiate-then-configure contract. Every $T_s$ returned is an integer multiple of 1/15 MHz,
+checked across the RBW settings tabulated above, and each tabulated RBW reproduces its
+measured $T_s$. A driver that echoes the requested rate fails, as does one applying the
+reference product's $F_s = 1.28\,\text{Span}$ law to this front end.
 
 **`REQ-E44-002c` (P0) — Record length and the truncation trap. [V]**
 $N = \text{sweep time}/T_s + 1$ (measured: 20 ms at 7.5 MHz → `+150001`).
@@ -1118,6 +1149,15 @@ requested record length. *This is the single most dangerous behaviour found on t
 a caller that trusts its own sweep-time setting will silently analyse a shorter record than it
 believes it has.* Note also that the error queue is **sticky** — issue `*CLS` before an
 acquisition whose error state matters.
+**AC:** $N$ satisfies $\text{sweep time}/T_s + 1$, checked against the measured case of 20 ms
+at 7.5 MHz returning 150 001. The truncation case is tested on the instrument: requesting
+200 ms at 7.5 MHz returns $N = 950\,000$, and the driver raises a first-class error rather
+than returning the short record as if complete. Both detection paths are asserted
+independently — the `:SYSTem:ERRor?` poll surfacing error 22, **and** the returned $N$
+compared against the requested length — since either alone can miss a truncation the other
+catches. `*CLS` is issued before any acquisition whose error state matters, verified by a
+test that leaves a stale error queued and confirms it is not misattributed to the next
+acquisition. Sweep times outside 1 µs to 100 s are rejected before reaching the instrument.
 
 **`REQ-E44-002d` (P1) — Transfer format. [V for acceptance]**
 `:FORMat:DATA REAL,32` is accepted and reads back as `REAL,+32`; `:FORMat:BORDer` reads back
@@ -1147,6 +1187,12 @@ range commands round-trip; blocks carry `IsBaseband = true`.
 The driver shall expose `:CALibration:GIQ`, `:CALibration:IQ:CMR`,
 `:CALibration:IQ:FLATness` and `:CALibration:IQ:OFFSet` as explicit user-initiated
 maintenance actions, never automatically.
+**AC:** All four commands are reachable as maintenance actions, and none is issued on
+connect, on mode change, on acquisition, or on any other automatic path — asserted by
+recording the SCPI traffic across a full connect-configure-acquire-disconnect cycle and
+failing if a calibration command appears. Each action reports completion or failure to the
+user rather than running silently, and calibration state is reflected in the status bar per
+`REQ-UI-006`.
 
 **`REQ-E44-005` (P1) — Remote-operation courtesy.**
 The driver shall document (and the UI shall display) that front-panel controls are disabled
@@ -1159,6 +1205,12 @@ restore the instrument's prior mode on disconnect.
 The driver shall optionally retrieve the instrument's own display (HP-GL plot or PCL print
 hardcopy) for inclusion in reports — useful for cross-checking OpenVSA's results against the
 instrument's native personality measurements.
+**AC:** A screen capture retrieved from the instrument renders as an image and embeds in a
+`REQ-NFR-040` report. Both offered forms are handled, or the unsupported one is declared
+unavailable rather than producing a corrupt file. The capture is optional and off by default:
+a normal acquisition cycle issues no hardcopy command, asserted from the SCPI traffic, since
+these transfers are slow enough to matter on a GPIB link (§6.3). Failure to retrieve degrades
+the report gracefully instead of failing the measurement.
 
 **`REQ-E44-007` (P1) — Cross-validation harness.**
 A test harness shall compare OpenVSA's flexible-demod results against the E4406A's own
@@ -1226,14 +1278,37 @@ reference product's catalogue: **[V]**
 > that document must be obtained before the SDF reader/writer is implemented. Until then,
 > treat SDF as P2 and do not schedule it into an early phase.
 
+**AC:** Each format supports exactly the directions ticked — a test asserts that E3238S is
+import-only and that attempting to export it is refused with a named error rather than
+silently producing nothing. Every format marked for both directions round-trips: a block
+exported and re-imported returns sample values within that format's stated precision, and
+the native `.ovsa` format round-trips **bit-identically** with all metadata intact, which is
+what "full fidelity" claims. Formats with endianness variants are tested in both. Any
+metadata a format cannot carry is reported per `REQ-REC-006`. SDF remains unimplemented
+until its documented byte-level layout is obtained; a stub that writes a plausible-looking
+but unverified SDF file fails this criterion.
+
 **`REQ-REC-006` (P1) — Export fidelity honesty.**
 Where an export format cannot carry trigger corrections or full metadata, the export dialog
 shall say so explicitly before writing, and the written file shall record the limitation.
 *Rationale:* the reference product has exactly this trap and it is a known source of
 confusion. **[V]**
+**AC:** Exporting to a format that cannot carry trigger corrections or full metadata raises
+an explicit statement of what will be lost **before** the file is written, naming the fields
+— a warning shown afterwards, or a generic "some data may be lost", fails. The written file
+records the limitation in its own metadata where the format allows, so the loss is
+discoverable from the file alone. The lossy set is derived from each writer's declared
+capabilities rather than hard-coded, so a new format cannot be added without declaring what
+it drops. Exporting `TriggerCorrectionsApplied = false` data is itself flagged, per
+`REQ-DAT-002`.
 
 **`REQ-REC-007` (P2) — Recording size estimation.** The UI shall show projected file size
 and remaining disk time before a recording starts.
+**AC:** Before a recording starts the UI shows a projected file size and a remaining-disk
+time. The projection is checked against reality: for a completed recording the actual size is
+within 5 % of the projection, across sample rates and formats. Remaining disk time uses free
+space on the target volume at the time of the estimate, and a recording projected to exceed
+free space is warned about before it starts rather than failing partway.
 
 **`REQ-REC-008` (P1) — Recording robustness.**
 Recordings shall: segment automatically at a configurable maximum file size (default 2 GB) with
@@ -3604,6 +3679,14 @@ measurements for W-CDMA, EDGE and cdmaOne signals. Divergence beyond tolerance s
 investigated and either fixed or documented with an explanation.
 *This is the only truly independent check available on this bench and should be run at every
 release.*
+**AC:** The suite runs W-CDMA, EDGE and cdmaOne signals through both the E4406A's own
+personality and OpenVSA's demodulator on the same capture, and compares the metrics they
+report. Tolerances are those of `REQ-TST-004a` — relative to the measured value plus the
+residual budget, not a bare absolute figure. Divergence beyond tolerance fails the run, and a
+divergence accepted as understood is recorded with its explanation in a checked-in register,
+so an unexplained divergence cannot be quietly tolerated by adjusting the tolerance. The
+suite runs at every release and is skipped, with an explicit skip report, when the instrument
+is absent rather than silently passing.
 
 **`REQ-TST-004a` (P1) — OpenVSA's own residual-EVM budget.**
 OpenVSA shall define and verify a **self-noise / residual-EVM budget** — the EVM it reports for
@@ -3614,10 +3697,24 @@ point is generous at 15 % EVM and absurd at 1 %. Comparison tolerances shall be 
 **relative to the measured value plus the residual budget**, not as a bare absolute figure.
 *(Keysight's published residual-EVM specification for the reference demodulator was not located
 during research — §20 Q9 — so this budget is self-imposed rather than matched.)*
+**AC:** An ideal impairment-free simulated signal is demodulated for each supported format
+and the reported EVM is below 0.1 % RMS for QPSK through 64-QAM and below 0.3 % for 1024-QAM
+and above; a format exceeding its budget fails. The budget is a published figure, recorded
+where users and the comparison suite can read it, not merely a test constant. `REQ-TST-004`'s
+tolerances are computed from the measured value **plus** this residual, and a test asserts
+that composition — a bare 0.5 percentage-point comparison fails, since that is the unanchored
+form this requirement exists to replace.
 
 **`REQ-TST-005` (P2) — Golden recordings.**
 A corpus of recorded IQ captures with known-correct expected results shall be maintained in
 version control (or in an artefact store, given size), and replayed in CI.
+**AC:** The corpus is versioned alongside the code, replayed in CI on every run, and each
+entry's expected results are **traceable to an independent source** — a closed-form value, a
+generator parameter, or an E4406A comparison per `REQ-TST-004` — recorded with the entry.
+An entry whose expected value is simply a previous OpenVSA output fails review; that is the
+distinction `REQ-TST-001` draws, and it is what makes this corpus a check rather than a
+record of past behaviour. Adding an entry requires its provenance; regenerating an expected
+value requires a stated reason.
 
 ### 17.4 Regression and performance
 
@@ -3625,14 +3722,52 @@ version control (or in an artefact store, given size), and replayed in CI.
 compared with explicit tolerances rather than exact equality, with tolerances justified in
 comments.
 
+> **Scope, against `REQ-TST-001`.** These two requirements appear to conflict and do not.
+> `REQ-TST-001` governs **DSP primitives**, which must be checked against closed-form
+> analytic results and never against a previous run. This requirement governs **end-to-end
+> numerical regression**, which exists to detect unintended change across the whole chain.
+> A stored expected output is legitimate here and illegitimate there. The boundary is not
+> stylistic: a primitive validated against its own past output can be wrong and stay wrong,
+> whereas a whole-chain regression is comparing a system whose parts are independently
+> verified.
+
+**AC:** The regression suite lives separately from the primitive tests of `REQ-TST-001`, and
+a test asserts that separation so a primitive check cannot migrate into the regression suite
+and lose its analytic reference. Every comparison uses an explicit tolerance — exact equality
+fails review — and each tolerance carries a comment justifying its magnitude in terms of the
+numerical path, not "this is what it produced". Every stored expected output records the
+provenance required by `REQ-TST-005`. A regression failure reports the observed and expected
+values with their difference expressed against the tolerance.
+
 **`REQ-TST-007` (P1)** — Performance regression per `REQ-NFR-020`–`REQ-NFR-026`, failing
 the build on >15 % regression.
+**AC:** All seven targets of `REQ-NFR-020`–`REQ-NFR-026` are measured by the harness those
+requirements' shared criteria describe, including the rendered ones, and a deliberately
+introduced 20 % slowdown fails the build while a 5 % one does not — the threshold is tested,
+not merely configured. Baselines are stored per machine class, since the targets are stated
+for the reference machine, and a run on unrecognised hardware reports that rather than
+comparing against an inapplicable baseline. Measurements report variance, and a run too noisy
+to distinguish 15 % is reported as inconclusive rather than passed.
 
 **`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace
 configuration, state save/recall and marker interaction.
+**AC:** All four areas are exercised through the UI automation layer rather than by calling
+view models directly, so a binding or command-routing break is caught. The suite creates
+trace and tool windows, configures a trace's data and format, saves and recalls a state and
+asserts the recalled configuration matches per `REQ-STA-001`, and places, moves and couples
+markers per `REQ-MKR-004`. It runs headless in CI, and a failure identifies the step and
+captures the visual tree at that point rather than reporting only a timeout.
 
 **`REQ-TST-009` (P1)** — A long-duration soak (≥8 hours) against the simulator asserting
 bounded memory, no handle leaks, and no degradation in update rate.
+**AC:** The soak runs at least 8 hours against the simulator with traces updating and the UI
+live. Managed and unmanaged memory are bounded: measured against a trend line over the run,
+not merely against a ceiling, so a slow leak that stays under the cap still fails. Handle and
+GDI object counts return to their starting range after windows and traces are created and
+destroyed repeatedly. Update rate over the final hour is within 5 % of the first hour, which
+catches degradation that a start-and-end sample would miss. Pooled buffers per `REQ-NFR-011`
+show no net growth, and the dropped-frame counter of `REQ-NFR-012` is reported at the end
+rather than checked only for boundedness.
 
 ---
 

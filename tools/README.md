@@ -78,6 +78,18 @@ example the paragraph beginning ``**`REQ-NFR-037` needs a qualification…`` —
 to that requirement's record. For the §15 table requirements this prose carries the
 normative wording and the acceptance criteria, so it must not be dropped.
 
+## Hand-maintained issues
+
+`sync_issues.py` matches an issue to a requirement on its `REQ-<AREA>-<nnn>:` title prefix
+and skips anything that does not match, reporting `no matching requirement — skipped`. That
+makes hand-written tracking issues safe to keep alongside the generated backlog.
+
+Issue **#387, "Phase follow-up"**, is one such: it collects open items raised while
+authoring acceptance criteria that do not block the phase they came from. Append to it
+rather than opening a new issue. Cross-links from requirement issues are *comments*, not
+body edits — the generator rewrites bodies and would discard them, but leaves comments
+alone.
+
 ## Concurrency
 
 `create_issues.py` takes an exclusive lock (`tools/.create_issues.lock`) and writes its
