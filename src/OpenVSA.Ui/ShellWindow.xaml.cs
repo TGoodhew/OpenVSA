@@ -4,13 +4,21 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
+using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
 using OpenVSA.Ui.Rendering;
+
+// Aliased rather than imported: this file's own base class is System.Windows.Window, and importing
+// the DSP namespace would make the word ambiguous in a WPF window of all places.
+using DspWindow = OpenVSA.Dsp.Windowing.Window;
+using WindowType = OpenVSA.Dsp.Windowing.WindowType;
 
 namespace OpenVSA.Ui
 {
@@ -67,6 +75,13 @@ namespace OpenVSA.Ui
 
             Plot.GraticuleColumnsChanged += (sender, e) => _marshal.Columns = Plot.GraticuleColumns;
             _marshal.Columns = Plot.GraticuleColumns;
+
+            foreach (WindowType type in Enum.GetValues(typeof(WindowType)))
+            {
+                WindowBox.Items.Add(new WindowChoice(type));
+            }
+
+            WindowBox.SelectedIndex = IndexOfWindow(DspWindow.Default);
 
             // The measured rate and the dropped-frame count of REQ-NFR-012 are status-bar figures,
             // not per-frame ones: updating them from the frame handler would put text layout on the
@@ -144,6 +159,195 @@ namespace OpenVSA.Ui
             CapabilitiesText.Text = DescribeCapabilities(created);
             PlanText.Text = string.Empty;
             StartItem.IsEnabled = true;
+
+            RangeSettingsFor(created.Capabilities);
+        }
+
+        // ---- Measurement settings --------------------------------------------------------------
+
+        /// <summary>
+        /// Ranges every settings control from the front end's declared capabilities.
+        /// </summary>
+        /// <param name="capabilities">The capabilities to range against.</param>
+        /// <remarks>
+        /// <c>REQ-HAL-002</c>, and its acceptance criterion's second half: switching front ends
+        /// visibly re-ranges the affected controls. Every limit shown here is read from the
+        /// interface — there is no table of models, and a front end that declares a 1 kHz maximum
+        /// span gets a 1 kHz maximum span in the UI without anything here being told about it.
+        /// </remarks>
+        private void RangeSettingsFor(IFrontEndCapabilities capabilities)
+        {
+            if (capabilities == null)
+            {
+                SettingsGrid.IsEnabled = false;
+                return;
+            }
+
+            CentreRange.Text = "Range " + EngineeringText.Frequency(capabilities.CenterFrequencyRange.MinHz) +
+                " to " + EngineeringText.Frequency(capabilities.CenterFrequencyRange.MaxHz);
+            SpanRange.Text = "Range " + EngineeringText.Frequency(capabilities.MinSpanHz) +
+                " to " + EngineeringText.Frequency(capabilities.MaxSpanHz);
+            ReferenceLevelRange.Text = "Range " +
+                capabilities.ReferenceLevelRange.MinDbm.ToString("0.##", CultureInfo.CurrentCulture) +
+                " to " +
+                capabilities.ReferenceLevelRange.MaxDbm.ToString("0.##", CultureInfo.CurrentCulture) +
+                " dBm";
+
+            double centre = Clamp(DefaultCenterFrequencyHz, capabilities.CenterFrequencyRange.MinHz, capabilities.CenterFrequencyRange.MaxHz);
+            double span = Clamp(DefaultSpanHz, capabilities.MinSpanHz, capabilities.MaxSpanHz);
+            double level = Clamp(DefaultReferenceLevelDbm, capabilities.ReferenceLevelRange.MinDbm, capabilities.ReferenceLevelRange.MaxDbm);
+
+            CentreBox.Text = EngineeringText.Frequency(centre);
+            SpanBox.Text = EngineeringText.Frequency(span);
+            ReferenceLevelBox.Text = level.ToString("0.##", CultureInfo.CurrentCulture);
+            ResolutionBandwidthBox.Text = EngineeringText.Frequency(span / 100.0);
+
+            PopulatePointsChoices(capabilities);
+
+            SettingsGrid.IsEnabled = true;
+            SettingsMessage.Text = string.Empty;
+        }
+
+        /// <summary>
+        /// Fills the points list with the counts this front end can actually capture.
+        /// </summary>
+        /// <remarks>
+        /// The list is the instrument's, not the specification's: a front end that can only return
+        /// a short block simply does not offer the larger counts, so an unachievable setting cannot
+        /// be selected in the first place. Auto heads the list because deriving the count from a
+        /// resolution bandwidth is the way a spectrum measurement is usually expressed.
+        /// </remarks>
+        private void PopulatePointsChoices(IFrontEndCapabilities capabilities)
+        {
+            int available = AcquisitionPlanner.MaximumPointsFor(capabilities, AnalysisPath.ComplexZoom);
+
+            PointsBox.Items.Clear();
+            PointsBox.Items.Add(PointsChoice.Auto);
+
+            foreach (int count in FrequencyPoints.Supported)
+            {
+                if (count > available)
+                {
+                    break;
+                }
+
+                PointsBox.Items.Add(new PointsChoice(count));
+            }
+
+            PointsRange.Text = available == 0
+                ? "This front end cannot capture enough samples for a spectrum."
+                : "Up to " + available.ToString(CultureInfo.CurrentCulture) +
+                  ", from this front end's capture depth";
+
+            PointsBox.SelectedItem = FindPointsChoice(AcquisitionPlanner.DefaultFrequencyPoints)
+                ?? (PointsBox.Items.Count > 1 ? PointsBox.Items[PointsBox.Items.Count - 1] : PointsBox.Items[0]);
+        }
+
+        private object FindPointsChoice(int points)
+        {
+            foreach (object item in PointsBox.Items)
+            {
+                var choice = item as PointsChoice;
+                if (choice != null && choice.Points == points)
+                {
+                    return choice;
+                }
+            }
+
+            return null;
+        }
+
+        private void OnPointsSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            bool automatic = SelectedPoints() == 0;
+
+            ResolutionBandwidthBox.IsEnabled = automatic;
+            ResolutionBandwidthNote.Text = automatic
+                ? "The point count is derived from this and the window (REQ-DSP-022 Auto)."
+                : "Set by the point count, the span and the window.";
+        }
+
+        private void OnSettingKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                OnApplySettings(sender, new RoutedEventArgs());
+            }
+        }
+
+        private async void OnApplySettings(object sender, RoutedEventArgs e)
+        {
+            if (_activeFrontEnd == null)
+            {
+                return;
+            }
+
+            await StartMeasurementAsync().ConfigureAwait(true);
+        }
+
+        private int SelectedPoints()
+        {
+            var choice = PointsBox.SelectedItem as PointsChoice;
+            return choice == null ? AcquisitionPlanner.DefaultFrequencyPoints : choice.Points;
+        }
+
+        private WindowType SelectedWindow()
+        {
+            var choice = WindowBox.SelectedItem as WindowChoice;
+            return choice == null ? DspWindow.Default : choice.Type;
+        }
+
+        private int IndexOfWindow(WindowType type)
+        {
+            for (int i = 0; i < WindowBox.Items.Count; i++)
+            {
+                var choice = WindowBox.Items[i] as WindowChoice;
+                if (choice != null && choice.Type == type)
+                {
+                    return i;
+                }
+            }
+
+            return 0;
+        }
+
+        private static double Clamp(double value, double minimum, double maximum)
+        {
+            if (value < minimum)
+            {
+                return minimum;
+            }
+
+            return value > maximum ? maximum : value;
+        }
+
+        /// <summary>A selectable point count; <see cref="Points"/> of 0 means Auto.</summary>
+        private sealed class PointsChoice
+        {
+            public static readonly PointsChoice Auto = new PointsChoice(0);
+
+            public PointsChoice(int points)
+            {
+                Points = points;
+            }
+
+            public int Points { get; }
+
+            public override string ToString() =>
+                Points == 0 ? "Auto (from Res BW)" : Points.ToString(CultureInfo.CurrentCulture);
+        }
+
+        /// <summary>A selectable window, named as the specification names it.</summary>
+        private sealed class WindowChoice
+        {
+            public WindowChoice(WindowType type)
+            {
+                Type = type;
+            }
+
+            public WindowType Type { get; }
+
+            public override string ToString() => WindowText.Describe(Type);
         }
 
         private IEnumerable<MenuItem> SourceMenuItems() =>
@@ -238,32 +442,39 @@ namespace OpenVSA.Ui
         /// </remarks>
         private async void OnStart(object sender, RoutedEventArgs e)
         {
-            if (_activeFrontEnd == null || _engine != null)
+            await StartMeasurementAsync().ConfigureAwait(true);
+        }
+
+        /// <summary>
+        /// Starts, or restarts, the measurement from the current settings.
+        /// </summary>
+        /// <remarks>
+        /// Applying a setting is a restart rather than a live edit. Span, points and window all
+        /// change the shape of the acquisition, so continuing a run across the change would mean
+        /// the display briefly showing frames computed under two different setups — which is
+        /// exactly the kind of thing nobody notices until a measurement is being trusted.
+        /// </remarks>
+        private async Task StartMeasurementAsync()
+        {
+            if (_activeFrontEnd == null)
             {
                 return;
             }
+
+            await StopAcquisitionAsync().ConfigureAwait(true);
 
             // How many points this measurement can have is the instrument's answer, not the
             // shell's: the planner reads the capture depth from the capabilities and reduces the
             // count to fit (REQ-ACQ-001, REQ-DSP-022, REQ-HAL-002).
-            PlannedAcquisition planned;
+            PlannedAcquisition planned = BuildPlan();
 
-            try
+            if (planned == null)
             {
-                planned = AcquisitionPlanner.Plan(
-                    _activeFrontEnd.Capabilities,
-                    DefaultCenterFrequencyHz,
-                    DefaultSpanHz,
-                    DefaultReferenceLevelDbm);
-            }
-            catch (ArgumentException failure)
-            {
-                StatusText.Content = "Cannot measure with this source";
-                PlanText.Text = failure.Message;
                 return;
             }
 
-            var engine = new SpectrumEngine(_activeFrontEnd, new SpectrumComputer());
+            var engine = new SpectrumEngine(
+                _activeFrontEnd, new SpectrumComputer(planned.Window, null, null));
             engine.FrameComputed += OnFrameComputed;
             engine.Faulted += OnEngineFaulted;
             engine.Completed += OnEngineCompleted;
@@ -289,8 +500,107 @@ namespace OpenVSA.Ui
             StartItem.IsEnabled = false;
             StopItem.IsEnabled = true;
             StatusText.Content = "Measuring";
+
+            SettingsMessage.Text = planned.Coerced || plan.Coerced
+                ? "Some settings were coerced — see the negotiated plan."
+                : "Res BW " + EngineeringText.Frequency(planned.ResolutionBandwidthHz) +
+                  ", time record " + EngineeringText.Time(planned.MaxTimeSeconds);
             PlanText.Text = PlanSummary.Describe(plan, planned, _activeFrontEnd.Capabilities);
             _statusTimer.Start();
+        }
+
+        /// <summary>
+        /// Reads the settings controls and plans an acquisition, or reports why it cannot.
+        /// </summary>
+        /// <returns>The planned acquisition, or <c>null</c> if a setting was rejected.</returns>
+        /// <remarks>
+        /// Every bound checked here comes from the active front end's capabilities, and a rejected
+        /// value is reported with the bound it violated rather than silently clamped —
+        /// <c>REQ-HAL-001</c>'s prohibition applied at the point of entry, where the user still has
+        /// the number in mind.
+        /// </remarks>
+        private PlannedAcquisition BuildPlan()
+        {
+            IFrontEndCapabilities capabilities = _activeFrontEnd.Capabilities;
+
+            double centre;
+            if (!EngineeringText.TryParseFrequency(CentreBox.Text, out centre))
+            {
+                return Reject("Centre frequency: '" + CentreBox.Text + "' is not a frequency.");
+            }
+
+            if (!capabilities.CenterFrequencyRange.Contains(centre))
+            {
+                return Reject(
+                    "Centre frequency is outside this front end's range of " +
+                    EngineeringText.Frequency(capabilities.CenterFrequencyRange.MinHz) + " to " +
+                    EngineeringText.Frequency(capabilities.CenterFrequencyRange.MaxHz) + ".");
+            }
+
+            double span;
+            if (!EngineeringText.TryParseFrequency(SpanBox.Text, out span))
+            {
+                return Reject("Span: '" + SpanBox.Text + "' is not a frequency.");
+            }
+
+            if (span < capabilities.MinSpanHz || span > capabilities.MaxSpanHz)
+            {
+                return Reject(
+                    "Span is outside this front end's range of " +
+                    EngineeringText.Frequency(capabilities.MinSpanHz) + " to " +
+                    EngineeringText.Frequency(capabilities.MaxSpanHz) + ".");
+            }
+
+            double level;
+            if (!EngineeringText.TryParseDecibels(ReferenceLevelBox.Text, out level))
+            {
+                return Reject("Reference level: '" + ReferenceLevelBox.Text + "' is not a level in dBm.");
+            }
+
+            if (!capabilities.ReferenceLevelRange.Contains(level))
+            {
+                return Reject(
+                    "Reference level is outside this front end's range of " +
+                    capabilities.ReferenceLevelRange.MinDbm.ToString("0.##", CultureInfo.CurrentCulture) +
+                    " to " +
+                    capabilities.ReferenceLevelRange.MaxDbm.ToString("0.##", CultureInfo.CurrentCulture) +
+                    " dBm.");
+            }
+
+            int points = SelectedPoints();
+            WindowType window = SelectedWindow();
+
+            try
+            {
+                if (points == 0)
+                {
+                    double resolutionBandwidth;
+                    if (!EngineeringText.TryParseFrequency(ResolutionBandwidthBox.Text, out resolutionBandwidth) ||
+                        resolutionBandwidth <= 0.0)
+                    {
+                        return Reject(
+                            "Res BW: '" + ResolutionBandwidthBox.Text + "' is not a positive bandwidth.");
+                    }
+
+                    return AcquisitionPlanner.PlanForResolutionBandwidth(
+                        capabilities, centre, span, resolutionBandwidth, level,
+                        AnalysisPath.ComplexZoom, window);
+                }
+
+                return AcquisitionPlanner.Plan(
+                    capabilities, centre, span, points, level, AnalysisPath.ComplexZoom, window);
+            }
+            catch (ArgumentException failure)
+            {
+                return Reject(failure.Message);
+            }
+        }
+
+        private PlannedAcquisition Reject(string reason)
+        {
+            SettingsMessage.Text = reason;
+            StatusText.Content = "Setting rejected";
+            return null;
         }
 
         private async void OnStop(object sender, RoutedEventArgs e)

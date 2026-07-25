@@ -10,8 +10,13 @@
             title bar -> menu bar -> toolbar band -> document area (trace tab groups, with
             tool windows docked around its edges) -> status bar.
 
-        There is deliberately NO right-hand softkey column. That belongs to the 89400-series
-        hardware, not the software, and adding one would be a retro affectation.
+        There is deliberately NO right-hand softkey column. That belongs to the benchtop
+        analysers this product line grew out of, not to the software, and adding one would be a
+        retro affectation.
+
+        (The model number that used to appear in this comment was removed rather than exempted:
+        REQ-HAL-002's criterion is that a code search for instrument names in this assembly
+        returns no matches, and an exemption list is how such a search stops meaning anything.)
 
         Menu names follow the modern (PathWave) bar of REQ-UI-060, not the Agilent-era one:
             File | Edit | Hardware | Acquisition | Analysis | Trace | Marker | Utilities | Window | Help
@@ -68,6 +73,84 @@
             hot-spot framework have to be ours either way.
         -->
         <syncfusion:DockingManager x:Name="Docking" UseDocumentContainer="True">
+
+            <!--
+                REQ-HAL-002, and the visible half of it: every limit these controls enforce comes
+                from IFrontEndCapabilities, and selecting a different source re-ranges them. There
+                is no instrument-specific conditional here and no default that a particular model
+                would have made right.
+            -->
+            <ScrollViewer x:Name="MeasurementPane"
+                          syncfusion:DockingManager.Header="Measurement"
+                          syncfusion:DockingManager.SideInDockedMode="Left"
+                          syncfusion:DockingManager.DesiredWidthInDockedMode="380">
+                <Grid Margin="12" IsEnabled="False" x:Name="SettingsGrid">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Centre" Margin="0,4,8,4"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="CentreBox" Margin="0,4" AutomationProperties.AutomationId="Centre"
+                             KeyDown="OnSettingKeyDown" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="CentreRange" FontSize="10"
+                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Span" Margin="0,4,8,4"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="SpanBox" Margin="0,4" AutomationProperties.AutomationId="Span"
+                             KeyDown="OnSettingKeyDown" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SpanRange" FontSize="10"
+                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Ref level" Margin="0,4,8,4"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="ReferenceLevelBox" Margin="0,4" AutomationProperties.AutomationId="ReferenceLevel"
+                             KeyDown="OnSettingKeyDown" />
+                    <TextBlock Grid.Row="5" Grid.Column="1" x:Name="ReferenceLevelRange" FontSize="10"
+                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Window" Margin="0,4,8,4"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Row="6" Grid.Column="1" x:Name="WindowBox" Margin="0,4,0,8" AutomationProperties.AutomationId="Window" />
+
+                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Points" Margin="0,4,8,4"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Row="7" Grid.Column="1" x:Name="PointsBox" Margin="0,4" AutomationProperties.AutomationId="Points"
+                              SelectionChanged="OnPointsSelectionChanged" />
+                    <TextBlock Grid.Row="8" Grid.Column="1" x:Name="PointsRange" FontSize="10"
+                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <TextBlock Grid.Row="9" Grid.Column="0" Text="Res BW" Margin="0,4,8,4"
+                               VerticalAlignment="Center" />
+                    <TextBox Grid.Row="9" Grid.Column="1" x:Name="ResolutionBandwidthBox" Margin="0,4" AutomationProperties.AutomationId="ResolutionBandwidth"
+                             IsEnabled="False" KeyDown="OnSettingKeyDown" />
+                    <TextBlock Grid.Row="10" Grid.Column="1" x:Name="ResolutionBandwidthNote" FontSize="10"
+                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <StackPanel Grid.Row="11" Grid.Column="1" Orientation="Vertical">
+                        <Button x:Name="ApplyButton" AutomationProperties.AutomationId="Apply" Content="_Apply" Click="OnApplySettings"
+                                Padding="12,3" HorizontalAlignment="Left" />
+                        <TextBlock x:Name="SettingsMessage" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   FontSize="11" />
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
 
             <ScrollViewer syncfusion:DockingManager.Header="Hardware"
                           syncfusion:DockingManager.SideInDockedMode="Left"
