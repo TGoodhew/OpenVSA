@@ -2557,10 +2557,28 @@ to host internals — produces correct results, proving the contract is sufficie
 **`REQ-PER-002` (P1) — Personality isolation.** A personality fault shall not terminate
 the host. Personalities shall load into a controlled context with exception isolation at
 the measurement boundary, and a faulting personality shall be disabled with a clear report.
+**AC:** A deliberately faulting personality is exercised across the failure modes that
+actually occur — throwing during `Create`, throwing mid-measurement, returning malformed
+results, and hanging — and in every case the host survives, the measurement is abandoned
+cleanly, and the personality is disabled with a report naming it and the fault. Other
+loaded personalities keep running, which is what distinguishes isolation from a global
+try/catch. Buffers the faulting personality held are returned to the pool rather than
+leaked, per `REQ-NFR-011`, so a repeatedly faulting personality cannot exhaust memory —
+asserted by faulting in a loop and checking pool occupancy returns to its starting level. A
+disabled personality stays disabled until explicitly re-enabled, rather than being retried
+on the next acquisition. This covers faults only; plug-in *malice* is `REQ-NFR-041`.
 
 **`REQ-PER-003` (P2) — Third-party SDK parity.** The SDK shall be documented and
 distributable to third parties, mirroring the reference product's Option 301 multi-vendor
 approach. **[V]**
+**AC:** The parity claim is tested rather than asserted: a personality built **only** against
+the published SDK, referencing no internal assembly, implements a complete measurement and
+runs in the host — so a first-party personality reaching past the SDK for something it does
+not expose fails the test. The SDK ships as a versioned package with the documentation of
+`REQ-NFR-038` and a worked example that builds from a clean checkout. Its surface follows
+`REQ-NFR-042`'s versioning and deprecation policy, since third parties carry the cost of
+breaking changes. Distribution is unrestricted per `REQ-LIC-010` — there is no Option 301
+equivalent to buy, and no entitlement gates SDK use.
 
 ### 12.2 Personality catalogue and priority
 
@@ -2590,11 +2608,31 @@ validated against the E4406A on this bench, then **(b)** breadth of usefulness.
 
 **`REQ-PER-010` (P1)** — Wave 1 personalities shall each be validated by direct numerical
 comparison against the E4406A's own measurement of the same signal (see `REQ-E44-007`).
+**AC:** Each wave 1 personality — GSM/EDGE, W-CDMA/HSPA, cdmaOne — is measured against the
+E4406A's own personality on the **same capture**, not merely the same signal generator
+settings, so the comparison isolates analysis from acquisition. Agreement is within
+`REQ-TST-004a`'s tolerance: relative to the measured value plus the residual budget, never a
+bare absolute figure. The comparison runs under the `REQ-TST-004` harness, so a divergence
+beyond tolerance either fails or is recorded in the register with its explanation — a
+personality cannot be declared validated with an unexplained divergence outstanding. Where
+the E4406A does not implement a measurement the personality provides, that gap is stated
+rather than passed over, since an unvalidated metric shipping alongside validated ones is
+the trap here.
 
 **`REQ-PER-011` (P2)** — Each personality shall declare the standard revision it
 implements, and shall state clearly in its help where it deviates or is incomplete.
 *Rationale:* silent partial conformance to a telecom standard is worse than a documented
 subset, because users will make pass/fail decisions on it.
+**AC:** Every personality declares the standard and revision it implements — including the
+issue or release date, since "LTE" without a revision identifies nothing — and that
+declaration is machine-readable, surfaced in the UI, and carried into exported results and
+reports alongside the provenance of `REQ-DEM-072`. A personality shipping without a
+declared revision fails the build rather than defaulting to "latest". Deviations and
+unimplemented parts are listed explicitly in its help, and the list is testable rather than
+prose: each declared deviation names the clause it departs from. A measurement whose
+conformance is partial says so where the result is read, not only in a help page the user
+must go looking for — the whole point being that someone is about to make a pass/fail
+decision on the number.
 ---
 
 ## 13. User interface — appearance and behaviour
