@@ -15,6 +15,16 @@
     <ProjectReference Include="..\..\src\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
     <ProjectReference Include="..\..\src\OpenVSA.Personality\OpenVSA.Personality.csproj" />
     <ProjectReference Include="..\..\src\OpenVSA.Api\OpenVSA.Api.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
   </ItemGroup>
+
+  <!--
+    The shell is a WinExe, so referencing it drags in WPF. Required: REQ-ARC-001 applies to L5
+    as much as to the analysis layers, and the shell is the layer most tempted to reference a
+    transport directly, because offering the simulator is its job.
+  -->
+  <PropertyGroup>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
 
 </Project>

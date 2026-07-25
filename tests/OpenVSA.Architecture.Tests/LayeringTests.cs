@@ -31,6 +31,7 @@ namespace OpenVSA.Architecture.Tests
         [InlineData("OpenVSA.Measurement")]
         [InlineData("OpenVSA.Personality")]
         [InlineData("OpenVSA.Api")]
+        [InlineData("OpenVSA")]
         public void Analysis_Layers_Do_Not_Reference_Concrete_Transports(string assemblyName)
         {
             var assembly = Assembly.Load(assemblyName);
@@ -45,6 +46,29 @@ namespace OpenVSA.Architecture.Tests
                 offenders.Length == 0,
                 $"REQ-ARC-001 violation: {assemblyName} references {string.Join(", ", offenders)}. " +
                 "Layers L3 and above may reference only the OpenVSA.Hal interface assembly.");
+        }
+
+        [Fact]
+        public void The_Ui_Discovers_Front_Ends_Rather_Than_Referencing_Them()
+        {
+            // "OpenVSA" is the shell: OpenVSA.Ui builds to OpenVSA.exe. It is L5, so REQ-ARC-001
+            // applies to it as much as to the analysis layers - and it is the layer most tempted
+            // to reference the simulator, because offering the simulator is its job. The escape
+            // is FrontEndRegistry: discovery at run time, no reference at compile time.
+            //
+            // This asserts the shape of the solution, not just the absence: the shell must know
+            // the HAL interface assembly, because that is what it discovers front ends through.
+            var referenced = Assembly.Load("OpenVSA")
+                .GetReferencedAssemblies()
+                .Select(a => a.Name)
+                .ToArray();
+
+            Assert.Contains("OpenVSA.Hal", referenced);
+
+            foreach (string forbidden in ForbiddenTransportAssemblies)
+            {
+                Assert.DoesNotContain(forbidden, referenced);
+            }
         }
 
         [Fact]

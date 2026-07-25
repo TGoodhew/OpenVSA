@@ -19,7 +19,7 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File" />
             <MenuItem Header="_Edit" />
-            <MenuItem Header="_Hardware" />
+            <MenuItem x:Name="HardwareMenu" Header="_Hardware" />
             <MenuItem Header="_Acquisition" />
             <MenuItem Header="Ana_lysis" />
             <MenuItem Header="_Trace" />
@@ -39,11 +39,37 @@
             rate / duty cycle (REQ-NFR-027) to the reference product's status bar contents.
         -->
         <StatusBar DockPanel.Dock="Bottom">
-            <StatusBarItem Content="Ready" />
+            <StatusBarItem x:Name="StatusText" Content="Ready" />
         </StatusBar>
 
-        <!-- Document area. The plot surface and hot-spot framework land here in Phase 0. -->
-        <Grid />
+        <!--
+            Document area. The plot surface and hot-spot framework land here in Phase 0; until
+            then it reports what the front-end registry found, which is the visible half of
+            REQ-NFR-032 - the application starts with no hardware and says what is available
+            and what is not, rather than failing or silently offering nothing.
+        -->
+        <ScrollViewer>
+            <StackPanel Margin="16">
+                <TextBlock x:Name="DiscoveryHeading" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <ItemsControl x:Name="ProviderList" Margin="0,0,0,16">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Margin="0,2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="FailureHeading" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <ItemsControl x:Name="FailureList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock x:Name="CapabilitiesText" Margin="0,16,0,0" TextWrapping="Wrap"
+                           FontFamily="Consolas" />
+            </StackPanel>
+        </ScrollViewer>
 
     </DockPanel>
 </Window>
