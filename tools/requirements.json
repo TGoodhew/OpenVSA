@@ -1,0 +1,3231 @@
+[
+ {
+  "id": "REQ-ARC-001",
+  "area": "ARC",
+  "num": "001",
+  "priority": "P0",
+  "title": "Strict acquisition/analysis separation",
+  "body": "**`REQ-ARC-001` (P0) — Strict acquisition/analysis separation.**\nLayers L3 and above shall have no compile-time reference to any assembly in L0/L1 other\nthan the HAL interface assembly. The DSP and measurement layers shall consume only\n`IqBlock` values (§7.1) and shall be incapable of distinguishing a live instrument from a\nfile or simulator.\n**AC:** The solution builds with `OpenVSA.Hal.Visa`, `.File` and `.Sim` removed from the\nbuild, substituting a single stub front end; all DSP and measurement unit tests pass\nunchanged. A static analysis rule (`NDepend` or a custom Roslyn analyser) fails the build on\nany L3+ → L0/L1 reference.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 299
+ },
+ {
+  "id": "REQ-ARC-002",
+  "area": "ARC",
+  "num": "002",
+  "priority": "P0",
+  "title": "Front-end interchangeability at runtime",
+  "body": "**`REQ-ARC-002` (P0) — Front-end interchangeability at runtime.**\nThe active front end shall be selectable at runtime without restarting the application, and\na measurement configuration shall survive a front-end change wherever the new front end\ncan satisfy its parameters.\n**AC:** With a spectrum and a demod measurement configured and running against the\nsimulator, switching to file playback and then to the E4406A retains measurement setup,\ntrace layout, markers and limit lines; only parameters the new source cannot honour are\ncoerced, and each coercion raises a user-visible event-log entry.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 309
+ },
+ {
+  "id": "REQ-ARC-003",
+  "area": "ARC",
+  "num": "003",
+  "priority": "P1",
+  "title": "Personalities are plug-ins, not core code",
+  "body": "**`REQ-ARC-003` (P1) — Personalities are plug-ins, not core code.**\nStandard-specific measurements shall be delivered as discoverable plug-in assemblies\nimplementing `IMeasurementPersonality` (§12.1). No personality shall require modification\nof L2–L4 code to be added.\n**AC:** A new personality assembly dropped into `Personalities\\` is discovered on next\nlaunch, appears in the measurement-type selector, and runs — with no rebuild of the host.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 318
+ },
+ {
+  "id": "REQ-NFR-001",
+  "area": "NFR",
+  "num": "001",
+  "priority": "P0",
+  "title": "x64 only, large-object support enabled",
+  "body": "**`REQ-NFR-001` (P0) — x64 only, large-object support enabled.**\nThe application shall build and ship as **x64 only** (`<PlatformTarget>x64`), and\n`app.config` shall enable `<gcAllowVeryLargeObjects enabled=\"true\"/>`.\n*Rationale:* a 30-second capture at 25.6 MS/s of `Complex32` is 6.1 GB. 32-bit is\ncategorically unusable, and even on x64 the default 2 GB single-array ceiling is hit by a\nsingle long recording.\n**AC:** `new float[2_000_000_000]` (≈8 GB) succeeds on a machine with adequate RAM; the build\nproduces no AnyCPU or x86 output.\n*Ceiling, and it must be designed around:* even with `gcAllowVeryLargeObjects`, the maximum\nelement count for a non-`byte` array is **2 146 435 071** (0x7FEFFFFF). A single `float[]`\ntherefore holds at most ~1.07 G complex samples (≈8.6 GB). Captures above that **must** be\nchunked across multiple arrays — `REQ-DAT-001`'s `SampleCount` is an `int` for exactly this\nreason, and `REQ-REC-001` recordings must segment.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 381
+ },
+ {
+  "id": "REQ-NFR-002",
+  "area": "NFR",
+  "num": "002",
+  "priority": "P0",
+  "title": "Buffer pooling; bounded steady-state allocation",
+  "body": "**`REQ-NFR-002` (P0) — Buffer pooling; bounded steady-state allocation.**\nAll IQ sample buffers on the acquisition and DSP hot paths shall be rented from a pool and\nreturned deterministically.\n\n> **`ArrayPool<T>.Shared` is not adequate and must not be used for IQ buffers.** Its\n> `MaxBufferSize` is 2²⁰ elements; anything larger is allocated fresh and **silently\n> dropped** on `Return`, which defeats the requirement precisely for the buffers that matter.\n> `ArrayPool<T>.Create(maxArrayLength, maxArraysPerBucket)` is itself capped at 2³⁰.\n> OpenVSA shall therefore implement a **custom slab pool with an explicit maximum array\n> length**, plus a separate strategy for buffers above that cap (`GC.AllocateArray` with\n> `pinned:true` does not exist on 4.7.2 — use a manually-managed native slab via\n> `Marshal.AllocHGlobal`, or accept LOH allocation with explicit compaction control).\n\n**AC:** Over a 10-minute continuous simulated-source run at 20 frames/s, **DSP-attributable**\nmanaged allocation is bounded and the DSP pipeline triggers no Gen-2 collections, measured\nwith an allocation profiler attributing by call site. *(Process-wide \"zero Gen-2\" is not a\nrealistic target in a WPF host and shall not be used as the criterion.)*",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 395
+ },
+ {
+  "id": "REQ-NFR-003",
+  "area": "NFR",
+  "num": "003",
+  "priority": "P1",
+  "title": "SIMD-accelerated inner loops, with eyes open",
+  "body": "**`REQ-NFR-003` (P1) — SIMD-accelerated inner loops, with eyes open.**\nNumeric kernels (window multiply, magnitude, power, complex multiply, FIR convolution)\nshall use `System.Numerics.Vector<T>` where profiling shows benefit.\n\n> **What .NET Framework 4.7.2 does *not* give you, and it matters here.**\n> `Span<T>` from the `System.Memory` package is the **portable (\"slow\") span** — there is no\n> `ByReference<T>` JIT intrinsic and bounds checks are not elided, so `Span<T>` indexing in a\n> hot loop can be *slower* than raw `float[]` indexing. Also absent: `System.Runtime.Intrinsics`\n> / `Vector128<T>`/`Vector256<T>` (no control over instruction selection), `MathF` (every\n> `float` scalar op widens to `double` and back), `Math.FusedMultiplyAdd`, and `BitOperations`.\n> `Vector<T>.Count` is not guaranteed to be 8 for `float` on this runtime.\n> **Use `Span<T>` for API shape and safety, raw arrays with local bounds hoisting for hot loops.**\n\n**AC:** Window-multiply and magnitude kernels demonstrate ≥2.5× throughput over the scalar\nreference on the target machine, measured by BenchmarkDotNet — **or**, where\n`Vector<float>.Count == 4` on the target runtime, a documented lower factor with the measured\nvalue recorded and a native-kernel fallback raised as a decision item.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 413
+ },
+ {
+  "id": "REQ-NFR-004",
+  "area": "NFR",
+  "num": "004",
+  "priority": "P0",
+  "title": "FFT implementation choice",
+  "body": "**`REQ-NFR-004` (P0) — FFT implementation choice.** **[DESIGN CHOICE]**\nThe FFT shall sit behind an `IFftProvider` interface with at least two implementations: a\nfully managed default, and an optional native provider.\n*Rationale and licensing:* FFTW is **GPL** unless a commercial licence is purchased — it must\nnot be linked into a closed-source product without that licence. Intel oneMKL and IPP, by\ncontrast, have been free to use and redistribute under the **Intel Simplified Software\nLicence** since the oneAPI transition (2020) and are viable native options. A managed default\n(Stockham or split-radix, or Math.NET Numerics) avoids the question entirely at some\nperformance cost. The interface makes the choice deployment-time, not design-time.",
+  "phase": 0,
+  "evidence": [
+   "design-choice"
+  ],
+  "has_ac": false,
+  "line": 431
+ },
+ {
+  "id": "REQ-NFR-004a",
+  "area": "NFR",
+  "num": "004a",
+  "priority": "P1",
+  "title": "FFT precision",
+  "body": "**`REQ-NFR-004a` (P1) — FFT precision.** The reference provider shall be **double\nprecision**; a single-precision provider may be offered for throughput.\n**AC:** Double provider satisfies Parseval to 1e-12 relative on a 1 M-point transform; single\nprovider to 1e-5. Cross-provider agreement is asserted at the tolerance of the *less* precise\nprovider, never at 1e-6 for a float32 path (accumulated float32 error at 2²⁰ points is\nalready ≈5e-7). Provider selection is configuration-driven; the shipped default carries no\ncopyleft obligation.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 441
+ },
+ {
+  "id": "REQ-NFR-005",
+  "area": "NFR",
+  "num": "005",
+  "priority": "P0",
+  "title": "WPF rendering strategy for large traces",
+  "body": "**`REQ-NFR-005` (P0) — WPF rendering strategy for large traces.**\nTrace rendering shall **not** use WPF `Polyline`/`Path` elements with per-point geometry\nabove ~2 000 points. Permitted strategies, by point count:\n\n| Points | Strategy |\n|---|---|\n| ≤ 2 000 | `Polyline`/`Path` acceptable |\n| ≤ ~20 000 | `DrawingVisual` + `StreamGeometry` |\n| > ~20 000 | `WriteableBitmap` + software rasteriser, **or** `D3DImage` + shared-surface interop |\n\n*Rationale, stated precisely because the usual folk explanation is wrong:* the cost at high\npoint counts is **MilCore's anti-aliased geometry tessellation on the render thread, plus\nper-`Point` managed→native marshalling** — not the visual tree as such. `StreamGeometry`\ninside a `DrawingVisual` removes the per-*element* overhead but goes through the **same\ntessellator**, so it does **not** scale to 500 k points and is not on its own a solution for\n`REQ-NFR-021`.\n\n*Interop caveat that will otherwise be discovered late:* `D3DImage` accepts only an\n`IDirect3DSurface9` (D3D9Ex). A Direct2D 1.1 / D3D11 back end therefore requires a\nshared-surface bridge (`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture`\nopened shared), and `D3DImage` degrades to software rendering under RDP or without WDDM.\nThis is the single largest technical risk in using WPF for this application (§19, RISK-03).",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 449
+ },
+ {
+  "id": "REQ-NFR-006",
+  "area": "NFR",
+  "num": "006",
+  "priority": "P0",
+  "title": "Pixel-column decimation",
+  "body": "**`REQ-NFR-006` (P0) — Pixel-column decimation.** Traces with more points than available\nhorizontal pixels shall be reduced by **min/max envelope decimation per pixel column**\n(retaining both extrema per column), never by naive point-skipping.\n*Rationale:* skipping points hides narrow spectral peaks and transients — the exact\nfeatures an analyser exists to reveal.\n**AC:** A synthetic spectrum containing a single one-bin −60 dBc spur, rendered at 800 px\nwidth from 524 288 points, visibly displays the spur at its correct amplitude; a\npoint-skipping implementation demonstrably does not.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 471
+ },
+ {
+  "id": "REQ-NFR-007",
+  "area": "NFR",
+  "num": "007",
+  "priority": "P1",
+  "title": "Per-monitor DPI awareness (V1)",
+  "body": "**`REQ-NFR-007` (P1) — Per-monitor DPI awareness (V1).**\nThe application shall declare **per-monitor DPI awareness V1**, which WPF supports from .NET\nFramework 4.6.2 via `app.manifest` plus the\n`Switch.System.Windows.DoNotScaleForDpiChanges=false` configuration switch.\n\n> **Do not specify PerMonitorV2 on this stack.** PMv2 is a Windows 10 1703+ awareness context\n> whose behaviours (non-client-area scaling, child-HWND `WM_DPICHANGED` propagation, dialog\n> scaling) WPF on .NET Framework does not implement — full PMv2 support arrived with .NET\n> Core 3.0. This interacts directly with `REQ-NFR-005`: an `HwndHost`/`D3DImage` plot surface\n> will **not** receive child-window DPI-change notifications and must be recreated on DPI\n> change. Budget for that.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 480
+ },
+ {
+  "id": "REQ-NFR-007a",
+  "area": "NFR",
+  "num": "007a",
+  "priority": "P2",
+  "title": "Window scale factor",
+  "body": "**`REQ-NFR-007a` (P2) — Window scale factor.** Independently of monitor DPI, a user-settable\ncontent scale factor over the range **0.8 to 2.0, default 1.0**, shall be provided (the\nreference product exposes exactly this, bound to Ctrl+`+` / Ctrl+`-`). **[V]**\n**AC:** Dragging the window between a 100 % and a 200 % display re-renders crisply without\nrestart; trace text stays legible and geometry correct; the plot surface is recreated cleanly\non DPI change with no leak.",
+  "phase": 0,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 492
+ },
+ {
+  "id": "REQ-VISA-001",
+  "area": "VISA",
+  "num": "001",
+  "priority": "P0",
+  "title": "Bind to Ivi.Visa only, never to a vendor assembly",
+  "body": "**`REQ-VISA-001` (P0) — Bind to `Ivi.Visa` only, never to a vendor assembly.**\n`OpenVSA.Hal.Visa` shall reference **`Ivi.Visa.dll` alone** — the IVI Foundation **VISA.NET\nShared Components**, installed by NI-VISA and by Keysight IO Libraries alike — and shall open\nevery session through **`Ivi.Visa.GlobalResourceManager`**, letting the shared components\ndispatch to whichever provider is registered. Direct references to\n`NationalInstruments.Visa.dll` or `Keysight.Visa.dll` are **prohibited**. The VISA-COM interop\nlayer shall not be used on new code paths.\n\n*Rationale:* referencing `NationalInstruments.Visa.dll` and its `ResourceManager` type\nhard-binds the binary to NI-VISA and makes `REQ-VISA-002` unachievable — this is the most\ncommon way vendor neutrality is lost in practice. `Ivi.Visa.dll` is authored by the IVI\nFoundation, not by NI. VISA-COM additionally adds marshalling cost and an apartment-threading\nhazard in a heavily multithreaded host.\n\n**AC:** A `VisaSession` opens `GPIB0::17::INSTR` via `GlobalResourceManager`, performs\n`*IDN?`, and returns the E4406A identification string. A dependency scan of the shipped\nbinaries shows `Ivi.Visa` and no vendor VISA assembly, and no `Interop.VisaComLib`.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 501
+ },
+ {
+  "id": "REQ-VISA-002",
+  "area": "VISA",
+  "num": "002",
+  "priority": "P1",
+  "title": "Vendor-neutral operation",
+  "body": "**`REQ-VISA-002` (P1) — Vendor-neutral operation.**\nThe identical binary shall function against NI-VISA and against any other IVI-conformant\nVISA.NET provider.\n*Practical realities to design for:* vendor VISA.NET assemblies are strong-named and\nversion-locked per release, so **binding redirects are mandatory** in `app.config`; Keysight\nIO Libraries gained VISA.NET provider support comparatively late (≈17.x/18.x), so older\ninstallations may not qualify; and **side-by-side NI + Keysight VISA.NET installs are a known\nconflict source**, so an explicit provider-selection setting shall be exposed rather than\nrelying on registration order. **[U]** — cross-vendor operation is an untested assumption\nhere and carries an open question (§20, Q13).\n**AC:** The application connects to the E4406A on an NI-VISA machine and on a Keysight IO\nLibraries machine using one binary, or the failure mode is documented and the provider\nselector demonstrated.",
+  "phase": 3,
+  "evidence": [
+   "unverified"
+  ],
+  "has_ac": true,
+  "line": 519
+ },
+ {
+  "id": "REQ-VISA-003",
+  "area": "VISA",
+  "num": "003",
+  "priority": "P1",
+  "title": "All VISA calls off the UI thread",
+  "body": "**`REQ-VISA-003` (P1) — All VISA calls off the UI thread.**\nNo VISA operation shall execute on the WPF dispatcher thread. VISA sessions shall be\nconfined to a dedicated instrument thread or an affinitised task scheduler; sessions shall\nnot be shared concurrently across threads without explicit serialisation.\n**AC:** A deliberate 30-second VISA timeout leaves the UI fully responsive, with an active\nprogress indication and a working Abort control.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 533
+ },
+ {
+  "id": "REQ-VISA-004",
+  "area": "VISA",
+  "num": "004",
+  "priority": "P1",
+  "title": "Binary block transfer",
+  "body": "**`REQ-VISA-004` (P1) — Binary block transfer.**\nBulk trace/IQ transfers shall use **IEEE 488.2 definite-length arbitrary block responses**\n(`#<nd><len><payload>`, §8.7.9), with the data format selected by the **SCPI-99** commands\n`FORMat:DATA REAL,32` and `FORMat:BORDer`, never ASCII.\n*Rationale:* ASCII carries roughly 16–18 bytes per value against 4, so binary is about 4–5×\nfaster and far cheaper to parse. *(Note: ASCII at 8+ significant digits actually carries\n**more** precision than `REAL,32` — throughput and parse cost are the reasons to prefer\nbinary, not accuracy.)*",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 540
+ },
+ {
+  "id": "REQ-VISA-005",
+  "area": "VISA",
+  "num": "005",
+  "priority": "P0",
+  "title": "Termination-character handling for binary reads",
+  "body": "**`REQ-VISA-005` (P0) — Termination-character handling for binary reads.**\nRead termination-character detection shall be **disabled**\n(`MessageBasedSession.TerminationCharacterEnabled = false`) for the duration of any binary\nblock read.\n*Rationale:* a 0x0A byte occurring inside a float payload will otherwise truncate the read.\nThis is the classic VISA binary-transfer defect and it presents as intermittent short reads\nthat look like instrument faults.\nThe reader shall additionally handle `#0` indefinite-length blocks and respect the 9-digit\n(999 999 999-byte) definite-length ceiling, chunking above it.\n**AC:** Measured transfer of a fixed record is ≥4× faster in binary than ASCII and agrees\nnumerically to float32 precision; a synthetic payload containing embedded 0x0A bytes reads\nback complete and byte-exact.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 549
+ },
+ {
+  "id": "REQ-NFR-008",
+  "area": "NFR",
+  "num": "008",
+  "priority": "P2",
+  "title": "Every third-party dependency shall be recorded in a",
+  "body": "**`REQ-NFR-008` (P2)** — Every third-party dependency shall be recorded in a\n`DEPENDENCIES.md` with its licence and the justification for its use. Copyleft\n(GPL/LGPL-static) dependencies shall not be introduced into shipped binaries without\nwritten approval.\n*Specifically flagged:* FFTW (GPL), any GPL HDF5 tooling, and MATLAB-file libraries with\nrestrictive terms.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 564
+ },
+ {
+  "id": "REQ-NFR-010",
+  "area": "NFR",
+  "num": "010",
+  "priority": "P0",
+  "title": "Defined thread topology",
+  "body": "**`REQ-NFR-010` (P0) — Defined thread topology.**\n\n| Thread / scheduler | Role | Constraints |\n|---|---|---|\n| **UI (dispatcher)** | WPF rendering, input, view-model updates | Never performs I/O or DSP. No blocking wait > 16 ms. |\n| **Instrument thread(s)** | One per open VISA session; arm, trigger-wait, transfer | Owns the session exclusively. |\n| **Acquisition pump** | Assembles `IqBlock`s, applies metadata, feeds pipeline & recorder | Bounded queue; drops with an explicit counter on overrun. |\n| **DSP pool** | TPL Dataflow blocks / `Parallel.For` over frames and traces | Bounded parallelism = `Environment.ProcessorCount - 1`. |\n| **Render marshal** | Converts completed trace data to render primitives | Produces immutable snapshots for the UI thread. |\n\n**AC:** A thread-affinity assertion helper (`Assert.OnUiThread` / `Assert.NotOnUiThread`) is\npresent at every layer boundary and is active in Debug builds; the test suite includes a\nrun that fails on any violation.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 577
+ },
+ {
+  "id": "REQ-NFR-011",
+  "area": "NFR",
+  "num": "011",
+  "priority": "P0",
+  "title": "Immutable snapshot hand-off to UI",
+  "body": "**`REQ-NFR-011` (P0) — Immutable snapshot hand-off to UI.**\nTrace results crossing into the UI thread shall be immutable snapshots. No UI code shall\nread a buffer that a DSP thread may concurrently mutate.\n**AC:** Under a 30-minute soak at maximum update rate with the UI actively resized and\nmarkers dragged, zero torn-frame artefacts and zero data races are reported by a\nconcurrency-checked build.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 591
+ },
+ {
+  "id": "REQ-NFR-012",
+  "area": "NFR",
+  "num": "012",
+  "priority": "P1",
+  "title": "Back-pressure, not unbounded buffering",
+  "body": "**`REQ-NFR-012` (P1) — Back-pressure, not unbounded buffering.**\nWhen analysis cannot keep pace with acquisition, the pipeline shall apply back-pressure or\ndeliberately drop frames, maintaining a visible dropped-frame counter. Unbounded queue\ngrowth is prohibited.\n**AC:** With an artificially slowed DSP stage, memory remains bounded and the UI reports a\nmonotonically increasing dropped-frame count.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 598
+ },
+ {
+  "id": "REQ-NFR-020",
+  "area": "NFR",
+  "num": "020",
+  "priority": "P1",
+  "title": "Spectrum, 8 192-point FFT, single trace, rendered: ≥60 updates/s sustained",
+  "body": "Spectrum, 8 192-point FFT, single trace, **rendered**: ≥60 updates/s sustained",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 612
+ },
+ {
+  "id": "REQ-NFR-021",
+  "area": "NFR",
+  "num": "021",
+  "priority": "P1",
+  "title": "Spectrum, 1 048 576-point FFT, rendered with min/max decimation: ≥10 updates/s",
+  "body": "Spectrum, 1 048 576-point FFT, **rendered with min/max decimation**: ≥10 updates/s",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 613
+ },
+ {
+  "id": "REQ-NFR-022",
+  "area": "NFR",
+  "num": "022",
+  "priority": "P1",
+  "title": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: complete analysis ≤50…",
+  "body": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: complete analysis ≤50 ms",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 614
+ },
+ {
+  "id": "REQ-NFR-023",
+  "area": "NFR",
+  "num": "023",
+  "priority": "P2",
+  "title": "Flexible demod, 1024-QAM, 4 000 symbols, equaliser on (31 symbols): ≤400 ms",
+  "body": "Flexible demod, 1024-QAM, 4 000 symbols, equaliser on (31 symbols): ≤400 ms",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 615
+ },
+ {
+  "id": "REQ-NFR-024",
+  "area": "NFR",
+  "num": "024",
+  "priority": "P1",
+  "title": "20 simultaneous trace windows updating: aggregate ≥10 updates/s, UI input latency <100 ms",
+  "body": "20 simultaneous trace windows updating: aggregate ≥10 updates/s, UI input latency <100 ms",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 616
+ },
+ {
+  "id": "REQ-NFR-025",
+  "area": "NFR",
+  "num": "025",
+  "priority": "P2",
+  "title": "Cold start to first trace displayed (simulated source): ≤3 s",
+  "body": "Cold start to first trace displayed (simulated source): ≤3 s",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 617
+ },
+ {
+  "id": "REQ-NFR-026",
+  "area": "NFR",
+  "num": "026",
+  "priority": "P2",
+  "title": "Playback of a 4 GB recording: sustained ≥1× real-time at the recorded sample rate",
+  "body": "Playback of a 4 GB recording: sustained ≥1× real-time at the recorded sample rate",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 618
+ },
+ {
+  "id": "REQ-NFR-027",
+  "area": "NFR",
+  "num": "027",
+  "priority": "P0",
+  "title": "Honest throughput expectations for GPIB front ends",
+  "body": "**`REQ-NFR-027` (P0) — Honest throughput expectations for GPIB front ends.**\nThe UI shall display the achieved transfer rate and the resulting maximum sustainable\nduty cycle for the active front end.\n*Rationale, and this must be understood before the E4406A driver is designed:* IEEE-488.1\nsustains roughly 1 MB/s and HS488 up to about 8 MB/s. A `Complex32` sample is 8 bytes, so even\nat an optimistic 8 MB/s a GPIB link carries only about 1 MS/s. **The E4406A is a 1996-era\ninstrument and does not support HS488** — realistic sustained throughput on this bench is on\nthe order of **100–300 kB/s**, i.e. roughly 12–40 kS/s of complex samples. Quoting the HS488\nfigure for this instrument would flatter the link by an order of magnitude or more.\n\nConsequently the E4406A front end is in practice a **block capture** device: arm, capture into\ninstrument memory, transfer, analyse, repeat, with unavoidable dead time between blocks.\n\n*But state the rule, not a blanket prohibition:* gap-free streaming is achievable precisely\nwhen $8 F_s <$ measured link throughput — which at genuinely narrow spans it can be.\n`SupportsGapFreeStreaming` shall therefore be **computed per acquisition plan from the\nmeasured transfer rate**, not hard-coded `false` for all GPIB front ends.\n**AC:** The status bar shows measured bytes/s and computed duty cycle; the capability is\nevaluated per plan and reported; no UI affordance implies gap-free capture when the computed\nvalue is false; the E4406A driver's advertised throughput reflects measurement, not the HS488\nheadline figure.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 631
+ },
+ {
+  "id": "REQ-DAT-001",
+  "area": "DAT",
+  "num": "001",
+  "priority": "P0",
+  "title": "IqBlock shall be the sole data type crossing the HAL boundary",
+  "body": "**`REQ-DAT-001` (P0)** — `IqBlock` shall be the sole data type crossing the HAL boundary.\nEvery field above is mandatory for every front end; a front end that cannot supply a value\nshall supply a documented, explicitly-flagged default rather than a silent zero.\n**AC:** A conformance suite runs against every front-end implementation and asserts metadata\ncompleteness and self-consistency: $F_s > 0$; **`Samples.Length ≥ 2 × SampleCount`** (a pooled\narray is `Rent`ed at *at least* the requested size, so exact equality must **not** be\nasserted — only the first `2 × SampleCount` elements are meaningful); centre frequency within\nthe front end's declared range.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 682
+ },
+ {
+  "id": "REQ-DAT-001a",
+  "area": "DAT",
+  "num": "001a",
+  "priority": "P1",
+  "title": "Buffer ownership and use-after-dispose",
+  "body": "**`REQ-DAT-001a` (P1) — Buffer ownership and use-after-dispose.**\nBecause `Samples` is a pooled array exposed publicly on an `IDisposable`, use-after-`Dispose`\nwould silently read another consumer's live data. `IqBlock` shall therefore either (a) expose\nsamples only through a method that throws `ObjectDisposedException` after disposal, or (b) be\nhanded to the DSP layer exclusively as an immutable, ref-counted view. Raw public array\nexposure combined with pooling is **prohibited** — it makes `REQ-NFR-011` unenforceable.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 691
+ },
+ {
+  "id": "REQ-DAT-002",
+  "area": "DAT",
+  "num": "002",
+  "priority": "P1",
+  "title": "Trigger-correction fidelity flag",
+  "body": "**`REQ-DAT-002` (P1) — Trigger-correction fidelity flag.**\n`TriggerCorrectionsApplied` shall record whether trigger delay/phase corrections have been\napplied to the samples.\n*Rationale:* the reference product documents that trigger corrections are **not** applied to\nexported data except in its SDF (Fast) format — a real fidelity trap. **[V]** OpenVSA shall\ntrack this explicitly and propagate it into exported files rather than silently losing it.",
+  "phase": 0,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 698
+ },
+ {
+  "id": "REQ-DAT-003",
+  "area": "DAT",
+  "num": "003",
+  "priority": "P2",
+  "title": "Complex32 value type",
+  "body": "**`REQ-DAT-003` (P2) — `Complex32` value type.** A 8-byte `readonly struct Complex32`\nwith SIMD-friendly layout shall be provided for interpreted access to `Samples`, but bulk\nDSP shall operate on the raw interleaved `float[]` to permit vectorisation.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 705
+ },
+ {
+  "id": "REQ-HAL-001",
+  "area": "HAL",
+  "num": "001",
+  "priority": "P0",
+  "title": "Negotiate-then-configure",
+  "body": "**`REQ-HAL-001` (P0) — Negotiate-then-configure.**\nEvery front end shall implement `Negotiate` as a **pure** function returning an\n`AcquisitionPlan` that states, for each requested parameter, the honoured value and — where\ncoerced — the reason. Configuration shall never silently alter a user's request.\n**AC:** Requesting a 50 MHz span from a front end capable of 10 MHz returns a plan with\n`Span = 10 MHz`, `Coerced = true`, `Reason = \"exceeds front-end maximum span\"`; the UI\nsurfaces the coercion; no hardware command is sent during `Negotiate`.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 768
+ },
+ {
+  "id": "REQ-HAL-002",
+  "area": "HAL",
+  "num": "002",
+  "priority": "P0",
+  "title": "Capability-driven UI",
+  "body": "**`REQ-HAL-002` (P0) — Capability-driven UI.**\nThe UI shall enable, disable and range-limit controls purely from `IFrontEndCapabilities`.\nNo UI code shall contain instrument-specific conditionals.\n**AC:** A code search for instrument model names (`E4406`, etc.) in `OpenVSA.Ui` returns no\nmatches; switching front ends visibly re-ranges the affected controls.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 776
+ },
+ {
+  "id": "REQ-HAL-003",
+  "area": "HAL",
+  "num": "003",
+  "priority": "P1",
+  "title": "Front-end discovery and registration",
+  "body": "**`REQ-HAL-003` (P1) — Front-end discovery and registration.**\nFront ends shall be discovered from plug-in assemblies at start-up via a\n`[FrontEndProvider]` attribute, and VISA resources shall be enumerable so users can pick a\ndiscovered instrument.\n**AC:** The connection dialog lists all VISA resources returned by the resource manager,\nidentifies each with `*IDN?` where safe, and marks those for which a driver exists.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 782
+ },
+ {
+  "id": "REQ-DAT-010",
+  "area": "DAT",
+  "num": "010",
+  "priority": "P1",
+  "title": "Following the reference product's model, OpenVSA shall support",
+  "body": "**`REQ-DAT-010` (P1)** — Following the reference product's model, OpenVSA shall support\nmultiple named **measurement contexts** (the reference calls these \"Analyzer\nConfigurations\"), each holding a complete measurement setup, and shall present them as\nfirst-class, addressable, nameable objects in the UI, in saved states and in the automation\nAPI. **[V]**\n**AC:** Two contexts (e.g. \"Spectrum\" and \"QPSK demod\") run concurrently against one\ncapture session, each with its own trace windows and markers; both are saved and recalled\nby name; a state file whose context names do not match existing contexts raises a specific,\nactionable error rather than partially applying.",
+  "phase": 0,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 791
+ },
+ {
+  "id": "REQ-TRC-001",
+  "area": "TRC",
+  "num": "001",
+  "priority": "P0",
+  "title": "Orthogonal data and format",
+  "body": "**`REQ-TRC-001` (P0) — Orthogonal data and format.**\n`Data` and `Format` shall be independently settable. Changing `Format` shall **not** trigger\nre-acquisition or re-computation of the underlying data.\n**AC:** With acquisition paused on a held block, cycling a trace through every valid format\nproduces correct displays with zero calls into L1/L2 and zero recomputation of the FFT.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 818
+ },
+ {
+  "id": "REQ-TRC-001a",
+  "area": "TRC",
+  "num": "001a",
+  "priority": "P0",
+  "title": "Accumulators are a third axis, not formats",
+  "body": "**`REQ-TRC-001a` (P0) — Accumulators are a third axis, not formats.**\n**Spectrogram, Digital Persistence and Cumulative History are *not* trace formats.** They\naccumulate across many acquisitions, so they cannot satisfy `REQ-TRC-001`'s \"no recomputation\non format change\". They shall be modelled as a distinct **`TraceAccumulator`** property\n(`None | Spectrogram | DigitalPersistence | CumulativeHistory`), orthogonal to both Data and\nFormat. This matches the reference product, which groups exactly these three as \"3D Map\"\nmodes on their own toolbar. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 824
+ },
+ {
+  "id": "REQ-TRC-002",
+  "area": "TRC",
+  "num": "002",
+  "priority": "P1",
+  "title": "Validity matrix over (Data × Averaging × Format)",
+  "body": "**`REQ-TRC-002` (P1) — Validity matrix over (Data × Averaging × Format).**\nValid formats shall be declared in metadata and enforced, and validity shall be a function of\nthe **averaging type as well as the data source**. In particular an RMS-averaged Spectrum has\nno phase, so Wrapped Phase, Unwrapped Phase, Group Delay and IQ are invalid for it, whereas\nthey are valid for the same data source under coherent (Time) averaging or no averaging.\nInvalid combinations shall be unselectable rather than erroring after the fact.\n**AC:** Switching a phase-displaying trace from Time to RMS averaging disables the phase\nformats with an explanatory tooltip rather than displaying meaningless data.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 832
+ },
+ {
+  "id": "REQ-TRC-003",
+  "area": "TRC",
+  "num": "003",
+  "priority": "P1",
+  "title": "Composition order is defined once",
+  "body": "**`REQ-TRC-003` (P1) — Composition order is defined once.**\nThe order in which gating, windowing, FFT, averaging, accumulation and format conversion are\napplied shall be specified in one place and implemented in exactly that order, and the legal\ncombinations shall be enumerated.\n*Rationale:* each of these is individually specified elsewhere in this document; without a\nstated composition order, two developers will reasonably implement gate-then-average and\naverage-then-gate and both will believe they are correct.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 841
+ },
+ {
+  "id": "REQ-ACQ-001",
+  "area": "ACQ",
+  "num": "001",
+  "priority": "P0",
+  "title": "Span/sample-rate relationships",
+  "body": "**`REQ-ACQ-001` (P0) — Span/sample-rate relationships.**\nThe acquisition planner shall implement the relationships of §2.2, **with the path-dependent\nFFT-size factor matching the path-dependent sample-rate factor**:\n\n| Path | $F_s$ | $N_{\\text{FFT}}$ | $T_{\\max}$ |\n|---|---|---|---|\n| Complex zoom / IF | $1.28\\,\\text{Span}$ | $1.28\\,(N_f-1)$ | $(N_f-1)/\\text{Span}$ |\n| Real baseband | $2.56\\,\\text{Span}$ | $2.56\\,(N_f-1)$ | $(N_f-1)/\\text{Span}$ |\n\nUsing the $1.28$ FFT factor on the baseband path breaks the $T_{\\max}$ identity and is a\ndefect, not a simplification.\n**AC:** Span = 10 MHz, $N_f = 801$, zoom → $F_s$ = 12.8 MHz, $N_{\\text{FFT}}$ = 1024,\n$T_{\\max}$ = 80 µs (matching Keysight's worked example exactly). The same settings on the\nbaseband path → $F_s$ = 25.6 MHz, $N_{\\text{FFT}}$ = 2048, $T_{\\max}$ = 80 µs — the identity\nholding on **both** paths is the test.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 855
+ },
+ {
+  "id": "REQ-ACQ-002",
+  "area": "ACQ",
+  "num": "002",
+  "priority": "P1",
+  "title": "Main Time Length clamping with actionable guidance",
+  "body": "**`REQ-ACQ-002` (P1) — Main Time Length clamping with actionable guidance.**\nRequested Main Time Length exceeding the span/points limit shall be clamped, and the UI\nshall state the specific remedy — reduce span and/or increase frequency points — rather\nthan reporting a bare error. **[V]**\n**AC:** Requesting 1 ms at a setting permitting 80 µs clamps to 80 µs and displays a message\nnaming both remedies with the numeric values that would be required.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 871
+ },
+ {
+  "id": "REQ-ACQ-003",
+  "area": "ACQ",
+  "num": "003",
+  "priority": "P1",
+  "title": "Overlap processing",
+  "body": "**`REQ-ACQ-003` (P1) — Overlap processing.**\nFrame extraction shall support overlap from **0 % to 99.99 %**, with independent maxima for\naveraging-on and averaging-off, matching the reference product. **[V]** Frame advance shall\nbe $\\lfloor (1-\\text{overlap}) \\cdot N_{\\text{rec}} \\rfloor$, minimum 1 sample, where\n$N_{\\text{rec}}$ is the **analysed time-record length in samples** — which under time gating\n(`REQ-DSP-050`) and under the RBW/time coupling is *not* the same as $N_{\\text{FFT}}$.\nDefining advance on $N_{\\text{FFT}}$ gives wrong frame counts whenever the two differ.\n*Rationale to document in help text:* overlap recovers information that window tapering\nwould otherwise weight to zero at frame edges, at the cost of correlated averages — so more\naverages are needed for equivalent variance reduction. **[V]**\n**AC:** At 50 % overlap the frame count from a fixed recording is (within one frame) twice\nthat at 0 %; measured noise-variance reduction per average degrades as predicted.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 878
+ },
+ {
+  "id": "REQ-ACQ-004",
+  "area": "ACQ",
+  "num": "004",
+  "priority": "P2",
+  "title": "Auto-ranging",
+  "body": "**`REQ-ACQ-004` (P2) — Auto-ranging.** Where the front end supports input range control,\nan auto-range function shall adjust reference level to avoid both overload and excessive\nheadroom, with a user-visible indication when it acts.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 891
+ },
+ {
+  "id": "REQ-AMP-001",
+  "area": "AMP",
+  "num": "001",
+  "priority": "P0",
+  "title": "Defined amplitude chain",
+  "body": "**`REQ-AMP-001` (P0) — Defined amplitude chain.**\nThe conversion from raw ADC codes to displayed absolute amplitude shall be specified as a\nsingle documented expression combining `FullScaleVolts`, `ReferenceLevelDbm`, the reference\nimpedance, any front-end gain/attenuation state, window coherent gain (`REQ-DSP-011`), and\nFFT scaling. It shall be stated once and implemented once.\n**AC:** A front end reporting a known full-scale, presented with a CW tone of known absolute\npower, yields the correct dBm reading under every window, every span, and every FFT size, to\nwithin 0.05 dB.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 901
+ },
+ {
+  "id": "REQ-AMP-002",
+  "area": "AMP",
+  "num": "002",
+  "priority": "P1",
+  "title": "Units and impedance",
+  "body": "**`REQ-AMP-002` (P1) — Units and impedance.**\nSupported amplitude units: dBm, dBmV, dBµV, dBV, V (peak and RMS), W. Reference impedance\nshall be settable (50 Ω default, 75 Ω supported), and every unit conversion involving power\nshall use it explicitly.\n**AC:** Switching between 50 Ω and 75 Ω changes dBm readings for a fixed voltage by the\nanalytic 1.76 dB.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 910
+ },
+ {
+  "id": "REQ-AMP-003",
+  "area": "AMP",
+  "num": "003",
+  "priority": "P1",
+  "title": "User frequency-response correction",
+  "body": "**`REQ-AMP-003` (P1) — User frequency-response correction.**\nAmplitude/phase correction tables shall be loadable from file (frequency, magnitude dB, phase\ndegrees), interpolated across the analysis span, applied optionally, and shown as the\n\"Correction\" trace data type. Multiple tables shall be combinable (e.g. cable loss plus\nantenna factor).\n**AC:** Applying a correction of known shape to a flat input produces exactly the inverse\nshape in the corrected trace, within interpolation error.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 917
+ },
+ {
+  "id": "REQ-AMP-004",
+  "area": "AMP",
+  "num": "004",
+  "priority": "P2",
+  "title": "De-embedding",
+  "body": "**`REQ-AMP-004` (P2) — De-embedding.** Complex (magnitude and phase) de-embedding of a\nmeasured fixture response.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 925
+ },
+ {
+  "id": "REQ-ACQ-010",
+  "area": "ACQ",
+  "num": "010",
+  "priority": "P1",
+  "title": "Time-stamping",
+  "body": "**`REQ-ACQ-010` (P1) — Time-stamping.**\n`IqBlock.AcquiredUtc` shall be sourced from a monotonic high-resolution clock\n(`Stopwatch.GetTimestamp` disciplined to UTC at session start), **not** from `DateTime.UtcNow`\nalone, whose granularity is ~1–15 ms. The relationship between `AcquiredUtc`,\n`TriggerOffsetSeconds` and the first sample shall be defined explicitly and documented: the\ntimestamp refers to the **first sample of the block**, and the trigger event lies\n`TriggerOffsetSeconds` after it (negative for pre-trigger).\n**AC:** Timestamps across a continuous run advance by exactly `SampleCount / SampleRateHz`\nwithin the front end's clock accuracy; the documented relationship is asserted in tests.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 928
+ },
+ {
+  "id": "REQ-TRG-001",
+  "area": "TRG",
+  "num": "001",
+  "priority": "P0",
+  "title": "Trigger styles",
+  "body": "**`REQ-TRG-001` (P0) — Trigger styles.**\nThe following trigger styles shall be modelled, with availability driven by front-end\ncapability: **Free Run**, **External**, **Channel/IF magnitude level**, **Periodic**, and\n**Frequency Mask Trigger (FMT)**. **[V]** FMT shall be declared unsupported unless the front\nend reports real-time capability.\n**AC:** With the E4406A connected, the trigger selector offers exactly the styles that\ninstrument supports and greys the rest with an explanatory tooltip.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 940
+ },
+ {
+  "id": "REQ-TRG-002",
+  "area": "TRG",
+  "num": "002",
+  "priority": "P0",
+  "title": "Trigger delay including pre-trigger",
+  "body": "**`REQ-TRG-002` (P0) — Trigger delay including pre-trigger.**\nTrigger delay shall accept positive values (wait after trigger) and **negative values\n(pre-trigger)**, the latter served from front-end capture memory where available. **[V]**\n**AC:** With the simulated source generating a burst, a −10 ms delay yields a record whose\nfirst sample precedes the trigger event by 10 ms, verified against the injected burst\nposition to within one sample.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 948
+ },
+ {
+  "id": "REQ-TRG-003",
+  "area": "TRG",
+  "num": "003",
+  "priority": "P1",
+  "title": "Holdoff with three styles",
+  "body": "**`REQ-TRG-003` (P1) — Holdoff with three styles.**\nHoldoff shall implement the reference product's three styles: **Conventional** (fixed\nblanking window after each trigger), **Below Level** (signal must remain below the trigger\nlevel for the whole holdoff before re-arming) and **Above Level** (the mirror case).\nNegative holdoff shall be rejected. **[V]**\n**AC:** Against a simulated pulse train of known period, each style produces the\nanalytically predicted trigger instants; a negative value is rejected at input validation.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 955
+ },
+ {
+  "id": "REQ-E44-001",
+  "area": "E44",
+  "num": "001",
+  "priority": "P0",
+  "title": "Identification and option interrogation",
+  "body": "**`REQ-E44-001` (P0) — Identification and option interrogation.**\nOn connect, the driver shall issue `*IDN?` and `*OPT?`, verify the model is `E4406A`, parse\nthe option list, and expose the installed personalities as capability metadata.\n**AC:** Connecting to GPIB 17 yields model `E4406A`, firmware `A.08.10`, and the decoded\noption set {BAH: GSM, 202/252: EDGE, BAC: cdmaOne, BAF: W-CDMA, B7C: baseband I/Q}.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 965
+ },
+ {
+  "id": "REQ-E44-002",
+  "area": "E44",
+  "num": "002",
+  "priority": "P0",
+  "title": "Basic-mode IQ capture path. [V — verified on the instrument]",
+  "body": "**`REQ-E44-002` (P0) — Basic-mode IQ capture path. [V — verified on the instrument]**\n\nThe driver shall place the instrument in **Basic** mode (`:INSTrument:SELect BASIC`), select\nthe **Waveform** (time-domain) measurement via `:CONFigure:WAVeform`, and retrieve results\nusing the three result suffixes below.\n\n> **Bench-verified 25 July 2026** against the E4406A at GPIB 17, firmware A.08.10, over\n> NI-VISA. Every value in this requirement was measured, not inferred. The instrument was\n> found in Basic mode / Channel Power at 2 GHz and was restored to that state afterwards.\n\n**The three Waveform result suffixes:**\n\n| Query | Returns |\n|---|---|\n| `:FETCh:WAVeform0?` | **Raw interleaved I,Q pairs** — `I₀,Q₀,I₁,Q₁,…`, exactly `2N` values |\n| `:FETCh:WAVeform1?` | **7 scalars** (see below) |\n| `:FETCh:WAVeform2?` | **Power versus time**, one value per sample, in dBm |\n\n`:READ:WAVeform<n>?` behaves identically but arms and acquires first.\n\n**Scalar block returned by `:FETCh:WAVeform1?`**, in order — verified against a real capture:\n\n| # | Quantity | Example |\n|---|---|---|\n| 1 | **Sample interval** $T_s$, seconds | `+7.33333333E-007` |\n| 2 | Mean power over the record, dBm | `-9.06845018E+001` |\n| 3 | Mean power over the burst/gate, dBm | `-9.06845018E+001` |\n| 4 | **Number of samples $N$** | `+15` |\n| 5 | Peak-to-mean ratio, dB | `+3.90391283E+000` |\n| 6 | Maximum point, dBm | `-8.67805890E+001` |\n| 7 | Minimum point, dBm | `-1.09926433E+002` |",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 971
+ },
+ {
+  "id": "REQ-E44-002a",
+  "area": "E44",
+  "num": "002a",
+  "priority": "P0",
+  "title": "I/Q scaling.",
+  "body": "**`REQ-E44-002a` (P0) — I/Q scaling. [V]**\nThe values returned by `:FETCh:WAVeform0?` are **volts, peak-referenced**. Instantaneous power\nis therefore\n\n$$P = \\frac{I^2 + Q^2}{2 R},\\qquad R = 50\\,\\Omega$$\n\n**This was confirmed by reconstruction, not assumption:** computing mean, peak-to-mean, max and\nmin from a raw 15-sample capture reproduced all four of the instrument's own reported scalars\nto three decimal places (mean −90.685 dBm vs −90.6845 reported; peak-to-mean 3.904 vs 3.904;\nmax −86.781 vs −86.781; min −109.926 vs −109.926). Treating the values as RMS volts gives\n−87.674 dBm and is **wrong by 3.01 dB** — exactly the factor-of-two trap this requirement\nexists to prevent.",
+  "phase": 3,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1003
+ },
+ {
+  "id": "REQ-E44-002b",
+  "area": "E44",
+  "num": "002b",
+  "priority": "P0",
+  "title": "Sample rate is quantised, and is set by RBW.",
+  "body": "**`REQ-E44-002b` (P0) — Sample rate is quantised, and is set by RBW. [V]**\n$T_s$ is always an integer multiple of **1/15 MHz ≈ 66.667 ns**, giving a maximum sample rate\nof **7.5 MHz**. Measured values:\n\n| RBW | $T_s$ | $F_s$ | multiple of 66.667 ns |\n|---|---|---|---|\n| 10 kHz | 7.533 µs | 132.7 kHz | 113 |\n| 100 kHz | 733.33 ns | 1.3636 MHz | 11 |\n| 257.5 kHz | 266.67 ns | 3.75 MHz | 4 |\n| 505 kHz | 200 ns | 5.0 MHz | 3 |\n| 752.5 kHz – 1 MHz | 133.33 ns | 7.5 MHz | 2 |\n\nThe driver shall therefore **never assume a requested sample rate is honoured**: set\n`:SENSe:WAVeform:BANDwidth:RESolution`, then **read $T_s$ back from scalar 1** and place that\nvalue in `IqBlock.SampleRateHz`. `REQ-HAL-001`'s negotiate-then-configure contract shall\nreport the coercion.\n*Note this is a different law from the reference product's $F_s = 1.28\\,\\text{Span}$\n(§2.2) — the E4406A's waveform path is RBW-driven with integer decimation, which is precisely\nwhy the HAL negotiates rather than assumes.*",
+  "phase": 3,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1016
+ },
+ {
+  "id": "REQ-E44-002c",
+  "area": "E44",
+  "num": "002c",
+  "priority": "P0",
+  "title": "Record length and the truncation trap.",
+  "body": "**`REQ-E44-002c` (P0) — Record length and the truncation trap. [V]**\n$N = \\text{sweep time}/T_s + 1$ (measured: 20 ms at 7.5 MHz → `+150001`).\nSweep time accepts **1 µs to 100 s**, but capture memory caps the record at\n**950 000 samples** (≈7.6 MB of I/Q). Beyond that the instrument **silently truncates the\nacquisition and continues**, pushing\n\n```\n+22,\"Memory limit caused Data Acquisition to be truncated\"\n```\n\ninto the error queue. Requesting 200 ms at 7.5 MHz returns `N = 950000`, not the 1 500 001\nrequested — with no failed query and no obvious symptom.\n\n**The driver shall poll `:SYSTem:ERRor?` after every acquisition and surface error 22 as a\nfirst-class condition**, and shall independently verify that the returned $N$ matches the\nrequested record length. *This is the single most dangerous behaviour found on the instrument:\na caller that trusts its own sweep-time setting will silently analyse a shorter record than it\nbelieves it has.* Note also that the error queue is **sticky** — issue `*CLS` before an\nacquisition whose error state matters.",
+  "phase": 3,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1036
+ },
+ {
+  "id": "REQ-E44-002d",
+  "area": "E44",
+  "num": "002d",
+  "priority": "P1",
+  "title": "Transfer format. [V for acceptance]",
+  "body": "**`REQ-E44-002d` (P1) — Transfer format. [V for acceptance]**\n`:FORMat:DATA REAL,32` is accepted and reads back as `REAL,+32`; `:FORMat:BORDer` reads back\n`NORM`. Both shall be set explicitly per `REQ-VISA-004`.\n**[U] — throughput unmeasured.** An attempt to measure GPIB transfer rate during the bench\nsession produced identical elapsed times for a 2 001-sample and a 20 003-sample fetch, which\nmeans the measurement harness performed a bounded read rather than draining the response. No\nthroughput figure was obtained, so `REQ-NFR-027`'s 100–300 kB/s estimate for this instrument\nremains an **estimate**. Measure it properly with a real VISA read during Phase 3 — it sets\nthe duty cycle the whole front end operates at.\n\n**AC:** A capture of a known CW tone at a known level returns I/Q whose computed magnitude\nmatches the applied level to within the instrument's amplitude accuracy, and whose frequency\nmatches the offset from centre to within 1 Hz; a deliberately over-long sweep time is detected\nvia both error 22 and the $N$ mismatch, and reported rather than silently accepted.",
+  "phase": 3,
+  "evidence": [
+   "unverified"
+  ],
+  "has_ac": true,
+  "line": 1056
+ },
+ {
+  "id": "REQ-E44-003",
+  "area": "E44",
+  "num": "003",
+  "priority": "P1",
+  "title": "Baseband I/Q input support (Option B7C)",
+  "body": "**`REQ-E44-003` (P1) — Baseband I/Q input support (Option B7C).**\nWhere Option B7C is present, the driver shall expose the front-panel I and Q inputs as an\nalternative input path, supporting `:INPut:IMPedance:IQ`, `:INPut:IMPedance:REFerence`,\n`:INPut:IQ:ALIGn`, `:INPut:OFFSet:I`, `:INPut:OFFSet:Q`,\n`:SENSe:VOLTage:IQ:RANGe:UPPer` and `:SENSe:POWer:IQ:RANGe:UPPer`, and shall set\n`IsBaseband = true` on resulting blocks so the $2.56\\times$ span relationship is applied.\n**AC:** With B7C detected, the baseband path appears as a selectable input; impedance and\nrange commands round-trip; blocks carry `IsBaseband = true`.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1071
+ },
+ {
+  "id": "REQ-E44-004",
+  "area": "E44",
+  "num": "004",
+  "priority": "P2",
+  "title": "B7C alignment and calibration passthrough",
+  "body": "**`REQ-E44-004` (P2) — B7C alignment and calibration passthrough.**\nThe driver shall expose `:CALibration:GIQ`, `:CALibration:IQ:CMR`,\n`:CALibration:IQ:FLATness` and `:CALibration:IQ:OFFSet` as explicit user-initiated\nmaintenance actions, never automatically.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1080
+ },
+ {
+  "id": "REQ-E44-005",
+  "area": "E44",
+  "num": "005",
+  "priority": "P1",
+  "title": "Remote-operation courtesy",
+  "body": "**`REQ-E44-005` (P1) — Remote-operation courtesy.**\nThe driver shall document (and the UI shall display) that front-panel controls are disabled\nduring remote operation, shall provide an explicit **Return to Local** action, and shall\nrestore the instrument's prior mode on disconnect.\n**AC:** After a session against an instrument found in `BASIC` mode, disconnect leaves it in\n`BASIC` mode and in local control.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1085
+ },
+ {
+  "id": "REQ-E44-006",
+  "area": "E44",
+  "num": "006",
+  "priority": "P2",
+  "title": "Screen capture passthrough",
+  "body": "**`REQ-E44-006` (P2) — Screen capture passthrough.**\nThe driver shall optionally retrieve the instrument's own display (HP-GL plot or PCL print\nhardcopy) for inclusion in reports — useful for cross-checking OpenVSA's results against the\ninstrument's native personality measurements.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1092
+ },
+ {
+  "id": "REQ-E44-007",
+  "area": "E44",
+  "num": "007",
+  "priority": "P1",
+  "title": "Cross-validation harness",
+  "body": "**`REQ-E44-007` (P1) — Cross-validation harness.**\nA test harness shall compare OpenVSA's flexible-demod results against the E4406A's own\npersonality measurements for the same signal (W-CDMA via BAF, EDGE via 202/252, cdmaOne via\nBAC).\n*Rationale:* this is the highest-value verification available on this bench — an independent,\nvendor-calibrated reference for EVM and related metrics that no simulator can supply.\n**AC:** For a stable test signal, OpenVSA's RMS EVM agrees with the instrument's reported\nRMS EVM to within 0.5 percentage points, or the discrepancy is analysed and documented.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1097
+ },
+ {
+  "id": "REQ-REC-001",
+  "area": "REC",
+  "num": "001",
+  "priority": "P0",
+  "title": "Native recording format",
+  "body": "**`REQ-REC-001` (P0) — Native recording format.**\nOpenVSA shall define a native container (`.ovsa`) comprising a versioned, self-describing\nheader plus one or more sample arrays. The header shall carry at minimum: format version,\nsample rate, centre frequency, baseband/complex flag, full-scale reference, reference level,\nUTC start timestamp, per-block trigger offsets, trigger-corrections-applied flag, front-end\nidentification, and a free-form user annotation block.\n**AC:** A recording written and re-read reproduces samples bit-exactly and metadata field\nfor field; a file from format version *n* is readable by version *n+1* code.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1108
+ },
+ {
+  "id": "REQ-REC-002",
+  "area": "REC",
+  "num": "002",
+  "priority": "P0",
+  "title": "Record while measuring",
+  "body": "**`REQ-REC-002` (P0) — Record while measuring.**\nRecording shall be possible concurrently with live analysis without degrading the analysis\nupdate rate by more than 10 %.\n**AC:** Measured update rate with recording enabled is within 10 % of the same measurement\nwith recording disabled, at ≥25 MS/s to a local SSD.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1117
+ },
+ {
+  "id": "REQ-REC-003",
+  "area": "REC",
+  "num": "003",
+  "priority": "P1",
+  "title": "Playback as a first-class front end",
+  "body": "**`REQ-REC-003` (P1) — Playback as a first-class front end.**\n`FilePlaybackFrontEnd` shall implement `IFrontEnd` identically to a hardware front end, with\ntransport controls: play, pause, stop, single-step by frame, seek, loop, and playback rate.\n**AC:** Every measurement and every trace type produces identical results from a recording\nas from the live source that produced it (bit-identical where the DSP is deterministic).",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1123
+ },
+ {
+  "id": "REQ-REC-004",
+  "area": "REC",
+  "num": "004",
+  "priority": "P1",
+  "title": "Zoom range bound, applied consistently",
+  "body": "**`REQ-REC-004` (P1) — Zoom range bound, applied consistently.**\nRe-analysis by digital downconversion and decimation shall be permitted down to **1/256** of\nthe source span, matching the reference product's documented playback bound. **[V]**\n\n**This bound applies identically to live-block zoom (`REQ-DSP-023`) and to playback** — the\ntwo must not disagree, since both perform the same DDC on the same captured samples. Where\n`REQ-DSP-023` speaks of \"arbitrarily narrow\" analysis, it means arbitrary within this bound.\n**AC:** A recording made at 10 MHz span analyses correctly at spans down to 39.0625 kHz;\nnarrower requests are rejected with an explanatory message naming the bound; the same limit\nand the same message apply to live zoom.",
+  "phase": 3,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1129
+ },
+ {
+  "id": "REQ-REC-005",
+  "area": "REC",
+  "num": "005",
+  "priority": "P1",
+  "title": "Import and export format support",
+  "body": "**`REQ-REC-005` (P1) — Import and export format support.**\nThe following formats shall be supported for import (I) and/or export (E), matching the\nreference product's catalogue: **[V]**\n\n| Format | Extensions | I | E | Notes |\n|---|---|---|---|---|\n| OpenVSA native | `.ovsa` | ✓ | ✓ | full fidelity, all metadata |\n| CSV | `.csv` | ✓ | ✓ | ASCII, metadata in header comments |\n| Tab-delimited text | `.txt` | ✓ | ✓ | |\n| MATLAB MAT-file (v7.3/HDF5) | `.mat`, `.h5`, `.hdf` | ✓ | ✓ | large-file capable |\n| MATLAB MAT-file v4 | `.mat` | ✓ | ✓ | legacy |\n| BINF | `.binf` | ✓ | ✓ | little-endian real32 |\n| SDF (Fast / Export) | `.sdf`, `.dat` | ✓ | ✓ | legacy 89400-series interchange — see caveat |\n| VITA 49 / 49A / 49.2 | `.vita49`, `.pcap`, `.pcapng` | ✓ | ✓ | standard RF metadata packets |\n| N5106A / N5110A waveform | `.bin` | ✓ | ✓ | big- and little-endian variants |\n| E3238S time snapshot | `.cap` | ✓ | ✗ | recall only, legacy |\n\n> **⚠ [U] — SDF binary layout.** The byte-level SDF header field layout (offsets for centre\n> frequency, sample rate, timestamps) was **not** obtained during research. SDF was\n> historically publicly documented via the 89400-series \"SDF File Format Utilities\" manual;\n> that document must be obtained before the SDF reader/writer is implemented. Until then,\n> treat SDF as P2 and do not schedule it into an early phase.",
+  "phase": 3,
+  "evidence": [
+   "verified",
+   "unverified"
+  ],
+  "has_ac": false,
+  "line": 1140
+ },
+ {
+  "id": "REQ-REC-006",
+  "area": "REC",
+  "num": "006",
+  "priority": "P1",
+  "title": "Export fidelity honesty",
+  "body": "**`REQ-REC-006` (P1) — Export fidelity honesty.**\nWhere an export format cannot carry trigger corrections or full metadata, the export dialog\nshall say so explicitly before writing, and the written file shall record the limitation.\n*Rationale:* the reference product has exactly this trap and it is a known source of\nconfusion. **[V]**",
+  "phase": 3,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1163
+ },
+ {
+  "id": "REQ-REC-007",
+  "area": "REC",
+  "num": "007",
+  "priority": "P2",
+  "title": "Recording size estimation",
+  "body": "**`REQ-REC-007` (P2) — Recording size estimation.** The UI shall show projected file size\nand remaining disk time before a recording starts.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1169
+ },
+ {
+  "id": "REQ-REC-008",
+  "area": "REC",
+  "num": "008",
+  "priority": "P1",
+  "title": "Recording robustness",
+  "body": "**`REQ-REC-008` (P1) — Recording robustness.**\nRecordings shall: segment automatically at a configurable maximum file size (default 2 GB) with\nan index linking segments; monitor free disk space during capture and stop cleanly with a\nclear message before exhausting it; and be **crash-safe**, such that a recording interrupted\nby process termination or power loss remains readable up to the last completely written block.\n*Rationale:* multi-gigabyte captures are routine in this application, and losing a long\nacquisition to a full disk or a crash is an operational failure the user cannot recover from.\n**AC:** Killing the process mid-recording leaves a file that opens and plays back to the last\nwhole block; filling the disk produces a clean stop, not a corrupt file.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1172
+ },
+ {
+  "id": "REQ-REC-009",
+  "area": "REC",
+  "num": "009",
+  "priority": "P1",
+  "title": "Robust parsing of untrusted files",
+  "body": "**`REQ-REC-009` (P1) — Robust parsing of untrusted files.**\nAll import parsers (VITA 49/pcap, MAT v4 and v7.3/HDF5, BINF, SDF, N5106A/N5110A, E3238S,\nCSV) shall treat input as untrusted: bounds-checked, allocation-limited, and non-crashing on\nmalformed input.\n**AC:** Each parser survives a fuzzing campaign (≥1 M mutated inputs per format) with no\ncrash, no unbounded allocation, and no hang; malformed files produce a diagnostic, not an\nexception dialog.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1182
+ },
+ {
+  "id": "REQ-SIM-001",
+  "area": "SIM",
+  "num": "001",
+  "priority": "P0",
+  "title": "Synthetic modulated source",
+  "body": "**`REQ-SIM-001` (P0) — Synthetic modulated source.**\n`SimulatedFrontEnd` shall generate IQ for any modulation format supported by the\ndemodulator (§11.2), with settable symbol rate, pulse-shaping filter and roll-off, carrier\noffset, and amplitude.\n**AC:** For every supported format, a clean generated signal demodulates with RMS EVM\n< 0.1 % — the residual being numerical only.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1192
+ },
+ {
+  "id": "REQ-SIM-002",
+  "area": "SIM",
+  "num": "002",
+  "priority": "P0",
+  "title": "Controllable impairments",
+  "body": "**`REQ-SIM-002` (P0) — Controllable impairments.**\nThe generator shall inject, independently and quantitatively: AWGN (specified SNR),\ncarrier frequency offset (Hz), carrier phase offset, IQ gain imbalance (dB), quadrature skew\n(degrees), IQ origin offset (dB), amplitude droop (dB/symbol), timing offset (fraction of a\nsymbol), symbol-clock error (ppm), phase noise (mask-specified), AM/AM and AM/PM\ncompression, and multipath (tapped-delay-line channel).\n**AC:** Each impairment injected at a known magnitude is recovered by the demodulator's\ncorresponding metric to within 5 % or 0.1 dB, whichever is looser. **This is the primary\ncorrectness proof for the entire metrics engine** and is elaborated in §17.2.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1199
+ },
+ {
+  "id": "REQ-SIM-003",
+  "area": "SIM",
+  "num": "003",
+  "priority": "P1",
+  "title": "Deterministic, seeded generation",
+  "body": "**`REQ-SIM-003` (P1) — Deterministic, seeded generation.**\nAll stochastic elements shall derive from an explicit seed so that any generated scenario is\nexactly reproducible.\n**AC:** Two runs with identical seed and parameters produce bit-identical sample streams.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1209
+ },
+ {
+  "id": "REQ-SIM-004",
+  "area": "SIM",
+  "num": "004",
+  "priority": "P2",
+  "title": "Burst and pulse scenarios",
+  "body": "**`REQ-SIM-004` (P2) — Burst and pulse scenarios.** The generator shall produce bursted\nsignals with settable on/off times, ramp shapes and inter-burst noise floor, for exercising\npulse search (§11.5).",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1214
+ },
+ {
+  "id": "REQ-SIM-005",
+  "area": "SIM",
+  "num": "005",
+  "priority": "P2",
+  "title": "Standard-signal presets",
+  "body": "**`REQ-SIM-005` (P2) — Standard-signal presets.** Presets producing structurally correct\nsignals for each implemented personality (GSM burst, W-CDMA frame, LTE resource grid, …)\nshall be provided for personality development without hardware.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1218
+ },
+ {
+  "id": "REQ-DSP-001",
+  "area": "DSP",
+  "num": "001",
+  "priority": "P0",
+  "title": "Block-based, non-real-time analysis",
+  "body": "**`REQ-DSP-001` (P0) — Block-based, non-real-time analysis.**\nAnalysis shall operate on finite blocks with full random access to the whole block. Nothing\nin the DSP design shall assume causality or streaming operation.\n*Rationale:* this is what makes the reference product's estimation quality achievable —\nwhole-block maximum-likelihood estimation of carrier, timing and phase strictly outperforms\ncausal tracking loops, and it is why the reference product can lock reliably on short\nbursts. It is a deliberate architectural choice, not a compromise.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1227
+ },
+ {
+  "id": "REQ-DSP-002",
+  "area": "DSP",
+  "num": "002",
+  "priority": "P0",
+  "title": "Double-precision accumulation",
+  "body": "**`REQ-DSP-002` (P0) — Double-precision accumulation.**\nSample storage may be single precision, but all accumulations (averaging, correlation, sums\nof squares, metric computation) shall accumulate in `double`.\n**AC:** Averaging 100 000 frames of a constant-amplitude signal produces a result whose\nerror from the analytic value is < 1e-9 relative; the same test in single-precision\naccumulation demonstrably fails.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1235
+ },
+ {
+  "id": "REQ-DSP-010",
+  "area": "DSP",
+  "num": "010",
+  "priority": "P0",
+  "title": "Window function set",
+  "body": "**`REQ-DSP-010` (P0) — Window function set.**\nThe following windows shall be provided with the stated normalised ENBW (Hz·s) and sidelobe\nfigures, matching the reference product: **[V]**\n\n| Window | Normalised ENBW | Peak sidelobe | Notes |\n|---|---|---|---|\n| Uniform (rectangular) | 1.0000 | −13.3 dB | self-windowing/transient signals |\n| Hann (\"Hanning\") | 1.5000 | −31.5 dB | general purpose, random noise; unsuitable for bursts/chirps |\n| Gaussian Top | 2.2153 | — | high dynamic range, better resolution than Hann |\n| Flat Top | 3.8194 | — | **default**; amplitude accuracy over resolution |\n| Blackman-Harris (4-term) | 2.0044 | −92.0 dB | |\n| Kaiser-Bessel (πα = 11.9) | 2.0013 | −89.1 dB | faster sidelobe roll-off than Blackman-Harris |\n| Gaussian (α = 3.58, σ = 0.1397) | 2.0212 | −73.5 dB | special purpose only |",
+  "phase": 0,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1244
+ },
+ {
+  "id": "REQ-DSP-010a",
+  "area": "DSP",
+  "num": "010a",
+  "priority": "P0",
+  "title": "Periodic (DFT-even) window definitions",
+  "body": "**`REQ-DSP-010a` (P0) — Periodic (DFT-even) window definitions.**\nAll windows shall use the **periodic** (DFT-even) definition, $w_n = f(n/N)$ for\n$n = 0 \\ldots N-1$, **not** the symmetric definition $f(n/(N-1))$.\n*Rationale:* the ENBW figures in the table above are the periodic values. Symmetric Hann gives\n$1.5\\,N/(N-1)$ — a 0.03 % error at $N = 4096$ but **1.6 % at $N = 64$**, which fails the\nacceptance criterion below at the small end of the supported range ($N_f = 51 \\Rightarrow\nN_{\\text{FFT}} = 64$). Spectral analysis wants the periodic form regardless; this just makes\nit binding.\n\n**AC:** Each window's measured ENBW, computed as\n$\\mathrm{ENBW} = N \\sum w_n^2 / (\\sum w_n)^2$, matches the table to within 0.1 % **at every\nsupported FFT size from 64 to 2²⁰**; measured peak sidelobe matches the quoted figure to\nwithin 0.5 dB where one is quoted.\n*Note:* the Flat Top default is deliberate and must be preserved — it surprises users who\nexpect Hann, but it is the reference product's documented behaviour.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1258
+ },
+ {
+  "id": "REQ-DSP-011",
+  "area": "DSP",
+  "num": "011",
+  "priority": "P1",
+  "title": "Coherent and incoherent gain correction",
+  "body": "**`REQ-DSP-011` (P1) — Coherent and incoherent gain correction.**\nWindow amplitude correction (coherent gain, $\\sum w_n / N$) shall be applied for\ndiscrete-tone amplitude readout, and noise-power correction (ENBW) for noise-density\nreadout, with the correct one selected automatically by trace data type.\n**AC:** A full-scale CW tone reads its correct amplitude under every window to within\n0.05 dB; a white-noise input reads the correct power spectral density under every window to\nwithin 0.1 dB.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1274
+ },
+ {
+  "id": "REQ-DSP-012",
+  "area": "DSP",
+  "num": "012",
+  "priority": "P2",
+  "title": "Zero-span channel filter shape",
+  "body": "**`REQ-DSP-012` (P2) — Zero-span channel filter shape.** In zero-span/power-spectrum\noperation, \"window type\" shall be replaced by **Channel Filter Shape** (Gaussian, or\nNone/anti-alias only), mirroring the reference product. **[V]**",
+  "phase": 0,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1282
+ },
+ {
+  "id": "REQ-DSP-020",
+  "area": "DSP",
+  "num": "020",
+  "priority": "P0",
+  "title": "Bidirectional RBW/time coupling",
+  "body": "**`REQ-DSP-020` (P0) — Bidirectional RBW/time coupling.**\n$\\mathrm{RBW} = \\mathrm{ENBW_{norm}} / T_{\\text{rec}}$ shall be enforced in both directions:\nspectrum-class measurements take RBW as the independent variable and derive record length;\ndemodulation-class measurements take Main Time Length as independent and derive RBW. **[V]**\n**AC:** Hann window, 100 kHz RBW → 15 µs record. Hann window, 50 ms record → 30 Hz RBW.\nBoth match the documented worked examples exactly.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1288
+ },
+ {
+  "id": "REQ-DSP-021",
+  "area": "DSP",
+  "num": "021",
+  "priority": "P1",
+  "title": "RBW range and coupling modes",
+  "body": "**`REQ-DSP-021` (P1) — RBW range and coupling modes.**\nRBW shall span **< 1 Hz to > 0.287 × maximum span**, with a **ResBW Mode** selecting between\nspectrum-analyser-style emulation and arbitrary RBW, and a **ResBW Coupling** control\ngoverning how RBW tracks span. A **Span-to-ResBW Ratio** shall be settable. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1295
+ },
+ {
+  "id": "REQ-DSP-022",
+  "area": "DSP",
+  "num": "022",
+  "priority": "P0",
+  "title": "Frequency-point range",
+  "body": "**`REQ-DSP-022` (P0) — Frequency-point range.**\nDisplayed frequency points shall range **51 to 409 601**, with $N_f - 1$ constrained to\n$50 \\cdot 2^k$ so that $N_{\\text{FFT}} = 1.28 (N_f - 1)$ is an integer power of two; the\ncorresponding FFT-size ceiling is $2^{19} = 524\\,288$. An **Auto** mode shall derive point\ncount from span, RBW/time length and window type. **[V for the 409 601 figure]**\n\n> **Documented inconsistency, flagged rather than silently resolved.** The 89601B datasheet\n> states \"51 to 524 288 displayed (51 to 409 601 calibrated)\". But $1.28 \\times 524\\,287 =\n> 671\\,087.36$ — not an integer and not a power of two — so 524 288 cannot be a displayed\n> point count under the product's own $N_{\\text{FFT}}$ relation; it is exactly $2^{19}$, i.e.\n> the maximum **FFT size**. The datasheet figure appears to be a transcription of the FFT-size\n> ceiling into the points row. OpenVSA adopts the self-consistent reading above. Confirm\n> against the product before treating either number as a threshold (§20, Q8).\n\n**AC:** 51 and 409 601 are accepted; 50 and 409 602 are rejected with clear messages; every\naccepted $N_f$ yields an integer power-of-two $N_{\\text{FFT}}$; Auto mode reproduces the\ndocumented relationships.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1300
+ },
+ {
+  "id": "REQ-DSP-023",
+  "area": "DSP",
+  "num": "023",
+  "priority": "P1",
+  "title": "Band-selectable (zoom) analysis",
+  "body": "**`REQ-DSP-023` (P1) — Band-selectable (zoom) analysis.**\nSpan shall be settable independently of centre frequency, implemented by digital\ndownconversion and decimation, permitting arbitrarily narrow analysis within the front\nend's captured bandwidth. A **Select Area** trace tool shall allow dragging a region and\nzooming to it, with a **Full Span** control to return. A **Zoom If Span Change** option\nshall govern whether reducing span re-centres or holds the start frequency at 0 Hz. **[V]**\nZoom depth is bounded at **1/256 of the source span** by `REQ-REC-004`, which applies to live\nblocks and playback alike.\n**AC:** A 1 kHz-wide feature 4 MHz from centre in a 10 MHz span is resolvable by zooming to a\n39.0625 kHz span (the 1/256 floor) without re-acquisition, using only the captured block; a\nrequest below the floor is rejected with the message required by `REQ-REC-004`.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1318
+ },
+ {
+  "id": "REQ-DSP-023a",
+  "area": "DSP",
+  "num": "023a",
+  "priority": "P0",
+  "title": "DDC and decimation filter specification",
+  "body": "**`REQ-DSP-023a` (P0) — DDC and decimation filter specification.**\nThe digital downconverter used for zoom and playback re-analysis shall meet stated, testable\nfilter requirements — currently absent from the reference product's public documentation and\ntherefore **specified here as design targets**: **[DESIGN CHOICE]**\n\n| Parameter | Target |\n|---|---|\n| Passband ripple | ≤ 0.05 dB peak-to-peak over the analysis span |\n| Passband flatness (amplitude) | ≤ ±0.02 dB over the central 80 % of span |\n| Stopband / alias rejection | ≥ 100 dB |\n| Spurious-free dynamic range through the DDC | ≥ 100 dBc |\n| Phase response | linear phase (symmetric FIR) unless explicitly configured otherwise |\n\n*Rationale:* zoom is central to this product (`REQ-DSP-023`, `REQ-REC-004`) and every\ndemodulation result passes through it. `REQ-TST-001` requires \"measured SFDR against design\ntarget\" — this table is that target. Without it the requirement is untestable.\n**AC:** A full-scale tone swept across the span shows amplitude variation within the ripple\nfigure and no alias or spur above −100 dBc at any decimation factor.",
+  "phase": 1,
+  "evidence": [
+   "design-choice"
+  ],
+  "has_ac": true,
+  "line": 1330
+ },
+ {
+  "id": "REQ-DSP-024",
+  "area": "DSP",
+  "num": "024",
+  "priority": "P1",
+  "title": "Max FFT size control",
+  "body": "**`REQ-DSP-024` (P1) — Max FFT size control.** A **Max FFT Size** parameter shall bound\ntransform size for power measurements, and a **Noise Correction** option shall subtract a\ncharacterised instrument noise floor. **[U]** — the reference product's numeric ceiling for\nMax FFT Size was not obtained; OpenVSA shall default to 2²⁰ and make it configurable.",
+  "phase": 1,
+  "evidence": [
+   "unverified"
+  ],
+  "has_ac": false,
+  "line": 1349
+ },
+ {
+  "id": "REQ-DSP-030",
+  "area": "DSP",
+  "num": "030",
+  "priority": "P0",
+  "title": "Averaging types",
+  "body": "**`REQ-DSP-030` (P0) — Averaging types.**\nThe following shall be implemented, matching the reference product: **[V]**\n\n| Type | Behaviour |\n|---|---|\n| **RMS (Video)** | Power-domain (incoherent) average; runs to the specified count, then stops |\n| **RMS (Video) Exponential** | Power-domain, exponentially weighted, runs indefinitely |\n| **Time** | Coherent (vector) average of complex time records; runs to count |\n| **Time Exponential** | Coherent, exponentially weighted, indefinite |\n| **Peak Hold** | Per-bin maximum, runs to count |\n| **Continuous Peak Hold** | Per-bin maximum, indefinite |\n\nLinear (non-exponential) modes stop at the count; exponential modes ramp from $N=1$ to\nsteady state, thereafter weighting $\\alpha = 1/N_{\\text{count}}$. A **Repeat Average**\noption shall control re-arm behaviour on completion.\n\n> **Note on terminology — [U].** Research could not confirm the literal string \"vector\n> averaging\" in current Keysight help; the **Time** / **Time Exponential** types are the\n> coherent averages (they average the complex time record, preserving phase, and therefore\n> suppress noise uncorrelated with the trigger). This specification uses \"coherent/vector\"\n> and \"Time\" interchangeably and requires the *behaviour*, which is unambiguous.\n\n**AC:** Coherent (Time) averaging of a triggered CW tone in AWGN improves SNR by\n$10\\log_{10}N$ dB. Incoherent (RMS) averaging of the same signal reduces the **variance of the\nspectral estimate** by a factor of $N$ (standard deviation by $\\sqrt N$) while leaving the\nestimated SNR unchanged. These two distinct behaviours are the definitive test that the types\nhave not been conflated — a classic and easily-missed implementation error.",
+  "phase": 1,
+  "evidence": [
+   "verified",
+   "unverified"
+  ],
+  "has_ac": true,
+  "line": 1356
+ },
+ {
+  "id": "REQ-DSP-031",
+  "area": "DSP",
+  "num": "031",
+  "priority": "P1",
+  "title": "Averaging interacts correctly with overlap",
+  "body": "**`REQ-DSP-031` (P1) — Averaging interacts correctly with overlap.**\nWhere overlapped frames are averaged, the effective number of independent averages shall be\ncomputed and displayed, since overlapped frames are correlated. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1384
+ },
+ {
+  "id": "REQ-DSP-040",
+  "area": "DSP",
+  "num": "040",
+  "priority": "P0",
+  "title": "Base (non-demodulation) trace data types",
+  "body": "**`REQ-DSP-040` (P0) — Base (non-demodulation) trace data types.**\nThe following shall be available without any demodulation licence, matching the reference\nproduct's Option 200 set: **[V]**\n\nSpectrum · Raw Main Time · Instantaneous Main Time · PSD (power spectral density) ·\nAutocorrelation · CCDF · CDF · PDF · Correction · Math · No Data.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1390
+ },
+ {
+  "id": "REQ-DSP-040a",
+  "area": "DSP",
+  "num": "040a",
+  "priority": "P2",
+  "title": "Cross-channel trace data types",
+  "body": "**`REQ-DSP-040a` (P2) — Cross-channel trace data types.**\nCross Spectrum · Cross Correlation · Coherence · Frequency Response · Impulse Response.\n\nThese are **P2, not P0**, and are gated on multi-channel support in the HAL\n(`IFrontEndCapabilities.ChannelCount` and `SupportsPhaseCoherentChannels`,\n`REQ-HAL-001`). They require phase-coherent, common-timebase acquisition of two channels,\nwhich no front end in Phase 3 provides; specifying them as P0 against a single-channel\n`IqBlock` would be incoherent. When implemented, `IqBlock` shall be extended to carry a\nchannel index, or grouped into an `IqBlockSet` with a declared coherence guarantee.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1397
+ },
+ {
+  "id": "REQ-DSP-041",
+  "area": "DSP",
+  "num": "041",
+  "priority": "P0",
+  "title": "Trace formats",
+  "body": "**`REQ-DSP-041` (P0) — Trace formats.**\nLog Magnitude · Linear Magnitude · Real · Imaginary · Wrapped Phase · Unwrapped Phase ·\nGroup Delay · IQ (polar/constellation) · Eye · Spectrogram · digital persistence ·\ncumulative history. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1407
+ },
+ {
+  "id": "REQ-DSP-042",
+  "area": "DSP",
+  "num": "042",
+  "priority": "P1",
+  "title": "CCDF definition",
+  "body": "**`REQ-DSP-042` (P1) — CCDF definition.**\nCCDF shall plot $P\\{P_{\\text{inst}} > P_{\\text{avg}} + x\\}$ against $x$ in dB (log\nprobability axis), with a Gaussian-noise reference curve overlaid, and shall report\npeak-to-average ratio at the 0.01 %, 0.1 % and 1 % probability points.\n**AC:** For band-limited Gaussian noise the measured curve lies within 0.2 dB **horizontally**\n(i.e. in $x$, the probability axis being logarithmic) of the theoretical\n$P(x) = \\exp(-10^{x/10})$ over 0–10 dB, using **≥10⁷ independent samples**.\n*Both qualifications matter:* \"within 0.2 dB\" is meaningless on a probability axis, and at\n$x = 10$ dB the true probability is $e^{-10} \\approx 4.5\\times10^{-5}$, so the sample count is\npart of the criterion rather than an implementation detail.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1412
+ },
+ {
+  "id": "REQ-DSP-043",
+  "area": "DSP",
+  "num": "043",
+  "priority": "P1",
+  "title": "Spectrogram",
+  "body": "**`REQ-DSP-043` (P1) — Spectrogram.**\nSpectrogram shall render a scrolling time–frequency intensity map with configurable depth,\ncolour map, and time-axis marker positioning via a trace-select marker. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1423
+ },
+ {
+  "id": "REQ-DSP-044",
+  "area": "DSP",
+  "num": "044",
+  "priority": "P1",
+  "title": "Phase unwrapping",
+  "body": "**`REQ-DSP-044` (P1) — Phase unwrapping.** Unwrapped phase shall use a standard\n$\\pm\\pi$-threshold unwrap with a configurable jump tolerance, and shall document its\nreference point.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1427
+ },
+ {
+  "id": "REQ-DSP-045",
+  "area": "DSP",
+  "num": "045",
+  "priority": "P2",
+  "title": "Group delay",
+  "body": "**`REQ-DSP-045` (P2) — Group delay.** Group delay shall be computed as\n$-\\,d\\phi/d\\omega$ using a configurable aperture (in bins), with the aperture shown in the\ntrace annotation.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1431
+ },
+ {
+  "id": "REQ-DSP-046",
+  "area": "DSP",
+  "num": "046",
+  "priority": "P2",
+  "title": "Trace math",
+  "body": "**`REQ-DSP-046` (P2) — Trace math.**\nA trace-math facility shall support at least: add, subtract, multiply, divide (trace/trace\nand trace/constant), magnitude, conjugate, and register store/recall.\n**[U]** — the reference product's exact operator list was not confirmed; the set above is a\nreasonable floor and shall be extensible.",
+  "phase": 1,
+  "evidence": [
+   "unverified"
+  ],
+  "has_ac": false,
+  "line": 1435
+ },
+ {
+  "id": "REQ-DSP-050",
+  "area": "DSP",
+  "num": "050",
+  "priority": "P1",
+  "title": "Time-gated spectrum",
+  "body": "**`REQ-DSP-050` (P1) — Time-gated spectrum.**\nTime gating shall select a sub-interval of the time record for spectral analysis, with gate\ndelay and gate length; under gating, RBW shall track gate length rather than full record\nlength. **[V]**\n**AC:** For a two-tone signal where the tones are present in disjoint time intervals,\ngating to each interval reveals only the corresponding tone, with the RBW annotation\ncorrectly reflecting gate length.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1443
+ },
+ {
+  "id": "REQ-MKR-001",
+  "area": "MKR",
+  "num": "001",
+  "priority": "P0",
+  "title": "Marker types",
+  "body": "**`REQ-MKR-001` (P0) — Marker types.**\n**Normal** (diamond glyph), **Delta** (referenced to another marker on the same or a\ndifferent trace, annotated e.g. \"3Δ1\"), and **Fixed** (position-locked, \"X\" glyph). **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1457
+ },
+ {
+  "id": "REQ-MKR-002",
+  "area": "MKR",
+  "num": "002",
+  "priority": "P1",
+  "title": "Marker count",
+  "body": "**`REQ-MKR-002` (P1) — Marker count.**\n**20 markers per trace**, with the number of traces — and therefore the total marker count —\nbounded only by available memory. **[V]**\n*(This reconciles the reference product's two apparently conflicting claims: the marker help\nstates 20 per trace, while the marketing copy says \"unlimited traces, each with unlimited\nmarkers\". The engineering figure of 20 per trace governs; \"unlimited\" refers to the trace\ncount. `REQ-UI-001` quotes the marketing phrasing for the docking requirement only.)*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1461
+ },
+ {
+  "id": "REQ-MKR-003",
+  "area": "MKR",
+  "num": "003",
+  "priority": "P1",
+  "title": "Marker calculation modes",
+  "body": "**`REQ-MKR-003` (P1) — Marker calculation modes.**\n**Band Power** (with Power and Density sub-types; band edges set by left/right marker\npositions in the frequency domain, full span in the time domain; units auto-selected from\n%, dB, dBm, dB/Hz, Vrms, W and SI-prefixed variants), **Occupied Bandwidth (OBW)**, and\n**Adjacent Channel Power (ACP)**. **[V]**\n**AC:** Band power over a band containing a single CW tone equals the tone's power to within\n0.05 dB. The **99 % OBW** of a root-raised-cosine signal with α = 0.35 equals\n**1.167 · R_sym** to within 2 %.\n\n> **Do not use $(1+\\alpha)R_{\\text{sym}}$ as the 99 % figure — it is the *absolute*\n> (null-to-null) bandwidth** and is wrong by 11–16 % across the usual roll-off range:\n> α = 0.22 → 99 % OBW 1.085·R_sym (vs 1.22, −11.1 %); α = 0.35 → 1.167 (vs 1.35, −13.6 %);\n> α = 0.50 → 1.268 (vs 1.50, −15.5 %). Reserve $(1+\\alpha)R_{\\text{sym}}$ for the 100 % /\n> x-dB-down criterion. This is a common and quietly damaging error in EVM/OBW test code.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1469
+ },
+ {
+  "id": "REQ-MKR-004",
+  "area": "MKR",
+  "num": "004",
+  "priority": "P1",
+  "title": "Marker coupling",
+  "body": "**`REQ-MKR-004` (P1) — Marker coupling.** Markers with matching numbers shall couple\nacross traces, moving together where the X axes are commensurate. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1484
+ },
+ {
+  "id": "REQ-MKR-005",
+  "area": "MKR",
+  "num": "005",
+  "priority": "P1",
+  "title": "Marker functions",
+  "body": "**`REQ-MKR-005` (P1) — Marker functions.** Peak search, next peak, peak tracking, minimum\nsearch, marker-to-centre-frequency, marker-to-reference-level, and \"copy value to\nparameter\". **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1487
+ },
+ {
+  "id": "REQ-MKR-006",
+  "area": "MKR",
+  "num": "006",
+  "priority": "P2",
+  "title": "Marker readout surfaces",
+  "body": "**`REQ-MKR-006` (P2) — Marker readout surfaces.** A dedicated Markers window listing all\nmarkers with readouts, plus an active-marker readout above the trace grid. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1491
+ },
+ {
+  "id": "REQ-MKR-007",
+  "area": "MKR",
+  "num": "007",
+  "priority": "P2",
+  "title": "Spectrogram and multi-dimensional markers",
+  "body": "**`REQ-MKR-007` (P2) — Spectrogram and multi-dimensional markers.** Spectrogram traces\nshall support time-axis positioning via trace-select markers; OFDM-class personalities shall\nsupport three-dimensional marker placement (symbol × subcarrier × value). **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1494
+ },
+ {
+  "id": "REQ-LIM-001",
+  "area": "LIM",
+  "num": "001",
+  "priority": "P1",
+  "title": "Limit test structure",
+  "body": "**`REQ-LIM-001` (P1) — Limit test structure.**\nA three-level hierarchy shall be implemented: **Limit Test → Limit Line → Limit Point**,\neach user-named. Limit Points carry X/Y coordinates plus a *connect to previous point*\nflag, forming connected segments. Each Limit Line carries a **Side** (Upper or Lower)\ndetermining margin direction. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1500
+ },
+ {
+  "id": "REQ-LIM-002",
+  "area": "LIM",
+  "num": "002",
+  "priority": "P1",
+  "title": "Pass/fail evaluation and reporting",
+  "body": "**`REQ-LIM-002` (P1) — Pass/fail evaluation and reporting.**\nOverall status shall be PASS only if every line passes, otherwise FAIL. Per-line status and\nnumeric margin shall be available in marker readouts and the status bar. Default rendering:\nlimit lines red, margin lines yellow. **[V]**\n**AC:** A trace crossing an upper limit reports FAIL with the correct worst-case margin and\nits X location; a trace exactly touching the limit reports the boundary condition per a\ndocumented, tested convention.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1506
+ },
+ {
+  "id": "REQ-LIM-003",
+  "area": "LIM",
+  "num": "003",
+  "priority": "P2",
+  "title": "Limit tests in the automation API",
+  "body": "**`REQ-LIM-003` (P2) — Limit tests in the automation API.** Limit count and results shall\nbe queryable programmatically (the reference product exposes `:TRACe:LIMit:COUNt` and\n`:TRACe:LIMit:RESult`). **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1514
+ },
+ {
+  "id": "REQ-CHM-001",
+  "area": "CHM",
+  "num": "001",
+  "priority": "P1",
+  "title": "ACP",
+  "body": "**`REQ-CHM-001` (P1) — ACP.** Adjacent channel power shall support configurable carrier\nand offset channel definitions (offset frequency, integration bandwidth, filter shape\nincluding root-raised-cosine), reporting absolute and relative power per offset, upper and\nlower.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1520
+ },
+ {
+  "id": "REQ-CHM-002",
+  "area": "CHM",
+  "num": "002",
+  "priority": "P1",
+  "title": "OBW",
+  "body": "**`REQ-CHM-002` (P1) — OBW.** Occupied bandwidth shall support the percentage-of-power\ncriterion (default 99 %) and the x-dB-down criterion.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1525
+ },
+ {
+  "id": "REQ-CHM-003",
+  "area": "CHM",
+  "num": "003",
+  "priority": "P2",
+  "title": "Spectral emission mask",
+  "body": "**`REQ-CHM-003` (P2) — Spectral emission mask.** A mask-based emission measurement with\nper-segment limits and pass/fail, reusing the limit-test engine.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1528
+ },
+ {
+  "id": "REQ-DEM-001",
+  "area": "DEM",
+  "num": "001",
+  "priority": "P0",
+  "title": "Documented processing order",
+  "body": "**`REQ-DEM-001` (P0) — Documented processing order.**\nThe demodulator shall implement the following chain, and the order shall be documented in\ncode and in user help:\n\n```\n1.  Extract Search Length window from Main Time\n2.  Burst / pulse search        (optional) ─┐ locate region of interest\n3.  Coarse carrier estimate                │\n4.  Resample to N points/symbol            │\n5.  Measurement (matched) filter           │\n6.  Sync-pattern search         (optional) ┘\n7.  Position Result Length window\n8.  Joint refinement, iterated to convergence:\n        carrier frequency · carrier phase · symbol timing · amplitude\n9.  Symbol decisions → detected bits\n10. Reference regeneration: bits → ideal symbols → reference filter → ideal waveform\n11. Adaptive equaliser            (optional; re-enters at 8 on update)\n12. Impairment estimation: IQ offset, gain imbalance, quadrature skew, amplitude droop\n13. Error metric computation at symbol instants\n14. Result trace generation\n```",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1540
+ },
+ {
+  "id": "REQ-DEM-002",
+  "area": "DEM",
+  "num": "002",
+  "priority": "P0",
+  "title": "Whole-block estimation, not tracking loops",
+  "body": "**`REQ-DEM-002` (P0) — Whole-block estimation, not tracking loops.** **[DESIGN CHOICE]**\nSteps 3 and 8 shall use block-based maximum-likelihood / least-squares estimation over the\nResult Length, not causal PLL/DLL tracking.\n*Rationale:* the reference product's documented behaviours — reliable lock on short bursts, and\nthe \"EVM minimum at block centre, growing toward both ends\" signature under symbol-rate error —\nare **consistent with** a block estimator that fits one frequency/phase/timing solution across\nthe whole block, and a causal tracking loop would additionally show a settling transient at the\nstart that the documentation does not describe. Block estimation is also independently the\nbetter engineering choice here: it is non-causal, uses every sample, and has no convergence\ntransient.\n*Honesty about the inference:* the documented signature does not **prove** a block estimator —\na converged tracking loop with a one-shot frequency estimate and a mid-block phase reference\nwould produce a similar shape. The block approach is therefore a **[DESIGN CHOICE]** supported\nby the evidence, not a deduction from it.\n**AC:** The symbol-rate-error signature test in `REQ-DEM-030` passes.",
+  "phase": 2,
+  "evidence": [
+   "design-choice"
+  ],
+  "has_ac": true,
+  "line": 1562
+ },
+ {
+  "id": "REQ-DEM-010",
+  "area": "DEM",
+  "num": "010",
+  "priority": "P0",
+  "title": "Format catalogue",
+  "body": "**`REQ-DEM-010` (P0) — Format catalogue.**\nThe following shall be supported. Formats marked **[V]** are explicitly documented in the\nreference product; those marked **[U]** are strongly implied (by the presence of the\ncorresponding filter or standard preset) but were not directly confirmed, and are\nnonetheless required here for completeness.\n\n| Family | Variants | Status |\n|---|---|---|\n| BPSK | — | [V] |\n| QPSK | QPSK, OQPSK, DQPSK, π/4-DQPSK, SOQPSK, shaped OQPSK | [V] QPSK/OQPSK/SOQPSK; [U] π/4-DQPSK |\n| 8PSK | 8PSK, 3π/8-8PSK (EDGE), D8PSK | [V] 8PSK; [U] 3π/8, D8PSK |\n| Higher PSK | 16PSK | [U] |\n| QAM | 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 | [V] |\n| QAM variants | DVB-QAM, Star QAM | [V] |\n| APSK | custom APSK; user-defined rings | [V] — up to **8 arbitrarily-spaced rings, 256 points** |\n| MSK | MSK type 1, MSK type 2 | [V] MSK treated specially in metrics; [U] type 1/2 naming |\n| GMSK | with BT parameter | [U] but required |\n| FSK | 2FSK, 4FSK, 8FSK, 16FSK | [V] |\n| VSB | 8VSB, 16VSB | [V] |\n| ASK / OOK | on-off keying | [V] (cited under custom APSK) |\n| Custom | user-defined constellation | [V] |\n\n**AC:** Each format round-trips through the simulator: generate → demodulate → recovered\nbits identical to transmitted bits at high SNR, RMS EVM < 0.1 %.",
+  "phase": 2,
+  "evidence": [
+   "verified",
+   "unverified"
+  ],
+  "has_ac": true,
+  "line": 1580
+ },
+ {
+  "id": "REQ-DEM-010a",
+  "area": "DEM",
+  "num": "010a",
+  "priority": "P1",
+  "title": "Analog demodulation",
+  "body": "**`REQ-DEM-010a` (P1) — Analog demodulation.**\n**AM, FM and PM** demodulation shall be provided alongside the digital formats — a first-class\ncapability of this product line since the 89400 series and a routine bench need.\nRequired results: demodulated AM depth (%), FM deviation (Hz, peak and RMS), PM deviation\n(radians/degrees), modulation rate, SINAD, distortion (THD), and residual FM/AM. Required\ntraces: demodulated waveform versus time, demodulated audio spectrum, and carrier\nfrequency/amplitude versus time.\nAudio-band de-emphasis and configurable low-pass/high-pass post-detection filtering shall be\nsupported.\n**AC:** A simulated AM signal at known depth and rate, and an FM signal at known deviation and\nrate, are each recovered to within 1 % of the injected value; measured SINAD on a clean signal\nexceeds 60 dB.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1605
+ },
+ {
+  "id": "REQ-DEM-011",
+  "area": "DEM",
+  "num": "011",
+  "priority": "P1",
+  "title": "User-defined constellations",
+  "body": "**`REQ-DEM-011` (P1) — User-defined constellations.**\nUsers shall be able to define a constellation by explicit point list (I, Q, symbol value) or\nby ring specification (up to 8 rings, each with radius, point count and phase offset;\n≤256 points total), with a chosen bit mapping (Gray, natural, or explicit table).\n**AC:** A user-defined 32-APSK (4/12/16 ring structure) demodulates correctly from the\nsimulator.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1618
+ },
+ {
+  "id": "REQ-DEM-012",
+  "area": "DEM",
+  "num": "012",
+  "priority": "P1",
+  "title": "Differential and offset handling",
+  "body": "**`REQ-DEM-012` (P1) — Differential and offset handling.**\nDifferential formats shall support differential decoding with a selectable reference; offset\nformats (OQPSK and relatives) shall be processed at **2 points per symbol**, because I and Q\nare offset by half a symbol. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1625
+ },
+ {
+  "id": "REQ-DEM-013",
+  "area": "DEM",
+  "num": "013",
+  "priority": "P2",
+  "title": "Low SNR enhancement",
+  "body": "**`REQ-DEM-013` (P2) — Low SNR enhancement.** An option extending maximum Result Length\nfor offset formats from ~2 048 to ~40 000 symbols, matching the reference product. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1630
+ },
+ {
+  "id": "REQ-DEM-020",
+  "area": "DEM",
+  "num": "020",
+  "priority": "P0",
+  "title": "Separate measurement and reference filters",
+  "body": "**`REQ-DEM-020` (P0) — Separate measurement and reference filters.**\nThe measurement filter (applied to the acquired signal) and the reference filter (shaping\nthe ideal waveform) shall be independently selectable in type and parameter. **[V]**\n*Rationale, to be reproduced in help text:* matched root-raised-cosine filters split\nNyquist filtering between transmitter and receiver for optimum SNR; the analyser emulates\nthe receiver half, so its measurement filter must match the transmitter's shaping, and the\ncomposite response must be the full Nyquist filter for zero ISI at symbol centres.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1635
+ },
+ {
+  "id": "REQ-DEM-021",
+  "area": "DEM",
+  "num": "021",
+  "priority": "P0",
+  "title": "Filter catalogue",
+  "body": "**`REQ-DEM-021` (P0) — Filter catalogue.**\nRoot Raised Cosine · Raised Cosine · Gaussian · **EDGE** · Half Sine · Rectangular ·\nLow-pass · User-defined FIR · None. **[V]**\nParameters: **alpha** (excess-bandwidth roll-off, for RC/RRC) and **BT** (bandwidth–time\nproduct, for Gaussian).\n\n> **The EDGE filter is not a Gaussian.** It is the **linearised-GMSK main pulse $c_0(t)$**\n> defined in 3GPP TS 45.004 — the principal component of the Laurent decomposition of the GMSK\n> modulator, used as the transmit pulse for 3π/8-8PSK EDGE. It must be implemented from that\n> definition as a distinct filter type, not as a Gaussian with a particular BT.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1643
+ },
+ {
+  "id": "REQ-DEM-022",
+  "area": "DEM",
+  "num": "022",
+  "priority": "P1",
+  "title": "Filter mathematics",
+  "body": "**`REQ-DEM-022` (P1) — Filter mathematics.**\nRaised cosine, in the time domain:\n\n$$h_{RC}(t)=\\operatorname{sinc}\\!\\left(\\frac{t}{T}\\right)\\frac{\\cos\\left(\\pi\\alpha t/T\\right)}{1-\\left(2\\alpha t/T\\right)^{2}}$$\n\nRoot raised cosine:\n\n$$h_{RRC}(t)=\\frac{\\sin\\!\\left(\\pi\\frac{t}{T}(1-\\alpha)\\right)+4\\alpha\\frac{t}{T}\\cos\\!\\left(\\pi\\frac{t}{T}(1+\\alpha)\\right)}{\\pi\\frac{t}{T}\\left(1-\\left(4\\alpha\\frac{t}{T}\\right)^{2}\\right)}$$\n\nGaussian, with bandwidth–time product $BT$:\n\n$$h_{G}(t)=\\frac{1}{\\sqrt{2\\pi}\\sigma T}e^{-t^{2}/(2\\sigma^{2}T^{2})},\\qquad \\sigma=\\frac{\\sqrt{\\ln 2}}{2\\pi \\cdot BT}$$",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1654
+ },
+ {
+  "id": "REQ-DEM-022a",
+  "area": "DEM",
+  "num": "022a",
+  "priority": "P0",
+  "title": "One normalisation convention, stated once",
+  "body": "**`REQ-DEM-022a` (P0) — One normalisation convention, stated once.**\nThe three expressions above are written in their conventional analytic forms — RC and RRC at\n**unit peak** (omitting the customary $1/T$ scale), Gaussian at **unit area**. Left as-is these\nare three incompatible conventions in adjacent requirements. The implementation shall\ntherefore: build every filter in its analytic form, then apply **one** documented\nnormalisation step at a single point in the code, and state which normalisation applies to the\nmeasurement filter and which to the reference filter.\n\n**AC:** Singularities at $t=0$, $t=\\pm T/(2\\alpha)$ (RC) and $t=\\pm T/(4\\alpha)$ (RRC) are\nhandled by analytic limits, not epsilon fudging; unit tests assert continuity across those\npoints to 1e-9.\n\n**AC — cascade identity, with the scaling and truncation made explicit:** with filters at unit\npeak and the discrete convolution scaled by $1/\\text{sps}$, a cascade of two RRC filters of\nequal α matches the corresponding RC filter to **< 5e-6 RMS at ±64-symbol span**, and to\n**< 1e-3 RMS at the ±8-symbol default**.\n*Both qualifications are necessary.* Without the $1/\\text{sps}$ scale the cascade overshoots RC\nby a large factor (≈3.8× at α = 0.35 under unit-energy normalisation), and truncation alone\nsets the achievable floor: ±8 sym → 5.4e-4, ±16 → 1.1e-4, ±32 → 1.1e-5, ±64 → 3.2e-6. A flat\n\"1e-6\" tolerance is unreachable at the recommended default length and would fail a correct\nimplementation.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1667
+ },
+ {
+  "id": "REQ-DEM-023",
+  "area": "DEM",
+  "num": "023",
+  "priority": "P1",
+  "title": "Filter length and truncation",
+  "body": "**`REQ-DEM-023` (P1) — Filter length and truncation.** Filter span (in symbols) shall be\nuser-settable with a documented default (≥ 8 symbols each side recommended for RRC), windowed\ntruncation, and the normalisation of `REQ-DEM-022a`. The filter-span/accuracy trade shown\nabove shall be reproduced in the user help so the default is an informed choice.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1689
+ },
+ {
+  "id": "REQ-DEM-030",
+  "area": "DEM",
+  "num": "030",
+  "priority": "P0",
+  "title": "Symbol rate is supplied, never estimated",
+  "body": "**`REQ-DEM-030` (P0) — Symbol rate is supplied, never estimated.**\nThe symbol rate shall be a user parameter, applied exactly as entered; the demodulator shall\n**not** estimate or correct it. On first selection of digital demodulation the default shall\nbe Span/2. **[V]**\n**AC — the signature test:** With a deliberate symbol-rate error of 100 ppm, EVM versus symbol\nindex shall exhibit a minimum near the centre of the Result Length, growing approximately\nlinearly toward both ends. This reproduces the reference product's documented diagnostic\nbehaviour and is a **strong indicator** that `REQ-DEM-002`'s block estimator behaves as\nintended. *(It is a necessary, not a sufficient, condition — see the honesty note under\n`REQ-DEM-002`. Treat a failure as conclusive and a pass as corroborating.)*",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1696
+ },
+ {
+  "id": "REQ-DEM-031",
+  "area": "DEM",
+  "num": "031",
+  "priority": "P0",
+  "title": "Result Length",
+  "body": "**`REQ-DEM-031` (P0) — Result Length.**\nNumber of symbols demodulated and displayed. Minimum viable values scale with modulation\norder — approximately 50 symbols for QPSK/16-QAM rising to about 4 000 symbols for\n2048/4096-QAM for reliable carrier lock. **[V]** The UI shall warn when Result Length is\nbelow the recommended minimum for the chosen format.\n**AC:** Selecting 1024-QAM with Result Length 50 produces a visible, specific warning naming\nthe recommended minimum.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1707
+ },
+ {
+  "id": "REQ-DEM-032",
+  "area": "DEM",
+  "num": "032",
+  "priority": "P1",
+  "title": "Pre-demodulation trace window",
+  "body": "**`REQ-DEM-032` (P1) — Pre-demodulation trace window.**\nPre-demodulation traces (Time, Spectrum, Instantaneous Spectrum) shall use a window **20 %\nlarger** than the Result Length so transition regions are visible. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1715
+ },
+ {
+  "id": "REQ-DEM-033",
+  "area": "DEM",
+  "num": "033",
+  "priority": "P0",
+  "title": "Search Length",
+  "body": "**`REQ-DEM-033` (P0) — Search Length.**\nThe window searched for sync or burst, expressed in symbols, shall be ≥ Result Length. For\npulse search, Search Length shall satisfy\n$\\text{Search Length} \\geq 2 \\times \\text{MaxOn} + \\text{MaxOff}$. **[V]**\n*(The relationship is the **minimum** needed to guarantee one complete pulse falls inside the\nwindow; enforcing equality would prohibit longer searches for no reason.)*",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1719
+ },
+ {
+  "id": "REQ-DEM-034",
+  "area": "DEM",
+  "num": "034",
+  "priority": "P1",
+  "title": "Points per symbol is a display parameter",
+  "body": "**`REQ-DEM-034` (P1) — Points per symbol is a display parameter.**\nPoints per symbol shall be settable (typically 1, 2, 4, 5, 10, 20) and shall affect **trace\nresolution only**. It shall have **no effect on computed EVM**, since EVM is evaluated at\nsymbol decision instants. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1726
+ },
+ {
+  "id": "REQ-DEM-034a",
+  "area": "DEM",
+  "num": "034a",
+  "priority": "P0",
+  "title": "Internal processing rate is independent of the display setting",
+  "body": "**`REQ-DEM-034a` (P0) — Internal processing rate is independent of the display setting.**\nThe demodulator shall internally resample to **≥ 4 samples/symbol** (≥ 2 absolute minimum)\nregardless of the points-per-symbol display setting.\n*Rationale:* an RRC-shaped signal occupies $(1+\\alpha)/T > 1/T$. At 1 sample/symbol the signal\nis **below Nyquist** and the matched filter cannot be applied without aliasing — so a\nrequirement that EVM be invariant across a set that includes 1 pt/sym is unsatisfiable unless\nthe display setting and the processing rate are decoupled. Offset formats additionally require\nthe I/Q half-symbol stagger to be representable.\n**AC:** For a fixed input and a non-offset format, EVM computed with display points/symbol of\n1, 4 and 20 is identical to within 1e-9, the internal rate being fixed at ≥4 sps in all three\ncases.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "line": 1731
+ },
+ {
+  "id": "REQ-DEM-035",
+  "area": "DEM",
+  "num": "035",
+  "priority": "P1",
+  "title": "Mirror frequency spectrum",
+  "body": "**`REQ-DEM-035` (P1) — Mirror frequency spectrum.** An option conjugating the input\nspectrum, required for e.g. VSB signals with a high-side pilot. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1743
+ },
+ {
+  "id": "REQ-DEM-036",
+  "area": "DEM",
+  "num": "036",
+  "priority": "P1",
+  "title": "Carrier lock tolerance and diagnostics",
+  "body": "**`REQ-DEM-036` (P1) — Carrier lock tolerance and diagnostics.**\nCentre frequency must be within roughly ±10 % of the symbol rate of the true carrier for\nlock. **[V]** Failure to lock shall produce a specific diagnostic naming the likely causes —\nin documented order of likelihood: wrong symbol rate, wrong filter type or alpha, centre\nfrequency too far off, Result Length too short for the format.\n**AC:** Each of those four fault conditions, injected deliberately, produces the\ncorresponding diagnostic rather than a bare \"demodulation failed\".",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1746
+ },
+ {
+  "id": "REQ-DEM-040",
+  "area": "DEM",
+  "num": "040",
+  "priority": "P1",
+  "title": "Sync-pattern search",
+  "body": "**`REQ-DEM-040` (P1) — Sync-pattern search.**\nSearch shall locate a user-specified bit pattern (a multiple of bits-per-symbol in length)\nwithin Search Length, with a **Search Offset** positioning the Result Length window relative\nto the start of the pattern. Only the **first** match shall be used. Sync search shall be\n**optional** — carrier locking shall not depend on it. **[V]**\n**AC:** With a known pattern inserted at a known position by the simulator, the Result\nLength window lands at the specified offset from that position, to the symbol.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1756
+ },
+ {
+  "id": "REQ-DEM-041",
+  "area": "DEM",
+  "num": "041",
+  "priority": "P1",
+  "title": "Burst/pulse search",
+  "body": "**`REQ-DEM-041` (P1) — Burst/pulse search.**\nPulse search shall locate the first *complete* pulse within Search Length. Detection\nrequires the pulse to be at least **15 dB** above the noise floor. **[V]** Without sync\nsearch, the Result Length window shall be auto-centred on the detected pulse; with sync\nsearch, positioning shall follow the pattern and offset instead. Only the first pulse in a\ncapture is analysed. **[V]**\n**AC:** A simulated burst 20 dB above noise is found and centred; the same burst at 10 dB\nabove noise is reported as not found, rather than silently mis-locating.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1764
+ },
+ {
+  "id": "REQ-DEM-050",
+  "area": "DEM",
+  "num": "050",
+  "priority": "P1",
+  "title": "Adaptive equaliser",
+  "body": "**`REQ-DEM-050` (P1) — Adaptive equaliser.**\nAn adaptive equaliser shall derive its coefficients from the measured signal, correcting\nlinear channel impairments: group-delay distortion, frequency-response error, and\nreflections/multipath. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1775
+ },
+ {
+  "id": "REQ-DEM-051",
+  "area": "DEM",
+  "num": "051",
+  "priority": "P1",
+  "title": "Equaliser parameters and modes",
+  "body": "**`REQ-DEM-051` (P1) — Equaliser parameters and modes.**\n**Filter Length** in symbols; **Convergence factor** (LMS step size); modes **Run** (update\ncoefficients from the current measurement for use on the next), **Hold** (freeze), **Reset**\n(return to a unit-impulse response). **[V]**\nImpulse-position behaviour shall match the documented behaviour: for short filter lengths\nthe impulse sits at the filter centre; as length grows the impulse \"moves proportionally\ntowards the start of the filter\" to accommodate channels with large delay spread. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1780
+ },
+ {
+  "id": "REQ-DEM-052",
+  "area": "DEM",
+  "num": "052",
+  "priority": "P1",
+  "title": "Equaliser algorithm: least-squares primary, LMS for parity",
+  "body": "**`REQ-DEM-052` (P1) — Equaliser algorithm: least-squares primary, LMS for parity.**\n**[DESIGN CHOICE]**\n\n*Primary solution.* Because `REQ-DSP-001`/`REQ-DEM-002` mandate whole-block, non-causal\nprocessing **and** step 10 of `REQ-DEM-001` already regenerates the full reference sequence\n$r_k$, the equaliser shall by default compute the **exact regularised least-squares (Wiener)\nsolution** in one shot:\n\n$$\\mathbf{w}=\\left(\\mathbf{X}^{H}\\mathbf{X}+\\lambda\\mathbf{I}\\right)^{-1}\\mathbf{X}^{H}\\mathbf{d}$$\n\nThis is optimal, deterministic, has no convergence dependence, and needs no step size. With\nthe reference already in hand, an iterative gradient method is strictly worse here.\n\n*LMS mode, retained for behavioural parity.* A decision-directed complex LMS mode shall also be\nprovided, since the reference product's exposed controls (filter length, convergence factor,\nRun/Hold/Reset) imply incremental adaptation and users may depend on its transient behaviour:\n\n$$y_n=\\mathbf{w}^{H}\\mathbf{x}_n,\\qquad e_n=d_n-y_n,\\qquad \\mathbf{w}\\leftarrow\\mathbf{w}+\\mu\\, e_n^{*}\\,\\mathbf{x}_n$$\n\nRequired additions, absent from the reference documentation and specified here:\n\n- **Stability bound** $0 < \\mu < 2/(L\\,P_x)$, enforced and reported, or **NLMS**\n  ($\\mu_n = \\tilde\\mu/(\\varepsilon + \\|\\mathbf{x}_n\\|^2)$) selected instead.\n- **Acquisition mode** for when decisions are unreliable at start-up: CMA (blind) or\n  data-aided from a known sync sequence, switching to decision-directed once EVM falls below a\n  threshold.\n- **Tap count disambiguation:** \"Filter Length in symbols\" at T/2 spacing means **2N taps for\n  an N-symbol filter**. State this in the UI; it is a frequent source of confusion.\n\n*Honesty note:* the reference product does not publish its adaptation algorithm. The exposed\nparameter set (length, convergence factor, run/hold/reset) is equally consistent with LMS,\nNLMS, CMA and RLS-with-forgetting-factor, so it constitutes **no evidence** for any particular\nchoice. The selection above is made on engineering grounds.",
+  "phase": 2,
+  "evidence": [
+   "design-choice"
+  ],
+  "has_ac": false,
+  "line": 1788
+ },
+ {
+  "id": "REQ-DEM-053",
+  "area": "DEM",
+  "num": "053",
+  "priority": "P1",
+  "title": "Equaliser output traces",
+  "body": "**`REQ-DEM-053` (P1) — Equaliser output traces.**\n**Equalizer Impulse Response** and **Channel Frequency Response** shall be available as trace\ndata. The channel response is the inverse of the equaliser response, with magnitude and phase\n(and optionally group delay). **[V]**\n\n**Regularisation is mandatory here.** A pointwise $1/W(e^{j\\omega})$ diverges wherever the\nequaliser response has a null, producing spikes that look like real channel features. The\ninversion shall be regularised — $W^*/(|W|^2+\\varepsilon)$ with $\\varepsilon$ set from the\nnoise floor, or equivalent — and the regularisation shall be documented and annotated on the\ntrace.\n**AC:** With a simulated two-ray multipath channel of known delay and amplitude, the\nrecovered channel frequency response matches the analytic response to within 0.5 dB in\nmagnitude across the occupied band, and equalisation reduces EVM to within 1.2× the\nunimpaired value.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1822
+ },
+ {
+  "id": "REQ-DEM-060",
+  "area": "DEM",
+  "num": "060",
+  "priority": "P0",
+  "title": "EVM",
+  "body": "**`REQ-DEM-060` (P0) — EVM.**\n\n$$\\mathrm{EVM_{RMS}}=\\frac{\\sqrt{\\dfrac{1}{N}\\displaystyle\\sum_{k=1}^{N}\\left|z_k-r_k\\right|^{2}}}{V_{\\text{norm}}}\\times100\\%$$\n\nEVM shall be computed **only at symbol decision instants**. **[V]** Peak EVM shall be reported\nas\n\n$$\\mathrm{EVM_{peak}}=\\frac{\\max_k\\left|z_k-r_k\\right|}{V_{\\text{norm}}}\\times100\\%$$\n\ntogether with the index $k$ at which it occurs. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1844
+ },
+ {
+  "id": "REQ-DEM-061",
+  "area": "DEM",
+  "num": "061",
+  "priority": "P0",
+  "title": "EVM normalisation reference",
+  "body": "**`REQ-DEM-061` (P0) — EVM normalisation reference.**\n$V_{\\text{norm}}$ shall be user-selectable among **maximum constellation magnitude**, **RMS\n(mean power) of the reference constellation**, and a **user-specified value**. **[V]**\n\nThe choice only has consequences for **variable-envelope** formats (QAM, APSK, Star QAM); for\nconstant-modulus formats (BPSK, QPSK, 8PSK, MSK) the maximum and RMS magnitudes are the same\nnumber and the setting is inert. The default for variable-envelope formats shall be stated\nexplicitly in the UI rather than inherited silently.\n**AC:** Switching normalisation between max-magnitude and RMS for a 16-QAM signal changes\nreported EVM by exactly the analytically predicted ratio\n($\\sqrt{P_{\\max}/P_{\\text{avg}}}$), confirming the normalisation is applied and not\nhard-coded. *This is a frequent source of apparent disagreement between instruments and\nmust be explicit in the UI readout.*",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1855
+ },
+ {
+  "id": "REQ-DEM-062",
+  "area": "DEM",
+  "num": "062",
+  "priority": "P1",
+  "title": "Offset EVM",
+  "body": "**`REQ-DEM-062` (P1) — Offset EVM.** For offset formats, an **Offset EVM** variant shall\nbe computed using one point per symbol formed from a complex point whose real and imaginary\nparts are taken from different time locations. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1869
+ },
+ {
+  "id": "REQ-DEM-063",
+  "area": "DEM",
+  "num": "063",
+  "priority": "P0",
+  "title": "Magnitude error",
+  "body": "**`REQ-DEM-063` (P0) — Magnitude error.**\n\n$$\\mathrm{MagErr}=\\frac{\\sqrt{\\dfrac{1}{N}\\displaystyle\\sum_{k}\\left(\\left|z_k\\right|-\\left|r_k\\right|\\right)^{2}}}{V_{\\text{norm}}}\\times100\\%$$\n\nNot applicable to FSK/CPM-FM formats, where amplitude is not the modulated parameter. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1873
+ },
+ {
+  "id": "REQ-DEM-064",
+  "area": "DEM",
+  "num": "064",
+  "priority": "P0",
+  "title": "Phase error",
+  "body": "**`REQ-DEM-064` (P0) — Phase error.**\n\n$$\\mathrm{PhErr}=\\frac{180}{\\pi}\\sqrt{\\dfrac{1}{N}\\sum_{k}\\left[\\arg\\!\\left(z_k r_k^{*}\\right)\\right]^{2}}\\quad\\text{degrees}$$\n\nwith $\\arg(\\cdot)$ returning the principal value in $(-\\pi, \\pi]$. The explicit $180/\\pi$ is\nnot decoration — the bare expression returns radians and the reported quantity is degrees.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1879
+ },
+ {
+  "id": "REQ-DEM-065",
+  "area": "DEM",
+  "num": "065",
+  "priority": "P0",
+  "title": "Frequency error",
+  "body": "**`REQ-DEM-065` (P0) — Frequency error.**\nThe carrier frequency error relative to the analyser centre frequency, in Hz — equivalently\nthe frequency shift the analyser applied to achieve carrier lock. **[V]**\n**AC:** A simulated 1 kHz carrier offset is reported as 1 kHz ± 0.1 Hz.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 1886
+ },
+ {
+  "id": "REQ-DEM-066",
+  "area": "DEM",
+  "num": "066",
+  "priority": "P0",
+  "title": "IQ origin offset (carrier feedthrough)",
+  "body": "**`REQ-DEM-066` (P0) — IQ origin offset (carrier feedthrough).**\n\n$$\\mathrm{IQoffset}=20\\log_{10}\\!\\left(\\frac{\\left|c\\right|}{V_{\\mathrm{ref,RMS}}}\\right)\\ \\mathrm{dB},\\qquad c = c_I + j c_Q$$\n\nwhere $(c_I, c_Q)$ are the offset terms from the impairment fit of `REQ-DEM-067` and\n$V_{\\mathrm{ref,RMS}}$ is the **RMS magnitude of the reference constellation**. Zero carrier\nfeedthrough gives $-\\infty$ dB. Computed at symbol times, **except for MSK, which uniquely uses\nall points rather than only symbol instants**. **[V]**\n\nTwo deliberate choices here, both departing from the obvious implementation:\n\n- **Normalise to a fixed reference, not to $V_{\\text{norm}}$.** Using the EVM normalisation\n  reference would make the reported IQ offset depend on an unrelated user setting — the same\n  signal would report two values 2.55 dB apart for 16-QAM depending on the EVM normalisation\n  selection. IQ offset is a property of the signal and must not move when an EVM display option\n  changes.\n- **Take the offset from the impairment fit, not from $\\frac1N\\sum_k z_k$.** The raw mean is\n  biased whenever a short block carries an unbalanced symbol sequence; $\\frac1N\\sum_k (z_k-r_k)$\n  or the fitted $(c_I,c_Q)$ is unbiased and stays consistent with the gain-imbalance and skew\n  estimates, which are derived from the same fit.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1891
+ },
+ {
+  "id": "REQ-DEM-067",
+  "area": "DEM",
+  "num": "067",
+  "priority": "P1",
+  "title": "IQ gain imbalance and quadrature skew",
+  "body": "**`REQ-DEM-067` (P1) — IQ gain imbalance and quadrature skew.** **[DESIGN CHOICE for the\nestimator]**\nFit, by least squares over the symbol set, the **symmetric** affine impairment model — each\naxis rotated by half the skew angle:\n\n$$\\Re\\{z_k\\}=g_I\\left(\\Re\\{r_k\\}\\cos\\tfrac{\\psi}{2}+\\Im\\{r_k\\}\\sin\\tfrac{\\psi}{2}\\right)+c_I$$\n$$\\Im\\{z_k\\}=g_Q\\left(\\Re\\{r_k\\}\\sin\\tfrac{\\psi}{2}+\\Im\\{r_k\\}\\cos\\tfrac{\\psi}{2}\\right)+c_Q$$\n\nthen report **gain imbalance** $=20\\log_{10}(g_Q/g_I)$ dB and **quadrature error** $=\\psi$\ndegrees. Gain imbalance manifests as a rectangular stretch along the ideal I/Q axes;\nquadrature skew as a stretch along a 45° line. **[V for the geometric descriptions]**\n\n**Why symmetric and not a one-sided shear.** Putting the whole skew on Q\n($\\Im\\{z\\}=g_Q(\\Re\\{r\\}\\sin\\psi+\\Im\\{r\\}\\cos\\psi)$) is a *shear*, and a shear decomposes as a\nrotation by $\\psi/2$ composed with the symmetric skew. That $\\psi/2$ rotation is\nindistinguishable from carrier phase and is silently absorbed by the step-8 phase estimate —\nso $\\psi$ becomes unidentifiable and the reported value depends on estimator ordering. The\nsymmetric form has no rotational component, which makes $\\psi$ identifiable. It also matches\nthe \"stretch along a 45° line\" description, which the shear form does not.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1912
+ },
+ {
+  "id": "REQ-DEM-067a",
+  "area": "DEM",
+  "num": "067a",
+  "priority": "P1",
+  "title": "Joint estimation of phase and skew",
+  "body": "**`REQ-DEM-067a` (P1) — Joint estimation of phase and skew.**\nCarrier phase (step 8) and quadrature skew shall be **jointly fitted**, or the phase estimate\nshall be explicitly constrained, so that the $\\psi/2$ ambiguity above is resolved\ndeterministically. The chosen convention shall be documented and asserted in tests.\n\n> **Documented interaction that must be reproduced.** Quadrature skew can be mis-attributed as\n> gain imbalance (and vice versa) depending on the transmitter's symbol-mapping convention\n> relative to the receiver's reference axes. **[V]** The UI shall document this, and the test\n> suite shall include the ambiguous case so the behaviour is characterised and stable rather\n> than accidental. The sign convention for gain imbalance shall be stated explicitly\n> (positive = Q larger than I, per the formula above).",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1932
+ },
+ {
+  "id": "REQ-DEM-068",
+  "area": "DEM",
+  "num": "068",
+  "priority": "P1",
+  "title": "Rho",
+  "body": "**`REQ-DEM-068` (P1) — Rho.**\n\n$$\\rho=\\frac{\\left|\\sum_k z_k r_k^{*}\\right|^{2}}{\\left(\\sum_k\\left|z_k\\right|^{2}\\right)\\left(\\sum_k\\left|r_k\\right|^{2}\\right)}$$\n\nThe normalised correlated power between measured and reference signals — the waveform\nquality factor, maximum 1.0 for a perfect match. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1944
+ },
+ {
+  "id": "REQ-DEM-069",
+  "area": "DEM",
+  "num": "069",
+  "priority": "P1",
+  "title": "SNR (MER)",
+  "body": "**`REQ-DEM-069` (P1) — SNR (MER).**\n\n$$\\mathrm{SNR_{dB}}=10\\log_{10}\\frac{\\sum_k\\left|r_k\\right|^{2}}{\\sum_k\\left|z_k-r_k\\right|^{2}}$$\n\nDefined by the reference product as the ratio of average symbol power to noise power, where\n\"noise power includes anything that causes the symbol to deviate from the ideal state\nposition, including additive noise, distortion, and ISI.\" **[V]** Applicable to QAM,\nDVB-QAM, 8PSK, QPSK, APSK and VSB; VSB uses a real-only variant. **[V]**\n*Naming note:* the wider industry calls this MER. The reference product calls it SNR.\nOpenVSA shall display \"SNR (MER)\" to avoid ambiguity.",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1951
+ },
+ {
+  "id": "REQ-DEM-070",
+  "area": "DEM",
+  "num": "070",
+  "priority": "P1",
+  "title": "Format-specific metrics",
+  "body": "**`REQ-DEM-070` (P1) — Format-specific metrics.**\n**Amplitude droop** (dB/symbol, from a linear fit of log magnitude versus symbol index —\nMSK/GSM class), **FSK error** and **FSK deviation** (FSK formats), **carrier offset**,\n**pilot level** (VSB), and **time offset** shall be computed where applicable to the\nselected format. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1962
+ },
+ {
+  "id": "REQ-DEM-071",
+  "area": "DEM",
+  "num": "071",
+  "priority": "P0",
+  "title": "Error summary table",
+  "body": "**`REQ-DEM-071` (P0) — Error summary table.**\nAll applicable metrics shall be presented in an Error Summary table trace, with units,\nand with rows automatically shown or hidden according to format applicability. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 1968
+ },
+ {
+  "id": "REQ-DEM-072",
+  "area": "DEM",
+  "num": "072",
+  "priority": "P1",
+  "title": "Metric provenance",
+  "body": "**`REQ-DEM-072` (P1) — Metric provenance.**\nThe UI shall make visible, for the active measurement, which normalisation reference, which\nfilters, and which compensations (equaliser on/off, IQ offset removed or not) were in force\nwhen the metrics were computed.\n*Rationale:* EVM numbers are meaningless without this context, and disagreements between\ninstruments almost always trace to it.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 1972
+ },
+ {
+  "id": "REQ-DEM-080",
+  "area": "DEM",
+  "num": "080",
+  "priority": "P0",
+  "title": "Result trace catalogue",
+  "body": "**`REQ-DEM-080` (P0) — Result trace catalogue.**\nThe following shall be available as trace data sources: **[V]**\n\n| Trace | Content |\n|---|---|\n| IQ Measured Time | Measured complex waveform |\n| IQ Reference Time | Regenerated ideal complex waveform |\n| Constellation | Symbol-instant points in the I/Q plane |\n| IQ Vector / Trajectory | Continuous inter-symbol path in the I/Q plane |\n| Eye Diagram (I-Eye, Q-Eye) | I or Q versus time, folded on the symbol clock |\n| Trellis | Phase versus time, folded — **[U]**, not confirmed in the reference product but conventional and cheap to provide |\n| Error Vector Time | $|z_k - r_k|$ versus time/symbol |\n| Error Vector Spectrum | Spectrum of the error vector sequence — reveals systematic/periodic impairments |\n| Magnitude Error | Magnitude error versus time/symbol |\n| Phase Error | Phase error versus time/symbol |\n| Symbol Table / Bit Stream | Detected symbols and bits, hex or binary, with sync-pattern highlighting |\n| Error Summary | The metrics of §11.7 |\n| Equalizer Impulse Response | Equaliser coefficients |\n| Channel Frequency Response | Estimated channel magnitude/phase |",
+  "phase": 2,
+  "evidence": [
+   "verified",
+   "unverified"
+  ],
+  "has_ac": false,
+  "line": 1981
+ },
+ {
+  "id": "REQ-DEM-081",
+  "area": "DEM",
+  "num": "081",
+  "priority": "P1",
+  "title": "Eye diagram construction",
+  "body": "**`REQ-DEM-081` (P1) — Eye diagram construction.**\nThe eye shall be built by superimposing the measured I (or Q) waveform across the Result\nLength, folded on the symbol clock, with a configurable eye length in symbols (default 2)\nand optional persistence shading. **[V]**",
+  "phase": 2,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2001
+ },
+ {
+  "id": "REQ-DEM-082",
+  "area": "DEM",
+  "num": "082",
+  "priority": "P1",
+  "title": "Constellation rendering quality",
+  "body": "**`REQ-DEM-082` (P1) — Constellation rendering quality.**\nConstellation and vector traces shall support: ideal-point overlay, per-point colouring by\nerror magnitude, decision-boundary overlay, digital persistence with configurable decay, and\noptional density (heat-map) rendering for large symbol counts.\n**AC:** 100 000 symbols render at ≥10 fps with persistence enabled (see `REQ-NFR-005`).",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "line": 2006
+ },
+ {
+  "id": "REQ-DEM-083",
+  "area": "DEM",
+  "num": "083",
+  "priority": "P2",
+  "title": "Symbol table interaction",
+  "body": "**`REQ-DEM-083` (P2) — Symbol table interaction.** Selecting a symbol in the table shall\nhighlight the corresponding point in the constellation and position in the eye, and vice\nversa.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2012
+ },
+ {
+  "id": "REQ-PER-001",
+  "area": "PER",
+  "num": "001",
+  "priority": "P0",
+  "title": "Personality SDK",
+  "body": "**`REQ-PER-001` (P0) — Personality SDK.**\nA documented plug-in contract shall allow a personality to declare its measurements,\ncontribute setup UI, consume the capture stream, reuse core DSP and demodulation services,\npublish trace data types, and declare its licence entitlement.\n\n```csharp\npublic interface IMeasurementPersonality\n{\n    PersonalityId Id { get; }\n    string        DisplayName { get; }\n    string        RequiredEntitlement { get; }\n    IReadOnlyList<MeasurementDescriptor> Measurements { get; }\n    IMeasurementInstance Create(MeasurementDescriptor descriptor, IAnalysisServices services);\n}\n\npublic interface IAnalysisServices          // what the host lends to personalities\n{\n    IFftProcessor      Fft        { get; }\n    IDemodulator       Demod      { get; }\n    IResampler         Resampler  { get; }\n    IFilterFactory     Filters    { get; }\n    ITraceSink         Traces     { get; }\n    IMarkerService     Markers    { get; }\n    ILimitService      Limits     { get; }\n}\n```\n\n**AC:** A reference personality implemented purely against this interface — with no access\nto host internals — produces correct results, proving the contract is sufficient.",
+  "phase": 5,
+  "evidence": [],
+  "has_ac": true,
+  "line": 2022
+ },
+ {
+  "id": "REQ-PER-002",
+  "area": "PER",
+  "num": "002",
+  "priority": "P1",
+  "title": "Personality isolation",
+  "body": "**`REQ-PER-002` (P1) — Personality isolation.** A personality fault shall not terminate\nthe host. Personalities shall load into a controlled context with exception isolation at\nthe measurement boundary, and a faulting personality shall be disabled with a clear report.",
+  "phase": 5,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2052
+ },
+ {
+  "id": "REQ-PER-003",
+  "area": "PER",
+  "num": "003",
+  "priority": "P2",
+  "title": "Third-party SDK parity",
+  "body": "**`REQ-PER-003` (P2) — Third-party SDK parity.** The SDK shall be documented and\ndistributable to third parties, mirroring the reference product's Option 301 multi-vendor\napproach. **[V]**",
+  "phase": 5,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2056
+ },
+ {
+  "id": "REQ-PER-010",
+  "area": "PER",
+  "num": "010",
+  "priority": "P1",
+  "title": "Wave 1 personalities shall each be validated by direct numerical",
+  "body": "**`REQ-PER-010` (P1)** — Wave 1 personalities shall each be validated by direct numerical\ncomparison against the E4406A's own measurement of the same signal (see `REQ-E44-007`).",
+  "phase": 5,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2086
+ },
+ {
+  "id": "REQ-PER-011",
+  "area": "PER",
+  "num": "011",
+  "priority": "P2",
+  "title": "Each personality shall declare the standard revision it",
+  "body": "**`REQ-PER-011` (P2)** — Each personality shall declare the standard revision it\nimplements, and shall state clearly in its help where it deviates or is incomplete.\n*Rationale:* silent partial conformance to a telecom standard is worse than a documented\nsubset, because users will make pass/fail decisions on it.",
+  "phase": 5,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2089
+ },
+ {
+  "id": "REQ-UI-001",
+  "area": "UI",
+  "num": "001",
+  "priority": "P0",
+  "title": "Docking-window application, not an instrument emulator",
+  "body": "**`REQ-UI-001` (P0) — Docking-window application, not an instrument emulator.**\nThe shell shall be a docking-window application with two distinct window classes: **[V]**\n\n- **Document windows** — dock into the **central document area** as **tabs in a tab group**.\n  Only trace-bearing windows may be document windows.\n- **Tool windows** — dock **around the edges** of the document area and carry a title bar\n  rather than a tab.\n\n**There shall be no right-hand softkey column.** The reference *software* has none; that\nbelongs to the 89400-series *hardware* (§13.10). Adding one would be a retro affectation, not\nfidelity. **[V-negative]**\n\nTop-to-bottom the shell is: **title bar → menu bar → toolbar band (multiple dockable\ntoolbars) → document area with trace tab groups, tool windows docked around its edges →\nstatus bar.** **[V for the components; U for the exact order, though it is conventional.]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2113
+ },
+ {
+  "id": "REQ-UI-002",
+  "area": "UI",
+  "num": "002",
+  "priority": "P1",
+  "title": "Named tool windows",
+  "body": "**`REQ-UI-002` (P1) — Named tool windows.**\nMarkers · Output · Player · SCPI Log · Event Log · Contexts · Block Diagram · Macros. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2129
+ },
+ {
+  "id": "REQ-UI-003",
+  "area": "UI",
+  "num": "003",
+  "priority": "P1",
+  "title": "Detachable trace windows are full secondary windows",
+  "body": "**`REQ-UI-003` (P1) — Detachable trace windows are full secondary windows.**\nDragging a trace out of the document area shall create a **Trace Window**: \"a regular\napplication window with menus and toolbars, similar to the main VSA application window,\nexcept that the Trace Window contains a subset of the menu items\" — supporting all\ntrace-specific operations (markers, spectrograms, adding/deleting traces, scaling) plus\nlimited measurement control (restart, pause, set selected measurement). **[V]**\n**AC:** A detached trace window has its own working menu bar and toolbar, operates\nindependently on a second monitor, and is captured in saved layout state.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 2132
+ },
+ {
+  "id": "REQ-UI-004",
+  "area": "UI",
+  "num": "004",
+  "priority": "P1",
+  "title": "Tab group conventions",
+  "body": "**`REQ-UI-004` (P1) — Tab group conventions.**\n- The **close button sits to the *left* of all the tabs**, not on each tab and not at the\n  right. **[V]** *(Unusual, easily \"corrected\" by a developer into the conventional position —\n  don't.)*\n- The **active trace's tab title is rendered in bold**. **[V]**\n- Users resize by dragging the boundary between windows; a **Resize Traces** command evenly\n  redistributes. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2141
+ },
+ {
+  "id": "REQ-UI-005",
+  "area": "UI",
+  "num": "005",
+  "priority": "P1",
+  "title": "Trace layout presets",
+  "body": "**`REQ-UI-005` (P1) — Trace layout presets.**\nThe layout menu shall offer, by these names: **[V]**\n\n| Name | Behaviour |\n|---|---|\n| **Single** | All visible traces placed in a single tab group |\n| **Stack N** | N evenly spaced trace windows stacked vertically |\n| **Grid N×M** | Grid of trace windows, N rows by M columns |\n| **Custom** | User-defined arrangement |\n| **Tile Visible** | Auto-layout over all open traces, allocating space as evenly as possible; **traces currently hidden as tabs are promoted to their own space** |\n| **Previous Layout** | Revert to the prior layout |\n\n*Historical note for reference:* the Agilent era used fixed presets — \"Single\", \"Stack 2\",\n\"Grid 2x2\", \"Quad 4\", \"Grid 6\" — with six configurable measurement grids. The modern\nparameterised form supersedes it. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2149
+ },
+ {
+  "id": "REQ-UI-006",
+  "area": "UI",
+  "num": "006",
+  "priority": "P1",
+  "title": "Status bar contents",
+  "body": "**`REQ-UI-006` (P1) — Status bar contents.**\nA status bar at the bottom of the main window shall show, with measurement status messages\nspecifically at the **bottom left**: **[V]**\n\n- **Measurement status** — e.g. *Average Complete*, *Measurement running*, *Waiting for\n  Trigger*, *Real-Time Measurement*, *Filling Time Record*\n- **Calibration status** for the selected hardware\n- **External reference lock state**\n- **Spectrum Rate indicator** — the speed at which measurements are being made\n- **Beta features in use** count *(adopt as a \"preview features\" indicator)*\n\nTo these OpenVSA adds, per `REQ-NFR-012` and `REQ-NFR-027`: **dropped-frame count** and\n**measured front-end transfer rate / duty cycle**.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2165
+ },
+ {
+  "id": "REQ-UI-007",
+  "area": "UI",
+  "num": "007",
+  "priority": "P1",
+  "title": "Prominent fault and lock indicators",
+  "body": "**`REQ-UI-007` (P1) — Prominent fault and lock indicators.**\nConditions that invalidate a measurement shall be indicated in the trace's upper-right corner\nusing the strings of `REQ-UI-041`, not buried in a log: ADC overload (`OVx`), unlocked\nreference, uncalibrated state (`CAL?`), demodulation lock failure (`CARRIER LOCK?`), sync or\npulse not found, and dropped frames.\n*Rationale:* every one of these means the number on screen is wrong. A user reading EVM must\nnot have to go looking to discover that the input was overloaded.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2179
+ },
+ {
+  "id": "REQ-UI-010",
+  "area": "UI",
+  "num": "010",
+  "priority": "P0",
+  "title": "Three independently coloured zones",
+  "body": "**`REQ-UI-010` (P0) — Three independently coloured zones.**\nThis is the single most load-bearing layout fact, taken from the reference product's own\ndisplay-colour enumeration: **[V]**\n\n```\n┌─────────────────────────────────────────────────┐  ← AnnotationBackground\n│  annotation text (Annotation colour)            │     (outer band)\n│   ┌───────────────────────────────────────┐     │\n│   │                                       │     │  ← TraceBackground\n│   │   graticule (Grid colour)             │     │     (inner rectangle,\n│   │   trace geometry                      │     │      behind the graticule)\n│   │                                       │     │\n│   └───────────────────────────────────────┘     │\n│  annotation text                                │\n└─────────────────────────────────────────────────┘\n```\n\nVerbatim definitions: `TraceBackground` — \"Color for the background of the trace data (behind\nthe graticule)\"; `Grid` — \"Color for the graticule lines\"; `Annotation` — \"Color for the trace\nannotation (text outside of the graticule)\"; `AnnotationBackground` — \"Color for background of\narea outside of the trace graticule\".",
+  "phase": 0,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2189
+ },
+ {
+  "id": "REQ-UI-011",
+  "area": "UI",
+  "num": "011",
+  "priority": "P1",
+  "title": "The annotation band reflows",
+  "body": "**`REQ-UI-011` (P1) — The annotation band reflows.**\n**Show Annotation** off shall remove all trace annotation, with **the graticule expanding to\nfill the reclaimed space**. **Show Grid Lines** off shall remove the graticule lines\nindependently. **[V]**\n**AC:** Toggling Show Annotation changes the plot rectangle's size, not merely text\nvisibility.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 2211
+ },
+ {
+  "id": "REQ-UI-012",
+  "area": "UI",
+  "num": "012",
+  "priority": "P1",
+  "title": "Graticule geometry",
+  "body": "**`REQ-UI-012` (P1) — Graticule geometry.**\nThe graticule shall be **10 horizontal × 10 vertical divisions** by default, configurable.\n**[U — recommended value, not documented.]**\n\n> **Why 10×10 despite being undocumented.** No Keysight source for either product states a\n> division count. The strongest available evidence is arithmetic: the 89400 series specifies\n> \"**Display points/trace 401**\" — 400 intervals, exactly what a 10-division-wide graticule at\n> 40 px/division implies, and the 89600's geometry is inherited from it. That is an inference\n> from a real published number, not a quotation. Make the count a setting so the choice is\n> cheap to revise.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2218
+ },
+ {
+  "id": "REQ-UI-013",
+  "area": "UI",
+  "num": "013",
+  "priority": "P1",
+  "title": "Reference position defaults, which set the annotation layout",
+  "body": "**`REQ-UI-013` (P1) — Reference position defaults, which set the annotation layout.**\nX reference position 0–100 % (0 % = left edge, 100 % = right edge). Y reference position\n0–100 % in 1 % increments, **defaulting to 100 % for Log Mag, Lin Mag and Log Mag (lin)** —\ni.e. the reference line at the **top** of the grid — **and 50 % for all other formats**, i.e.\ncentred, which is what time-domain and IQ displays need. **[V]**\n*This default is what puts the reference-level annotation at top-left for spectra and centres\nthe origin for IQ displays; it is a layout decision as much as a scaling one.*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2229
+ },
+ {
+  "id": "REQ-UI-014",
+  "area": "UI",
+  "num": "014",
+  "priority": "P1",
+  "title": "Colour configuration and persistence",
+  "body": "**`REQ-UI-014` (P1) — Colour configuration and persistence.**\nAll display colours shall be user-settable through a standard colour picker and shall persist\nin a display-preferences file (the reference product uses `.dspx`). **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2237
+ },
+ {
+  "id": "REQ-UI-015",
+  "area": "UI",
+  "num": "015",
+  "priority": "P1",
+  "title": "Default background",
+  "body": "**`REQ-UI-015` (P1) — Default background.**\nThe default trace background shall be **black** (or very dark). **[U — inferred, not stated.]**\n\n> The only textual trace of the default in the entire documentation is the Print dialog's\n> **\"Force white background\"** option, offered because \"large areas of black do not print well\n> on inkjet-style printers\", with \"very light colors will print black so they can be seen.\"\n> A feature justified by \"large areas of black\" only makes sense over a black default. That is\n> strong circumstantial evidence, not a statement. **OpenVSA shall implement the same\n> force-white-background print option regardless** — it is needed either way.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2241
+ },
+ {
+  "id": "REQ-UI-020",
+  "area": "UI",
+  "num": "020",
+  "priority": "P0",
+  "title": "Traces are lettered, and colours come from a 20-entry indexed table",
+  "body": "**`REQ-UI-020` (P0) — Traces are lettered, and colours come from a 20-entry indexed table.**\nTraces shall be identified by **letter** (Trace A, B, C, D, …), **not** by number — trace\n*numbers* would collide with marker numbering, which is exactly why the reference product\nletters them. Colours are held in an indexed table of **20**. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2253
+ },
+ {
+  "id": "REQ-UI-021",
+  "area": "UI",
+  "num": "021",
+  "priority": "P0",
+  "title": "A trace's line and its annotation text share one colour",
+  "body": "**`REQ-UI-021` (P0) — A trace's line and its annotation text share one colour.**\n`Trace` is defined as \"Color for specified trace **and its annotation**\". **[V]**\n*This is a genuine visual signature of the product — the numbers describing a trace are\ntinted to match the trace itself, which is how a user reads a four-trace overlay at a glance.\nCorroborated from the other direction by an 89400 firmware defect report: \"Trace A shows wrong\nannotation color after preset.\"*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2258
+ },
+ {
+  "id": "REQ-UI-022",
+  "area": "UI",
+  "num": "022",
+  "priority": "P1",
+  "title": "Themeable element set",
+  "body": "**`REQ-UI-022` (P1) — Themeable element set.**\nThe following shall each be independently colourable, forming the WPF theme resource\ndictionary. **[V — this is the reference product's actual list.]**\n\n*Global (all traces):* ACP · ACP annotation · Annotation · Annotation Background · Grid ·\nIndicator · Limit · Fail Limit · Margin · Fail Margin · Marker Window Background · Mod Type N ·\nSelected Marker · Not Selected Marker · OBW · OBW annotation · Slot Annotation · Slot Data ·\nSlot MAC · Slot Midamble · Slot Pilot (+ Downlink/Uplink) · Slot Preamble · Slot Selected ·\nTrace Background.\n\n*Per trace:* Trace · Symbol · Average · Pilot · Spectrogram Marker · Trace Select ·\nEmitter 1–32 · Group 1–48.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2265
+ },
+ {
+  "id": "REQ-UI-023",
+  "area": "UI",
+  "num": "023",
+  "priority": "P1",
+  "title": "Limit/margin colouring, including the non-obvious part",
+  "body": "**`REQ-UI-023` (P1) — Limit/margin colouring, including the non-obvious part.**\nFour separate colour entries: **Limit**, **Margin**, **Fail Limit**, **Fail Margin**. **[V]**\n\n> **The \"fail\" colours recolour *the trace itself* at the failing points — not the limit\n> line.** This is counter-intuitive and easy to implement backwards, and it is the behaviour\n> that makes a failure legible at a glance. The user can set pass and fail indication for the\n> limit, the margin, or both. **[V]**\n\n*Recommended defaults:* limit red, margin yellow. **[U — widely assumed but stated nowhere;\nadopt as a default, not as a fidelity claim.]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2278
+ },
+ {
+  "id": "REQ-UI-024",
+  "area": "UI",
+  "num": "024",
+  "priority": "P1",
+  "title": "Spectrogram colour maps",
+  "body": "**`REQ-UI-024` (P1) — Spectrogram colour maps.**\nThe one hard colour statement in the entire reference documentation, and therefore to be\nimplemented exactly: **[V]**\n\n| Map | Definition |\n|---|---|\n| **Color Normal** *(default)* | Spectrum of **64 colours**; **maximum → red, minimum → blue** |\n| **Color Reverse** | As above, reversed |\n| **Grey Normal** | **64 shades of grey**; maximum → lightest, minimum → darkest |\n| **Grey Reverse** | As above, reversed |\n| **User Defined** | User map; **colour index 0 is at the bottom**; reducing the count discards colours from the **top**; a \"Sample Map\" preview shows the full map with horizontal marks indicating the active selection |\n\n*Note:* the brochure remarks that \"grey-scale views provide even greater resolution\" — worth\nsurfacing as a tooltip, since it is a real perceptual point about luminance ramps.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2289
+ },
+ {
+  "id": "REQ-UI-030",
+  "area": "UI",
+  "num": "030",
+  "priority": "P0",
+  "title": "Marker glyph shapes and placement",
+  "body": "**`REQ-UI-030` (P0) — Marker glyph shapes and placement.** **[V — quoted verbatim]**\n\n| Type | Glyph | Placement |\n|---|---|---|\n| **Normal** | Diamond | **Directly *above*** the data point |\n| **Delta** | Diamond | Directly above the data point |\n| **Fixed** | **\"X\"** | **Centre of the X *over*** the data point |\n\n\"**A solid diamond represents the currently selected marker**\" — so selected markers are\nfilled and unselected hollow. Colour is by selection state (`SelectedMarker` /\n`NotSelectedMarker`), **not** by marker index. **[V]**\n*Two subtleties a developer will otherwise miss: the diamond is offset above the point while\nthe X is centred on it, and selection is conveyed by fill rather than colour index.*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2306
+ },
+ {
+  "id": "REQ-UI-031",
+  "area": "UI",
+  "num": "031",
+  "priority": "P0",
+  "title": "Delta-marker label format",
+  "body": "**`REQ-UI-031` (P0) — Delta-marker label format.**\n`XΔTR`, where X is the delta marker number, T the reference trace letter **shown only when the\nreference is on a different trace**, and R the reference marker number. Thus **`3Δ1`** for a\nsame-trace reference and **`2ΔB1`** for a cross-trace reference. In the Markers Window the\nform is `Mkr NΔTR`. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2320
+ },
+ {
+  "id": "REQ-UI-032",
+  "area": "UI",
+  "num": "032",
+  "priority": "P1",
+  "title": "Markers Window",
+  "body": "**`REQ-UI-032` (P1) — Markers Window.**\nA dedicated tool window with its own background colour and its own font slot. Readout labels:\n`Mkr N` (X, Y and Z values) · `Mkr NΔTR` · `Freq N` (frequency counter) · `OBW` · `BW`\n(x-dB bandwidth) · `ACP Ref` · `Power` (band power) · `Density` (band-power density) ·\n`Limit`, plus fields Carrier, Channel Type, Layer, Sym. Invalid values render **`NAN`**,\noverflow **`INF`**. For two-dimensional IQ formats the readout is \"Mag & Phase\" or \"Real &\nImag\", **defaulting to Mag & Phase**. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2326
+ },
+ {
+  "id": "REQ-UI-033",
+  "area": "UI",
+  "num": "033",
+  "priority": "P1",
+  "title": "Fixed-width font in the Markers Window",
+  "body": "**`REQ-UI-033` (P1) — Fixed-width font in the Markers Window.**\nThe help is explicit: \"**always select a fixed-width font for the Markers Window**\". **[V]**\nOpenVSA shall default to a fixed-width face there rather than leaving it to the user to\ndiscover.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2334
+ },
+ {
+  "id": "REQ-UI-040",
+  "area": "UI",
+  "num": "040",
+  "priority": "P0",
+  "title": "Annotation positions",
+  "body": "**`REQ-UI-040` (P0) — Annotation positions.** **[V — each individually sourced]**\n\n| Position | Content |\n|---|---|\n| **Above the trace grid, right** | Active-marker readout |\n| **Upper-right corner, *inside* the grid** | Trace indicator messages (own `Indicator` colour) |\n| **Band outside the graticule** | All other trace annotation |\n| **Bottom left of the main window** | Measurement status messages |\n\nWithin the outer band, the recommended placement — **[U for position, V for the fact that each\nstring exists on screen]** — follows from the Y-reference default of 100 % for log-magnitude:\n**Y-axis top scale** top-left, **Y-axis per-division** on the left edge below it, **Y-axis\nbottom scale** bottom-left, **trace format / resolution bandwidth / trigger channel** in the\nupper band, **centre frequency** and **main time length** centred beneath the X axis.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2341
+ },
+ {
+  "id": "REQ-UI-041",
+  "area": "UI",
+  "num": "041",
+  "priority": "P0",
+  "title": "Trace indicator strings",
+  "body": "**`REQ-UI-041` (P0) — Trace indicator strings.**\nThe following shall be displayed in the grid's upper-right corner, in this priority order:\n**[V]**\n\n`NO DATA` · `DATA?` · `OVx` (overload, x = channel) · `CAL?` · `PULSE NOT FOUND` ·\n`SYNC NOT FOUND` · `CARRIER LOCK?` · `EQ` (equaliser active) · `RNG` · `ALL POINTS` ·\n`INACTIVE CHAN` · `MEAS OFFSET?` · `PULSE TOO SHORT` · `IQ COMP` (IQ mismatch compensated out).\n\n*These map one-to-one onto conditions this specification already requires be detected —\n`REQ-DEM-036` carrier lock, `REQ-DEM-040`/`041` sync and pulse search, `REQ-DEM-050`\nequalisation, `REQ-UI-007` overload. Adopt the strings verbatim; they are terse, unambiguous,\nand familiar to anyone who has used the reference product.*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2356
+ },
+ {
+  "id": "REQ-UI-042",
+  "area": "UI",
+  "num": "042",
+  "priority": "P0",
+  "title": "Clickable annotation (\"hot spots\"). The signature interaction",
+  "body": "**`REQ-UI-042` (P0) — Clickable annotation (\"hot spots\"). The signature interaction.**\nMeasurement parameters displayed as trace annotation shall be **directly editable in place**.\nRequired behaviour, verbatim from the reference product: **[V]**\n\n| Interaction | Result |\n|---|---|\n| **Hover** | Cursor changes from arrow to a **hand**, and the value is **underlined** |\n| **Single click** | Pointer changes to indicate a **numeric entry pad**; mouse wheel, arrow keys, or typing adjust the value live |\n| **Double click** | Opens a **data-entry dialog** for value and units |\n| **Right click** | Opens an edit popup menu (copy/paste) |\n\nConfirmed editable hot spots: **Y-axis top scale**, **Y-axis per-division scale**, **Y-axis\nbottom scale**, **trace format**, **resolution bandwidth**, **trigger channel**, **main time\nlength**, **centre frequency**. Additionally: trace context menu (right-click in the grid),\nY-axis and X-axis context menus, a **trace data dropdown** (click the dropdown button or\nright-click), the markers readout, and the tab select/close buttons. **[V]**\n\n> **This is the highest-value single feature to copy, and the easiest to omit.** It collapses\n> the usual dialog round-trip — *find the menu, find the tab, find the field, apply, close* —\n> into a click on the number you are already reading. A reimplementation that puts every\n> parameter behind a dialog will be functionally complete and will feel nothing like the\n> original. Build the hot-spot framework early, in Phase 0, because retrofitting in-place\n> editing onto a finished plot surface is far more expensive than designing for it.\n\n**AC:** Every parameter listed above is editable in place with all four interactions;\nhovering visibly underlines and switches the cursor; wheel and arrow keys adjust the hovered\nvalue without opening a dialog.",
+  "phase": 0,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "line": 2369
+ },
+ {
+  "id": "REQ-UI-050",
+  "area": "UI",
+  "num": "050",
+  "priority": "P1",
+  "title": "Constellation",
+  "body": "**`REQ-UI-050` (P1) — Constellation.**\nPoints drawn **only at symbol decision instants, with no connecting lines** — explicitly \"an\nIQ diagram but information is shown only at specified time intervals\", and \"similar to the IQ\ntrace format but without the lines that connect the points\". The IQ/Vector format is the same\ndata *with* the inter-symbol trajectory. Ideal states shall be overlaid as **crosshairs or\ncircles** (user-selectable) — **not** as filled dots, which would be confusable with measured\nsymbols. Symbol points carry their own colour, separate from the trace line, and may be\ncoloured **by modulation type** for signals carrying mixed modulations. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2399
+ },
+ {
+  "id": "REQ-UI-051",
+  "area": "UI",
+  "num": "051",
+  "priority": "P1",
+  "title": "Eye diagram",
+  "body": "**`REQ-UI-051` (P1) — Eye diagram.**\nX axis in **symbols**, Y axis in volts (I or Q). The eye shall be **centred in the display**,\na one-symbol eye spanning −½ to +½ symbol. Rendering is accumulative — \"the VSA draws the\nfirst trace, then overlays the second trace, the third trace, and so on\". **Vertical reference\nlines shall be drawn at the symbol positions**, where maximum eye opening should occur,\ncorresponding to the symbol clock. An m-level modulation shows **m−1 eyes stacked\nvertically**. Eye length adjustable **0.1 to 10 symbols**. **[V]**\n*Axis annotation from a real screen, worth matching:* `I - Eye`, `-1 Sym`, `1 Sym`.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2408
+ },
+ {
+  "id": "REQ-UI-052",
+  "area": "UI",
+  "num": "052",
+  "priority": "P1",
+  "title": "Symbol table and error summary are ONE trace, split top and bottom",
+  "body": "**`REQ-UI-052` (P1) — Symbol table and error summary are ONE trace, split top and bottom.**\n**[V]** — this is a structural point, not a styling one, and getting it wrong means building\ntwo traces where the product has one.\n\n- **Top portion:** the error-summary metrics of §11.7.\n- **Bottom portion:** the detected symbol/bit stream.\n- **Left gutter:** in binary format, \"the number to the left of each row indicates the **bit\n  offset** of the first bit in the row\"; in hex format it is the **symbol offset**. Hex\n  requires ≥4 bits/symbol.\n- **Grouping:** characters \"organized in groupings of eight characters followed by a space\".\n- **Font:** fixed-width. **[U for the symbol table specifically — inferred, but strongly: the\n  fixed-column grouping and left-gutter offsets only align in a monospaced face. Note the\n  reference product exposes only two font slots (Annotation and Marker), so the symbol table\n  almost certainly inherits the Annotation font — meaning that font must itself be monospaced,\n  or OpenVSA should add a third slot.]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2417
+ },
+ {
+  "id": "REQ-UI-053",
+  "area": "UI",
+  "num": "053",
+  "priority": "P1",
+  "title": "Error summary text layout",
+  "body": "**`REQ-UI-053` (P1) — Error summary text layout.**\nThe following is the actual on-screen text from a real analyser of this family and shall be\nthe layout model — label, `=` at a fixed column, RMS value, peak value, \"at symbol N\",\nengineering prefixes on units: **[V]**\n\n```\nEVM        =  248.7475 m%rms   732.2379 m% pk at symbol 73\nMag Error  =  166.8398 m%rms  -729.4476 m% pk at symbol 73\nPhase Error=  251.9865 mdeg    1.043872 deg pk at symbol 168\nFreq Error =  -384.55 Hz\nIQ Offset  =  -67.543 dB      SNR = 40.58 dB\n```\n\nRow labels shall use the reference product's terse abbreviation style: **Amp Droop, Carr\nOfst, EVM, EVM Pk, Freq Err, Mag Err, Offset EVM, Phase Err, Pilot Lvl, Time Offset, IQ\nOffset, IQ Gain Imbalance, IQ Quad. Error, IQ Timing Skew, SymClk Err, RSSI**. **[V]**\n*Note the house style: short, truncated, no-space-where-possible — `Carr Ofst`, not \"Carrier\nOffset\". Scalars occupy one column; two related metrics occasionally share a line.*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2433
+ },
+ {
+  "id": "REQ-UI-054",
+  "area": "UI",
+  "num": "054",
+  "priority": "P1",
+  "title": "Spectrogram / 3-D map displays",
+  "body": "**`REQ-UI-054` (P1) — Spectrogram / 3-D map displays.**\nSpectrogram, Digital Persistence and Cumulative History shall be presented as a group on a\ndedicated toolbar (consistent with `REQ-TRC-001a` treating them as accumulators). Each\nspectrogram carries **two markers on different axes**: a **vertical** spectrogram marker and a\n**horizontal** trace-select marker. Controls: **Enhance**, **Threshold**, **Map Colour\nScheme**. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2452
+ },
+ {
+  "id": "REQ-UI-060",
+  "area": "UI",
+  "num": "060",
+  "priority": "P1",
+  "title": "Menu bar",
+  "body": "**`REQ-UI-060` (P1) — Menu bar.**\nThe menu bar shall be, in order: **[V for the names; U for the exact order]**\n\n**File | Edit | Hardware | Acquisition | Analysis | Trace | Marker | Utilities | Window | Help**\n\n> **This corrects a natural but outdated assumption.** The obvious guess — *File, Input,\n> MeasSetup, Display, Trace, Marker, Control* — is the **Agilent-era (89601A)** menu bar and is\n> no longer current. Three menus were renamed and two demoted: **Input → Acquisition**\n> (\"selects and configures one or more input channels and selects the data source\"),\n> **MeasSetup → Analysis**, **Markers → Marker** (singular); **Control** became a submenu\n> (*Acquisition > Control > Sweep*); **Display** disappeared, its layout functions moving under\n> Window and Trace; **Source** moved under Hardware. OpenVSA shall adopt the modern names.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2461
+ },
+ {
+  "id": "REQ-UI-061",
+  "area": "UI",
+  "num": "061",
+  "priority": "P1",
+  "title": "Menu contents",
+  "body": "**`REQ-UI-061` (P1) — Menu contents.** **[V]**\n\n- **File** — Recall (Setup / Recording / Trace / Layout / Demo), Preset ▸ (Measurement,\n  Measurement to Standard, Measurement to Defaults, Setup, Traces, Application and Traces,\n  Display Preferences, Toolbars, Factory Defaults), Save, Export, Print, Exit.\n  *Note: **\"Preset never changes the hardware setup\"** — preserve that separation.*\n- **Edit** — Copy (\"write the contents of a trace, marker readout, or trace hotspot to the\n  clipboard\"), Copy Markers, Paste.\n- **Hardware** — Instruments…, Configurations…, Rediscover, Analyzer, Frequency Reference…,\n  Calibration…, Disconnect, Source, Source Control…, Switch.\n- **Acquisition** — Data, Channels, Amplitude…, External Mixer…, Extended Settings…, Trigger…,\n  Segmented Capture…, Digital…, Gate Trigger…, Playback Trigger…, User Correction…, Player\n  Window, Recording/Playback…, Control ▸.\n- **Analysis** *(in order)* — Type, Properties…, Frequency…, ResBW…, Time…, Detectors…,\n  Conversion…, Average…, Heatmaps…, Measurements…, New Measurement, Duplicate Measurement.\n- **Trace** — Trace List, New Trace, *(embedded trace toolbar)*, Data; **Properties:** Format,\n  Coupling, Y Scale, X Scale, Average, Digital Demod; **Calculation:** Results Window, OBW…,\n  ACP…, Limit Tests…; then Spectrogram / Colour Map, Math Functions, Stimulus-Response / X-Y…,\n  Auto Scale, Overlay, Copy Trace.\n- **Marker** — Markers Window, New Marker, *(embedded markers toolbar)*, Position…,\n  Calculation…, Peak Search, Copy Marker To, Couple Markers, Copy to Clipboard, All Markers\n  Off.\n- **Utilities** — Macros…, Event-Based Actions…, Trend/Statistics…, General Preferences…, SCPI\n  Preferences…, Display Preferences…, Toolbars…, Manage Registers…, Licenses…, Extension\n  Manager….\n- **Window** — Output, SCPI Log, Event Log, Contexts, Block Diagram, Macros, Trace Layout, New\n  Trace Window, Resize Traces, Collect Traces.\n- **Help** — Help (F1), Dynamic Help, Getting Started, Demos, Examples, API Reference, SCPI\n  Reference, Support ▸, Privacy, About.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2474
+ },
+ {
+  "id": "REQ-UI-062",
+  "area": "UI",
+  "num": "062",
+  "priority": "P2",
+  "title": "Embedded toolbars inside menus",
+  "body": "**`REQ-UI-062` (P2) — Embedded toolbars inside menus.**\nThe **Trace** and **Marker** menus shall each host an embedded toolbar at the top — the trace\ntoolbar selects the active trace and adds/removes/hides traces; the markers toolbar does the\nsame for markers. **[V]**\n*A distinctive touch worth keeping: it puts the most frequent actions one click inside the\nmenu that owns them, rather than requiring a separate toolbar hunt.*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2504
+ },
+ {
+  "id": "REQ-UI-063",
+  "area": "UI",
+  "num": "063",
+  "priority": "P1",
+  "title": "Toolbars",
+  "body": "**`REQ-UI-063` (P1) — Toolbars.**\nFive preconfigured toolbars, plus a macro-button bar: **[V]**\n\n| Toolbar | Contents |\n|---|---|\n| **Control** | **Restart** (\"starts a measurement or restarts one that was paused… all current measurement data including averaging is discarded\") · **Pause/Single** (\"pauses a running measurement; a second click single-steps when Sweep is Single, or continues when Continuous\") · **Single/Continuous Sweep** toggle · **Auto-range** — a **split button**: main click auto-ranges all input channels, dropdown auto-ranges a chosen channel |\n| **Marker Tools** | Radio group of mouse modes: **Pointer** → **Area Select** (\"select a rectangular area of any trace for closer examination\"; can scale X and/or Y, **or set centre frequency and span**) → **Marker** (click to place) → **Band Power** (drag left/right band limits) → **Time Gate** (isolate a portion of a time record) |\n| **Record** | **Record** · **Toggle Data Source** (hardware ↔ recording) · **Disconnect** (releases hardware from VSA control) |\n| **Trace / Block Diagram** | **Active Trace** (shows the active trace's **letter**) · **Trace Layout** dropdown · **Block Diagram** |\n| **Spectrogram / Colour Map** | **Spectrogram** · **Digital Persistence** · **Cumulative History** · **Enhance** · **Threshold** · **Map Colour Scheme** |\n| **Macro Buttons** | Managed by the macros utility; not user-editable through the toolbar customiser |",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2511
+ },
+ {
+  "id": "REQ-UI-064",
+  "area": "UI",
+  "num": "064",
+  "priority": "P2",
+  "title": "Toolbar customisation",
+  "body": "**`REQ-UI-064` (P2) — Toolbar customisation.** Users shall be able to define custom toolbars\n(list of toolbars, control picker, contents editor), with reset via File > Preset > Toolbars.\n**[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2523
+ },
+ {
+  "id": "REQ-UI-065",
+  "area": "UI",
+  "num": "065",
+  "priority": "P1",
+  "title": "Keyboard shortcuts",
+  "body": "**`REQ-UI-065` (P1) — Keyboard shortcuts.**\nAdopt the reference product's bindings — they are muscle memory for existing users and cost\nnothing to match: **[V]**\n\n| Key | Action |\n|---|---|\n| **Space** | Pause / resume |\n| **Ctrl+Shift+Space** | Restart |\n| **Ctrl+N** | New trace |\n| **Ctrl+W** | Auto-scale |\n| **Ctrl+K** | Marker position |\n| **Ctrl+H** | Player window |\n| **Ctrl+O** | Output window |\n| **Ctrl+B** | Save bitmap |\n| **F1** | Context help |\n| **Ctrl+F1** | Dynamic help |\n| **Ctrl + `+` / `-`** | Window content scaling (`REQ-NFR-007a`) |",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2527
+ },
+ {
+  "id": "REQ-UI-070",
+  "area": "UI",
+  "num": "070",
+  "priority": "P1",
+  "title": "Tabbed, modeless, live dialogs",
+  "body": "**`REQ-UI-070` (P1) — Tabbed, modeless, live dialogs.**\nSetting dialogs shall be **tabbed, modeless, and live** — changing a parameter updates the\nmeasurement immediately, with no OK/Apply round-trip. **[V]**\n*This is why the hot-spot model and the dialogs coexist comfortably: both edit the same live\nstate, and neither blocks the display.*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2547
+ },
+ {
+  "id": "REQ-UI-071",
+  "area": "UI",
+  "num": "071",
+  "priority": "P1",
+  "title": "Dialog framework options",
+  "body": "**`REQ-UI-071` (P1) — Dialog framework options.**\nThe dialog framework shall expose, globally: **[V]**\n\n| Option | Values / behaviour |\n|---|---|\n| **Default Mode** | \"Tabs on top\" · \"Tabs on left\" · expanders vertical · expanders horizontal |\n| **Fixed Size** | Dialogs sized to the **largest tab they contain**, so switching tabs does not resize the window |\n| **Keep on Top** | Whether dialogs may go behind the main window |\n| **Persist Mode** | Dialogs reopen in the mode they were closed with, **across restarts** |\n| **Tabs Collapsed by Default** | Applies to \"Tabs on left\" only |\n\nIn WPF terms: a `TabControl` whose `TabStripPlacement` is user-switchable Top/Left, with an\nalternative `Expander`-stack rendering of identical content; the dialog measures to the union\nof all tabs; modeless with optional topmost.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2553
+ },
+ {
+  "id": "REQ-UI-072",
+  "area": "UI",
+  "num": "072",
+  "priority": "P1",
+  "title": "Analysis (MeasSetup) tab set",
+  "body": "**`REQ-UI-072` (P1) — Analysis (MeasSetup) tab set.**\n**Frequency | ResBW | Time | Detectors | Conversion | Average | Heatmaps**. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2568
+ },
+ {
+  "id": "REQ-UI-073",
+  "area": "UI",
+  "num": "073",
+  "priority": "P1",
+  "title": "Display Preferences tab set",
+  "body": "**`REQ-UI-073` (P1) — Display Preferences tab set.**\n**Trace | Colour | User Map Colour | Font | Window**. **[V]** *(There is no separate\nGeneral/Theme/Appearance tab — theming lives under Window and Colour.)*",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2571
+ },
+ {
+  "id": "REQ-UI-080",
+  "area": "UI",
+  "num": "080",
+  "priority": "P1",
+  "title": "Font slots",
+  "body": "**`REQ-UI-080` (P1) — Font slots.**\nThe reference product exposes exactly **two** font slots: **Annotation** (\"font for Trace\nwindows\") and **Marker** (\"font for Marker window\"), applied globally. **[V]**\nOpenVSA shall provide these two **plus a third, Tabular**, for the symbol table and error\nsummary — because those require a fixed-width face while general trace annotation reads better\nproportional, and the reference product's two-slot scheme forces an unhappy compromise there\n(`REQ-UI-052`).\n**[U] Default typeface and size are unpublished.** Recommended: **Segoe UI 9 pt** for chrome\nand annotation, **Consolas 9 pt** for Markers, symbol table and error summary.",
+  "phase": 1,
+  "evidence": [
+   "verified",
+   "unverified"
+  ],
+  "has_ac": false,
+  "line": 2577
+ },
+ {
+  "id": "REQ-UI-081",
+  "area": "UI",
+  "num": "081",
+  "priority": "P2",
+  "title": "Theming and the honest answer to \"what era does it look like\"",
+  "body": "**`REQ-UI-081` (P2) — Theming and the honest answer to \"what era does it look like\".**\nThe reference product themes its chrome with stock Windows and Office shells, and the\navailable theme list is the clearest single statement of its visual era: **[V]**\n\n`AeroNormalColor · Classic · HighContrast · LunaHomestead · LunaMetallic · LunaNormalColor ·\nOffice2007Black · Office2007Blue · Office2007Silver · Office2010Black · Office2010Blue ·\nOffice2010Silver · RoyaleNormalColor`\n\nLuna = Windows XP, Royale = Server 2003/Media Center, Aero = Vista/7, Office2007/2010 = the\nribbon-era Office skins. **It is a Win32/WinForms docking application skinned with a\nthird-party UI suite — visually an Office 2007/2010-era program, not a WPF-native or\nFluent-era one.** Themes style **chrome only**; the graticule and traces are governed entirely\nby the colour settings of §13.3.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2587
+ },
+ {
+  "id": "REQ-UI-082",
+  "area": "UI",
+  "num": "082",
+  "priority": "P2",
+  "title": "OpenVSA's own visual direction",
+  "body": "**`REQ-UI-082` (P2) — OpenVSA's own visual direction.** **[DESIGN CHOICE]**\nOpenVSA shall *not* reproduce the Office-2007 chrome. It shall adopt a clean, neutral modern\nWindows appearance (light and dark themes, per `REQ-UI-013`… see `REQ-UI-090`) while\nreproducing exactly the parts that carry meaning: the three-zone plot layout, the annotation\npositions, the marker glyphs, the indicator strings, the error-summary text form, and above all\nthe hot-spot interaction. **Fidelity is owed to the interaction model and the information\ndesign, not to a fifteen-year-old button style.**",
+  "phase": 1,
+  "evidence": [
+   "design-choice"
+  ],
+  "has_ac": false,
+  "line": 2601
+ },
+ {
+  "id": "REQ-UI-090",
+  "area": "UI",
+  "num": "090",
+  "priority": "P2",
+  "title": "Themes and accessibility of colour",
+  "body": "**`REQ-UI-090` (P2) — Themes and accessibility of colour.**\nLight and dark themes shall be provided, with trace colours distinguishable without relying on\nhue alone (differing also in luminance and, optionally, dash pattern), and a high-contrast\ntheme shall be supported.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2609
+ },
+ {
+  "id": "REQ-UI-091",
+  "area": "UI",
+  "num": "091",
+  "priority": "P1",
+  "title": "Accessibility",
+  "body": "**`REQ-UI-091` (P1) — Accessibility.**\nThe application shall be operable entirely from the keyboard; all interactive elements shall\nexpose UI Automation properties with meaningful names; the plot surface shall expose trace and\nmarker values to assistive technology as text; and no information shall be conveyed by colour\nalone.\n*Rationale:* a custom-rendered plot surface (`REQ-UI-010`) is invisible to screen readers unless\nan automation peer is written for it deliberately. That work must be scheduled, not discovered.\n**AC:** A full measurement setup — connect, configure, place markers, read values, save state —\nis completable with no mouse; an automation inspection tool reports named elements for every\ncontrol and readable values for markers.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "line": 2614
+ },
+ {
+  "id": "REQ-STA-001",
+  "area": "STA",
+  "num": "001",
+  "priority": "P0",
+  "title": "Setup save and recall",
+  "body": "**`REQ-STA-001` (P0) — Setup save and recall.**\nA saved state shall contain, matching the reference product's documented content:\nmeasurement type, frequency and span, trigger configuration, resolution bandwidth, input\nsettings (range, coupling, digital, trigger, external mixer), analysis parameters, trace\nwindow positions, trace data and overlay state, trace display properties (format, X/Y\nscaling, digital demodulation configuration, spectrogram settings), marker types, positions\nand calculations, and source parameters. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2678
+ },
+ {
+  "id": "REQ-STA-002",
+  "area": "STA",
+  "num": "002",
+  "priority": "P1",
+  "title": "Documented exclusions",
+  "body": "**`REQ-STA-002` (P1) — Documented exclusions.**\nA state shall **not** contain recordings, math functions, data registers or display\npreferences; these shall be saved and recalled independently. **[V]** The save dialog shall\nstate this explicitly rather than leaving users to discover it.",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2686
+ },
+ {
+  "id": "REQ-STA-003",
+  "area": "STA",
+  "num": "003",
+  "priority": "P1",
+  "title": "Format and versioning",
+  "body": "**`REQ-STA-003` (P1) — Format and versioning.** **[DESIGN CHOICE]**\nState shall be stored as human-readable, diffable, versioned JSON in a container carrying a\nschema version, with forward-compatible loading (unknown fields preserved on round-trip).\n*Rationale:* the reference product uses an opaque binary `.setx`; a text format is superior\nfor version control, support, and diagnosis, and there is no interoperability requirement.\n**AC:** A state file from schema version *n* loads in version *n+1* software with documented\nmigration; round-tripping preserves unknown fields byte-for-byte.",
+  "phase": 1,
+  "evidence": [
+   "design-choice"
+  ],
+  "has_ac": true,
+  "line": 2691
+ },
+ {
+  "id": "REQ-STA-004",
+  "area": "STA",
+  "num": "004",
+  "priority": "P1",
+  "title": "Context-name matching on recall",
+  "body": "**`REQ-STA-004` (P1) — Context-name matching on recall.**\nRecalling a multi-measurement state shall match measurements to existing contexts by name,\nraising a specific, actionable error on mismatch rather than partially applying. **[V]**",
+  "phase": 1,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2699
+ },
+ {
+  "id": "REQ-STA-005",
+  "area": "STA",
+  "num": "005",
+  "priority": "P2",
+  "title": "Presets",
+  "body": "**`REQ-STA-005` (P2) — Presets.** A factory preset returning all settings to documented\ndefaults, plus user-definable presets.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2703
+ },
+ {
+  "id": "REQ-API-001",
+  "area": "API",
+  "num": "001",
+  "priority": "P1",
+  "title": ".NET automation API",
+  "body": "**`REQ-API-001` (P1) — .NET automation API.**\nA managed API shall expose the object model\n`Application → Measurement(s) → Input / Trigger / Display → Trace(s) → Marker(s)`, plus\nlimit tests and recordings, sufficient to configure, run and read every measurement\nwithout the UI.\n\n> **[U] — Reference object model.** The reference product's exact .NET class hierarchy could\n> not be extracted (its API reference site is a JavaScript frameset). The hierarchy above is\n> inferred from the documented COM model and from MATLAB integration examples that use\n> `Measurement`, `MeasurementExtension` and `InputExtension` objects with\n> `GetParameter`/`SetParameter`/`ParameterNames()`. **[V for those three type names]** If\n> source-compatibility with the reference API ever becomes a requirement, the API reference\n> site must be browsed directly first.",
+  "phase": 4,
+  "evidence": [
+   "unverified"
+  ],
+  "has_ac": false,
+  "line": 2710
+ },
+ {
+  "id": "REQ-API-002",
+  "area": "API",
+  "num": "002",
+  "priority": "P1",
+  "title": "Headless operation",
+  "body": "**`REQ-API-002` (P1) — Headless operation.**\nThe API shall be usable with no UI loaded, so that measurements can run in automated test\nsystems and in CI.\n**AC:** A console application referencing only `OpenVSA.Api` and the HAL configures a demod\nmeasurement against a recording and prints the error summary — with WPF never loaded.",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": true,
+  "line": 2724
+ },
+ {
+  "id": "REQ-API-003",
+  "area": "API",
+  "num": "003",
+  "priority": "P2",
+  "title": "Generic parameter access",
+  "body": "**`REQ-API-003` (P2) — Generic parameter access.**\nIn addition to strongly-typed members, a `GetParameter`/`SetParameter`/`ParameterNames()`\nstring-keyed surface shall be provided, mirroring the reference product and enabling\nscripting from environments with weak generics support (notably MATLAB via\n`NET.addAssembly`). **[V]**",
+  "phase": 4,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2730
+ },
+ {
+  "id": "REQ-API-004",
+  "area": "API",
+  "num": "004",
+  "priority": "P2",
+  "title": "SCPI server",
+  "body": "**`REQ-API-004` (P2) — SCPI server.**\nAn optional SCPI-over-TCP server shall expose a documented subset of the API, so that\nOpenVSA can be driven from existing test frameworks. Command syntax shall follow SCPI-99.",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2736
+ },
+ {
+  "id": "REQ-API-005",
+  "area": "API",
+  "num": "005",
+  "priority": "P3",
+  "title": "COM interop surface",
+  "body": "**`REQ-API-005` (P3) — COM interop surface.** A COM-callable wrapper for legacy clients.\n*Note:* the reference product's own COM API is documented as obsoleted and no longer\nupdated **[V]**; OpenVSA should treat COM as legacy from the outset.",
+  "phase": 4,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2740
+ },
+ {
+  "id": "REQ-API-006",
+  "area": "API",
+  "num": "006",
+  "priority": "P2",
+  "title": "Macros",
+  "body": "**`REQ-API-006` (P2) — Macros.**\nUser extensions shall be loadable as compiled .NET assemblies from a macros folder, with a\nMacros window listing and running them — mirroring the reference product, whose macros are\nfull Visual Studio solutions rather than a scripting language. **[V]**",
+  "phase": 4,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2744
+ },
+ {
+  "id": "REQ-API-007",
+  "area": "API",
+  "num": "007",
+  "priority": "P2",
+  "title": "Command log window",
+  "body": "**`REQ-API-007` (P2) — Command log window.**\nAn Output/SCPI Log window shall echo API and SCPI activity, so users can discover the\nprogrammatic equivalent of UI actions they perform. **[V]**\n*Rationale:* this is the single most effective automation-discoverability feature an\ninstrument application can offer.",
+  "phase": 4,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2749
+ },
+ {
+  "id": "REQ-NFR-030",
+  "area": "NFR",
+  "num": "030",
+  "priority": "P0",
+  "title": "Windows 10 21H2 or later, x64; .NET Framework 4.7.2 present",
+  "body": "Windows 10 21H2 or later, x64; .NET Framework 4.7.2 present",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2761
+ },
+ {
+  "id": "REQ-NFR-031",
+  "area": "NFR",
+  "num": "031",
+  "priority": "P2",
+  "title": "Installer deploys without administrative rights where VISA is already present",
+  "body": "Installer deploys without administrative rights where VISA is already present",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2762
+ },
+ {
+  "id": "REQ-NFR-032",
+  "area": "NFR",
+  "num": "032",
+  "priority": "P0",
+  "title": "Application starts and runs usefully with no hardware and no VISA installed (simulator +…",
+  "body": "Application starts and runs usefully with **no** hardware and **no** VISA installed (simulator + file playback only)\n\n---\n\n**`REQ-NFR-032` deserves emphasis.** The ability to run the full analysis stack with no\ninstrument attached is what makes the DSP developable, testable in CI, and demonstrable.\nIt should be treated as an architectural constraint, not a convenience feature.",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2763
+ },
+ {
+  "id": "REQ-NFR-033",
+  "area": "NFR",
+  "num": "033",
+  "priority": "P2",
+  "title": "All user-visible strings externalised for localisation; en-GB default",
+  "body": "All user-visible strings externalised for localisation; en-GB default",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2764
+ },
+ {
+  "id": "REQ-NFR-034",
+  "area": "NFR",
+  "num": "034",
+  "priority": "P1",
+  "title": "Structured logging with per-subsystem levels; log bundle export for support",
+  "body": "Structured logging with per-subsystem levels; log bundle export for support",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2765
+ },
+ {
+  "id": "REQ-NFR-035",
+  "area": "NFR",
+  "num": "035",
+  "priority": "P1",
+  "title": "Unhandled exceptions produce a diagnostic report without data loss to in-progress…",
+  "body": "Unhandled exceptions produce a diagnostic report without data loss to in-progress recordings",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2766
+ },
+ {
+  "id": "REQ-NFR-036",
+  "area": "NFR",
+  "num": "036",
+  "priority": "P0",
+  "title": "No telemetry or network egress without explicit opt-in",
+  "body": "No telemetry or network egress without explicit opt-in",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2767
+ },
+ {
+  "id": "REQ-NFR-037",
+  "area": "NFR",
+  "num": "037",
+  "priority": "P1",
+  "title": "Numeric results reproducible bit-for-bit across runs for identical input and settings on…",
+  "body": "Numeric results reproducible bit-for-bit across runs for identical input and settings on the same machine — **see the qualification below**\n\n---\n\n**`REQ-NFR-037` needs a qualification, or it silently contradicts the threading model.**\nBit-for-bit reproducibility is incompatible with unordered parallel reduction: floating-point\naddition is not associative, so `Parallel.For`-style accumulation at\n`ProcessorCount − 1` parallelism (`REQ-NFR-010`) and runtime-width `Vector<T>` partial sums\nboth give run-to-run variation in the last bits. The requirement shall therefore read:\n\n> Numeric results shall be reproducible bit-for-bit **given a fixed partition schedule**. All\n> accumulating stages shall use fixed-size, index-determined partitions and a deterministic\n> reduction tree, and shall not use unordered `Parallel.ForEach`. Where a stage cannot meet\n> this, it shall be documented and excluded by name.\n\n**AC:** 100 consecutive runs over a fixed recording produce byte-identical result buffers on\nthe same machine, at every supported degree of parallelism.",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": true,
+  "line": 2768
+ },
+ {
+  "id": "REQ-NFR-040",
+  "area": "NFR",
+  "num": "040",
+  "priority": "P2",
+  "title": "Report generation: export a measurement (traces, settings, error summary, optional…",
+  "body": "Report generation: export a measurement (traces, settings, error summary, optional instrument screen capture) to PDF/HTML with a template",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2769
+ },
+ {
+  "id": "REQ-NFR-041",
+  "area": "NFR",
+  "num": "041",
+  "priority": "P1",
+  "title": "Plug-in assemblies (personalities, macros) loaded only from configured directories, with…",
+  "body": "Plug-in assemblies (personalities, macros) loaded only from configured directories, with optional Authenticode signature enforcement and a clear trust prompt for unsigned code\n\n---\n\n**`REQ-NFR-041` — why plug-in trust is a requirement and not paranoia.** `REQ-ARC-003` and\n`REQ-API-006` load arbitrary .NET assemblies from disk directories, and `REQ-REC-005` parses\nten binary file formats from untrusted sources. `REQ-PER-002` addresses plug-in *faults* but\nsays nothing about plug-in *malice*, and `REQ-REC-009` covers parser robustness. Together\nthese are the product's entire attack surface and they should be treated as such deliberately.",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2770
+ },
+ {
+  "id": "REQ-NFR-042",
+  "area": "NFR",
+  "num": "042",
+  "priority": "P2",
+  "title": "Automation API: documented exception contract, semantic API versioning, and a published…",
+  "body": "Automation API: documented exception contract, semantic API versioning, and a published deprecation policy",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2771
+ },
+ {
+  "id": "REQ-NFR-038",
+  "area": "NFR",
+  "num": "038",
+  "priority": "P2",
+  "title": "Public API surface documented with XML doc comments; docs generated in CI",
+  "body": "Public API surface documented with XML doc comments; docs generated in CI",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2772
+ },
+ {
+  "id": "REQ-NFR-039",
+  "area": "NFR",
+  "num": "039",
+  "priority": "P1",
+  "title": "Code coverage ≥70 % overall, ≥90 % for OpenVSA.Dsp and OpenVSA.Demod",
+  "body": "Code coverage ≥70 % overall, ≥90 % for `OpenVSA.Dsp` and `OpenVSA.Demod`",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2773
+ },
+ {
+  "id": "REQ-LIC-001",
+  "area": "LIC",
+  "num": "001",
+  "priority": "P2",
+  "title": "Entitlement-based feature gating",
+  "body": "**`REQ-LIC-001` (P2) — Entitlement-based feature gating.**\nFeatures shall be gated by named entitlements resolved through `IEntitlementProvider`,\nchecked at measurement instantiation and at UI menu enablement. The reference product gates\nby option SKU (Option 200 base analysis, 89601AYAC digital demodulation, per-standard BH-series\npersonalities). **[V]**",
+  "phase": 4,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2803
+ },
+ {
+  "id": "REQ-LIC-002",
+  "area": "LIC",
+  "num": "002",
+  "priority": "P2",
+  "title": "Licence models",
+  "body": "**`REQ-LIC-002` (P2) — Licence models.** The provider abstraction shall accommodate\nnode-locked/transportable, floating (concurrent checkout with check-in), dongle-derived and\ntime-limited trial entitlements, mirroring the reference product's model. **[V]**",
+  "phase": 4,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2809
+ },
+ {
+  "id": "REQ-LIC-003",
+  "area": "LIC",
+  "num": "003",
+  "priority": "P2",
+  "title": "Selective checkout",
+  "body": "**`REQ-LIC-003` (P2) — Selective checkout.** Where floating entitlements are used, the\nuser shall be able to select which options to check out, so unused seats return to the pool\n— matching the reference product's \"Select Licensed Options\" behaviour. **[V]**",
+  "phase": 4,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": false,
+  "line": 2813
+ },
+ {
+  "id": "REQ-LIC-004",
+  "area": "LIC",
+  "num": "004",
+  "priority": "P1",
+  "title": "Ungated development mode",
+  "body": "**`REQ-LIC-004` (P1) — Ungated development mode.** A build configuration shall grant all\nentitlements unconditionally, so that gating never obstructs development or testing.",
+  "phase": 4,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2817
+ },
+ {
+  "id": "REQ-TST-001",
+  "area": "TST",
+  "num": "001",
+  "priority": "P0",
+  "title": "Every DSP primitive shall be tested against a closed-form",
+  "body": "**`REQ-TST-001` (P0)** — Every DSP primitive shall be tested against a closed-form\nanalytic result, not against a previous run of itself.\n\n| Component | Analytic reference |\n|---|---|\n| FFT | Known transform pairs; Parseval's theorem to **1e-12 for the double-precision provider, 1e-5 for single** (`REQ-NFR-004a`) |\n| Windows | ENBW and coherent gain computed from coefficients, against §9.2 table |\n| RRC/RC filters | Cascade identity; analytic values at singular points |\n| Resampler | Pure tone in, pure tone out; measured SFDR against design target |\n| Averaging | Coherent vs incoherent SNR behaviour (`REQ-DSP-030` AC) |\n| CCDF | Rayleigh/Gaussian analytic distribution |\n| Metrics | Closed-form values for deliberately impaired constellations |",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2830
+ },
+ {
+  "id": "REQ-TST-002",
+  "area": "TST",
+  "num": "002",
+  "priority": "P0",
+  "title": "Injected-impairment recovery matrix",
+  "body": "**`REQ-TST-002` (P0) — Injected-impairment recovery matrix.**\nFor each supported modulation format, and for each impairment in `REQ-SIM-002`, a test shall\ninject a known magnitude and assert that the corresponding metric recovers it within\ntolerance (5 %, or 0.1 dB, whichever is looser).\n\n**Four of the twelve impairments have no scalar metric and need explicit handling** — without\nthis the matrix has silent holes exactly where they are hardest to notice:\n\n| Impairment | Metric, or qualitative criterion |\n|---|---|\n| **Symbol-clock error (ppm)** | No direct metric is possible — `REQ-DEM-030` (P0) forbids estimating symbol rate. Test the **signature** instead: EVM-versus-symbol-index shall be V-shaped with minimum near block centre, and the fitted slope shall be proportional to the injected ppm. Report the fitted slope as `SymClk Err` (the reference product carries such a row for LTE). |\n| **Phase noise** | Integrated RMS phase error over a defined offset range, and the shape of the **Error Vector Spectrum** — assert that injected noise at a known offset frequency appears at that offset. |\n| **AM/AM and AM/PM compression** | Fit gain and phase versus instantaneous amplitude across the symbol set and report the AM/AM and AM/PM curves; assert recovery of the injected compression characteristic. |\n| **Multipath** | The estimated **Channel Frequency Response** of `REQ-DEM-053`; assert it matches the analytic two-ray response (already required by that requirement's own AC). |\n\n**AC:** Every cell of the matrix is either a quantitative recovery assertion or an explicitly\nlabelled qualitative signature assertion. **No cell may be blank or skipped** — a missing cell\nis a gap in the correctness proof and shall fail the build.\n\nThis matrix is the single most valuable artefact in the whole test suite, because it closes\nthe loop end-to-end: generator → channel → demodulator → metric. A defect anywhere in that\nchain shows up as a failed cell.\n\n**AC:** The matrix runs in CI on every commit affecting `OpenVSA.Dsp`, `OpenVSA.Demod` or\n`OpenVSA.Hal.Sim`, and is published as a report showing recovered-versus-injected for every\ncell.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "line": 2845
+ },
+ {
+  "id": "REQ-TST-003",
+  "area": "TST",
+  "num": "003",
+  "priority": "P1",
+  "title": "Cross-impairment isolation",
+  "body": "**`REQ-TST-003` (P1) — Cross-impairment isolation.**\nInjecting impairment A shall not materially perturb the metric for unrelated impairment B.\n**AC:** With 3 dB of gain imbalance injected and no quadrature skew, reported quadrature\nerror remains below 0.5° — **except** in the documented ambiguous mapping case of\n`REQ-DEM-067`, which shall be its own explicitly characterised test rather than an exclusion.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "line": 2872
+ },
+ {
+  "id": "REQ-TST-004",
+  "area": "TST",
+  "num": "004",
+  "priority": "P1",
+  "title": "E4406A comparison suite",
+  "body": "**`REQ-TST-004` (P1) — E4406A comparison suite.**\nPer `REQ-E44-007`, OpenVSA results shall be compared against the E4406A's own personality\nmeasurements for W-CDMA, EDGE and cdmaOne signals. Divergence beyond tolerance shall be\ninvestigated and either fixed or documented with an explanation.\n*This is the only truly independent check available on this bench and should be run at every\nrelease.*",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2880
+ },
+ {
+  "id": "REQ-TST-004a",
+  "area": "TST",
+  "num": "004a",
+  "priority": "P1",
+  "title": "OpenVSA's own residual-EVM budget",
+  "body": "**`REQ-TST-004a` (P1) — OpenVSA's own residual-EVM budget.**\nOpenVSA shall define and verify a **self-noise / residual-EVM budget** — the EVM it reports for\nan ideal, impairment-free simulated signal — of **< 0.1 % RMS** for QPSK through 64-QAM and\n**< 0.3 %** for 1024-QAM and above.\n*Rationale:* `REQ-E44-007`'s \"within 0.5 percentage points\" is unanchored without this. Half a\npoint is generous at 15 % EVM and absurd at 1 %. Comparison tolerances shall be expressed\n**relative to the measured value plus the residual budget**, not as a bare absolute figure.\n*(Keysight's published residual-EVM specification for the reference demodulator was not located\nduring research — §20 Q9 — so this budget is self-imposed rather than matched.)*",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2887
+ },
+ {
+  "id": "REQ-TST-005",
+  "area": "TST",
+  "num": "005",
+  "priority": "P2",
+  "title": "Golden recordings",
+  "body": "**`REQ-TST-005` (P2) — Golden recordings.**\nA corpus of recorded IQ captures with known-correct expected results shall be maintained in\nversion control (or in an artefact store, given size), and replayed in CI.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2897
+ },
+ {
+  "id": "REQ-TST-006",
+  "area": "TST",
+  "num": "006",
+  "priority": "P1",
+  "title": "Numerical regression: stored expected outputs for a fixed corpus,",
+  "body": "**`REQ-TST-006` (P1)** — Numerical regression: stored expected outputs for a fixed corpus,\ncompared with explicit tolerances rather than exact equality, with tolerances justified in\ncomments.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2903
+ },
+ {
+  "id": "REQ-TST-007",
+  "area": "TST",
+  "num": "007",
+  "priority": "P1",
+  "title": "Performance regression per REQ-NFR-020–REQ-NFR-026, failing",
+  "body": "**`REQ-TST-007` (P1)** — Performance regression per `REQ-NFR-020`–`REQ-NFR-026`, failing\nthe build on >15 % regression.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2907
+ },
+ {
+  "id": "REQ-TST-008",
+  "area": "TST",
+  "num": "008",
+  "priority": "P2",
+  "title": "UI automation smoke tests covering window creation, trace",
+  "body": "**`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace\nconfiguration, state save/recall and marker interaction.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2910
+ },
+ {
+  "id": "REQ-TST-009",
+  "area": "TST",
+  "num": "009",
+  "priority": "P1",
+  "title": "A long-duration soak (≥8 hours) against the simulator asserting",
+  "body": "**`REQ-TST-009` (P1)** — A long-duration soak (≥8 hours) against the simulator asserting\nbounded memory, no handle leaks, and no degradation in update rate.",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2913
+ },
+ {
+  "id": "REQ-PLN-001",
+  "area": "PLN",
+  "num": "001",
+  "priority": "P0",
+  "title": "Phases 0–4 shall be treated as the minimum viable product and",
+  "body": "**`REQ-PLN-001` (P0)** — Phases 0–4 shall be treated as the minimum viable product and\nshall not be descoped in favour of starting personality work early.\n*Rationale:* personalities built on an unproven core inherit and disguise its defects.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": false,
+  "line": 2943
+ }
+]

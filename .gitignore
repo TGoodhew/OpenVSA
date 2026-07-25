@@ -58,6 +58,13 @@ captures/
 *.dspx
 LocalSettings.json
 
+## Python authoring tools (tools/) — transient state, never source
+__pycache__/
+*.py[cod]
+tools/_body.*.md
+tools/_sync.*.md
+tools/.create_issues.lock
+
 ## OS noise
 Thumbs.db
 ehthumbs.db
