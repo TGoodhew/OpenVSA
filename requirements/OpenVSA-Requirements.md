@@ -868,6 +868,13 @@ on format change". They shall be modelled as a distinct **`TraceAccumulator`** p
 (`None | Spectrogram | DigitalPersistence | CumulativeHistory`), orthogonal to both Data and
 Format. This matches the reference product, which groups exactly these three as "3D Map"
 modes on their own toolbar. **[V]**
+**AC:** `TraceAccumulator` is a property distinct from both Data and Format, and the three
+accumulating modes appear only in its enumeration — a test over the Format enumeration fails
+if Spectrogram, Digital Persistence or Cumulative History appears there. Changing Format
+while an accumulator is active preserves the accumulated history and does not restart it,
+whereas changing `TraceAccumulator` does discard it; both are asserted directly, since the
+whole point of the separation is that `REQ-TRC-001`'s no-recomputation rule cannot apply to
+data accumulated across acquisitions.
 
 **`REQ-TRC-002` (P1) — Validity matrix over (Data × Averaging × Format).**
 Valid formats shall be declared in metadata and enforced, and validity shall be a function of
@@ -885,6 +892,14 @@ combinations shall be enumerated.
 *Rationale:* each of these is individually specified elsewhere in this document; without a
 stated composition order, two developers will reasonably implement gate-then-average and
 average-then-gate and both will believe they are correct.
+**AC:** The order is declared once, in one enumeration or pipeline definition, and the
+implementation is driven by that declaration rather than restating it — a test fails if any
+stage is invoked out of declared order. The enumerated legal combinations are exhaustive over
+the cross-product of gating, windowing, averaging, accumulation and format, with every
+combination either legal or rejected by a named error; none is silently ignored. The
+gate-then-average and average-then-gate cases are distinguished by a test on a signal whose
+gated and ungated averages provably differ, so the order is pinned by measurement rather than
+by comment.
 
 ---
 
@@ -931,6 +946,12 @@ that at 0 %; measured noise-variance reduction per average degrades as predicted
 **`REQ-ACQ-004` (P2) — Auto-ranging.** Where the front end supports input range control,
 an auto-range function shall adjust reference level to avoid both overload and excessive
 headroom, with a user-visible indication when it acts.
+**AC:** Presented with a signal 20 dB below the current range and then one that overloads it,
+auto-range settles in both cases to a reference level leaving the signal peak within a stated
+headroom band, and settles rather than oscillating — repeated invocation on an unchanging
+signal produces no further change. Each adjustment raises the user-visible indication of
+`REQ-UI-007`. Where the front end does not support range control the function is
+unavailable rather than silently doing nothing.
 
 ### 8.1a Amplitude scaling and the correction chain
 
@@ -964,6 +985,11 @@ shape in the corrected trace, within interpolation error.
 
 **`REQ-AMP-004` (P2) — De-embedding.** Complex (magnitude and phase) de-embedding of a
 measured fixture response.
+**AC:** A signal passed through a synthetic fixture of known complex response and then
+de-embedded with that same response recovers the original to within 0.05 dB in magnitude and
+0.5° in phase across the measurement band. De-embedding is complex, not magnitude-only,
+proved by a fixture whose response is flat in magnitude but not in phase: without phase
+correction the recovered EVM is degraded, with it the original EVM is restored.
 
 **`REQ-ACQ-010` (P1) — Time-stamping.**
 `IqBlock.AcquiredUtc` shall be sourced from a monotonic high-resolution clock
@@ -1362,6 +1388,12 @@ Both match the documented worked examples exactly.
 RBW shall span **< 1 Hz to > 0.287 × maximum span**, with a **ResBW Mode** selecting between
 spectrum-analyser-style emulation and arbitrary RBW, and a **ResBW Coupling** control
 governing how RBW tracks span. A **Span-to-ResBW Ratio** shall be settable. **[V]**
+**AC:** RBW is settable below 1 Hz and up to at least 0.287 × the maximum span, with values
+outside the achievable range rejected with the achievable bound reported rather than silently
+clamped. In coupled mode a span change updates RBW to hold the Span-to-ResBW Ratio, and the
+resulting RBW satisfies `REQ-DSP-020`'s $\mathrm{RBW} = \mathrm{ENBW_{norm}}/T_{\text{rec}}$
+exactly; in uncoupled mode the same span change leaves RBW untouched. Both ResBW Modes are
+selectable and produce demonstrably different RBW sequences over a span sweep.
 
 **`REQ-DSP-022` (P0) — Frequency-point range.**
 Displayed frequency points shall range **51 to 409 601**, with $N_f - 1$ constrained to
@@ -1416,6 +1448,12 @@ figure and no alias or spur above −100 dBc at any decimation factor.
 transform size for power measurements, and a **Noise Correction** option shall subtract a
 characterised instrument noise floor. **[U]** — the reference product's numeric ceiling for
 Max FFT Size was not obtained; OpenVSA shall default to 2²⁰ and make it configurable.
+**AC:** Max FFT Size defaults to 2²⁰ and is configurable; a measurement whose natural
+transform would exceed it is bounded to it rather than failing, and the bound is visible in
+the trace annotation so the user knows the resolution was capped. With Noise Correction on,
+measuring a signal at a known level above a characterised noise floor returns a power closer
+to the analytic value than with it off, and correcting a noise-only input does not produce a
+negative power — it floors at the reported measurement limit.
 
 ### 9.4 Averaging
 
@@ -1450,6 +1488,11 @@ have not been conflated — a classic and easily-missed implementation error.
 **`REQ-DSP-031` (P1) — Averaging interacts correctly with overlap.**
 Where overlapped frames are averaged, the effective number of independent averages shall be
 computed and displayed, since overlapped frames are correlated. **[V]**
+**AC:** At 0 % overlap the effective count equals the frame count. At non-zero overlap it is
+strictly less, and the displayed value predicts the observed variance reduction of an
+averaged noise measurement to within 10 % — the check that the figure is the honest effective
+count and not the raw frame count relabelled. Reporting the raw count at 75 % overlap fails
+the test.
 
 ### 9.5 Trace data types
 
@@ -1460,6 +1503,14 @@ product's Option 200 set: **[V]**
 Spectrum · Raw Main Time · Instantaneous Main Time · PSD (power spectral density) ·
 Autocorrelation · CCDF · CDF · PDF · Correction · Math · No Data.
 
+**AC:** Every listed type is selectable and produces a trace with no demodulation licence
+installed, verified by a test running with the licence absent — the gating error this guards
+against is a base type made accidentally dependent on demodulation code. Each type is checked
+against its closed-form result per `REQ-TST-001` where one exists: PSD of band-limited white
+noise of known density reads that density to within 0.1 dB, autocorrelation of white noise is
+a unit impulse at zero lag, and the CCDF of Gaussian noise matches the analytic Rayleigh
+envelope curve to within 0.1 dB over 0–10 dB above average power.
+
 **`REQ-DSP-040a` (P2) — Cross-channel trace data types.**
 Cross Spectrum · Cross Correlation · Coherence · Frequency Response · Impulse Response.
 
@@ -1469,11 +1520,24 @@ These are **P2, not P0**, and are gated on multi-channel support in the HAL
 which no front end in Phase 3 provides; specifying them as P0 against a single-channel
 `IqBlock` would be incoherent. When implemented, `IqBlock` shall be extended to carry a
 channel index, or grouped into an `IqBlockSet` with a declared coherence guarantee.
+**AC:** Each cross-channel type is offered only when the active front end declares
+`ChannelCount ≥ 2` and `SupportsPhaseCoherentChannels`; against a single-channel front end
+they are absent from the selectable set rather than present and erroring. Once a coherent
+two-channel source exists, coherence of a signal with itself is 1.0 to within 1e-6 at every
+frequency, coherence of two independent noise sources tends to $1/N_{\text{avg}}$, and the
+frequency response of a known synthetic filter is recovered to within 0.1 dB and 1°.
 
 **`REQ-DSP-041` (P0) — Trace formats.**
 Log Magnitude · Linear Magnitude · Real · Imaginary · Wrapped Phase · Unwrapped Phase ·
 Group Delay · IQ (polar/constellation) · Eye · Spectrogram · digital persistence ·
 cumulative history. **[V]**
+**AC:** Every listed format is selectable for a trace whose data type supports it, and
+switching between the non-accumulating formats satisfies `REQ-TRC-001` — no reacquisition and
+no recomputation from the source block, asserted by a counter on the acquisition path that
+must not advance across a format change. The three accumulating entries are reached through
+`TraceAccumulator` per `REQ-TRC-001a`, not through this format list. Log and Linear Magnitude
+of the same data agree to within 0.01 dB after conversion, and Real/Imaginary recombine to
+the Magnitude value, so the formats are views of one computation rather than parallel paths.
 
 **`REQ-DSP-042` (P1) — CCDF definition.**
 CCDF shall plot $P\{P_{\text{inst}} > P_{\text{avg}} + x\}$ against $x$ in dB (log
@@ -1489,20 +1553,43 @@ part of the criterion rather than an implementation detail.
 **`REQ-DSP-043` (P1) — Spectrogram.**
 Spectrogram shall render a scrolling time–frequency intensity map with configurable depth,
 colour map, and time-axis marker positioning via a trace-select marker. **[V]**
+**AC:** A swept-tone input renders as a diagonal ridge whose frequency at each history row
+matches the tone's frequency at that time to within one bin, which verifies that the time and
+frequency axes are oriented and scaled correctly rather than merely that something drew.
+Depth is configurable and rows beyond it are discarded oldest-first. Moving the trace-select
+marker selects the history row at that time and the spectrum trace updates to that row's
+data. Colour mapping follows `REQ-UI-024`.
 
 **`REQ-DSP-044` (P1) — Phase unwrapping.** Unwrapped phase shall use a standard
 $\pm\pi$-threshold unwrap with a configurable jump tolerance, and shall document its
 reference point.
+**AC:** A synthetic phase ramp of known slope crossing many $2\pi$ boundaries unwraps to that
+ramp with no residual discontinuity, and the recovered slope matches the analytic value to
+within 1e-9 relative. The reference point is stated in the trace annotation and is the same
+point a second run selects, so unwrapped phase is reproducible rather than dependent on where
+the record happened to start. Wrapped and unwrapped traces of the same data agree modulo
+$2\pi$ at every point.
 
 **`REQ-DSP-045` (P2) — Group delay.** Group delay shall be computed as
 $-\,d\phi/d\omega$ using a configurable aperture (in bins), with the aperture shown in the
 trace annotation.
+**AC:** A pure delay of $\tau$ seconds returns a flat group delay of $\tau$ across the band
+to within 1e-9 s, the closed-form check. The aperture is configurable, appears in the trace
+annotation, and widening it visibly smooths the trace on a noisy input — so the annotation
+records the setting that produced the displayed result, which is the point of showing it.
 
 **`REQ-DSP-046` (P2) — Trace math.**
 A trace-math facility shall support at least: add, subtract, multiply, divide (trace/trace
 and trace/constant), magnitude, conjugate, and register store/recall.
 **[U]** — the reference product's exact operator list was not confirmed; the set above is a
 reasonable floor and shall be extensible.
+**AC:** Every listed operator is available for both trace/trace and trace/constant operands
+where meaningful, and each is checked against the arithmetic performed directly on the
+underlying data. Traces whose X axes are not commensurate are rejected with a named error
+rather than combined by index. Division by zero yields the `NAN`/`INF` readouts of
+`REQ-UI-032` rather than throwing or silently producing zero. A register survives store and
+recall with bit-identical values, and adding an operator requires no change to the trace-math
+dispatch, demonstrating the extensibility this requirement asks for.
 
 ### 9.6 Time gating
 
@@ -1523,6 +1610,13 @@ correctly reflecting gate length.
 **`REQ-MKR-001` (P0) — Marker types.**
 **Normal** (diamond glyph), **Delta** (referenced to another marker on the same or a
 different trace, annotated e.g. "3Δ1"), and **Fixed** (position-locked, "X" glyph). **[V]**
+**AC:** All three types are creatable. A Normal marker's readout tracks its data point as the
+trace updates; a Fixed marker's X position does not move when the trace updates, which is
+what distinguishes it; a Delta marker reads the difference from its reference, and changing
+the reference marker changes the delta readout accordingly. Deleting a marker that is another
+marker's reference is either refused with a named error or re-homes the dependant — it never
+leaves a Delta marker referencing a marker that no longer exists. Glyphs and labels follow
+`REQ-UI-030` and `REQ-UI-031`.
 
 **`REQ-MKR-002` (P1) — Marker count.**
 **20 markers per trace**, with the number of traces — and therefore the total marker count —
@@ -1531,6 +1625,11 @@ bounded only by available memory. **[V]**
 states 20 per trace, while the marketing copy says "unlimited traces, each with unlimited
 markers". The engineering figure of 20 per trace governs; "unlimited" refers to the trace
 count. `REQ-UI-001` quotes the marketing phrasing for the docking requirement only.)*
+**AC:** Twenty markers can be placed on a trace and the twenty-first is refused with a named
+error stating the limit, not silently dropped or allowed. The limit is per trace, so twenty
+markers on each of several traces all coexist. Trace count is not capped by a constant: a
+test creates traces until memory pressure, and fails if a fixed ceiling below that is
+enforced.
 
 **`REQ-MKR-003` (P1) — Marker calculation modes.**
 **Band Power** (with Power and Density sub-types; band edges set by left/right marker
@@ -1549,17 +1648,43 @@ positions in the frequency domain, full span in the time domain; units auto-sele
 
 **`REQ-MKR-004` (P1) — Marker coupling.** Markers with matching numbers shall couple
 across traces, moving together where the X axes are commensurate. **[V]**
+**AC:** With coupling on, moving marker 3 on one trace moves marker 3 on every other trace
+whose X axis is commensurate to the same X value — not the same pixel or the same sample
+index, which a test using traces of differing point counts over the same span distinguishes.
+Markers of other numbers do not move. Traces whose X axes are not commensurate — a spectrum
+and a time trace — are left alone rather than coupled on a meaningless shared coordinate.
+With coupling off, no marker but the dragged one moves.
 
 **`REQ-MKR-005` (P1) — Marker functions.** Peak search, next peak, peak tracking, minimum
 search, marker-to-centre-frequency, marker-to-reference-level, and "copy value to
 parameter". **[V]**
+**AC:** On a synthetic spectrum with tones at known frequencies and descending amplitudes,
+peak search finds the largest and repeated next-peak visits the remainder in strictly
+descending amplitude order, each within one bin of its true frequency, without revisiting a
+peak. Minimum search finds the analytic minimum. With peak tracking on, a tone that drifts
+between acquisitions keeps the marker on it. Marker-to-centre-frequency sets centre frequency
+to the marker's X value exactly; marker-to-reference-level sets reference level to its Y
+value; copy-value-to-parameter writes the marker value into the named parameter and the
+measurement updates.
 
 **`REQ-MKR-006` (P2) — Marker readout surfaces.** A dedicated Markers window listing all
 markers with readouts, plus an active-marker readout above the trace grid. **[V]**
+**AC:** Both surfaces exist and show the same value for the same marker at the same time —
+the Markers window row and the above-grid readout are compared after a marker move and must
+agree, since two independently computed readouts drifting apart is the failure this guards
+against. The above-grid readout follows the active marker when the active marker changes, and
+sits above the grid per `REQ-UI-040`. The Markers window lists every marker on every trace,
+not only those on the active trace.
 
 **`REQ-MKR-007` (P2) — Spectrogram and multi-dimensional markers.** Spectrogram traces
 shall support time-axis positioning via trace-select markers; OFDM-class personalities shall
 support three-dimensional marker placement (symbol × subcarrier × value). **[V]**
+**AC:** A spectrogram carries the two markers of `REQ-UI-054` on different axes, and moving
+the trace-select marker to a history row makes the spectrum trace show that row's data,
+matching the data captured at that time. On an OFDM personality a marker placed at a given
+symbol and subcarrier reads the value at exactly that cell, verified against a generated
+resource grid with a known distinguishable value per cell, so a transposed
+symbol/subcarrier index fails rather than passing by symmetry.
 
 ### 10.2 Limit tests
 
@@ -1568,6 +1693,13 @@ A three-level hierarchy shall be implemented: **Limit Test → Limit Line → Li
 each user-named. Limit Points carry X/Y coordinates plus a *connect to previous point*
 flag, forming connected segments. Each Limit Line carries a **Side** (Upper or Lower)
 determining margin direction. **[V]**
+**AC:** All three levels exist, each user-named, and names round-trip through save and
+recall. A point with *connect to previous* clear starts a new segment, so a trace passing
+through the gap between segments is not tested there — verified by a trace that would fail
+were the segments joined. Side governs direction: an Upper line fails a trace above it and an
+Lower line fails one below, and a test asserts both, since an inverted comparison is the
+defect most easily shipped here. Margin is applied on the pass side of the limit, never the
+fail side.
 
 **`REQ-LIM-002` (P1) — Pass/fail evaluation and reporting.**
 Overall status shall be PASS only if every line passes, otherwise FAIL. Per-line status and
@@ -1580,6 +1712,11 @@ documented, tested convention.
 **`REQ-LIM-003` (P2) — Limit tests in the automation API.** Limit count and results shall
 be queryable programmatically (the reference product exposes `:TRACe:LIMit:COUNt` and
 `:TRACe:LIMit:RESult`). **[V]**
+**AC:** Count and result are queryable through the automation API, and the queried result
+matches the on-screen pass/fail for the same trace in every case a test exercises — including
+the failing case, so the API is not reporting a stale or separately computed verdict. The
+query is answerable while a measurement is running, and reports the state of a completed
+evaluation rather than a partially updated one.
 
 ### 10.3 Channel measurements
 
@@ -1587,12 +1724,29 @@ be queryable programmatically (the reference product exposes `:TRACe:LIMit:COUNt
 and offset channel definitions (offset frequency, integration bandwidth, filter shape
 including root-raised-cosine), reporting absolute and relative power per offset, upper and
 lower.
+**AC:** A synthetic carrier with adjacent-channel content injected at a known level below it
+reports that ratio to within 0.2 dB, per offset, upper and lower reported separately and
+correctly distinguished — asymmetric injection is used so a swapped upper/lower fails.
+Absolute power agrees with the band power over the same integration bandwidth to within
+0.1 dB. Changing the filter shape to root-raised-cosine with a stated roll-off changes the
+result in the direction and by the amount the filter's known noise bandwidth predicts.
 
 **`REQ-CHM-002` (P1) — OBW.** Occupied bandwidth shall support the percentage-of-power
 criterion (default 99 %) and the x-dB-down criterion.
+**AC:** For a signal of analytically known spectrum the 99 % occupied bandwidth matches the
+closed-form value to within one bin, and the default is 99 %. The x-dB-down criterion on a
+shape whose width at that level is known analytically — a Gaussian, say — matches to within
+one bin. The two criteria are independently selectable and give the different answers theory
+predicts for the same signal, which is the check that both are genuinely implemented rather
+than one aliased onto the other.
 
 **`REQ-CHM-003` (P2) — Spectral emission mask.** A mask-based emission measurement with
 per-segment limits and pass/fail, reusing the limit-test engine.
+**AC:** A mask of several segments with differing limits evaluates each segment against its
+own limit, verified by a signal that passes in one segment and fails in an adjacent one, with
+the reported failure naming the offending segment. The measurement reuses the `REQ-LIM-001`
+engine rather than reimplementing comparison — a test asserts the shared code path, since a
+second implementation is where the Upper/Lower inversion returns.
 ---
 
 ## 11. Flexible digital demodulation engine
@@ -2191,9 +2345,19 @@ fidelity. **[V-negative]**
 Top-to-bottom the shell is: **title bar → menu bar → toolbar band (multiple dockable
 toolbars) → document area with trace tab groups, tool windows docked around its edges →
 status bar.** **[V for the components; U for the exact order, though it is conventional.]**
+**AC:** A trace window docks only into the central document area and appears there as a tab
+in a tab group; a tool window docks only around the edges and carries a title bar, not a tab.
+Attempting to dock a tool window into the document area, or a trace window to an edge, is
+refused rather than accepted — the two classes are distinct, not merely conventionally used
+differently. No right-hand softkey column exists anywhere in the shell, asserted by a test
+over the shell's visual tree so it cannot be reintroduced unnoticed. The shell's top-level
+children appear in the stated order.
 
 **`REQ-UI-002` (P1) — Named tool windows.**
 Markers · Output · Player · SCPI Log · Event Log · Contexts · Block Diagram · Macros. **[V]**
+**AC:** All eight exist under exactly these names, are openable from the Window or Marker
+menu per `REQ-UI-061`, and each is a tool window by the `REQ-UI-001` test. Each one's docked
+position, size and open/closed state persist across a restart.
 
 **`REQ-UI-003` (P1) — Detachable trace windows are full secondary windows.**
 Dragging a trace out of the document area shall create a **Trace Window**: "a regular
@@ -2212,6 +2376,13 @@ independently on a second monitor, and is captured in saved layout state.
 - Users resize by dragging the boundary between windows; a **Resize Traces** command evenly
   redistributes. **[V]**
 
+**AC:** The close button's rendered bounds sit to the left of the leftmost tab's bounds, and
+no per-tab close button exists — asserted on geometry, not on a style name, because this is
+the detail a developer will "fix" into the conventional right-hand position. The active
+trace's tab is the only one rendered bold, and changing the active trace moves the bold.
+Dragging a boundary resizes the adjacent windows only; **Resize Traces** leaves all trace
+windows within one pixel of equal size.
+
 **`REQ-UI-005` (P1) — Trace layout presets.**
 The layout menu shall offer, by these names: **[V]**
 
@@ -2228,6 +2399,14 @@ The layout menu shall offer, by these names: **[V]**
 "Grid 2x2", "Quad 4", "Grid 6" — with six configurable measurement grids. The modern
 parameterised form supersedes it. **[V]**
 
+**AC:** All six entries appear in the layout menu under exactly these names. Stack N and
+Grid N×M are parameterised, not a fixed list of presets, so arbitrary N and N×M are
+accepted within the space available. **Tile Visible** promotes traces that were hidden as
+tabs into their own space — checked by starting from a tab group of several traces and
+asserting each becomes separately visible, since this is the clause that distinguishes it
+from Single. **Previous Layout** restores the arrangement in force before the last layout
+change, including a Custom one.
+
 **`REQ-UI-006` (P1) — Status bar contents.**
 A status bar at the bottom of the main window shall show, with measurement status messages
 specifically at the **bottom left**: **[V]**
@@ -2242,6 +2421,14 @@ specifically at the **bottom left**: **[V]**
 To these OpenVSA adds, per `REQ-NFR-012` and `REQ-NFR-027`: **dropped-frame count** and
 **measured front-end transfer rate / duty cycle**.
 
+**AC:** Every listed field is present, and measurement status messages render at the bottom
+left specifically — asserted on position, since that placement is quoted from the reference
+product. Each status string appears when its condition holds: driving the measurement into
+*Waiting for Trigger* and *Average Complete* shows those strings. Calibration status,
+reference lock state and spectrum rate track their underlying conditions rather than showing
+a fixed value. Dropped-frame count is monotonic per `REQ-NFR-012`, and the transfer rate is
+the measured figure of `REQ-NFR-027`, not a nominal one.
+
 **`REQ-UI-007` (P1) — Prominent fault and lock indicators.**
 Conditions that invalidate a measurement shall be indicated in the trace's upper-right corner
 using the strings of `REQ-UI-041`, not buried in a log: ADC overload (`OVx`), unlocked
@@ -2249,6 +2436,12 @@ reference, uncalibrated state (`CAL?`), demodulation lock failure (`CARRIER LOCK
 pulse not found, and dropped frames.
 *Rationale:* every one of these means the number on screen is wrong. A user reading EVM must
 not have to go looking to discover that the input was overloaded.
+**AC:** Each listed condition is provoked in turn — ADC overload, unlocked reference,
+uncalibrated state, demodulation lock failure, sync not found, pulse not found, dropped
+frames — and each raises its `REQ-UI-041` string in the trace's upper-right corner within one
+display update, using the `Indicator` colour. The indicator clears when the condition
+clears. A test asserts the string is on the trace rather than only in the event log, since
+"buried in a log" is precisely the failure this forbids.
 
 ### 13.2 The plot surface: three layered zones
 
@@ -2300,6 +2493,11 @@ The graticule shall be **10 horizontal × 10 vertical divisions** by default, co
 > from a real published number, not a quotation. Make the count a setting so the choice is
 > cheap to revise.
 
+**AC:** The graticule renders 10 × 10 divisions by default, counted from the rendered frame,
+and the count is a setting that takes effect without restart. Division lines are evenly
+spaced to within one pixel across the grid, and the outermost lines coincide with the grid
+boundary rather than falling inside or outside it.
+
 **`REQ-UI-013` (P1) — Reference position defaults, which set the annotation layout.**
 X reference position 0–100 % (0 % = left edge, 100 % = right edge). Y reference position
 0–100 % in 1 % increments, **defaulting to 100 % for Log Mag, Lin Mag and Log Mag (lin)** —
@@ -2307,10 +2505,21 @@ i.e. the reference line at the **top** of the grid — **and 50 % for all other 
 centred, which is what time-domain and IQ displays need. **[V]**
 *This default is what puts the reference-level annotation at top-left for spectra and centres
 the origin for IQ displays; it is a layout decision as much as a scaling one.*
+**AC:** Y reference position defaults to 100 % for Log Mag, Lin Mag and Log Mag (lin), and to
+50 % for every other format — enumerated over the full `REQ-DSP-041` format list so a format
+added later without a default fails the test. Both axes accept 0–100 %, Y in 1 % increments,
+and the reference line lands at the requested fraction of the grid height to within one
+pixel. At the 100 % default the reference-level annotation sits top-left per `REQ-UI-040`;
+at 50 % an IQ display's origin is centred.
 
 **`REQ-UI-014` (P1) — Colour configuration and persistence.**
 All display colours shall be user-settable through a standard colour picker and shall persist
 in a display-preferences file (the reference product uses `.dspx`). **[V]**
+**AC:** Every element of `REQ-UI-022` is reachable from the colour picker — the list is
+enumerated from the theme resource dictionary so an element added without a picker entry
+fails. Changed colours survive a restart via the display-preferences file, and that file is
+separate from saved state per `REQ-STA-002`: recalling a state does not alter display
+colours, and loading display preferences does not alter measurement settings.
 
 **`REQ-UI-015` (P1) — Default background.**
 The default trace background shall be **black** (or very dark). **[U — inferred, not stated.]**
@@ -2322,12 +2531,24 @@ The default trace background shall be **black** (or very dark). **[U — inferre
 > strong circumstantial evidence, not a statement. **OpenVSA shall implement the same
 > force-white-background print option regardless** — it is needed either way.
 
+**AC:** `TraceBackground` defaults to black or a very dark value on a fresh profile. The
+print path offers **Force white background**, and with it enabled the printed or exported
+output has a white trace background with every trace and annotation colour still legible
+against it — specifically, very light trace colours are darkened rather than left invisible,
+which is the behaviour the reference product's own note describes.
+
 ### 13.3 Colour model
 
 **`REQ-UI-020` (P0) — Traces are lettered, and colours come from a 20-entry indexed table.**
 Traces shall be identified by **letter** (Trace A, B, C, D, …), **not** by number — trace
 *numbers* would collide with marker numbering, which is exactly why the reference product
 letters them. Colours are held in an indexed table of **20**. **[V]**
+**AC:** Traces are identified by letter throughout — tab titles, the active-trace toolbar
+button of `REQ-UI-063`, annotation, and the delta-marker label of `REQ-UI-031` — asserted by
+a test that fails if any trace identifier renders as a bare number. The colour table holds
+exactly 20 entries; the twenty-first trace reuses index 0 rather than extending the table or
+failing. Trace lettering continues past Z in a defined way rather than colliding or
+truncating.
 
 **`REQ-UI-021` (P0) — A trace's line and its annotation text share one colour.**
 `Trace` is defined as "Color for specified trace **and its annotation**". **[V]**
@@ -2335,6 +2556,12 @@ letters them. Colours are held in an indexed table of **20**. **[V]**
 tinted to match the trace itself, which is how a user reads a four-trace overlay at a glance.
 Corroborated from the other direction by an 89400 firmware defect report: "Trace A shows wrong
 annotation color after preset."*
+**AC:** A trace's line and its annotation text sample to the same colour in the rendered
+frame, for every trace in a multi-trace overlay. They stay equal after the operations that
+historically broke it: changing the trace colour, preset, state recall, and theme change —
+the 89400 defect quoted above is exactly the post-preset case, so preset is tested
+explicitly. One colour setting drives both; there is no separate annotation-colour entry per
+trace to drift out of step.
 
 **`REQ-UI-022` (P1) — Themeable element set.**
 The following shall each be independently colourable, forming the WPF theme resource
@@ -2349,6 +2576,13 @@ Trace Background.
 *Per trace:* Trace · Symbol · Average · Pilot · Spectrogram Marker · Trace Select ·
 Emitter 1–32 · Group 1–48.
 
+**AC:** Every named element resolves to a distinct key in the WPF theme resource dictionary,
+enumerated by a test against this list so a missing or misspelled key fails rather than
+silently falling back to a default brush. Global entries apply across all traces and
+per-trace entries are indexed per trace, including the Emitter 1–32 and Group 1–48 ranges at
+full extent. Every element is reachable from the colour picker per `REQ-UI-014`, and no
+element is hard-coded: a test fails on a literal colour in the plot-surface rendering path.
+
 **`REQ-UI-023` (P1) — Limit/margin colouring, including the non-obvious part.**
 Four separate colour entries: **Limit**, **Margin**, **Fail Limit**, **Fail Margin**. **[V]**
 
@@ -2359,6 +2593,13 @@ Four separate colour entries: **Limit**, **Margin**, **Fail Limit**, **Fail Marg
 
 *Recommended defaults:* limit red, margin yellow. **[U — widely assumed but stated nowhere;
 adopt as a default, not as a fidelity claim.]**
+
+**AC:** All four entries exist independently. On a trace failing part of a limit, the
+rendered frame shows **the trace's own points recoloured** to `Fail Limit` over the failing
+span while the limit line keeps its `Limit` colour — the inverse, recolouring the limit line,
+fails the test, since implementing this backwards is the stated risk. Margin failure behaves
+the same way with `Fail Margin`. Pass and fail indication is independently enablable for the
+limit, the margin, or both. Defaults are limit red, margin yellow.
 
 **`REQ-UI-024` (P1) — Spectrogram colour maps.**
 The one hard colour statement in the entire reference documentation, and therefore to be
@@ -2375,6 +2616,15 @@ implemented exactly: **[V]**
 *Note:* the brochure remarks that "grey-scale views provide even greater resolution" — worth
 surfacing as a tooltip, since it is a real perceptual point about luminance ramps.
 
+**AC:** All five maps are selectable and Color Normal is the default. Color Normal and Grey
+Normal each contain exactly 64 entries; in Color Normal the maximum-valued cell renders red
+and the minimum blue, and in Grey Normal lightest and darkest respectively — sampled from a
+rendered spectrogram of a ramp input, and the Reverse variants produce the exact reversal of
+their counterparts. For User Defined, index 0 sits at the bottom of the map, and reducing the
+entry count discards from the **top** — asserted directly, because discarding from the bottom
+is the natural implementation and the wrong one. The Sample Map preview shows the full map
+with marks indicating the active selection.
+
 ### 13.4 Markers — glyphs and readouts
 
 **`REQ-UI-030` (P0) — Marker glyph shapes and placement.** **[V — quoted verbatim]**
@@ -2390,12 +2640,23 @@ filled and unselected hollow. Colour is by selection state (`SelectedMarker` /
 `NotSelectedMarker`), **not** by marker index. **[V]**
 *Two subtleties a developer will otherwise miss: the diamond is offset above the point while
 the X is centred on it, and selection is conveyed by fill rather than colour index.*
+**AC:** Measured from the rendered frame: a Normal or Delta marker's diamond has its bounds
+entirely above the data point, while a Fixed marker's X is centred on it — the centroid of
+the X coincides with the data point to within one pixel and the diamond's does not. The
+selected marker's diamond is filled and unselected ones are hollow. Marker colour is drawn
+from `SelectedMarker`/`NotSelectedMarker` by selection state, so two unselected markers of
+different numbers render the same colour; colouring by marker index fails the test.
 
 **`REQ-UI-031` (P0) — Delta-marker label format.**
 `XΔTR`, where X is the delta marker number, T the reference trace letter **shown only when the
 reference is on a different trace**, and R the reference marker number. Thus **`3Δ1`** for a
 same-trace reference and **`2ΔB1`** for a cross-trace reference. In the Markers Window the
 form is `Mkr NΔTR`. **[V]**
+**AC:** A delta marker referencing another marker on the same trace renders `3Δ1` — with no
+trace letter — and one referencing a marker on trace B renders `2ΔB1`. Both cases are
+asserted as exact strings, since emitting the trace letter unconditionally is the obvious
+implementation and is wrong for the same-trace case. The Markers Window uses the `Mkr NΔTR`
+form. Trace identifiers in the label are letters per `REQ-UI-020`.
 
 **`REQ-UI-032` (P1) — Markers Window.**
 A dedicated tool window with its own background colour and its own font slot. Readout labels:
@@ -2404,11 +2665,21 @@ A dedicated tool window with its own background colour and its own font slot. Re
 `Limit`, plus fields Carrier, Channel Type, Layer, Sym. Invalid values render **`NAN`**,
 overflow **`INF`**. For two-dimensional IQ formats the readout is "Mag & Phase" or "Real &
 Imag", **defaulting to Mag & Phase**. **[V]**
+**AC:** Every listed readout label and field appears with exactly the spelling given. An
+invalid value renders the literal `NAN` and an overflow the literal `INF`, not a
+framework-default "NaN"/"∞" or a blank — asserted as exact strings. Two-dimensional IQ
+formats offer both readout pairs and default to Mag & Phase. The window has its own
+background colour (`MarkerWindowBackground`) and its own font slot per `REQ-UI-080`,
+independent of the Annotation slot.
 
 **`REQ-UI-033` (P1) — Fixed-width font in the Markers Window.**
 The help is explicit: "**always select a fixed-width font for the Markers Window**". **[V]**
 OpenVSA shall default to a fixed-width face there rather than leaving it to the user to
 discover.
+**AC:** The Markers Window's default font is fixed-width, asserted by querying the resolved
+typeface's pitch rather than its name, so a proportional face substituted for a missing font
+fails. Marker readouts of differing digit content align in a column, which is the property
+the fixed-width face exists to provide.
 
 ### 13.5 Annotation placement and the hot-spot model
 
@@ -2427,6 +2698,14 @@ string exists on screen]** — follows from the Y-reference default of 100 % for
 bottom scale** bottom-left, **trace format / resolution bandwidth / trigger channel** in the
 upper band, **centre frequency** and **main time length** centred beneath the X axis.
 
+**AC:** Measured from the rendered frame: the active-marker readout sits above the grid and
+to the right; trace indicator messages sit inside the grid's upper-right corner in the
+`Indicator` colour; all other trace annotation lies outside the graticule in the annotation
+band; measurement status is at the bottom left of the main window per `REQ-UI-006`. The
+indicator strings are the only annotation drawn inside the graticule — a test fails if any
+other annotation's bounds intersect the grid rectangle. Each recommended string is present at
+its stated position.
+
 **`REQ-UI-041` (P0) — Trace indicator strings.**
 The following shall be displayed in the grid's upper-right corner, in this priority order:
 **[V]**
@@ -2439,6 +2718,12 @@ The following shall be displayed in the grid's upper-right corner, in this prior
 `REQ-DEM-036` carrier lock, `REQ-DEM-040`/`041` sync and pulse search, `REQ-DEM-050`
 equalisation, `REQ-UI-007` overload. Adopt the strings verbatim; they are terse, unambiguous,
 and familiar to anyone who has used the reference product.*
+**AC:** Each string renders exactly as listed, including the `OVx` channel suffix and the
+question marks on `DATA?`, `CAL?`, `CARRIER LOCK?` and `MEAS OFFSET?` — asserted as exact
+literals, since these are quoted and a tidied-up wording would break familiarity for no gain.
+With several conditions true at once the display order follows the stated priority, tested by
+provoking overload and carrier-lock failure together. The strings render in the grid's
+upper-right corner per `REQ-UI-040`.
 
 **`REQ-UI-042` (P0) — Clickable annotation ("hot spots"). The signature interaction.**
 Measurement parameters displayed as trace annotation shall be **directly editable in place**.
@@ -2478,6 +2763,13 @@ data *with* the inter-symbol trajectory. Ideal states shall be overlaid as **cro
 circles** (user-selectable) — **not** as filled dots, which would be confusable with measured
 symbols. Symbol points carry their own colour, separate from the trace line, and may be
 coloured **by modulation type** for signals carrying mixed modulations. **[V]**
+**AC:** A constellation trace of a known modulation draws exactly one point per symbol, at
+the decision instants, with no connecting geometry — a test asserts the rendered primitive
+count equals the symbol count and that no line segments join them. The same data in IQ/Vector
+format draws the connecting trajectory, which is the difference between the two. Ideal states
+overlay as crosshairs or circles, user-selectable, and never as filled dots. Symbol points
+use the `Symbol` colour, distinct from the trace line's, and a mixed-modulation signal
+colours symbols by modulation type via the `Mod Type N` entries.
 
 **`REQ-UI-051` (P1) — Eye diagram.**
 X axis in **symbols**, Y axis in volts (I or Q). The eye shall be **centred in the display**,
@@ -2487,6 +2779,13 @@ lines shall be drawn at the symbol positions**, where maximum eye opening should
 corresponding to the symbol clock. An m-level modulation shows **m−1 eyes stacked
 vertically**. Eye length adjustable **0.1 to 10 symbols**. **[V]**
 *Axis annotation from a real screen, worth matching:* `I - Eye`, `-1 Sym`, `1 Sym`.
+**AC:** The X axis is in symbols and the eye is centred: a one-symbol eye spans −½ to +½
+symbol about the display centre, measured from the rendered frame. Vertical reference lines
+fall at the symbol positions, coinciding with the points of maximum eye opening for a clean
+signal — checked against the generated signal's known symbol clock, so a half-symbol offset
+fails. An m-level modulation shows m−1 eyes stacked vertically, counted for at least two
+values of m. Eye length is settable over 0.1 to 10 symbols with values outside rejected.
+Rendering is accumulative: successive acquisitions overlay rather than replace.
 
 **`REQ-UI-052` (P1) — Symbol table and error summary are ONE trace, split top and bottom.**
 **[V]** — this is a structural point, not a styling one, and getting it wrong means building
@@ -2503,6 +2802,13 @@ two traces where the product has one.
   reference product exposes only two font slots (Annotation and Marker), so the symbol table
   almost certainly inherits the Annotation font — meaning that font must itself be monospaced,
   or OpenVSA should add a third slot.]**
+
+**AC:** The symbol table and error summary are one trace with two portions, not two traces —
+asserted structurally: the trace list contains a single entry, and selecting it selects both
+portions. In binary format the left-gutter number is the bit offset of the row's first bit;
+in hex it is the symbol offset; both are checked against a known symbol stream, and hex is
+unavailable below 4 bits/symbol. Characters group in eights separated by a space. The
+portions render in the fixed-width Tabular slot of `REQ-UI-080`.
 
 **`REQ-UI-053` (P1) — Error summary text layout.**
 The following is the actual on-screen text from a real analyser of this family and shall be
@@ -2522,6 +2828,13 @@ Ofst, EVM, EVM Pk, Freq Err, Mag Err, Offset EVM, Phase Err, Pilot Lvl, Time Off
 Offset, IQ Gain Imbalance, IQ Quad. Error, IQ Timing Skew, SymClk Err, RSSI**. **[V]**
 *Note the house style: short, truncated, no-space-where-possible — `Carr Ofst`, not "Carrier
 Offset". Scalars occupy one column; two related metrics occasionally share a line.*
+**AC:** Rendered against a signal of known impairments, the error summary reproduces the
+layout above: `=` at a fixed column across all rows, RMS then peak then "at symbol N", and
+engineering prefixes on units (`m%rms`, `mdeg`) rather than exponent notation. Row labels are
+exactly the listed abbreviations, asserted as literals — `Carr Ofst`, not "Carrier Offset".
+Scalar-only metrics render one value and omit the peak columns rather than padding them with
+zeros. The block renders in the fixed-width Tabular slot, which is what holds the `=` column
+aligned.
 
 **`REQ-UI-054` (P1) — Spectrogram / 3-D map displays.**
 Spectrogram, Digital Persistence and Cumulative History shall be presented as a group on a
@@ -2529,6 +2842,13 @@ dedicated toolbar (consistent with `REQ-TRC-001a` treating them as accumulators)
 spectrogram carries **two markers on different axes**: a **vertical** spectrogram marker and a
 **horizontal** trace-select marker. Controls: **Enhance**, **Threshold**, **Map Colour
 Scheme**. **[V]**
+**AC:** The three accumulating modes appear together on one dedicated toolbar per
+`REQ-UI-063`, and are reached through `TraceAccumulator` rather than the format list, per
+`REQ-TRC-001a`. A spectrogram carries both markers on perpendicular axes — the spectrogram
+marker vertical, the trace-select marker horizontal — and each moves only along its own axis.
+Enhance, Threshold and Map Colour Scheme are present and each visibly changes the rendering:
+raising Threshold removes cells below it, and Map Colour Scheme switches between the
+`REQ-UI-024` maps.
 
 ### 13.7 Menus, toolbars and shortcuts
 
@@ -2544,6 +2864,11 @@ The menu bar shall be, in order: **[V for the names; U for the exact order]**
 > **MeasSetup → Analysis**, **Markers → Marker** (singular); **Control** became a submenu
 > (*Acquisition > Control > Sweep*); **Display** disappeared, its layout functions moving under
 > Window and Trace; **Source** moved under Hardware. OpenVSA shall adopt the modern names.
+
+**AC:** The menu bar contains exactly these ten menus, with these names, in this order —
+asserted as an exact ordered list. The superseded Agilent-era names are absent: a test fails
+on a top-level menu named Input, MeasSetup, Display or Control, since those are the names a
+developer working from older documentation would naturally produce.
 
 **`REQ-UI-061` (P1) — Menu contents.** **[V]**
 
@@ -2575,12 +2900,25 @@ The menu bar shall be, in order: **[V for the names; U for the exact order]**
 - **Help** — Help (F1), Dynamic Help, Getting Started, Demos, Examples, API Reference, SCPI
   Reference, Support ▸, Privacy, About.
 
+**AC:** Every listed item is present under its listed menu, with the Analysis menu in the
+stated order, verified by walking the menu tree against this list; an item present in the
+tree but not in the list also fails, so the menus stay as specified rather than accreting.
+Each item is either enabled and functional or disabled with a reason — none is present and
+inert. **Preset never changes the hardware setup**: a test alters hardware configuration,
+invokes each Preset variant, and asserts the hardware setup is unchanged while the targeted
+settings are reset, since that separation is called out explicitly and is easy to lose.
+
 **`REQ-UI-062` (P2) — Embedded toolbars inside menus.**
 The **Trace** and **Marker** menus shall each host an embedded toolbar at the top — the trace
 toolbar selects the active trace and adds/removes/hides traces; the markers toolbar does the
 same for markers. **[V]**
 *A distinctive touch worth keeping: it puts the most frequent actions one click inside the
 menu that owns them, rather than requiring a separate toolbar hunt.*
+**AC:** The Trace and Marker menus each contain a toolbar as their topmost element, not a
+list of commands standing in for one. The trace toolbar selects the active trace and
+adds, removes and hides traces from within the open menu; the markers toolbar does the
+equivalent for markers. Acting on the embedded toolbar takes effect without first dismissing
+the menu.
 
 **`REQ-UI-063` (P1) — Toolbars.**
 Five preconfigured toolbars, plus a macro-button bar: **[V]**
@@ -2594,9 +2932,23 @@ Five preconfigured toolbars, plus a macro-button bar: **[V]**
 | **Spectrogram / Colour Map** | **Spectrogram** · **Digital Persistence** · **Cumulative History** · **Enhance** · **Threshold** · **Map Colour Scheme** |
 | **Macro Buttons** | Managed by the macros utility; not user-editable through the toolbar customiser |
 
+**AC:** All six toolbars exist with the listed contents. Behaviours quoted from the reference
+product are tested, not just present: **Restart** discards current measurement data
+*including averaging*, asserted by a non-zero average count returning to zero; **Pause** then
+a second click single-steps under Single sweep and continues under Continuous — both branches
+tested, since collapsing them is the likely shortcut. **Auto-range** is a split button whose
+main click ranges all channels and whose dropdown ranges a chosen one. Marker Tools is a
+radio group: selecting one mouse mode deselects the others. **Area Select** can scale X, Y,
+or set centre frequency and span. The macro bar is not editable through the toolbar
+customiser.
+
 **`REQ-UI-064` (P2) — Toolbar customisation.** Users shall be able to define custom toolbars
 (list of toolbars, control picker, contents editor), with reset via File > Preset > Toolbars.
 **[V]**
+**AC:** A custom toolbar can be created, populated from the control picker, reordered and
+deleted, and survives a restart. File > Preset > Toolbars restores the five preconfigured
+toolbars of `REQ-UI-063` to their default contents and removes custom ones. The macro-button
+bar is absent from the customiser per `REQ-UI-063`.
 
 **`REQ-UI-065` (P1) — Keyboard shortcuts.**
 Adopt the reference product's bindings — they are muscle memory for existing users and cost
@@ -2616,6 +2968,12 @@ nothing to match: **[V]**
 | **Ctrl+F1** | Dynamic help |
 | **Ctrl + `+` / `-`** | Window content scaling (`REQ-NFR-007a`) |
 
+**AC:** Every listed binding invokes its listed action, driven through the input system rather
+than by calling the command directly, so a binding that is declared but unreachable fails.
+None is shadowed by a conflicting binding, asserted by a uniqueness check over the whole
+binding table. Space pauses and resumes without stealing input from a focused text field —
+the case that makes a bare-Space binding go wrong.
+
 ### 13.8 Dialog conventions
 
 **`REQ-UI-070` (P1) — Tabbed, modeless, live dialogs.**
@@ -2623,6 +2981,12 @@ Setting dialogs shall be **tabbed, modeless, and live** — changing a parameter
 measurement immediately, with no OK/Apply round-trip. **[V]**
 *This is why the hot-spot model and the dialogs coexist comfortably: both edit the same live
 state, and neither blocks the display.*
+**AC:** No setting dialog is modal: with one open, the measurement continues to update and
+the main window remains interactive, including the hot-spot controls. Changing a parameter
+applies immediately — a test asserts the measurement reflects the new value with no OK or
+Apply invoked, and that no such button exists on the dialog. Editing the same parameter from
+a hot spot and from its dialog drives one piece of state: each surface reflects a change made
+from the other without needing to be reopened.
 
 **`REQ-UI-071` (P1) — Dialog framework options.**
 The dialog framework shall expose, globally: **[V]**
@@ -2639,12 +3003,28 @@ In WPF terms: a `TabControl` whose `TabStripPlacement` is user-switchable Top/Le
 alternative `Expander`-stack rendering of identical content; the dialog measures to the union
 of all tabs; modeless with optional topmost.
 
+**AC:** All four Default Modes render the same content and every control reachable in one is
+reachable in the others. With **Fixed Size** on, switching between tabs leaves the dialog's
+outer bounds unchanged and the size equals the union of all tabs, so the largest tab is not
+clipped. **Keep on Top** governs whether the dialog can fall behind the main window, tested
+both ways. **Persist Mode** restores the mode a dialog was closed in across an application
+restart, not merely within a session. **Tabs Collapsed by Default** applies under "Tabs on
+left" and is inert under the others.
+
 **`REQ-UI-072` (P1) — Analysis (MeasSetup) tab set.**
 **Frequency | ResBW | Time | Detectors | Conversion | Average | Heatmaps**. **[V]**
+**AC:** The Analysis dialog contains exactly these seven tabs, with these names, in this
+order, and no others. Each tab hosts the settings its name implies and each is populated —
+none is a placeholder. The dialog obeys the `REQ-UI-070` and `REQ-UI-071` framework rules.
 
 **`REQ-UI-073` (P1) — Display Preferences tab set.**
 **Trace | Colour | User Map Colour | Font | Window**. **[V]** *(There is no separate
 General/Theme/Appearance tab — theming lives under Window and Colour.)*
+**AC:** The Display Preferences dialog contains exactly these five tabs and no others — a
+test fails on a tab named General, Theme or Appearance, since adding one is the natural
+instinct and would split theming away from Colour and Window where this specification places
+it. Colour exposes the `REQ-UI-022` element set, User Map Colour the `REQ-UI-024` user map,
+and Font the three slots of `REQ-UI-080`. Changes made here persist per `REQ-UI-014`.
 
 ### 13.9 Typography, theming and visual era
 
@@ -2657,6 +3037,13 @@ proportional, and the reference product's two-slot scheme forces an unhappy comp
 (`REQ-UI-052`).
 **[U] Default typeface and size are unpublished.** Recommended: **Segoe UI 9 pt** for chrome
 and annotation, **Consolas 9 pt** for Markers, symbol table and error summary.
+**AC:** Exactly three font slots exist — Annotation, Marker and Tabular — each independently
+settable from the Font tab of `REQ-UI-073` and each applied globally to its own surfaces.
+Setting one leaves the other two unchanged. Marker and Tabular resolve to fixed-width
+typefaces by default, asserted on the resolved face's pitch; Annotation may be proportional.
+The symbol table and error summary of `REQ-UI-052` draw from Tabular, not Annotation, which
+is the whole reason the third slot exists. Defaults are Segoe UI 9 pt and Consolas 9 pt, with
+a documented fallback where either is unavailable.
 
 **`REQ-UI-081` (P2) — Theming and the honest answer to "what era does it look like".**
 The reference product themes its chrome with stock Windows and Office shells, and the
@@ -2672,6 +3059,13 @@ third-party UI suite — visually an Office 2007/2010-era program, not a WPF-nat
 Fluent-era one.** Themes style **chrome only**; the graticule and traces are governed entirely
 by the colour settings of §13.3.
 
+**AC:** This requirement is documentary — it records the reference product's visual era so
+`REQ-UI-082` can depart from it deliberately. What is testable is the separation it states:
+switching theme changes chrome only, and every colour of `REQ-UI-022` — graticule, traces,
+annotation, backgrounds — samples identically before and after a theme change. A theme that
+alters a plot-surface colour fails. OpenVSA ships the themes of `REQ-UI-082`, not the listed
+Luna/Royale/Office set, which is quoted here as evidence rather than as a requirement.
+
 **`REQ-UI-082` (P2) — OpenVSA's own visual direction.** **[DESIGN CHOICE]**
 OpenVSA shall *not* reproduce the Office-2007 chrome. It shall adopt a clean, neutral modern
 Windows appearance (light and dark themes, per `REQ-UI-013`… see `REQ-UI-090`) while
@@ -2679,11 +3073,26 @@ reproducing exactly the parts that carry meaning: the three-zone plot layout, th
 positions, the marker glyphs, the indicator strings, the error-summary text form, and above all
 the hot-spot interaction. **Fidelity is owed to the interaction model and the information
 design, not to a fifteen-year-old button style.**
+**AC:** The chrome is not Office-2007: no theme reproducing that skin ships, and the theme
+list is the light/dark/high-contrast set of `REQ-UI-090`. The parts named as load-bearing are
+each covered by their own criteria and all must pass — three-zone layout (`REQ-UI-010`),
+annotation positions (`REQ-UI-040`), marker glyphs (`REQ-UI-030`), indicator strings
+(`REQ-UI-041`), error-summary text form (`REQ-UI-053`) and the hot-spot interaction. This
+requirement is met when those pass under a modern chrome, which is what distinguishes a
+deliberate visual departure from an incomplete implementation.
 
 **`REQ-UI-090` (P2) — Themes and accessibility of colour.**
 Light and dark themes shall be provided, with trace colours distinguishable without relying on
 hue alone (differing also in luminance and, optionally, dash pattern), and a high-contrast
 theme shall be supported.
+**AC:** Light, dark and high-contrast themes are all selectable, and switching between them
+requires no restart. In each theme, every adjacent pair in the 20-entry trace colour table of
+`REQ-UI-020` differs in relative luminance by a stated minimum as well as in hue, so the
+table is checked numerically rather than by eye; simulating the common forms of colour
+vision deficiency leaves every pair distinguishable, optionally with the aid of dash pattern.
+Trace and annotation contrast against `TraceBackground` meets a stated contrast ratio in all
+three themes. The high-contrast theme follows the system high-contrast setting when one is
+active.
 
 **`REQ-UI-091` (P1) — Accessibility.**
 The application shall be operable entirely from the keyboard; all interactive elements shall
@@ -2756,11 +3165,22 @@ settings (range, coupling, digital, trigger, external mixer), analysis parameter
 window positions, trace data and overlay state, trace display properties (format, X/Y
 scaling, digital demodulation configuration, spectrogram settings), marker types, positions
 and calculations, and source parameters. **[V]**
+**AC:** A state is saved from a configuration in which every listed item has been set away
+from its default, the application is reset, and the state recalled: each listed item returns
+to its saved value. The check enumerates the list rather than sampling it, so an item added
+to the state model without save/recall support fails. Recall is complete before the first
+post-recall acquisition, so the first trace reflects the recalled settings rather than the
+previous ones.
 
 **`REQ-STA-002` (P1) — Documented exclusions.**
 A state shall **not** contain recordings, math functions, data registers or display
 preferences; these shall be saved and recalled independently. **[V]** The save dialog shall
 state this explicitly rather than leaving users to discover it.
+**AC:** With a recording loaded, math functions defined, data registers populated and display
+preferences changed, saving and recalling a state leaves all four untouched — neither
+captured into the state nor cleared by the recall, both of which are failures. Each is
+separately saveable and recallable through its own command. The save dialog names these four
+exclusions in its own text, so the user is told rather than left to find out.
 
 **`REQ-STA-003` (P1) — Format and versioning.** **[DESIGN CHOICE]**
 State shall be stored as human-readable, diffable, versioned JSON in a container carrying a
@@ -2773,9 +3193,20 @@ migration; round-tripping preserves unknown fields byte-for-byte.
 **`REQ-STA-004` (P1) — Context-name matching on recall.**
 Recalling a multi-measurement state shall match measurements to existing contexts by name,
 raising a specific, actionable error on mismatch rather than partially applying. **[V]**
+**AC:** Recalling a multi-measurement state into an application whose contexts carry the same
+names restores each measurement to its own context. Where a name does not match, the recall
+is refused as a whole and the pre-recall configuration is intact — asserted by comparing full
+configuration before and after the failed recall, since a partial apply is the failure mode
+this exists to prevent. The error names the context or contexts that did not match and what
+was expected, rather than reporting a generic recall failure.
 
 **`REQ-STA-005` (P2) — Presets.** A factory preset returning all settings to documented
 defaults, plus user-definable presets.
+**AC:** Factory preset returns every setting to the default this specification documents for
+it, enumerated over the settings model so a setting whose default is undocumented fails the
+test rather than passing unnoticed. It leaves the hardware setup alone per `REQ-UI-061`.
+User-defined presets can be created, applied and deleted, survive a restart, and applying one
+is equivalent to recalling the state it was captured from.
 
 ---
 
