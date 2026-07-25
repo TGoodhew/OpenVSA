@@ -65,6 +65,69 @@ namespace OpenVSA.Ui.Rendering
         public static bool IsInterpolated(int pointCount, int columns) =>
             !TraceDecimator.IsRequired(pointCount, columns);
 
+        /// <summary>
+        /// The pixel column a trace point is drawn in.
+        /// </summary>
+        /// <param name="index">Point index.</param>
+        /// <param name="pointCount">Points in the trace.</param>
+        /// <param name="columns">Pixel columns.</param>
+        /// <returns>A column within the graticule, clamped to it.</returns>
+        /// <remarks>
+        /// Must use the same mapping <see cref="Build"/> did, or a marker glyph lands beside the
+        /// feature it marks rather than on it — by a pixel at 800 points and by rather more at 51.
+        /// The two directions differ because the mappings do: decimation partitions the points
+        /// across columns, interpolation stretches them between the first and last.
+        /// </remarks>
+        public static int ColumnFor(int index, int pointCount, int columns)
+        {
+            if (columns <= 0 || pointCount <= 0)
+            {
+                return 0;
+            }
+
+            long column = IsInterpolated(pointCount, columns)
+                ? (pointCount == 1 ? 0 : (long)Math.Round((double)index * (columns - 1) / (pointCount - 1)))
+                : (long)index * columns / pointCount;
+
+            if (column < 0)
+            {
+                return 0;
+            }
+
+            return column > columns - 1 ? columns - 1 : (int)column;
+        }
+
+        /// <summary>
+        /// The trace point a pixel column corresponds to: the inverse of <see cref="ColumnFor"/>.
+        /// </summary>
+        /// <param name="column">Pixel column.</param>
+        /// <param name="pointCount">Points in the trace.</param>
+        /// <param name="columns">Pixel columns.</param>
+        /// <returns>A point index, clamped to the trace.</returns>
+        /// <remarks>
+        /// What a click on the plot means. Under decimation a column covers several points and this
+        /// returns the first of them, which is the convention <see cref="TraceDecimator"/> uses for
+        /// the column's own range.
+        /// </remarks>
+        public static int IndexFor(int column, int pointCount, int columns)
+        {
+            if (columns <= 0 || pointCount <= 0)
+            {
+                return 0;
+            }
+
+            long index = IsInterpolated(pointCount, columns)
+                ? (columns == 1 ? 0 : (long)Math.Round((double)column * (pointCount - 1) / (columns - 1)))
+                : (long)column * pointCount / columns;
+
+            if (index < 0)
+            {
+                return 0;
+            }
+
+            return index > pointCount - 1 ? pointCount - 1 : (int)index;
+        }
+
         private static void Interpolate(ReadOnlySpan<float> values, int columns, Span<float> minMax)
         {
             int count = values.Length;

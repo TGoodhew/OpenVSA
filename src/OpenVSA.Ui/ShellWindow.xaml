@@ -33,7 +33,22 @@
             </MenuItem>
             <MenuItem Header="Ana_lysis" />
             <MenuItem Header="_Trace" />
-            <MenuItem Header="_Marker" />
+            <!--
+                REQ-MKR-001 and REQ-MKR-005. Placing a marker is a click on the trace; this menu is
+                for the operations that have no obvious gesture.
+            -->
+            <MenuItem Header="_Marker">
+                <MenuItem x:Name="AddMarkerItem" Header="_Normal marker at peak" Click="OnAddMarker" />
+                <MenuItem x:Name="AddDeltaItem" Header="_Delta marker from selected" Click="OnAddDelta" />
+                <MenuItem x:Name="AddFixedItem" Header="_Fixed marker at peak" Click="OnAddFixed" />
+                <Separator />
+                <MenuItem x:Name="PeakSearchItem" Header="_Peak search" Click="OnPeakSearch" />
+                <MenuItem x:Name="NextPeakItem" Header="Ne_xt peak" Click="OnNextPeak" />
+                <MenuItem x:Name="MinimumSearchItem" Header="Minim_um search" Click="OnMinimumSearch" />
+                <Separator />
+                <MenuItem x:Name="DeleteMarkerItem" Header="Delete _selected" Click="OnDeleteMarker" />
+                <MenuItem x:Name="DeleteAllMarkersItem" Header="Delete _all" Click="OnDeleteAllMarkers" />
+            </MenuItem>
             <MenuItem Header="_Utilities" />
             <MenuItem Header="_Window" />
             <MenuItem Header="_Help" />
@@ -189,7 +204,12 @@
             <ContentControl syncfusion:DockingManager.Header="Trace 1"
                             syncfusion:DockingManager.State="Document">
                 <Grid>
-                    <rendering:TracePlot x:Name="Plot" />
+                    <!--
+                        The rasterised image fills the control and is hit-testable, so a click
+                        anywhere over the trace bubbles to here; the plot converts it to a point
+                        index. No Background is set: the palette owns that (REQ-UI-010).
+                    -->
+                    <rendering:TracePlot x:Name="Plot" MouseLeftButtonDown="OnPlotClicked" />
 
                     <!--
                         Shown until a source is selected and started, and hidden thereafter. The
