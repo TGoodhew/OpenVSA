@@ -136,9 +136,11 @@ namespace OpenVSA.Measurement
 
             Plan = plan;
 
-            // The acquired band is 1.28x the analysis span (REQ-ACQ-001); the display shows the
-            // span, not the surplus the anti-alias filter rolls off in.
-            _computer.DisplaySpanHz = plan.SpanHz;
+            // The acquired band is wider than the analysis span (REQ-ACQ-001); the display shows
+            // the span, not the surplus the anti-alias filter rolls off in. The point count is
+            // derived from the blocks that arrive rather than from the plan, so it stays right for
+            // a front end that could not honour the requested rate exactly.
+            _computer.TrimToAnalysisSpan = true;
 
             _cancellation = new CancellationTokenSource();
             CancellationToken pumpToken = _cancellation.Token;

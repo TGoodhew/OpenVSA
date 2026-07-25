@@ -34,21 +34,20 @@ namespace OpenVSA.Ui
     /// </remarks>
     public partial class ShellWindow : Window
     {
-        /// <summary>
-        /// The measurement the shell starts with.
-        /// </summary>
+        /// <summary>Centre frequency the shell starts at, in hertz.</summary>
         /// <remarks>
         /// Fixed for now, and deliberately not hidden behind a settings dialogue that does not
         /// exist yet: the point of this build is that the analysis chain can be seen running
         /// against a source. The reference level is the top of the graticule, so it is set a
         /// division above the simulator's full-scale tone rather than exactly at it.
         /// </remarks>
-        private static readonly AcquisitionRequest DefaultRequest =
-            new AcquisitionRequest(
-                centerFrequencyHz: 1e9,
-                spanHz: 10e6,
-                samplesPerBlock: 8192,
-                referenceLevelDbm: 20.0);
+        private const double DefaultCenterFrequencyHz = 1e9;
+
+        /// <summary>Span the shell starts at, in hertz.</summary>
+        private const double DefaultSpanHz = 10e6;
+
+        /// <summary>Reference level the shell starts at, in dBm.</summary>
+        private const double DefaultReferenceLevelDbm = 20.0;
 
         private readonly FrontEndRegistry _registry;
         private readonly RenderMarshal _marshal = new RenderMarshal();
@@ -244,6 +243,26 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            // How many points this measurement can have is the instrument's answer, not the
+            // shell's: the planner reads the capture depth from the capabilities and reduces the
+            // count to fit (REQ-ACQ-001, REQ-DSP-022, REQ-HAL-002).
+            PlannedAcquisition planned;
+
+            try
+            {
+                planned = AcquisitionPlanner.Plan(
+                    _activeFrontEnd.Capabilities,
+                    DefaultCenterFrequencyHz,
+                    DefaultSpanHz,
+                    DefaultReferenceLevelDbm);
+            }
+            catch (ArgumentException failure)
+            {
+                StatusText.Content = "Cannot measure with this source";
+                PlanText.Text = failure.Message;
+                return;
+            }
+
             var engine = new SpectrumEngine(_activeFrontEnd, new SpectrumComputer());
             engine.FrameComputed += OnFrameComputed;
             engine.Faulted += OnEngineFaulted;
@@ -253,7 +272,7 @@ namespace OpenVSA.Ui
 
             try
             {
-                plan = await engine.StartAsync(DefaultRequest, CancellationToken.None)
+                plan = await engine.StartAsync(planned.Request, CancellationToken.None)
                     .ConfigureAwait(true);
             }
             catch (Exception failure)
@@ -270,7 +289,7 @@ namespace OpenVSA.Ui
             StartItem.IsEnabled = false;
             StopItem.IsEnabled = true;
             StatusText.Content = "Measuring";
-            PlanText.Text = PlanSummary.Describe(plan);
+            PlanText.Text = PlanSummary.Describe(plan, planned, _activeFrontEnd.Capabilities);
             _statusTimer.Start();
         }
 

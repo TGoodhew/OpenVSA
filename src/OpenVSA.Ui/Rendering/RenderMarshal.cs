@@ -115,7 +115,7 @@ namespace OpenVSA.Ui.Rendering
             // gives: it is published to another thread and must never be written again. At two
             // floats per pixel column it is a few kilobytes, not a frame buffer.
             var envelope = new float[columns * 2];
-            TraceDecimator.Decimate(frame.LevelsDbm, columns, new Span<float>(envelope));
+            TraceEnvelope.Build(frame.LevelsDbm, columns, new Span<float>(envelope));
 
             lock (_slot)
             {
