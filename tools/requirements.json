@@ -509,12 +509,12 @@
   "num": "001a",
   "priority": "P0",
   "title": "Accumulators are a third axis, not formats",
-  "body": "**`REQ-TRC-001a` (P0) — Accumulators are a third axis, not formats.**\n**Spectrogram, Digital Persistence and Cumulative History are *not* trace formats.** They\naccumulate across many acquisitions, so they cannot satisfy `REQ-TRC-001`'s \"no recomputation\non format change\". They shall be modelled as a distinct **`TraceAccumulator`** property\n(`None | Spectrogram | DigitalPersistence | CumulativeHistory`), orthogonal to both Data and\nFormat. This matches the reference product, which groups exactly these three as \"3D Map\"\nmodes on their own toolbar. **[V]**",
+  "body": "**`REQ-TRC-001a` (P0) — Accumulators are a third axis, not formats.**\n**Spectrogram, Digital Persistence and Cumulative History are *not* trace formats.** They\naccumulate across many acquisitions, so they cannot satisfy `REQ-TRC-001`'s \"no recomputation\non format change\". They shall be modelled as a distinct **`TraceAccumulator`** property\n(`None | Spectrogram | DigitalPersistence | CumulativeHistory`), orthogonal to both Data and\nFormat. This matches the reference product, which groups exactly these three as \"3D Map\"\nmodes on their own toolbar. **[V]**\n**AC:** `TraceAccumulator` is a property distinct from both Data and Format, and the three\naccumulating modes appear only in its enumeration — a test over the Format enumeration fails\nif Spectrogram, Digital Persistence or Cumulative History appears there. Changing Format\nwhile an accumulator is active preserves the accumulated history and does not restart it,\nwhereas changing `TraceAccumulator` does discard it; both are asserted directly, since the\nwhole point of the separation is that `REQ-TRC-001`'s no-recomputation rule cannot apply to\ndata accumulated across acquisitions.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
   "line": 864
  },
@@ -529,7 +529,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 872
+  "line": 879
  },
  {
   "id": "REQ-TRC-003",
@@ -537,12 +537,12 @@
   "num": "003",
   "priority": "P1",
   "title": "Composition order is defined once",
-  "body": "**`REQ-TRC-003` (P1) — Composition order is defined once.**\nThe order in which gating, windowing, FFT, averaging, accumulation and format conversion are\napplied shall be specified in one place and implemented in exactly that order, and the legal\ncombinations shall be enumerated.\n*Rationale:* each of these is individually specified elsewhere in this document; without a\nstated composition order, two developers will reasonably implement gate-then-average and\naverage-then-gate and both will believe they are correct.",
+  "body": "**`REQ-TRC-003` (P1) — Composition order is defined once.**\nThe order in which gating, windowing, FFT, averaging, accumulation and format conversion are\napplied shall be specified in one place and implemented in exactly that order, and the legal\ncombinations shall be enumerated.\n*Rationale:* each of these is individually specified elsewhere in this document; without a\nstated composition order, two developers will reasonably implement gate-then-average and\naverage-then-gate and both will believe they are correct.\n**AC:** The order is declared once, in one enumeration or pipeline definition, and the\nimplementation is driven by that declaration rather than restating it — a test fails if any\nstage is invoked out of declared order. The enumerated legal combinations are exhaustive over\nthe cross-product of gating, windowing, averaging, accumulation and format, with every\ncombination either legal or rejected by a named error; none is silently ignored. The\ngate-then-average and average-then-gate cases are distinguished by a test on a signal whose\ngated and ungated averages provably differ, so the order is pinned by measurement rather than\nby comment.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 881
+  "line": 888
  },
  {
   "id": "REQ-ACQ-001",
@@ -555,7 +555,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 895
+  "line": 910
  },
  {
   "id": "REQ-ACQ-002",
@@ -570,7 +570,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 911
+  "line": 926
  },
  {
   "id": "REQ-ACQ-003",
@@ -585,7 +585,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 918
+  "line": 933
  },
  {
   "id": "REQ-ACQ-004",
@@ -593,12 +593,12 @@
   "num": "004",
   "priority": "P2",
   "title": "Auto-ranging",
-  "body": "**`REQ-ACQ-004` (P2) — Auto-ranging.** Where the front end supports input range control,\nan auto-range function shall adjust reference level to avoid both overload and excessive\nheadroom, with a user-visible indication when it acts.",
+  "body": "**`REQ-ACQ-004` (P2) — Auto-ranging.** Where the front end supports input range control,\nan auto-range function shall adjust reference level to avoid both overload and excessive\nheadroom, with a user-visible indication when it acts.\n**AC:** Presented with a signal 20 dB below the current range and then one that overloads it,\nauto-range settles in both cases to a reference level leaving the signal peak within a stated\nheadroom band, and settles rather than oscillating — repeated invocation on an unchanging\nsignal produces no further change. Each adjustment raises the user-visible indication of\n`REQ-UI-007`. Where the front end does not support range control the function is\nunavailable rather than silently doing nothing.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 931
+  "line": 946
  },
  {
   "id": "REQ-AMP-001",
@@ -611,7 +611,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 941
+  "line": 962
  },
  {
   "id": "REQ-AMP-002",
@@ -624,7 +624,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 950
+  "line": 971
  },
  {
   "id": "REQ-AMP-003",
@@ -637,7 +637,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 957
+  "line": 978
  },
  {
   "id": "REQ-AMP-004",
@@ -645,12 +645,12 @@
   "num": "004",
   "priority": "P2",
   "title": "De-embedding",
-  "body": "**`REQ-AMP-004` (P2) — De-embedding.** Complex (magnitude and phase) de-embedding of a\nmeasured fixture response.",
+  "body": "**`REQ-AMP-004` (P2) — De-embedding.** Complex (magnitude and phase) de-embedding of a\nmeasured fixture response.\n**AC:** A signal passed through a synthetic fixture of known complex response and then\nde-embedded with that same response recovers the original to within 0.05 dB in magnitude and\n0.5° in phase across the measurement band. De-embedding is complex, not magnitude-only,\nproved by a fixture whose response is flat in magnitude but not in phase: without phase\ncorrection the recovered EVM is degraded, with it the original EVM is restored.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 965
+  "line": 986
  },
  {
   "id": "REQ-ACQ-010",
@@ -663,7 +663,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 968
+  "line": 994
  },
  {
   "id": "REQ-TRG-001",
@@ -678,7 +678,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 980
+  "line": 1006
  },
  {
   "id": "REQ-TRG-002",
@@ -693,7 +693,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 988
+  "line": 1014
  },
  {
   "id": "REQ-TRG-003",
@@ -708,7 +708,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 995
+  "line": 1021
  },
  {
   "id": "REQ-E44-001",
@@ -721,7 +721,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1005
+  "line": 1031
  },
  {
   "id": "REQ-E44-002",
@@ -734,7 +734,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1011
+  "line": 1037
  },
  {
   "id": "REQ-E44-002a",
@@ -749,7 +749,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1043
+  "line": 1069
  },
  {
   "id": "REQ-E44-002b",
@@ -764,7 +764,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1056
+  "line": 1082
  },
  {
   "id": "REQ-E44-002c",
@@ -779,7 +779,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1076
+  "line": 1102
  },
  {
   "id": "REQ-E44-002d",
@@ -794,7 +794,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1096
+  "line": 1122
  },
  {
   "id": "REQ-E44-003",
@@ -807,7 +807,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1111
+  "line": 1137
  },
  {
   "id": "REQ-E44-004",
@@ -820,7 +820,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1120
+  "line": 1146
  },
  {
   "id": "REQ-E44-005",
@@ -833,7 +833,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1125
+  "line": 1151
  },
  {
   "id": "REQ-E44-006",
@@ -846,7 +846,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1132
+  "line": 1158
  },
  {
   "id": "REQ-E44-007",
@@ -859,7 +859,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1137
+  "line": 1163
  },
  {
   "id": "REQ-REC-001",
@@ -872,7 +872,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1148
+  "line": 1174
  },
  {
   "id": "REQ-REC-002",
@@ -885,7 +885,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1157
+  "line": 1183
  },
  {
   "id": "REQ-REC-003",
@@ -898,7 +898,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1163
+  "line": 1189
  },
  {
   "id": "REQ-REC-004",
@@ -913,7 +913,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1169
+  "line": 1195
  },
  {
   "id": "REQ-REC-005",
@@ -929,7 +929,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1180
+  "line": 1206
  },
  {
   "id": "REQ-REC-006",
@@ -944,7 +944,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1203
+  "line": 1229
  },
  {
   "id": "REQ-REC-007",
@@ -957,7 +957,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1209
+  "line": 1235
  },
  {
   "id": "REQ-REC-008",
@@ -970,7 +970,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1212
+  "line": 1238
  },
  {
   "id": "REQ-REC-009",
@@ -983,7 +983,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1222
+  "line": 1248
  },
  {
   "id": "REQ-SIM-001",
@@ -996,7 +996,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1232
+  "line": 1258
  },
  {
   "id": "REQ-SIM-002",
@@ -1009,7 +1009,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1239
+  "line": 1265
  },
  {
   "id": "REQ-SIM-003",
@@ -1022,7 +1022,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1249
+  "line": 1275
  },
  {
   "id": "REQ-SIM-004",
@@ -1035,7 +1035,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1254
+  "line": 1280
  },
  {
   "id": "REQ-SIM-005",
@@ -1048,7 +1048,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1263
+  "line": 1289
  },
  {
   "id": "REQ-DSP-001",
@@ -1061,7 +1061,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1276
+  "line": 1302
  },
  {
   "id": "REQ-DSP-002",
@@ -1074,7 +1074,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1290
+  "line": 1316
  },
  {
   "id": "REQ-DSP-010",
@@ -1089,7 +1089,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1299
+  "line": 1325
  },
  {
   "id": "REQ-DSP-010a",
@@ -1102,7 +1102,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1320
+  "line": 1346
  },
  {
   "id": "REQ-DSP-011",
@@ -1115,7 +1115,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1336
+  "line": 1362
  },
  {
   "id": "REQ-DSP-012",
@@ -1130,7 +1130,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1344
+  "line": 1370
  },
  {
   "id": "REQ-DSP-020",
@@ -1145,7 +1145,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1354
+  "line": 1380
  },
  {
   "id": "REQ-DSP-021",
@@ -1153,14 +1153,14 @@
   "num": "021",
   "priority": "P1",
   "title": "RBW range and coupling modes",
-  "body": "**`REQ-DSP-021` (P1) — RBW range and coupling modes.**\nRBW shall span **< 1 Hz to > 0.287 × maximum span**, with a **ResBW Mode** selecting between\nspectrum-analyser-style emulation and arbitrary RBW, and a **ResBW Coupling** control\ngoverning how RBW tracks span. A **Span-to-ResBW Ratio** shall be settable. **[V]**",
+  "body": "**`REQ-DSP-021` (P1) — RBW range and coupling modes.**\nRBW shall span **< 1 Hz to > 0.287 × maximum span**, with a **ResBW Mode** selecting between\nspectrum-analyser-style emulation and arbitrary RBW, and a **ResBW Coupling** control\ngoverning how RBW tracks span. A **Span-to-ResBW Ratio** shall be settable. **[V]**\n**AC:** RBW is settable below 1 Hz and up to at least 0.287 × the maximum span, with values\noutside the achievable range rejected with the achievable bound reported rather than silently\nclamped. In coupled mode a span change updates RBW to hold the Span-to-ResBW Ratio, and the\nresulting RBW satisfies `REQ-DSP-020`'s $\\mathrm{RBW} = \\mathrm{ENBW_{norm}}/T_{\\text{rec}}$\nexactly; in uncoupled mode the same span change leaves RBW untouched. Both ResBW Modes are\nselectable and produce demonstrably different RBW sequences over a span sweep.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1361
+  "line": 1387
  },
  {
   "id": "REQ-DSP-022",
@@ -1173,7 +1173,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1366
+  "line": 1398
  },
  {
   "id": "REQ-DSP-023",
@@ -1188,7 +1188,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1384
+  "line": 1416
  },
  {
   "id": "REQ-DSP-023a",
@@ -1203,7 +1203,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1396
+  "line": 1428
  },
  {
   "id": "REQ-DSP-024",
@@ -1211,14 +1211,14 @@
   "num": "024",
   "priority": "P1",
   "title": "Max FFT size control",
-  "body": "**`REQ-DSP-024` (P1) — Max FFT size control.** A **Max FFT Size** parameter shall bound\ntransform size for power measurements, and a **Noise Correction** option shall subtract a\ncharacterised instrument noise floor. **[U]** — the reference product's numeric ceiling for\nMax FFT Size was not obtained; OpenVSA shall default to 2²⁰ and make it configurable.",
+  "body": "**`REQ-DSP-024` (P1) — Max FFT size control.** A **Max FFT Size** parameter shall bound\ntransform size for power measurements, and a **Noise Correction** option shall subtract a\ncharacterised instrument noise floor. **[U]** — the reference product's numeric ceiling for\nMax FFT Size was not obtained; OpenVSA shall default to 2²⁰ and make it configurable.\n**AC:** Max FFT Size defaults to 2²⁰ and is configurable; a measurement whose natural\ntransform would exceed it is bounded to it rather than failing, and the bound is visible in\nthe trace annotation so the user knows the resolution was capped. With Noise Correction on,\nmeasuring a signal at a known level above a characterised noise floor returns a power closer\nto the analytic value than with it off, and correcting a noise-only input does not produce a\nnegative power — it floors at the reported measurement limit.",
   "phase": 1,
   "evidence": [
    "unverified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1415
+  "line": 1447
  },
  {
   "id": "REQ-DSP-030",
@@ -1234,7 +1234,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1422
+  "line": 1460
  },
  {
   "id": "REQ-DSP-031",
@@ -1242,14 +1242,14 @@
   "num": "031",
   "priority": "P1",
   "title": "Averaging interacts correctly with overlap",
-  "body": "**`REQ-DSP-031` (P1) — Averaging interacts correctly with overlap.**\nWhere overlapped frames are averaged, the effective number of independent averages shall be\ncomputed and displayed, since overlapped frames are correlated. **[V]**",
+  "body": "**`REQ-DSP-031` (P1) — Averaging interacts correctly with overlap.**\nWhere overlapped frames are averaged, the effective number of independent averages shall be\ncomputed and displayed, since overlapped frames are correlated. **[V]**\n**AC:** At 0 % overlap the effective count equals the frame count. At non-zero overlap it is\nstrictly less, and the displayed value predicts the observed variance reduction of an\naveraged noise measurement to within 10 % — the check that the figure is the honest effective\ncount and not the raw frame count relabelled. Reporting the raw count at 75 % overlap fails\nthe test.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1450
+  "line": 1488
  },
  {
   "id": "REQ-DSP-040",
@@ -1257,14 +1257,14 @@
   "num": "040",
   "priority": "P0",
   "title": "Base (non-demodulation) trace data types",
-  "body": "**`REQ-DSP-040` (P0) — Base (non-demodulation) trace data types.**\nThe following shall be available without any demodulation licence, matching the reference\nproduct's Option 200 set: **[V]**\n\nSpectrum · Raw Main Time · Instantaneous Main Time · PSD (power spectral density) ·\nAutocorrelation · CCDF · CDF · PDF · Correction · Math · No Data.",
+  "body": "**`REQ-DSP-040` (P0) — Base (non-demodulation) trace data types.**\nThe following shall be available without any demodulation licence, matching the reference\nproduct's Option 200 set: **[V]**\n\nSpectrum · Raw Main Time · Instantaneous Main Time · PSD (power spectral density) ·\nAutocorrelation · CCDF · CDF · PDF · Correction · Math · No Data.\n\n**AC:** Every listed type is selectable and produces a trace with no demodulation licence\ninstalled, verified by a test running with the licence absent — the gating error this guards\nagainst is a base type made accidentally dependent on demodulation code. Each type is checked\nagainst its closed-form result per `REQ-TST-001` where one exists: PSD of band-limited white\nnoise of known density reads that density to within 0.1 dB, autocorrelation of white noise is\na unit impulse at zero lag, and the CCDF of Gaussian noise matches the analytic Rayleigh\nenvelope curve to within 0.1 dB over 0–10 dB above average power.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1456
+  "line": 1499
  },
  {
   "id": "REQ-DSP-040a",
@@ -1272,12 +1272,12 @@
   "num": "040a",
   "priority": "P2",
   "title": "Cross-channel trace data types",
-  "body": "**`REQ-DSP-040a` (P2) — Cross-channel trace data types.**\nCross Spectrum · Cross Correlation · Coherence · Frequency Response · Impulse Response.\n\nThese are **P2, not P0**, and are gated on multi-channel support in the HAL\n(`IFrontEndCapabilities.ChannelCount` and `SupportsPhaseCoherentChannels`,\n`REQ-HAL-001`). They require phase-coherent, common-timebase acquisition of two channels,\nwhich no front end in Phase 3 provides; specifying them as P0 against a single-channel\n`IqBlock` would be incoherent. When implemented, `IqBlock` shall be extended to carry a\nchannel index, or grouped into an `IqBlockSet` with a declared coherence guarantee.",
+  "body": "**`REQ-DSP-040a` (P2) — Cross-channel trace data types.**\nCross Spectrum · Cross Correlation · Coherence · Frequency Response · Impulse Response.\n\nThese are **P2, not P0**, and are gated on multi-channel support in the HAL\n(`IFrontEndCapabilities.ChannelCount` and `SupportsPhaseCoherentChannels`,\n`REQ-HAL-001`). They require phase-coherent, common-timebase acquisition of two channels,\nwhich no front end in Phase 3 provides; specifying them as P0 against a single-channel\n`IqBlock` would be incoherent. When implemented, `IqBlock` shall be extended to carry a\nchannel index, or grouped into an `IqBlockSet` with a declared coherence guarantee.\n**AC:** Each cross-channel type is offered only when the active front end declares\n`ChannelCount ≥ 2` and `SupportsPhaseCoherentChannels`; against a single-channel front end\nthey are absent from the selectable set rather than present and erroring. Once a coherent\ntwo-channel source exists, coherence of a signal with itself is 1.0 to within 1e-6 at every\nfrequency, coherence of two independent noise sources tends to $1/N_{\\text{avg}}$, and the\nfrequency response of a known synthetic filter is recovered to within 0.1 dB and 1°.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1463
+  "line": 1514
  },
  {
   "id": "REQ-DSP-041",
@@ -1285,14 +1285,14 @@
   "num": "041",
   "priority": "P0",
   "title": "Trace formats",
-  "body": "**`REQ-DSP-041` (P0) — Trace formats.**\nLog Magnitude · Linear Magnitude · Real · Imaginary · Wrapped Phase · Unwrapped Phase ·\nGroup Delay · IQ (polar/constellation) · Eye · Spectrogram · digital persistence ·\ncumulative history. **[V]**",
+  "body": "**`REQ-DSP-041` (P0) — Trace formats.**\nLog Magnitude · Linear Magnitude · Real · Imaginary · Wrapped Phase · Unwrapped Phase ·\nGroup Delay · IQ (polar/constellation) · Eye · Spectrogram · digital persistence ·\ncumulative history. **[V]**\n**AC:** Every listed format is selectable for a trace whose data type supports it, and\nswitching between the non-accumulating formats satisfies `REQ-TRC-001` — no reacquisition and\nno recomputation from the source block, asserted by a counter on the acquisition path that\nmust not advance across a format change. The three accumulating entries are reached through\n`TraceAccumulator` per `REQ-TRC-001a`, not through this format list. Log and Linear Magnitude\nof the same data agree to within 0.01 dB after conversion, and Real/Imaginary recombine to\nthe Magnitude value, so the formats are views of one computation rather than parallel paths.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1473
+  "line": 1530
  },
  {
   "id": "REQ-DSP-042",
@@ -1305,7 +1305,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1478
+  "line": 1542
  },
  {
   "id": "REQ-DSP-043",
@@ -1313,14 +1313,14 @@
   "num": "043",
   "priority": "P1",
   "title": "Spectrogram",
-  "body": "**`REQ-DSP-043` (P1) — Spectrogram.**\nSpectrogram shall render a scrolling time–frequency intensity map with configurable depth,\ncolour map, and time-axis marker positioning via a trace-select marker. **[V]**",
+  "body": "**`REQ-DSP-043` (P1) — Spectrogram.**\nSpectrogram shall render a scrolling time–frequency intensity map with configurable depth,\ncolour map, and time-axis marker positioning via a trace-select marker. **[V]**\n**AC:** A swept-tone input renders as a diagonal ridge whose frequency at each history row\nmatches the tone's frequency at that time to within one bin, which verifies that the time and\nfrequency axes are oriented and scaled correctly rather than merely that something drew.\nDepth is configurable and rows beyond it are discarded oldest-first. Moving the trace-select\nmarker selects the history row at that time and the spectrum trace updates to that row's\ndata. Colour mapping follows `REQ-UI-024`.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1489
+  "line": 1553
  },
  {
   "id": "REQ-DSP-044",
@@ -1328,12 +1328,12 @@
   "num": "044",
   "priority": "P1",
   "title": "Phase unwrapping",
-  "body": "**`REQ-DSP-044` (P1) — Phase unwrapping.** Unwrapped phase shall use a standard\n$\\pm\\pi$-threshold unwrap with a configurable jump tolerance, and shall document its\nreference point.",
+  "body": "**`REQ-DSP-044` (P1) — Phase unwrapping.** Unwrapped phase shall use a standard\n$\\pm\\pi$-threshold unwrap with a configurable jump tolerance, and shall document its\nreference point.\n**AC:** A synthetic phase ramp of known slope crossing many $2\\pi$ boundaries unwraps to that\nramp with no residual discontinuity, and the recovered slope matches the analytic value to\nwithin 1e-9 relative. The reference point is stated in the trace annotation and is the same\npoint a second run selects, so unwrapped phase is reproducible rather than dependent on where\nthe record happened to start. Wrapped and unwrapped traces of the same data agree modulo\n$2\\pi$ at every point.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1493
+  "line": 1563
  },
  {
   "id": "REQ-DSP-045",
@@ -1341,12 +1341,12 @@
   "num": "045",
   "priority": "P2",
   "title": "Group delay",
-  "body": "**`REQ-DSP-045` (P2) — Group delay.** Group delay shall be computed as\n$-\\,d\\phi/d\\omega$ using a configurable aperture (in bins), with the aperture shown in the\ntrace annotation.",
+  "body": "**`REQ-DSP-045` (P2) — Group delay.** Group delay shall be computed as\n$-\\,d\\phi/d\\omega$ using a configurable aperture (in bins), with the aperture shown in the\ntrace annotation.\n**AC:** A pure delay of $\\tau$ seconds returns a flat group delay of $\\tau$ across the band\nto within 1e-9 s, the closed-form check. The aperture is configurable, appears in the trace\nannotation, and widening it visibly smooths the trace on a noisy input — so the annotation\nrecords the setting that produced the displayed result, which is the point of showing it.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1497
+  "line": 1573
  },
  {
   "id": "REQ-DSP-046",
@@ -1354,14 +1354,14 @@
   "num": "046",
   "priority": "P2",
   "title": "Trace math",
-  "body": "**`REQ-DSP-046` (P2) — Trace math.**\nA trace-math facility shall support at least: add, subtract, multiply, divide (trace/trace\nand trace/constant), magnitude, conjugate, and register store/recall.\n**[U]** — the reference product's exact operator list was not confirmed; the set above is a\nreasonable floor and shall be extensible.",
+  "body": "**`REQ-DSP-046` (P2) — Trace math.**\nA trace-math facility shall support at least: add, subtract, multiply, divide (trace/trace\nand trace/constant), magnitude, conjugate, and register store/recall.\n**[U]** — the reference product's exact operator list was not confirmed; the set above is a\nreasonable floor and shall be extensible.\n**AC:** Every listed operator is available for both trace/trace and trace/constant operands\nwhere meaningful, and each is checked against the arithmetic performed directly on the\nunderlying data. Traces whose X axes are not commensurate are rejected with a named error\nrather than combined by index. Division by zero yields the `NAN`/`INF` readouts of\n`REQ-UI-032` rather than throwing or silently producing zero. A register survives store and\nrecall with bit-identical values, and adding an operator requires no change to the trace-math\ndispatch, demonstrating the extensibility this requirement asks for.",
   "phase": 1,
   "evidence": [
    "unverified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1501
+  "line": 1581
  },
  {
   "id": "REQ-DSP-050",
@@ -1376,7 +1376,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1509
+  "line": 1596
  },
  {
   "id": "REQ-MKR-001",
@@ -1384,14 +1384,14 @@
   "num": "001",
   "priority": "P0",
   "title": "Marker types",
-  "body": "**`REQ-MKR-001` (P0) — Marker types.**\n**Normal** (diamond glyph), **Delta** (referenced to another marker on the same or a\ndifferent trace, annotated e.g. \"3Δ1\"), and **Fixed** (position-locked, \"X\" glyph). **[V]**",
+  "body": "**`REQ-MKR-001` (P0) — Marker types.**\n**Normal** (diamond glyph), **Delta** (referenced to another marker on the same or a\ndifferent trace, annotated e.g. \"3Δ1\"), and **Fixed** (position-locked, \"X\" glyph). **[V]**\n**AC:** All three types are creatable. A Normal marker's readout tracks its data point as the\ntrace updates; a Fixed marker's X position does not move when the trace updates, which is\nwhat distinguishes it; a Delta marker reads the difference from its reference, and changing\nthe reference marker changes the delta readout accordingly. Deleting a marker that is another\nmarker's reference is either refused with a named error or re-homes the dependant — it never\nleaves a Delta marker referencing a marker that no longer exists. Glyphs and labels follow\n`REQ-UI-030` and `REQ-UI-031`.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1523
+  "line": 1610
  },
  {
   "id": "REQ-MKR-002",
@@ -1399,14 +1399,14 @@
   "num": "002",
   "priority": "P1",
   "title": "Marker count",
-  "body": "**`REQ-MKR-002` (P1) — Marker count.**\n**20 markers per trace**, with the number of traces — and therefore the total marker count —\nbounded only by available memory. **[V]**\n*(This reconciles the reference product's two apparently conflicting claims: the marker help\nstates 20 per trace, while the marketing copy says \"unlimited traces, each with unlimited\nmarkers\". The engineering figure of 20 per trace governs; \"unlimited\" refers to the trace\ncount. `REQ-UI-001` quotes the marketing phrasing for the docking requirement only.)*",
+  "body": "**`REQ-MKR-002` (P1) — Marker count.**\n**20 markers per trace**, with the number of traces — and therefore the total marker count —\nbounded only by available memory. **[V]**\n*(This reconciles the reference product's two apparently conflicting claims: the marker help\nstates 20 per trace, while the marketing copy says \"unlimited traces, each with unlimited\nmarkers\". The engineering figure of 20 per trace governs; \"unlimited\" refers to the trace\ncount. `REQ-UI-001` quotes the marketing phrasing for the docking requirement only.)*\n**AC:** Twenty markers can be placed on a trace and the twenty-first is refused with a named\nerror stating the limit, not silently dropped or allowed. The limit is per trace, so twenty\nmarkers on each of several traces all coexist. Trace count is not capped by a constant: a\ntest creates traces until memory pressure, and fails if a fixed ceiling below that is\nenforced.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1527
+  "line": 1621
  },
  {
   "id": "REQ-MKR-003",
@@ -1421,7 +1421,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1535
+  "line": 1634
  },
  {
   "id": "REQ-MKR-004",
@@ -1429,14 +1429,14 @@
   "num": "004",
   "priority": "P1",
   "title": "Marker coupling",
-  "body": "**`REQ-MKR-004` (P1) — Marker coupling.** Markers with matching numbers shall couple\nacross traces, moving together where the X axes are commensurate. **[V]**",
+  "body": "**`REQ-MKR-004` (P1) — Marker coupling.** Markers with matching numbers shall couple\nacross traces, moving together where the X axes are commensurate. **[V]**\n**AC:** With coupling on, moving marker 3 on one trace moves marker 3 on every other trace\nwhose X axis is commensurate to the same X value — not the same pixel or the same sample\nindex, which a test using traces of differing point counts over the same span distinguishes.\nMarkers of other numbers do not move. Traces whose X axes are not commensurate — a spectrum\nand a time trace — are left alone rather than coupled on a meaningless shared coordinate.\nWith coupling off, no marker but the dragged one moves.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1550
+  "line": 1649
  },
  {
   "id": "REQ-MKR-005",
@@ -1444,14 +1444,14 @@
   "num": "005",
   "priority": "P1",
   "title": "Marker functions",
-  "body": "**`REQ-MKR-005` (P1) — Marker functions.** Peak search, next peak, peak tracking, minimum\nsearch, marker-to-centre-frequency, marker-to-reference-level, and \"copy value to\nparameter\". **[V]**",
+  "body": "**`REQ-MKR-005` (P1) — Marker functions.** Peak search, next peak, peak tracking, minimum\nsearch, marker-to-centre-frequency, marker-to-reference-level, and \"copy value to\nparameter\". **[V]**\n**AC:** On a synthetic spectrum with tones at known frequencies and descending amplitudes,\npeak search finds the largest and repeated next-peak visits the remainder in strictly\ndescending amplitude order, each within one bin of its true frequency, without revisiting a\npeak. Minimum search finds the analytic minimum. With peak tracking on, a tone that drifts\nbetween acquisitions keeps the marker on it. Marker-to-centre-frequency sets centre frequency\nto the marker's X value exactly; marker-to-reference-level sets reference level to its Y\nvalue; copy-value-to-parameter writes the marker value into the named parameter and the\nmeasurement updates.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1553
+  "line": 1658
  },
  {
   "id": "REQ-MKR-006",
@@ -1459,14 +1459,14 @@
   "num": "006",
   "priority": "P2",
   "title": "Marker readout surfaces",
-  "body": "**`REQ-MKR-006` (P2) — Marker readout surfaces.** A dedicated Markers window listing all\nmarkers with readouts, plus an active-marker readout above the trace grid. **[V]**",
+  "body": "**`REQ-MKR-006` (P2) — Marker readout surfaces.** A dedicated Markers window listing all\nmarkers with readouts, plus an active-marker readout above the trace grid. **[V]**\n**AC:** Both surfaces exist and show the same value for the same marker at the same time —\nthe Markers window row and the above-grid readout are compared after a marker move and must\nagree, since two independently computed readouts drifting apart is the failure this guards\nagainst. The above-grid readout follows the active marker when the active marker changes, and\nsits above the grid per `REQ-UI-040`. The Markers window lists every marker on every trace,\nnot only those on the active trace.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1557
+  "line": 1670
  },
  {
   "id": "REQ-MKR-007",
@@ -1474,14 +1474,14 @@
   "num": "007",
   "priority": "P2",
   "title": "Spectrogram and multi-dimensional markers",
-  "body": "**`REQ-MKR-007` (P2) — Spectrogram and multi-dimensional markers.** Spectrogram traces\nshall support time-axis positioning via trace-select markers; OFDM-class personalities shall\nsupport three-dimensional marker placement (symbol × subcarrier × value). **[V]**",
+  "body": "**`REQ-MKR-007` (P2) — Spectrogram and multi-dimensional markers.** Spectrogram traces\nshall support time-axis positioning via trace-select markers; OFDM-class personalities shall\nsupport three-dimensional marker placement (symbol × subcarrier × value). **[V]**\n**AC:** A spectrogram carries the two markers of `REQ-UI-054` on different axes, and moving\nthe trace-select marker to a history row makes the spectrum trace show that row's data,\nmatching the data captured at that time. On an OFDM personality a marker placed at a given\nsymbol and subcarrier reads the value at exactly that cell, verified against a generated\nresource grid with a known distinguishable value per cell, so a transposed\nsymbol/subcarrier index fails rather than passing by symmetry.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1560
+  "line": 1679
  },
  {
   "id": "REQ-LIM-001",
@@ -1489,14 +1489,14 @@
   "num": "001",
   "priority": "P1",
   "title": "Limit test structure",
-  "body": "**`REQ-LIM-001` (P1) — Limit test structure.**\nA three-level hierarchy shall be implemented: **Limit Test → Limit Line → Limit Point**,\neach user-named. Limit Points carry X/Y coordinates plus a *connect to previous point*\nflag, forming connected segments. Each Limit Line carries a **Side** (Upper or Lower)\ndetermining margin direction. **[V]**",
+  "body": "**`REQ-LIM-001` (P1) — Limit test structure.**\nA three-level hierarchy shall be implemented: **Limit Test → Limit Line → Limit Point**,\neach user-named. Limit Points carry X/Y coordinates plus a *connect to previous point*\nflag, forming connected segments. Each Limit Line carries a **Side** (Upper or Lower)\ndetermining margin direction. **[V]**\n**AC:** All three levels exist, each user-named, and names round-trip through save and\nrecall. A point with *connect to previous* clear starts a new segment, so a trace passing\nthrough the gap between segments is not tested there — verified by a trace that would fail\nwere the segments joined. Side governs direction: an Upper line fails a trace above it and an\nLower line fails one below, and a test asserts both, since an inverted comparison is the\ndefect most easily shipped here. Margin is applied on the pass side of the limit, never the\nfail side.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1566
+  "line": 1691
  },
  {
   "id": "REQ-LIM-002",
@@ -1511,7 +1511,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1572
+  "line": 1704
  },
  {
   "id": "REQ-LIM-003",
@@ -1519,14 +1519,14 @@
   "num": "003",
   "priority": "P2",
   "title": "Limit tests in the automation API",
-  "body": "**`REQ-LIM-003` (P2) — Limit tests in the automation API.** Limit count and results shall\nbe queryable programmatically (the reference product exposes `:TRACe:LIMit:COUNt` and\n`:TRACe:LIMit:RESult`). **[V]**",
+  "body": "**`REQ-LIM-003` (P2) — Limit tests in the automation API.** Limit count and results shall\nbe queryable programmatically (the reference product exposes `:TRACe:LIMit:COUNt` and\n`:TRACe:LIMit:RESult`). **[V]**\n**AC:** Count and result are queryable through the automation API, and the queried result\nmatches the on-screen pass/fail for the same trace in every case a test exercises — including\nthe failing case, so the API is not reporting a stale or separately computed verdict. The\nquery is answerable while a measurement is running, and reports the state of a completed\nevaluation rather than a partially updated one.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1580
+  "line": 1712
  },
  {
   "id": "REQ-CHM-001",
@@ -1534,12 +1534,12 @@
   "num": "001",
   "priority": "P1",
   "title": "ACP",
-  "body": "**`REQ-CHM-001` (P1) — ACP.** Adjacent channel power shall support configurable carrier\nand offset channel definitions (offset frequency, integration bandwidth, filter shape\nincluding root-raised-cosine), reporting absolute and relative power per offset, upper and\nlower.",
+  "body": "**`REQ-CHM-001` (P1) — ACP.** Adjacent channel power shall support configurable carrier\nand offset channel definitions (offset frequency, integration bandwidth, filter shape\nincluding root-raised-cosine), reporting absolute and relative power per offset, upper and\nlower.\n**AC:** A synthetic carrier with adjacent-channel content injected at a known level below it\nreports that ratio to within 0.2 dB, per offset, upper and lower reported separately and\ncorrectly distinguished — asymmetric injection is used so a swapped upper/lower fails.\nAbsolute power agrees with the band power over the same integration bandwidth to within\n0.1 dB. Changing the filter shape to root-raised-cosine with a stated roll-off changes the\nresult in the direction and by the amount the filter's known noise bandwidth predicts.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1586
+  "line": 1723
  },
  {
   "id": "REQ-CHM-002",
@@ -1547,12 +1547,12 @@
   "num": "002",
   "priority": "P1",
   "title": "OBW",
-  "body": "**`REQ-CHM-002` (P1) — OBW.** Occupied bandwidth shall support the percentage-of-power\ncriterion (default 99 %) and the x-dB-down criterion.",
+  "body": "**`REQ-CHM-002` (P1) — OBW.** Occupied bandwidth shall support the percentage-of-power\ncriterion (default 99 %) and the x-dB-down criterion.\n**AC:** For a signal of analytically known spectrum the 99 % occupied bandwidth matches the\nclosed-form value to within one bin, and the default is 99 %. The x-dB-down criterion on a\nshape whose width at that level is known analytically — a Gaussian, say — matches to within\none bin. The two criteria are independently selectable and give the different answers theory\npredicts for the same signal, which is the check that both are genuinely implemented rather\nthan one aliased onto the other.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1591
+  "line": 1734
  },
  {
   "id": "REQ-CHM-003",
@@ -1560,12 +1560,12 @@
   "num": "003",
   "priority": "P2",
   "title": "Spectral emission mask",
-  "body": "**`REQ-CHM-003` (P2) — Spectral emission mask.** A mask-based emission measurement with\nper-segment limits and pass/fail, reusing the limit-test engine.",
+  "body": "**`REQ-CHM-003` (P2) — Spectral emission mask.** A mask-based emission measurement with\nper-segment limits and pass/fail, reusing the limit-test engine.\n**AC:** A mask of several segments with differing limits evaluates each segment against its\nown limit, verified by a signal that passes in one segment and fails in an adjacent one, with\nthe reported failure naming the offending segment. The measurement reuses the `REQ-LIM-001`\nengine rather than reimplementing comparison — a test asserts the shared code path, since a\nsecond implementation is where the Upper/Lower inversion returns.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1594
+  "line": 1743
  },
  {
   "id": "REQ-DEM-001",
@@ -1578,7 +1578,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1606
+  "line": 1760
  },
  {
   "id": "REQ-DEM-002",
@@ -1593,7 +1593,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1628
+  "line": 1782
  },
  {
   "id": "REQ-DEM-010",
@@ -1609,7 +1609,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1646
+  "line": 1800
  },
  {
   "id": "REQ-DEM-010a",
@@ -1622,7 +1622,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1671
+  "line": 1825
  },
  {
   "id": "REQ-DEM-011",
@@ -1635,7 +1635,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1684
+  "line": 1838
  },
  {
   "id": "REQ-DEM-012",
@@ -1650,7 +1650,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1691
+  "line": 1845
  },
  {
   "id": "REQ-DEM-013",
@@ -1665,7 +1665,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1696
+  "line": 1850
  },
  {
   "id": "REQ-DEM-020",
@@ -1680,7 +1680,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1701
+  "line": 1855
  },
  {
   "id": "REQ-DEM-021",
@@ -1695,7 +1695,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1709
+  "line": 1863
  },
  {
   "id": "REQ-DEM-022",
@@ -1708,7 +1708,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1720
+  "line": 1874
  },
  {
   "id": "REQ-DEM-022a",
@@ -1721,7 +1721,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1733
+  "line": 1887
  },
  {
   "id": "REQ-DEM-023",
@@ -1734,7 +1734,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1755
+  "line": 1909
  },
  {
   "id": "REQ-DEM-030",
@@ -1749,7 +1749,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1762
+  "line": 1916
  },
  {
   "id": "REQ-DEM-031",
@@ -1764,7 +1764,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1773
+  "line": 1927
  },
  {
   "id": "REQ-DEM-032",
@@ -1779,7 +1779,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1781
+  "line": 1935
  },
  {
   "id": "REQ-DEM-033",
@@ -1794,7 +1794,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1785
+  "line": 1939
  },
  {
   "id": "REQ-DEM-034",
@@ -1809,7 +1809,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1792
+  "line": 1946
  },
  {
   "id": "REQ-DEM-034a",
@@ -1822,7 +1822,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1797
+  "line": 1951
  },
  {
   "id": "REQ-DEM-035",
@@ -1837,7 +1837,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1809
+  "line": 1963
  },
  {
   "id": "REQ-DEM-036",
@@ -1852,7 +1852,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1812
+  "line": 1966
  },
  {
   "id": "REQ-DEM-040",
@@ -1867,7 +1867,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1822
+  "line": 1976
  },
  {
   "id": "REQ-DEM-041",
@@ -1882,7 +1882,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1830
+  "line": 1984
  },
  {
   "id": "REQ-DEM-050",
@@ -1897,7 +1897,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1841
+  "line": 1995
  },
  {
   "id": "REQ-DEM-051",
@@ -1912,7 +1912,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1846
+  "line": 2000
  },
  {
   "id": "REQ-DEM-052",
@@ -1927,7 +1927,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1854
+  "line": 2008
  },
  {
   "id": "REQ-DEM-053",
@@ -1942,7 +1942,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1888
+  "line": 2042
  },
  {
   "id": "REQ-DEM-060",
@@ -1957,7 +1957,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1910
+  "line": 2064
  },
  {
   "id": "REQ-DEM-061",
@@ -1972,7 +1972,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1921
+  "line": 2075
  },
  {
   "id": "REQ-DEM-062",
@@ -1987,7 +1987,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1935
+  "line": 2089
  },
  {
   "id": "REQ-DEM-063",
@@ -2002,7 +2002,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1939
+  "line": 2093
  },
  {
   "id": "REQ-DEM-064",
@@ -2015,7 +2015,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1945
+  "line": 2099
  },
  {
   "id": "REQ-DEM-065",
@@ -2030,7 +2030,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1952
+  "line": 2106
  },
  {
   "id": "REQ-DEM-066",
@@ -2045,7 +2045,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1957
+  "line": 2111
  },
  {
   "id": "REQ-DEM-067",
@@ -2058,7 +2058,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1978
+  "line": 2132
  },
  {
   "id": "REQ-DEM-067a",
@@ -2073,7 +2073,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 1998
+  "line": 2152
  },
  {
   "id": "REQ-DEM-068",
@@ -2088,7 +2088,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2010
+  "line": 2164
  },
  {
   "id": "REQ-DEM-069",
@@ -2103,7 +2103,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2017
+  "line": 2171
  },
  {
   "id": "REQ-DEM-070",
@@ -2118,7 +2118,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2028
+  "line": 2182
  },
  {
   "id": "REQ-DEM-071",
@@ -2133,7 +2133,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2034
+  "line": 2188
  },
  {
   "id": "REQ-DEM-072",
@@ -2146,7 +2146,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2038
+  "line": 2192
  },
  {
   "id": "REQ-DEM-080",
@@ -2162,7 +2162,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2047
+  "line": 2201
  },
  {
   "id": "REQ-DEM-081",
@@ -2177,7 +2177,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2067
+  "line": 2221
  },
  {
   "id": "REQ-DEM-082",
@@ -2190,7 +2190,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2072
+  "line": 2226
  },
  {
   "id": "REQ-DEM-083",
@@ -2203,7 +2203,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2078
+  "line": 2232
  },
  {
   "id": "REQ-PER-001",
@@ -2216,7 +2216,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2088
+  "line": 2242
  },
  {
   "id": "REQ-PER-002",
@@ -2229,7 +2229,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2118
+  "line": 2272
  },
  {
   "id": "REQ-PER-003",
@@ -2244,7 +2244,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2122
+  "line": 2276
  },
  {
   "id": "REQ-PER-010",
@@ -2257,7 +2257,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2152
+  "line": 2306
  },
  {
   "id": "REQ-PER-011",
@@ -2270,7 +2270,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2155
+  "line": 2309
  },
  {
   "id": "REQ-UI-001",
@@ -2278,14 +2278,14 @@
   "num": "001",
   "priority": "P0",
   "title": "Docking-window application, not an instrument emulator",
-  "body": "**`REQ-UI-001` (P0) — Docking-window application, not an instrument emulator.**\nThe shell shall be a docking-window application with two distinct window classes: **[V]**\n\n- **Document windows** — dock into the **central document area** as **tabs in a tab group**.\n  Only trace-bearing windows may be document windows.\n- **Tool windows** — dock **around the edges** of the document area and carry a title bar\n  rather than a tab.\n\n**There shall be no right-hand softkey column.** The reference *software* has none; that\nbelongs to the 89400-series *hardware* (§13.10). Adding one would be a retro affectation, not\nfidelity. **[V-negative]**\n\nTop-to-bottom the shell is: **title bar → menu bar → toolbar band (multiple dockable\ntoolbars) → document area with trace tab groups, tool windows docked around its edges →\nstatus bar.** **[V for the components; U for the exact order, though it is conventional.]**",
+  "body": "**`REQ-UI-001` (P0) — Docking-window application, not an instrument emulator.**\nThe shell shall be a docking-window application with two distinct window classes: **[V]**\n\n- **Document windows** — dock into the **central document area** as **tabs in a tab group**.\n  Only trace-bearing windows may be document windows.\n- **Tool windows** — dock **around the edges** of the document area and carry a title bar\n  rather than a tab.\n\n**There shall be no right-hand softkey column.** The reference *software* has none; that\nbelongs to the 89400-series *hardware* (§13.10). Adding one would be a retro affectation, not\nfidelity. **[V-negative]**\n\nTop-to-bottom the shell is: **title bar → menu bar → toolbar band (multiple dockable\ntoolbars) → document area with trace tab groups, tool windows docked around its edges →\nstatus bar.** **[V for the components; U for the exact order, though it is conventional.]**\n**AC:** A trace window docks only into the central document area and appears there as a tab\nin a tab group; a tool window docks only around the edges and carries a title bar, not a tab.\nAttempting to dock a tool window into the document area, or a trace window to an edge, is\nrefused rather than accepted — the two classes are distinct, not merely conventionally used\ndifferently. No right-hand softkey column exists anywhere in the shell, asserted by a test\nover the shell's visual tree so it cannot be reintroduced unnoticed. The shell's top-level\nchildren appear in the stated order.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2179
+  "line": 2333
  },
  {
   "id": "REQ-UI-002",
@@ -2293,14 +2293,14 @@
   "num": "002",
   "priority": "P1",
   "title": "Named tool windows",
-  "body": "**`REQ-UI-002` (P1) — Named tool windows.**\nMarkers · Output · Player · SCPI Log · Event Log · Contexts · Block Diagram · Macros. **[V]**",
+  "body": "**`REQ-UI-002` (P1) — Named tool windows.**\nMarkers · Output · Player · SCPI Log · Event Log · Contexts · Block Diagram · Macros. **[V]**\n**AC:** All eight exist under exactly these names, are openable from the Window or Marker\nmenu per `REQ-UI-061`, and each is a tool window by the `REQ-UI-001` test. Each one's docked\nposition, size and open/closed state persist across a restart.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2195
+  "line": 2356
  },
  {
   "id": "REQ-UI-003",
@@ -2315,7 +2315,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2198
+  "line": 2362
  },
  {
   "id": "REQ-UI-004",
@@ -2323,14 +2323,14 @@
   "num": "004",
   "priority": "P1",
   "title": "Tab group conventions",
-  "body": "**`REQ-UI-004` (P1) — Tab group conventions.**\n- The **close button sits to the *left* of all the tabs**, not on each tab and not at the\n  right. **[V]** *(Unusual, easily \"corrected\" by a developer into the conventional position —\n  don't.)*\n- The **active trace's tab title is rendered in bold**. **[V]**\n- Users resize by dragging the boundary between windows; a **Resize Traces** command evenly\n  redistributes. **[V]**",
+  "body": "**`REQ-UI-004` (P1) — Tab group conventions.**\n- The **close button sits to the *left* of all the tabs**, not on each tab and not at the\n  right. **[V]** *(Unusual, easily \"corrected\" by a developer into the conventional position —\n  don't.)*\n- The **active trace's tab title is rendered in bold**. **[V]**\n- Users resize by dragging the boundary between windows; a **Resize Traces** command evenly\n  redistributes. **[V]**\n\n**AC:** The close button's rendered bounds sit to the left of the leftmost tab's bounds, and\nno per-tab close button exists — asserted on geometry, not on a style name, because this is\nthe detail a developer will \"fix\" into the conventional right-hand position. The active\ntrace's tab is the only one rendered bold, and changing the active trace moves the bold.\nDragging a boundary resizes the adjacent windows only; **Resize Traces** leaves all trace\nwindows within one pixel of equal size.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2207
+  "line": 2371
  },
  {
   "id": "REQ-UI-005",
@@ -2338,14 +2338,14 @@
   "num": "005",
   "priority": "P1",
   "title": "Trace layout presets",
-  "body": "**`REQ-UI-005` (P1) — Trace layout presets.**\nThe layout menu shall offer, by these names: **[V]**\n\n| Name | Behaviour |\n|---|---|\n| **Single** | All visible traces placed in a single tab group |\n| **Stack N** | N evenly spaced trace windows stacked vertically |\n| **Grid N×M** | Grid of trace windows, N rows by M columns |\n| **Custom** | User-defined arrangement |\n| **Tile Visible** | Auto-layout over all open traces, allocating space as evenly as possible; **traces currently hidden as tabs are promoted to their own space** |\n| **Previous Layout** | Revert to the prior layout |\n\n*Historical note for reference:* the Agilent era used fixed presets — \"Single\", \"Stack 2\",\n\"Grid 2x2\", \"Quad 4\", \"Grid 6\" — with six configurable measurement grids. The modern\nparameterised form supersedes it. **[V]**",
+  "body": "**`REQ-UI-005` (P1) — Trace layout presets.**\nThe layout menu shall offer, by these names: **[V]**\n\n| Name | Behaviour |\n|---|---|\n| **Single** | All visible traces placed in a single tab group |\n| **Stack N** | N evenly spaced trace windows stacked vertically |\n| **Grid N×M** | Grid of trace windows, N rows by M columns |\n| **Custom** | User-defined arrangement |\n| **Tile Visible** | Auto-layout over all open traces, allocating space as evenly as possible; **traces currently hidden as tabs are promoted to their own space** |\n| **Previous Layout** | Revert to the prior layout |\n\n*Historical note for reference:* the Agilent era used fixed presets — \"Single\", \"Stack 2\",\n\"Grid 2x2\", \"Quad 4\", \"Grid 6\" — with six configurable measurement grids. The modern\nparameterised form supersedes it. **[V]**\n\n**AC:** All six entries appear in the layout menu under exactly these names. Stack N and\nGrid N×M are parameterised, not a fixed list of presets, so arbitrary N and N×M are\naccepted within the space available. **Tile Visible** promotes traces that were hidden as\ntabs into their own space — checked by starting from a tab group of several traces and\nasserting each becomes separately visible, since this is the clause that distinguishes it\nfrom Single. **Previous Layout** restores the arrangement in force before the last layout\nchange, including a Custom one.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2215
+  "line": 2386
  },
  {
   "id": "REQ-UI-006",
@@ -2353,14 +2353,14 @@
   "num": "006",
   "priority": "P1",
   "title": "Status bar contents",
-  "body": "**`REQ-UI-006` (P1) — Status bar contents.**\nA status bar at the bottom of the main window shall show, with measurement status messages\nspecifically at the **bottom left**: **[V]**\n\n- **Measurement status** — e.g. *Average Complete*, *Measurement running*, *Waiting for\n  Trigger*, *Real-Time Measurement*, *Filling Time Record*\n- **Calibration status** for the selected hardware\n- **External reference lock state**\n- **Spectrum Rate indicator** — the speed at which measurements are being made\n- **Beta features in use** count *(adopt as a \"preview features\" indicator)*\n\nTo these OpenVSA adds, per `REQ-NFR-012` and `REQ-NFR-027`: **dropped-frame count** and\n**measured front-end transfer rate / duty cycle**.",
+  "body": "**`REQ-UI-006` (P1) — Status bar contents.**\nA status bar at the bottom of the main window shall show, with measurement status messages\nspecifically at the **bottom left**: **[V]**\n\n- **Measurement status** — e.g. *Average Complete*, *Measurement running*, *Waiting for\n  Trigger*, *Real-Time Measurement*, *Filling Time Record*\n- **Calibration status** for the selected hardware\n- **External reference lock state**\n- **Spectrum Rate indicator** — the speed at which measurements are being made\n- **Beta features in use** count *(adopt as a \"preview features\" indicator)*\n\nTo these OpenVSA adds, per `REQ-NFR-012` and `REQ-NFR-027`: **dropped-frame count** and\n**measured front-end transfer rate / duty cycle**.\n\n**AC:** Every listed field is present, and measurement status messages render at the bottom\nleft specifically — asserted on position, since that placement is quoted from the reference\nproduct. Each status string appears when its condition holds: driving the measurement into\n*Waiting for Trigger* and *Average Complete* shows those strings. Calibration status,\nreference lock state and spectrum rate track their underlying conditions rather than showing\na fixed value. Dropped-frame count is monotonic per `REQ-NFR-012`, and the transfer rate is\nthe measured figure of `REQ-NFR-027`, not a nominal one.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2231
+  "line": 2410
  },
  {
   "id": "REQ-UI-007",
@@ -2368,12 +2368,12 @@
   "num": "007",
   "priority": "P1",
   "title": "Prominent fault and lock indicators",
-  "body": "**`REQ-UI-007` (P1) — Prominent fault and lock indicators.**\nConditions that invalidate a measurement shall be indicated in the trace's upper-right corner\nusing the strings of `REQ-UI-041`, not buried in a log: ADC overload (`OVx`), unlocked\nreference, uncalibrated state (`CAL?`), demodulation lock failure (`CARRIER LOCK?`), sync or\npulse not found, and dropped frames.\n*Rationale:* every one of these means the number on screen is wrong. A user reading EVM must\nnot have to go looking to discover that the input was overloaded.",
+  "body": "**`REQ-UI-007` (P1) — Prominent fault and lock indicators.**\nConditions that invalidate a measurement shall be indicated in the trace's upper-right corner\nusing the strings of `REQ-UI-041`, not buried in a log: ADC overload (`OVx`), unlocked\nreference, uncalibrated state (`CAL?`), demodulation lock failure (`CARRIER LOCK?`), sync or\npulse not found, and dropped frames.\n*Rationale:* every one of these means the number on screen is wrong. A user reading EVM must\nnot have to go looking to discover that the input was overloaded.\n**AC:** Each listed condition is provoked in turn — ADC overload, unlocked reference,\nuncalibrated state, demodulation lock failure, sync not found, pulse not found, dropped\nframes — and each raises its `REQ-UI-041` string in the trace's upper-right corner within one\ndisplay update, using the `Indicator` colour. The indicator clears when the condition\nclears. A test asserts the string is on the trace rather than only in the event log, since\n\"buried in a log\" is precisely the failure this forbids.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2245
+  "line": 2432
  },
  {
   "id": "REQ-UI-010",
@@ -2388,7 +2388,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2255
+  "line": 2448
  },
  {
   "id": "REQ-UI-011",
@@ -2403,7 +2403,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2285
+  "line": 2478
  },
  {
   "id": "REQ-UI-012",
@@ -2411,12 +2411,12 @@
   "num": "012",
   "priority": "P1",
   "title": "Graticule geometry",
-  "body": "**`REQ-UI-012` (P1) — Graticule geometry.**\nThe graticule shall be **10 horizontal × 10 vertical divisions** by default, configurable.\n**[U — recommended value, not documented.]**\n\n> **Why 10×10 despite being undocumented.** No Keysight source for either product states a\n> division count. The strongest available evidence is arithmetic: the 89400 series specifies\n> \"**Display points/trace 401**\" — 400 intervals, exactly what a 10-division-wide graticule at\n> 40 px/division implies, and the 89600's geometry is inherited from it. That is an inference\n> from a real published number, not a quotation. Make the count a setting so the choice is\n> cheap to revise.",
+  "body": "**`REQ-UI-012` (P1) — Graticule geometry.**\nThe graticule shall be **10 horizontal × 10 vertical divisions** by default, configurable.\n**[U — recommended value, not documented.]**\n\n> **Why 10×10 despite being undocumented.** No Keysight source for either product states a\n> division count. The strongest available evidence is arithmetic: the 89400 series specifies\n> \"**Display points/trace 401**\" — 400 intervals, exactly what a 10-division-wide graticule at\n> 40 px/division implies, and the 89600's geometry is inherited from it. That is an inference\n> from a real published number, not a quotation. Make the count a setting so the choice is\n> cheap to revise.\n\n**AC:** The graticule renders 10 × 10 divisions by default, counted from the rendered frame,\nand the count is a setting that takes effect without restart. Division lines are evenly\nspaced to within one pixel across the grid, and the outermost lines coincide with the grid\nboundary rather than falling inside or outside it.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2292
+  "line": 2485
  },
  {
   "id": "REQ-UI-013",
@@ -2424,14 +2424,14 @@
   "num": "013",
   "priority": "P1",
   "title": "Reference position defaults, which set the annotation layout",
-  "body": "**`REQ-UI-013` (P1) — Reference position defaults, which set the annotation layout.**\nX reference position 0–100 % (0 % = left edge, 100 % = right edge). Y reference position\n0–100 % in 1 % increments, **defaulting to 100 % for Log Mag, Lin Mag and Log Mag (lin)** —\ni.e. the reference line at the **top** of the grid — **and 50 % for all other formats**, i.e.\ncentred, which is what time-domain and IQ displays need. **[V]**\n*This default is what puts the reference-level annotation at top-left for spectra and centres\nthe origin for IQ displays; it is a layout decision as much as a scaling one.*",
+  "body": "**`REQ-UI-013` (P1) — Reference position defaults, which set the annotation layout.**\nX reference position 0–100 % (0 % = left edge, 100 % = right edge). Y reference position\n0–100 % in 1 % increments, **defaulting to 100 % for Log Mag, Lin Mag and Log Mag (lin)** —\ni.e. the reference line at the **top** of the grid — **and 50 % for all other formats**, i.e.\ncentred, which is what time-domain and IQ displays need. **[V]**\n*This default is what puts the reference-level annotation at top-left for spectra and centres\nthe origin for IQ displays; it is a layout decision as much as a scaling one.*\n**AC:** Y reference position defaults to 100 % for Log Mag, Lin Mag and Log Mag (lin), and to\n50 % for every other format — enumerated over the full `REQ-DSP-041` format list so a format\nadded later without a default fails the test. Both axes accept 0–100 %, Y in 1 % increments,\nand the reference line lands at the requested fraction of the grid height to within one\npixel. At the 100 % default the reference-level annotation sits top-left per `REQ-UI-040`;\nat 50 % an IQ display's origin is centred.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2303
+  "line": 2501
  },
  {
   "id": "REQ-UI-014",
@@ -2439,14 +2439,14 @@
   "num": "014",
   "priority": "P1",
   "title": "Colour configuration and persistence",
-  "body": "**`REQ-UI-014` (P1) — Colour configuration and persistence.**\nAll display colours shall be user-settable through a standard colour picker and shall persist\nin a display-preferences file (the reference product uses `.dspx`). **[V]**",
+  "body": "**`REQ-UI-014` (P1) — Colour configuration and persistence.**\nAll display colours shall be user-settable through a standard colour picker and shall persist\nin a display-preferences file (the reference product uses `.dspx`). **[V]**\n**AC:** Every element of `REQ-UI-022` is reachable from the colour picker — the list is\nenumerated from the theme resource dictionary so an element added without a picker entry\nfails. Changed colours survive a restart via the display-preferences file, and that file is\nseparate from saved state per `REQ-STA-002`: recalling a state does not alter display\ncolours, and loading display preferences does not alter measurement settings.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2311
+  "line": 2515
  },
  {
   "id": "REQ-UI-015",
@@ -2454,12 +2454,12 @@
   "num": "015",
   "priority": "P1",
   "title": "Default background",
-  "body": "**`REQ-UI-015` (P1) — Default background.**\nThe default trace background shall be **black** (or very dark). **[U — inferred, not stated.]**\n\n> The only textual trace of the default in the entire documentation is the Print dialog's\n> **\"Force white background\"** option, offered because \"large areas of black do not print well\n> on inkjet-style printers\", with \"very light colors will print black so they can be seen.\"\n> A feature justified by \"large areas of black\" only makes sense over a black default. That is\n> strong circumstantial evidence, not a statement. **OpenVSA shall implement the same\n> force-white-background print option regardless** — it is needed either way.",
+  "body": "**`REQ-UI-015` (P1) — Default background.**\nThe default trace background shall be **black** (or very dark). **[U — inferred, not stated.]**\n\n> The only textual trace of the default in the entire documentation is the Print dialog's\n> **\"Force white background\"** option, offered because \"large areas of black do not print well\n> on inkjet-style printers\", with \"very light colors will print black so they can be seen.\"\n> A feature justified by \"large areas of black\" only makes sense over a black default. That is\n> strong circumstantial evidence, not a statement. **OpenVSA shall implement the same\n> force-white-background print option regardless** — it is needed either way.\n\n**AC:** `TraceBackground` defaults to black or a very dark value on a fresh profile. The\nprint path offers **Force white background**, and with it enabled the printed or exported\noutput has a white trace background with every trace and annotation colour still legible\nagainst it — specifically, very light trace colours are darkened rather than left invisible,\nwhich is the behaviour the reference product's own note describes.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2315
+  "line": 2524
  },
  {
   "id": "REQ-UI-020",
@@ -2467,14 +2467,14 @@
   "num": "020",
   "priority": "P0",
   "title": "Traces are lettered, and colours come from a 20-entry indexed table",
-  "body": "**`REQ-UI-020` (P0) — Traces are lettered, and colours come from a 20-entry indexed table.**\nTraces shall be identified by **letter** (Trace A, B, C, D, …), **not** by number — trace\n*numbers* would collide with marker numbering, which is exactly why the reference product\nletters them. Colours are held in an indexed table of **20**. **[V]**",
+  "body": "**`REQ-UI-020` (P0) — Traces are lettered, and colours come from a 20-entry indexed table.**\nTraces shall be identified by **letter** (Trace A, B, C, D, …), **not** by number — trace\n*numbers* would collide with marker numbering, which is exactly why the reference product\nletters them. Colours are held in an indexed table of **20**. **[V]**\n**AC:** Traces are identified by letter throughout — tab titles, the active-trace toolbar\nbutton of `REQ-UI-063`, annotation, and the delta-marker label of `REQ-UI-031` — asserted by\na test that fails if any trace identifier renders as a bare number. The colour table holds\nexactly 20 entries; the twenty-first trace reuses index 0 rather than extending the table or\nfailing. Trace lettering continues past Z in a defined way rather than colliding or\ntruncating.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2327
+  "line": 2542
  },
  {
   "id": "REQ-UI-021",
@@ -2482,14 +2482,14 @@
   "num": "021",
   "priority": "P0",
   "title": "A trace's line and its annotation text share one colour",
-  "body": "**`REQ-UI-021` (P0) — A trace's line and its annotation text share one colour.**\n`Trace` is defined as \"Color for specified trace **and its annotation**\". **[V]**\n*This is a genuine visual signature of the product — the numbers describing a trace are\ntinted to match the trace itself, which is how a user reads a four-trace overlay at a glance.\nCorroborated from the other direction by an 89400 firmware defect report: \"Trace A shows wrong\nannotation color after preset.\"*",
+  "body": "**`REQ-UI-021` (P0) — A trace's line and its annotation text share one colour.**\n`Trace` is defined as \"Color for specified trace **and its annotation**\". **[V]**\n*This is a genuine visual signature of the product — the numbers describing a trace are\ntinted to match the trace itself, which is how a user reads a four-trace overlay at a glance.\nCorroborated from the other direction by an 89400 firmware defect report: \"Trace A shows wrong\nannotation color after preset.\"*\n**AC:** A trace's line and its annotation text sample to the same colour in the rendered\nframe, for every trace in a multi-trace overlay. They stay equal after the operations that\nhistorically broke it: changing the trace colour, preset, state recall, and theme change —\nthe 89400 defect quoted above is exactly the post-preset case, so preset is tested\nexplicitly. One colour setting drives both; there is no separate annotation-colour entry per\ntrace to drift out of step.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2332
+  "line": 2553
  },
  {
   "id": "REQ-UI-022",
@@ -2497,12 +2497,12 @@
   "num": "022",
   "priority": "P1",
   "title": "Themeable element set",
-  "body": "**`REQ-UI-022` (P1) — Themeable element set.**\nThe following shall each be independently colourable, forming the WPF theme resource\ndictionary. **[V — this is the reference product's actual list.]**\n\n*Global (all traces):* ACP · ACP annotation · Annotation · Annotation Background · Grid ·\nIndicator · Limit · Fail Limit · Margin · Fail Margin · Marker Window Background · Mod Type N ·\nSelected Marker · Not Selected Marker · OBW · OBW annotation · Slot Annotation · Slot Data ·\nSlot MAC · Slot Midamble · Slot Pilot (+ Downlink/Uplink) · Slot Preamble · Slot Selected ·\nTrace Background.\n\n*Per trace:* Trace · Symbol · Average · Pilot · Spectrogram Marker · Trace Select ·\nEmitter 1–32 · Group 1–48.",
+  "body": "**`REQ-UI-022` (P1) — Themeable element set.**\nThe following shall each be independently colourable, forming the WPF theme resource\ndictionary. **[V — this is the reference product's actual list.]**\n\n*Global (all traces):* ACP · ACP annotation · Annotation · Annotation Background · Grid ·\nIndicator · Limit · Fail Limit · Margin · Fail Margin · Marker Window Background · Mod Type N ·\nSelected Marker · Not Selected Marker · OBW · OBW annotation · Slot Annotation · Slot Data ·\nSlot MAC · Slot Midamble · Slot Pilot (+ Downlink/Uplink) · Slot Preamble · Slot Selected ·\nTrace Background.\n\n*Per trace:* Trace · Symbol · Average · Pilot · Spectrogram Marker · Trace Select ·\nEmitter 1–32 · Group 1–48.\n\n**AC:** Every named element resolves to a distinct key in the WPF theme resource dictionary,\nenumerated by a test against this list so a missing or misspelled key fails rather than\nsilently falling back to a default brush. Global entries apply across all traces and\nper-trace entries are indexed per trace, including the Emitter 1–32 and Group 1–48 ranges at\nfull extent. Every element is reachable from the colour picker per `REQ-UI-014`, and no\nelement is hard-coded: a test fails on a literal colour in the plot-surface rendering path.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2339
+  "line": 2566
  },
  {
   "id": "REQ-UI-023",
@@ -2510,14 +2510,14 @@
   "num": "023",
   "priority": "P1",
   "title": "Limit/margin colouring, including the non-obvious part",
-  "body": "**`REQ-UI-023` (P1) — Limit/margin colouring, including the non-obvious part.**\nFour separate colour entries: **Limit**, **Margin**, **Fail Limit**, **Fail Margin**. **[V]**\n\n> **The \"fail\" colours recolour *the trace itself* at the failing points — not the limit\n> line.** This is counter-intuitive and easy to implement backwards, and it is the behaviour\n> that makes a failure legible at a glance. The user can set pass and fail indication for the\n> limit, the margin, or both. **[V]**\n\n*Recommended defaults:* limit red, margin yellow. **[U — widely assumed but stated nowhere;\nadopt as a default, not as a fidelity claim.]**",
+  "body": "**`REQ-UI-023` (P1) — Limit/margin colouring, including the non-obvious part.**\nFour separate colour entries: **Limit**, **Margin**, **Fail Limit**, **Fail Margin**. **[V]**\n\n> **The \"fail\" colours recolour *the trace itself* at the failing points — not the limit\n> line.** This is counter-intuitive and easy to implement backwards, and it is the behaviour\n> that makes a failure legible at a glance. The user can set pass and fail indication for the\n> limit, the margin, or both. **[V]**\n\n*Recommended defaults:* limit red, margin yellow. **[U — widely assumed but stated nowhere;\nadopt as a default, not as a fidelity claim.]**\n\n**AC:** All four entries exist independently. On a trace failing part of a limit, the\nrendered frame shows **the trace's own points recoloured** to `Fail Limit` over the failing\nspan while the limit line keeps its `Limit` colour — the inverse, recolouring the limit line,\nfails the test, since implementing this backwards is the stated risk. Margin failure behaves\nthe same way with `Fail Margin`. Pass and fail indication is independently enablable for the\nlimit, the margin, or both. Defaults are limit red, margin yellow.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2352
+  "line": 2586
  },
  {
   "id": "REQ-UI-024",
@@ -2525,14 +2525,14 @@
   "num": "024",
   "priority": "P1",
   "title": "Spectrogram colour maps",
-  "body": "**`REQ-UI-024` (P1) — Spectrogram colour maps.**\nThe one hard colour statement in the entire reference documentation, and therefore to be\nimplemented exactly: **[V]**\n\n| Map | Definition |\n|---|---|\n| **Color Normal** *(default)* | Spectrum of **64 colours**; **maximum → red, minimum → blue** |\n| **Color Reverse** | As above, reversed |\n| **Grey Normal** | **64 shades of grey**; maximum → lightest, minimum → darkest |\n| **Grey Reverse** | As above, reversed |\n| **User Defined** | User map; **colour index 0 is at the bottom**; reducing the count discards colours from the **top**; a \"Sample Map\" preview shows the full map with horizontal marks indicating the active selection |\n\n*Note:* the brochure remarks that \"grey-scale views provide even greater resolution\" — worth\nsurfacing as a tooltip, since it is a real perceptual point about luminance ramps.",
+  "body": "**`REQ-UI-024` (P1) — Spectrogram colour maps.**\nThe one hard colour statement in the entire reference documentation, and therefore to be\nimplemented exactly: **[V]**\n\n| Map | Definition |\n|---|---|\n| **Color Normal** *(default)* | Spectrum of **64 colours**; **maximum → red, minimum → blue** |\n| **Color Reverse** | As above, reversed |\n| **Grey Normal** | **64 shades of grey**; maximum → lightest, minimum → darkest |\n| **Grey Reverse** | As above, reversed |\n| **User Defined** | User map; **colour index 0 is at the bottom**; reducing the count discards colours from the **top**; a \"Sample Map\" preview shows the full map with horizontal marks indicating the active selection |\n\n*Note:* the brochure remarks that \"grey-scale views provide even greater resolution\" — worth\nsurfacing as a tooltip, since it is a real perceptual point about luminance ramps.\n\n**AC:** All five maps are selectable and Color Normal is the default. Color Normal and Grey\nNormal each contain exactly 64 entries; in Color Normal the maximum-valued cell renders red\nand the minimum blue, and in Grey Normal lightest and darkest respectively — sampled from a\nrendered spectrogram of a ramp input, and the Reverse variants produce the exact reversal of\ntheir counterparts. For User Defined, index 0 sits at the bottom of the map, and reducing the\nentry count discards from the **top** — asserted directly, because discarding from the bottom\nis the natural implementation and the wrong one. The Sample Map preview shows the full map\nwith marks indicating the active selection.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2363
+  "line": 2604
  },
  {
   "id": "REQ-UI-030",
@@ -2540,14 +2540,14 @@
   "num": "030",
   "priority": "P0",
   "title": "Marker glyph shapes and placement",
-  "body": "**`REQ-UI-030` (P0) — Marker glyph shapes and placement.** **[V — quoted verbatim]**\n\n| Type | Glyph | Placement |\n|---|---|---|\n| **Normal** | Diamond | **Directly *above*** the data point |\n| **Delta** | Diamond | Directly above the data point |\n| **Fixed** | **\"X\"** | **Centre of the X *over*** the data point |\n\n\"**A solid diamond represents the currently selected marker**\" — so selected markers are\nfilled and unselected hollow. Colour is by selection state (`SelectedMarker` /\n`NotSelectedMarker`), **not** by marker index. **[V]**\n*Two subtleties a developer will otherwise miss: the diamond is offset above the point while\nthe X is centred on it, and selection is conveyed by fill rather than colour index.*",
+  "body": "**`REQ-UI-030` (P0) — Marker glyph shapes and placement.** **[V — quoted verbatim]**\n\n| Type | Glyph | Placement |\n|---|---|---|\n| **Normal** | Diamond | **Directly *above*** the data point |\n| **Delta** | Diamond | Directly above the data point |\n| **Fixed** | **\"X\"** | **Centre of the X *over*** the data point |\n\n\"**A solid diamond represents the currently selected marker**\" — so selected markers are\nfilled and unselected hollow. Colour is by selection state (`SelectedMarker` /\n`NotSelectedMarker`), **not** by marker index. **[V]**\n*Two subtleties a developer will otherwise miss: the diamond is offset above the point while\nthe X is centred on it, and selection is conveyed by fill rather than colour index.*\n**AC:** Measured from the rendered frame: a Normal or Delta marker's diamond has its bounds\nentirely above the data point, while a Fixed marker's X is centred on it — the centroid of\nthe X coincides with the data point to within one pixel and the diamond's does not. The\nselected marker's diamond is filled and unselected ones are hollow. Marker colour is drawn\nfrom `SelectedMarker`/`NotSelectedMarker` by selection state, so two unselected markers of\ndifferent numbers render the same colour; colouring by marker index fails the test.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2380
+  "line": 2630
  },
  {
   "id": "REQ-UI-031",
@@ -2555,14 +2555,14 @@
   "num": "031",
   "priority": "P0",
   "title": "Delta-marker label format",
-  "body": "**`REQ-UI-031` (P0) — Delta-marker label format.**\n`XΔTR`, where X is the delta marker number, T the reference trace letter **shown only when the\nreference is on a different trace**, and R the reference marker number. Thus **`3Δ1`** for a\nsame-trace reference and **`2ΔB1`** for a cross-trace reference. In the Markers Window the\nform is `Mkr NΔTR`. **[V]**",
+  "body": "**`REQ-UI-031` (P0) — Delta-marker label format.**\n`XΔTR`, where X is the delta marker number, T the reference trace letter **shown only when the\nreference is on a different trace**, and R the reference marker number. Thus **`3Δ1`** for a\nsame-trace reference and **`2ΔB1`** for a cross-trace reference. In the Markers Window the\nform is `Mkr NΔTR`. **[V]**\n**AC:** A delta marker referencing another marker on the same trace renders `3Δ1` — with no\ntrace letter — and one referencing a marker on trace B renders `2ΔB1`. Both cases are\nasserted as exact strings, since emitting the trace letter unconditionally is the obvious\nimplementation and is wrong for the same-trace case. The Markers Window uses the `Mkr NΔTR`\nform. Trace identifiers in the label are letters per `REQ-UI-020`.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2394
+  "line": 2650
  },
  {
   "id": "REQ-UI-032",
@@ -2570,14 +2570,14 @@
   "num": "032",
   "priority": "P1",
   "title": "Markers Window",
-  "body": "**`REQ-UI-032` (P1) — Markers Window.**\nA dedicated tool window with its own background colour and its own font slot. Readout labels:\n`Mkr N` (X, Y and Z values) · `Mkr NΔTR` · `Freq N` (frequency counter) · `OBW` · `BW`\n(x-dB bandwidth) · `ACP Ref` · `Power` (band power) · `Density` (band-power density) ·\n`Limit`, plus fields Carrier, Channel Type, Layer, Sym. Invalid values render **`NAN`**,\noverflow **`INF`**. For two-dimensional IQ formats the readout is \"Mag & Phase\" or \"Real &\nImag\", **defaulting to Mag & Phase**. **[V]**",
+  "body": "**`REQ-UI-032` (P1) — Markers Window.**\nA dedicated tool window with its own background colour and its own font slot. Readout labels:\n`Mkr N` (X, Y and Z values) · `Mkr NΔTR` · `Freq N` (frequency counter) · `OBW` · `BW`\n(x-dB bandwidth) · `ACP Ref` · `Power` (band power) · `Density` (band-power density) ·\n`Limit`, plus fields Carrier, Channel Type, Layer, Sym. Invalid values render **`NAN`**,\noverflow **`INF`**. For two-dimensional IQ formats the readout is \"Mag & Phase\" or \"Real &\nImag\", **defaulting to Mag & Phase**. **[V]**\n**AC:** Every listed readout label and field appears with exactly the spelling given. An\ninvalid value renders the literal `NAN` and an overflow the literal `INF`, not a\nframework-default \"NaN\"/\"∞\" or a blank — asserted as exact strings. Two-dimensional IQ\nformats offer both readout pairs and default to Mag & Phase. The window has its own\nbackground colour (`MarkerWindowBackground`) and its own font slot per `REQ-UI-080`,\nindependent of the Annotation slot.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2400
+  "line": 2661
  },
  {
   "id": "REQ-UI-033",
@@ -2585,14 +2585,14 @@
   "num": "033",
   "priority": "P1",
   "title": "Fixed-width font in the Markers Window",
-  "body": "**`REQ-UI-033` (P1) — Fixed-width font in the Markers Window.**\nThe help is explicit: \"**always select a fixed-width font for the Markers Window**\". **[V]**\nOpenVSA shall default to a fixed-width face there rather than leaving it to the user to\ndiscover.",
+  "body": "**`REQ-UI-033` (P1) — Fixed-width font in the Markers Window.**\nThe help is explicit: \"**always select a fixed-width font for the Markers Window**\". **[V]**\nOpenVSA shall default to a fixed-width face there rather than leaving it to the user to\ndiscover.\n**AC:** The Markers Window's default font is fixed-width, asserted by querying the resolved\ntypeface's pitch rather than its name, so a proportional face substituted for a missing font\nfails. Marker readouts of differing digit content align in a column, which is the property\nthe fixed-width face exists to provide.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2408
+  "line": 2675
  },
  {
   "id": "REQ-UI-040",
@@ -2600,12 +2600,12 @@
   "num": "040",
   "priority": "P0",
   "title": "Annotation positions",
-  "body": "**`REQ-UI-040` (P0) — Annotation positions.** **[V — each individually sourced]**\n\n| Position | Content |\n|---|---|\n| **Above the trace grid, right** | Active-marker readout |\n| **Upper-right corner, *inside* the grid** | Trace indicator messages (own `Indicator` colour) |\n| **Band outside the graticule** | All other trace annotation |\n| **Bottom left of the main window** | Measurement status messages |\n\nWithin the outer band, the recommended placement — **[U for position, V for the fact that each\nstring exists on screen]** — follows from the Y-reference default of 100 % for log-magnitude:\n**Y-axis top scale** top-left, **Y-axis per-division** on the left edge below it, **Y-axis\nbottom scale** bottom-left, **trace format / resolution bandwidth / trigger channel** in the\nupper band, **centre frequency** and **main time length** centred beneath the X axis.",
+  "body": "**`REQ-UI-040` (P0) — Annotation positions.** **[V — each individually sourced]**\n\n| Position | Content |\n|---|---|\n| **Above the trace grid, right** | Active-marker readout |\n| **Upper-right corner, *inside* the grid** | Trace indicator messages (own `Indicator` colour) |\n| **Band outside the graticule** | All other trace annotation |\n| **Bottom left of the main window** | Measurement status messages |\n\nWithin the outer band, the recommended placement — **[U for position, V for the fact that each\nstring exists on screen]** — follows from the Y-reference default of 100 % for log-magnitude:\n**Y-axis top scale** top-left, **Y-axis per-division** on the left edge below it, **Y-axis\nbottom scale** bottom-left, **trace format / resolution bandwidth / trigger channel** in the\nupper band, **centre frequency** and **main time length** centred beneath the X axis.\n\n**AC:** Measured from the rendered frame: the active-marker readout sits above the grid and\nto the right; trace indicator messages sit inside the grid's upper-right corner in the\n`Indicator` colour; all other trace annotation lies outside the graticule in the annotation\nband; measurement status is at the bottom left of the main window per `REQ-UI-006`. The\nindicator strings are the only annotation drawn inside the graticule — a test fails if any\nother annotation's bounds intersect the grid rectangle. Each recommended string is present at\nits stated position.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2415
+  "line": 2686
  },
  {
   "id": "REQ-UI-041",
@@ -2613,14 +2613,14 @@
   "num": "041",
   "priority": "P0",
   "title": "Trace indicator strings",
-  "body": "**`REQ-UI-041` (P0) — Trace indicator strings.**\nThe following shall be displayed in the grid's upper-right corner, in this priority order:\n**[V]**\n\n`NO DATA` · `DATA?` · `OVx` (overload, x = channel) · `CAL?` · `PULSE NOT FOUND` ·\n`SYNC NOT FOUND` · `CARRIER LOCK?` · `EQ` (equaliser active) · `RNG` · `ALL POINTS` ·\n`INACTIVE CHAN` · `MEAS OFFSET?` · `PULSE TOO SHORT` · `IQ COMP` (IQ mismatch compensated out).\n\n*These map one-to-one onto conditions this specification already requires be detected —\n`REQ-DEM-036` carrier lock, `REQ-DEM-040`/`041` sync and pulse search, `REQ-DEM-050`\nequalisation, `REQ-UI-007` overload. Adopt the strings verbatim; they are terse, unambiguous,\nand familiar to anyone who has used the reference product.*",
+  "body": "**`REQ-UI-041` (P0) — Trace indicator strings.**\nThe following shall be displayed in the grid's upper-right corner, in this priority order:\n**[V]**\n\n`NO DATA` · `DATA?` · `OVx` (overload, x = channel) · `CAL?` · `PULSE NOT FOUND` ·\n`SYNC NOT FOUND` · `CARRIER LOCK?` · `EQ` (equaliser active) · `RNG` · `ALL POINTS` ·\n`INACTIVE CHAN` · `MEAS OFFSET?` · `PULSE TOO SHORT` · `IQ COMP` (IQ mismatch compensated out).\n\n*These map one-to-one onto conditions this specification already requires be detected —\n`REQ-DEM-036` carrier lock, `REQ-DEM-040`/`041` sync and pulse search, `REQ-DEM-050`\nequalisation, `REQ-UI-007` overload. Adopt the strings verbatim; they are terse, unambiguous,\nand familiar to anyone who has used the reference product.*\n**AC:** Each string renders exactly as listed, including the `OVx` channel suffix and the\nquestion marks on `DATA?`, `CAL?`, `CARRIER LOCK?` and `MEAS OFFSET?` — asserted as exact\nliterals, since these are quoted and a tidied-up wording would break familiarity for no gain.\nWith several conditions true at once the display order follows the stated priority, tested by\nprovoking overload and carrier-lock failure together. The strings render in the grid's\nupper-right corner per `REQ-UI-040`.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2430
+  "line": 2709
  },
  {
   "id": "REQ-UI-042",
@@ -2635,7 +2635,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2443
+  "line": 2728
  },
  {
   "id": "REQ-UI-050",
@@ -2643,14 +2643,14 @@
   "num": "050",
   "priority": "P1",
   "title": "Constellation",
-  "body": "**`REQ-UI-050` (P1) — Constellation.**\nPoints drawn **only at symbol decision instants, with no connecting lines** — explicitly \"an\nIQ diagram but information is shown only at specified time intervals\", and \"similar to the IQ\ntrace format but without the lines that connect the points\". The IQ/Vector format is the same\ndata *with* the inter-symbol trajectory. Ideal states shall be overlaid as **crosshairs or\ncircles** (user-selectable) — **not** as filled dots, which would be confusable with measured\nsymbols. Symbol points carry their own colour, separate from the trace line, and may be\ncoloured **by modulation type** for signals carrying mixed modulations. **[V]**",
+  "body": "**`REQ-UI-050` (P1) — Constellation.**\nPoints drawn **only at symbol decision instants, with no connecting lines** — explicitly \"an\nIQ diagram but information is shown only at specified time intervals\", and \"similar to the IQ\ntrace format but without the lines that connect the points\". The IQ/Vector format is the same\ndata *with* the inter-symbol trajectory. Ideal states shall be overlaid as **crosshairs or\ncircles** (user-selectable) — **not** as filled dots, which would be confusable with measured\nsymbols. Symbol points carry their own colour, separate from the trace line, and may be\ncoloured **by modulation type** for signals carrying mixed modulations. **[V]**\n**AC:** A constellation trace of a known modulation draws exactly one point per symbol, at\nthe decision instants, with no connecting geometry — a test asserts the rendered primitive\ncount equals the symbol count and that no line segments join them. The same data in IQ/Vector\nformat draws the connecting trajectory, which is the difference between the two. Ideal states\noverlay as crosshairs or circles, user-selectable, and never as filled dots. Symbol points\nuse the `Symbol` colour, distinct from the trace line's, and a mixed-modulation signal\ncolours symbols by modulation type via the `Mod Type N` entries.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2473
+  "line": 2758
  },
  {
   "id": "REQ-UI-051",
@@ -2658,14 +2658,14 @@
   "num": "051",
   "priority": "P1",
   "title": "Eye diagram",
-  "body": "**`REQ-UI-051` (P1) — Eye diagram.**\nX axis in **symbols**, Y axis in volts (I or Q). The eye shall be **centred in the display**,\na one-symbol eye spanning −½ to +½ symbol. Rendering is accumulative — \"the VSA draws the\nfirst trace, then overlays the second trace, the third trace, and so on\". **Vertical reference\nlines shall be drawn at the symbol positions**, where maximum eye opening should occur,\ncorresponding to the symbol clock. An m-level modulation shows **m−1 eyes stacked\nvertically**. Eye length adjustable **0.1 to 10 symbols**. **[V]**\n*Axis annotation from a real screen, worth matching:* `I - Eye`, `-1 Sym`, `1 Sym`.",
+  "body": "**`REQ-UI-051` (P1) — Eye diagram.**\nX axis in **symbols**, Y axis in volts (I or Q). The eye shall be **centred in the display**,\na one-symbol eye spanning −½ to +½ symbol. Rendering is accumulative — \"the VSA draws the\nfirst trace, then overlays the second trace, the third trace, and so on\". **Vertical reference\nlines shall be drawn at the symbol positions**, where maximum eye opening should occur,\ncorresponding to the symbol clock. An m-level modulation shows **m−1 eyes stacked\nvertically**. Eye length adjustable **0.1 to 10 symbols**. **[V]**\n*Axis annotation from a real screen, worth matching:* `I - Eye`, `-1 Sym`, `1 Sym`.\n**AC:** The X axis is in symbols and the eye is centred: a one-symbol eye spans −½ to +½\nsymbol about the display centre, measured from the rendered frame. Vertical reference lines\nfall at the symbol positions, coinciding with the points of maximum eye opening for a clean\nsignal — checked against the generated signal's known symbol clock, so a half-symbol offset\nfails. An m-level modulation shows m−1 eyes stacked vertically, counted for at least two\nvalues of m. Eye length is settable over 0.1 to 10 symbols with values outside rejected.\nRendering is accumulative: successive acquisitions overlay rather than replace.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2482
+  "line": 2774
  },
  {
   "id": "REQ-UI-052",
@@ -2673,14 +2673,14 @@
   "num": "052",
   "priority": "P1",
   "title": "Symbol table and error summary are ONE trace, split top and bottom",
-  "body": "**`REQ-UI-052` (P1) — Symbol table and error summary are ONE trace, split top and bottom.**\n**[V]** — this is a structural point, not a styling one, and getting it wrong means building\ntwo traces where the product has one.\n\n- **Top portion:** the error-summary metrics of §11.7.\n- **Bottom portion:** the detected symbol/bit stream.\n- **Left gutter:** in binary format, \"the number to the left of each row indicates the **bit\n  offset** of the first bit in the row\"; in hex format it is the **symbol offset**. Hex\n  requires ≥4 bits/symbol.\n- **Grouping:** characters \"organized in groupings of eight characters followed by a space\".\n- **Font:** fixed-width. **[U for the symbol table specifically — inferred, but strongly: the\n  fixed-column grouping and left-gutter offsets only align in a monospaced face. Note the\n  reference product exposes only two font slots (Annotation and Marker), so the symbol table\n  almost certainly inherits the Annotation font — meaning that font must itself be monospaced,\n  or OpenVSA should add a third slot.]**",
+  "body": "**`REQ-UI-052` (P1) — Symbol table and error summary are ONE trace, split top and bottom.**\n**[V]** — this is a structural point, not a styling one, and getting it wrong means building\ntwo traces where the product has one.\n\n- **Top portion:** the error-summary metrics of §11.7.\n- **Bottom portion:** the detected symbol/bit stream.\n- **Left gutter:** in binary format, \"the number to the left of each row indicates the **bit\n  offset** of the first bit in the row\"; in hex format it is the **symbol offset**. Hex\n  requires ≥4 bits/symbol.\n- **Grouping:** characters \"organized in groupings of eight characters followed by a space\".\n- **Font:** fixed-width. **[U for the symbol table specifically — inferred, but strongly: the\n  fixed-column grouping and left-gutter offsets only align in a monospaced face. Note the\n  reference product exposes only two font slots (Annotation and Marker), so the symbol table\n  almost certainly inherits the Annotation font — meaning that font must itself be monospaced,\n  or OpenVSA should add a third slot.]**\n\n**AC:** The symbol table and error summary are one trace with two portions, not two traces —\nasserted structurally: the trace list contains a single entry, and selecting it selects both\nportions. In binary format the left-gutter number is the bit offset of the row's first bit;\nin hex it is the symbol offset; both are checked against a known symbol stream, and hex is\nunavailable below 4 bits/symbol. Characters group in eights separated by a space. The\nportions render in the fixed-width Tabular slot of `REQ-UI-080`.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2491
+  "line": 2790
  },
  {
   "id": "REQ-UI-053",
@@ -2688,14 +2688,14 @@
   "num": "053",
   "priority": "P1",
   "title": "Error summary text layout",
-  "body": "**`REQ-UI-053` (P1) — Error summary text layout.**\nThe following is the actual on-screen text from a real analyser of this family and shall be\nthe layout model — label, `=` at a fixed column, RMS value, peak value, \"at symbol N\",\nengineering prefixes on units: **[V]**\n\n```\nEVM        =  248.7475 m%rms   732.2379 m% pk at symbol 73\nMag Error  =  166.8398 m%rms  -729.4476 m% pk at symbol 73\nPhase Error=  251.9865 mdeg    1.043872 deg pk at symbol 168\nFreq Error =  -384.55 Hz\nIQ Offset  =  -67.543 dB      SNR = 40.58 dB\n```\n\nRow labels shall use the reference product's terse abbreviation style: **Amp Droop, Carr\nOfst, EVM, EVM Pk, Freq Err, Mag Err, Offset EVM, Phase Err, Pilot Lvl, Time Offset, IQ\nOffset, IQ Gain Imbalance, IQ Quad. Error, IQ Timing Skew, SymClk Err, RSSI**. **[V]**\n*Note the house style: short, truncated, no-space-where-possible — `Carr Ofst`, not \"Carrier\nOffset\". Scalars occupy one column; two related metrics occasionally share a line.*",
+  "body": "**`REQ-UI-053` (P1) — Error summary text layout.**\nThe following is the actual on-screen text from a real analyser of this family and shall be\nthe layout model — label, `=` at a fixed column, RMS value, peak value, \"at symbol N\",\nengineering prefixes on units: **[V]**\n\n```\nEVM        =  248.7475 m%rms   732.2379 m% pk at symbol 73\nMag Error  =  166.8398 m%rms  -729.4476 m% pk at symbol 73\nPhase Error=  251.9865 mdeg    1.043872 deg pk at symbol 168\nFreq Error =  -384.55 Hz\nIQ Offset  =  -67.543 dB      SNR = 40.58 dB\n```\n\nRow labels shall use the reference product's terse abbreviation style: **Amp Droop, Carr\nOfst, EVM, EVM Pk, Freq Err, Mag Err, Offset EVM, Phase Err, Pilot Lvl, Time Offset, IQ\nOffset, IQ Gain Imbalance, IQ Quad. Error, IQ Timing Skew, SymClk Err, RSSI**. **[V]**\n*Note the house style: short, truncated, no-space-where-possible — `Carr Ofst`, not \"Carrier\nOffset\". Scalars occupy one column; two related metrics occasionally share a line.*\n**AC:** Rendered against a signal of known impairments, the error summary reproduces the\nlayout above: `=` at a fixed column across all rows, RMS then peak then \"at symbol N\", and\nengineering prefixes on units (`m%rms`, `mdeg`) rather than exponent notation. Row labels are\nexactly the listed abbreviations, asserted as literals — `Carr Ofst`, not \"Carrier Offset\".\nScalar-only metrics render one value and omit the peak columns rather than padding them with\nzeros. The block renders in the fixed-width Tabular slot, which is what holds the `=` column\naligned.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2507
+  "line": 2813
  },
  {
   "id": "REQ-UI-054",
@@ -2703,14 +2703,14 @@
   "num": "054",
   "priority": "P1",
   "title": "Spectrogram / 3-D map displays",
-  "body": "**`REQ-UI-054` (P1) — Spectrogram / 3-D map displays.**\nSpectrogram, Digital Persistence and Cumulative History shall be presented as a group on a\ndedicated toolbar (consistent with `REQ-TRC-001a` treating them as accumulators). Each\nspectrogram carries **two markers on different axes**: a **vertical** spectrogram marker and a\n**horizontal** trace-select marker. Controls: **Enhance**, **Threshold**, **Map Colour\nScheme**. **[V]**",
+  "body": "**`REQ-UI-054` (P1) — Spectrogram / 3-D map displays.**\nSpectrogram, Digital Persistence and Cumulative History shall be presented as a group on a\ndedicated toolbar (consistent with `REQ-TRC-001a` treating them as accumulators). Each\nspectrogram carries **two markers on different axes**: a **vertical** spectrogram marker and a\n**horizontal** trace-select marker. Controls: **Enhance**, **Threshold**, **Map Colour\nScheme**. **[V]**\n**AC:** The three accumulating modes appear together on one dedicated toolbar per\n`REQ-UI-063`, and are reached through `TraceAccumulator` rather than the format list, per\n`REQ-TRC-001a`. A spectrogram carries both markers on perpendicular axes — the spectrogram\nmarker vertical, the trace-select marker horizontal — and each moves only along its own axis.\nEnhance, Threshold and Map Colour Scheme are present and each visibly changes the rendering:\nraising Threshold removes cells below it, and Map Colour Scheme switches between the\n`REQ-UI-024` maps.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2526
+  "line": 2839
  },
  {
   "id": "REQ-UI-060",
@@ -2718,12 +2718,12 @@
   "num": "060",
   "priority": "P1",
   "title": "Menu bar",
-  "body": "**`REQ-UI-060` (P1) — Menu bar.**\nThe menu bar shall be, in order: **[V for the names; U for the exact order]**\n\n**File | Edit | Hardware | Acquisition | Analysis | Trace | Marker | Utilities | Window | Help**\n\n> **This corrects a natural but outdated assumption.** The obvious guess — *File, Input,\n> MeasSetup, Display, Trace, Marker, Control* — is the **Agilent-era (89601A)** menu bar and is\n> no longer current. Three menus were renamed and two demoted: **Input → Acquisition**\n> (\"selects and configures one or more input channels and selects the data source\"),\n> **MeasSetup → Analysis**, **Markers → Marker** (singular); **Control** became a submenu\n> (*Acquisition > Control > Sweep*); **Display** disappeared, its layout functions moving under\n> Window and Trace; **Source** moved under Hardware. OpenVSA shall adopt the modern names.",
+  "body": "**`REQ-UI-060` (P1) — Menu bar.**\nThe menu bar shall be, in order: **[V for the names; U for the exact order]**\n\n**File | Edit | Hardware | Acquisition | Analysis | Trace | Marker | Utilities | Window | Help**\n\n> **This corrects a natural but outdated assumption.** The obvious guess — *File, Input,\n> MeasSetup, Display, Trace, Marker, Control* — is the **Agilent-era (89601A)** menu bar and is\n> no longer current. Three menus were renamed and two demoted: **Input → Acquisition**\n> (\"selects and configures one or more input channels and selects the data source\"),\n> **MeasSetup → Analysis**, **Markers → Marker** (singular); **Control** became a submenu\n> (*Acquisition > Control > Sweep*); **Display** disappeared, its layout functions moving under\n> Window and Trace; **Source** moved under Hardware. OpenVSA shall adopt the modern names.\n\n**AC:** The menu bar contains exactly these ten menus, with these names, in this order —\nasserted as an exact ordered list. The superseded Agilent-era names are absent: a test fails\non a top-level menu named Input, MeasSetup, Display or Control, since those are the names a\ndeveloper working from older documentation would naturally produce.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2535
+  "line": 2855
  },
  {
   "id": "REQ-UI-061",
@@ -2731,14 +2731,14 @@
   "num": "061",
   "priority": "P1",
   "title": "Menu contents",
-  "body": "**`REQ-UI-061` (P1) — Menu contents.** **[V]**\n\n- **File** — Recall (Setup / Recording / Trace / Layout / Demo), Preset ▸ (Measurement,\n  Measurement to Standard, Measurement to Defaults, Setup, Traces, Application and Traces,\n  Display Preferences, Toolbars, Factory Defaults), Save, Export, Print, Exit.\n  *Note: **\"Preset never changes the hardware setup\"** — preserve that separation.*\n- **Edit** — Copy (\"write the contents of a trace, marker readout, or trace hotspot to the\n  clipboard\"), Copy Markers, Paste.\n- **Hardware** — Instruments…, Configurations…, Rediscover, Analyzer, Frequency Reference…,\n  Calibration…, Disconnect, Source, Source Control…, Switch.\n- **Acquisition** — Data, Channels, Amplitude…, External Mixer…, Extended Settings…, Trigger…,\n  Segmented Capture…, Digital…, Gate Trigger…, Playback Trigger…, User Correction…, Player\n  Window, Recording/Playback…, Control ▸.\n- **Analysis** *(in order)* — Type, Properties…, Frequency…, ResBW…, Time…, Detectors…,\n  Conversion…, Average…, Heatmaps…, Measurements…, New Measurement, Duplicate Measurement.\n- **Trace** — Trace List, New Trace, *(embedded trace toolbar)*, Data; **Properties:** Format,\n  Coupling, Y Scale, X Scale, Average, Digital Demod; **Calculation:** Results Window, OBW…,\n  ACP…, Limit Tests…; then Spectrogram / Colour Map, Math Functions, Stimulus-Response / X-Y…,\n  Auto Scale, Overlay, Copy Trace.\n- **Marker** — Markers Window, New Marker, *(embedded markers toolbar)*, Position…,\n  Calculation…, Peak Search, Copy Marker To, Couple Markers, Copy to Clipboard, All Markers\n  Off.\n- **Utilities** — Macros…, Event-Based Actions…, Trend/Statistics…, General Preferences…, SCPI\n  Preferences…, Display Preferences…, Toolbars…, Manage Registers…, Licenses…, Extension\n  Manager….\n- **Window** — Output, SCPI Log, Event Log, Contexts, Block Diagram, Macros, Trace Layout, New\n  Trace Window, Resize Traces, Collect Traces.\n- **Help** — Help (F1), Dynamic Help, Getting Started, Demos, Examples, API Reference, SCPI\n  Reference, Support ▸, Privacy, About.",
+  "body": "**`REQ-UI-061` (P1) — Menu contents.** **[V]**\n\n- **File** — Recall (Setup / Recording / Trace / Layout / Demo), Preset ▸ (Measurement,\n  Measurement to Standard, Measurement to Defaults, Setup, Traces, Application and Traces,\n  Display Preferences, Toolbars, Factory Defaults), Save, Export, Print, Exit.\n  *Note: **\"Preset never changes the hardware setup\"** — preserve that separation.*\n- **Edit** — Copy (\"write the contents of a trace, marker readout, or trace hotspot to the\n  clipboard\"), Copy Markers, Paste.\n- **Hardware** — Instruments…, Configurations…, Rediscover, Analyzer, Frequency Reference…,\n  Calibration…, Disconnect, Source, Source Control…, Switch.\n- **Acquisition** — Data, Channels, Amplitude…, External Mixer…, Extended Settings…, Trigger…,\n  Segmented Capture…, Digital…, Gate Trigger…, Playback Trigger…, User Correction…, Player\n  Window, Recording/Playback…, Control ▸.\n- **Analysis** *(in order)* — Type, Properties…, Frequency…, ResBW…, Time…, Detectors…,\n  Conversion…, Average…, Heatmaps…, Measurements…, New Measurement, Duplicate Measurement.\n- **Trace** — Trace List, New Trace, *(embedded trace toolbar)*, Data; **Properties:** Format,\n  Coupling, Y Scale, X Scale, Average, Digital Demod; **Calculation:** Results Window, OBW…,\n  ACP…, Limit Tests…; then Spectrogram / Colour Map, Math Functions, Stimulus-Response / X-Y…,\n  Auto Scale, Overlay, Copy Trace.\n- **Marker** — Markers Window, New Marker, *(embedded markers toolbar)*, Position…,\n  Calculation…, Peak Search, Copy Marker To, Couple Markers, Copy to Clipboard, All Markers\n  Off.\n- **Utilities** — Macros…, Event-Based Actions…, Trend/Statistics…, General Preferences…, SCPI\n  Preferences…, Display Preferences…, Toolbars…, Manage Registers…, Licenses…, Extension\n  Manager….\n- **Window** — Output, SCPI Log, Event Log, Contexts, Block Diagram, Macros, Trace Layout, New\n  Trace Window, Resize Traces, Collect Traces.\n- **Help** — Help (F1), Dynamic Help, Getting Started, Demos, Examples, API Reference, SCPI\n  Reference, Support ▸, Privacy, About.\n\n**AC:** Every listed item is present under its listed menu, with the Analysis menu in the\nstated order, verified by walking the menu tree against this list; an item present in the\ntree but not in the list also fails, so the menus stay as specified rather than accreting.\nEach item is either enabled and functional or disabled with a reason — none is present and\ninert. **Preset never changes the hardware setup**: a test alters hardware configuration,\ninvokes each Preset variant, and asserts the hardware setup is unchanged while the targeted\nsettings are reset, since that separation is called out explicitly and is easy to lose.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2548
+  "line": 2873
  },
  {
   "id": "REQ-UI-062",
@@ -2746,14 +2746,14 @@
   "num": "062",
   "priority": "P2",
   "title": "Embedded toolbars inside menus",
-  "body": "**`REQ-UI-062` (P2) — Embedded toolbars inside menus.**\nThe **Trace** and **Marker** menus shall each host an embedded toolbar at the top — the trace\ntoolbar selects the active trace and adds/removes/hides traces; the markers toolbar does the\nsame for markers. **[V]**\n*A distinctive touch worth keeping: it puts the most frequent actions one click inside the\nmenu that owns them, rather than requiring a separate toolbar hunt.*",
+  "body": "**`REQ-UI-062` (P2) — Embedded toolbars inside menus.**\nThe **Trace** and **Marker** menus shall each host an embedded toolbar at the top — the trace\ntoolbar selects the active trace and adds/removes/hides traces; the markers toolbar does the\nsame for markers. **[V]**\n*A distinctive touch worth keeping: it puts the most frequent actions one click inside the\nmenu that owns them, rather than requiring a separate toolbar hunt.*\n**AC:** The Trace and Marker menus each contain a toolbar as their topmost element, not a\nlist of commands standing in for one. The trace toolbar selects the active trace and\nadds, removes and hides traces from within the open menu; the markers toolbar does the\nequivalent for markers. Acting on the embedded toolbar takes effect without first dismissing\nthe menu.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2578
+  "line": 2911
  },
  {
   "id": "REQ-UI-063",
@@ -2761,14 +2761,14 @@
   "num": "063",
   "priority": "P1",
   "title": "Toolbars",
-  "body": "**`REQ-UI-063` (P1) — Toolbars.**\nFive preconfigured toolbars, plus a macro-button bar: **[V]**\n\n| Toolbar | Contents |\n|---|---|\n| **Control** | **Restart** (\"starts a measurement or restarts one that was paused… all current measurement data including averaging is discarded\") · **Pause/Single** (\"pauses a running measurement; a second click single-steps when Sweep is Single, or continues when Continuous\") · **Single/Continuous Sweep** toggle · **Auto-range** — a **split button**: main click auto-ranges all input channels, dropdown auto-ranges a chosen channel |\n| **Marker Tools** | Radio group of mouse modes: **Pointer** → **Area Select** (\"select a rectangular area of any trace for closer examination\"; can scale X and/or Y, **or set centre frequency and span**) → **Marker** (click to place) → **Band Power** (drag left/right band limits) → **Time Gate** (isolate a portion of a time record) |\n| **Record** | **Record** · **Toggle Data Source** (hardware ↔ recording) · **Disconnect** (releases hardware from VSA control) |\n| **Trace / Block Diagram** | **Active Trace** (shows the active trace's **letter**) · **Trace Layout** dropdown · **Block Diagram** |\n| **Spectrogram / Colour Map** | **Spectrogram** · **Digital Persistence** · **Cumulative History** · **Enhance** · **Threshold** · **Map Colour Scheme** |\n| **Macro Buttons** | Managed by the macros utility; not user-editable through the toolbar customiser |",
+  "body": "**`REQ-UI-063` (P1) — Toolbars.**\nFive preconfigured toolbars, plus a macro-button bar: **[V]**\n\n| Toolbar | Contents |\n|---|---|\n| **Control** | **Restart** (\"starts a measurement or restarts one that was paused… all current measurement data including averaging is discarded\") · **Pause/Single** (\"pauses a running measurement; a second click single-steps when Sweep is Single, or continues when Continuous\") · **Single/Continuous Sweep** toggle · **Auto-range** — a **split button**: main click auto-ranges all input channels, dropdown auto-ranges a chosen channel |\n| **Marker Tools** | Radio group of mouse modes: **Pointer** → **Area Select** (\"select a rectangular area of any trace for closer examination\"; can scale X and/or Y, **or set centre frequency and span**) → **Marker** (click to place) → **Band Power** (drag left/right band limits) → **Time Gate** (isolate a portion of a time record) |\n| **Record** | **Record** · **Toggle Data Source** (hardware ↔ recording) · **Disconnect** (releases hardware from VSA control) |\n| **Trace / Block Diagram** | **Active Trace** (shows the active trace's **letter**) · **Trace Layout** dropdown · **Block Diagram** |\n| **Spectrogram / Colour Map** | **Spectrogram** · **Digital Persistence** · **Cumulative History** · **Enhance** · **Threshold** · **Map Colour Scheme** |\n| **Macro Buttons** | Managed by the macros utility; not user-editable through the toolbar customiser |\n\n**AC:** All six toolbars exist with the listed contents. Behaviours quoted from the reference\nproduct are tested, not just present: **Restart** discards current measurement data\n*including averaging*, asserted by a non-zero average count returning to zero; **Pause** then\na second click single-steps under Single sweep and continues under Continuous — both branches\ntested, since collapsing them is the likely shortcut. **Auto-range** is a split button whose\nmain click ranges all channels and whose dropdown ranges a chosen one. Marker Tools is a\nradio group: selecting one mouse mode deselects the others. **Area Select** can scale X, Y,\nor set centre frequency and span. The macro bar is not editable through the toolbar\ncustomiser.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2585
+  "line": 2923
  },
  {
   "id": "REQ-UI-064",
@@ -2776,14 +2776,14 @@
   "num": "064",
   "priority": "P2",
   "title": "Toolbar customisation",
-  "body": "**`REQ-UI-064` (P2) — Toolbar customisation.** Users shall be able to define custom toolbars\n(list of toolbars, control picker, contents editor), with reset via File > Preset > Toolbars.\n**[V]**",
+  "body": "**`REQ-UI-064` (P2) — Toolbar customisation.** Users shall be able to define custom toolbars\n(list of toolbars, control picker, contents editor), with reset via File > Preset > Toolbars.\n**[V]**\n**AC:** A custom toolbar can be created, populated from the control picker, reordered and\ndeleted, and survives a restart. File > Preset > Toolbars restores the five preconfigured\ntoolbars of `REQ-UI-063` to their default contents and removes custom ones. The macro-button\nbar is absent from the customiser per `REQ-UI-063`.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2597
+  "line": 2945
  },
  {
   "id": "REQ-UI-065",
@@ -2791,14 +2791,14 @@
   "num": "065",
   "priority": "P1",
   "title": "Keyboard shortcuts",
-  "body": "**`REQ-UI-065` (P1) — Keyboard shortcuts.**\nAdopt the reference product's bindings — they are muscle memory for existing users and cost\nnothing to match: **[V]**\n\n| Key | Action |\n|---|---|\n| **Space** | Pause / resume |\n| **Ctrl+Shift+Space** | Restart |\n| **Ctrl+N** | New trace |\n| **Ctrl+W** | Auto-scale |\n| **Ctrl+K** | Marker position |\n| **Ctrl+H** | Player window |\n| **Ctrl+O** | Output window |\n| **Ctrl+B** | Save bitmap |\n| **F1** | Context help |\n| **Ctrl+F1** | Dynamic help |\n| **Ctrl + `+` / `-`** | Window content scaling (`REQ-NFR-007a`) |",
+  "body": "**`REQ-UI-065` (P1) — Keyboard shortcuts.**\nAdopt the reference product's bindings — they are muscle memory for existing users and cost\nnothing to match: **[V]**\n\n| Key | Action |\n|---|---|\n| **Space** | Pause / resume |\n| **Ctrl+Shift+Space** | Restart |\n| **Ctrl+N** | New trace |\n| **Ctrl+W** | Auto-scale |\n| **Ctrl+K** | Marker position |\n| **Ctrl+H** | Player window |\n| **Ctrl+O** | Output window |\n| **Ctrl+B** | Save bitmap |\n| **F1** | Context help |\n| **Ctrl+F1** | Dynamic help |\n| **Ctrl + `+` / `-`** | Window content scaling (`REQ-NFR-007a`) |\n\n**AC:** Every listed binding invokes its listed action, driven through the input system rather\nthan by calling the command directly, so a binding that is declared but unreachable fails.\nNone is shadowed by a conflicting binding, asserted by a uniqueness check over the whole\nbinding table. Space pauses and resumes without stealing input from a focused text field —\nthe case that makes a bare-Space binding go wrong.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2601
+  "line": 2953
  },
  {
   "id": "REQ-UI-070",
@@ -2806,14 +2806,14 @@
   "num": "070",
   "priority": "P1",
   "title": "Tabbed, modeless, live dialogs",
-  "body": "**`REQ-UI-070` (P1) — Tabbed, modeless, live dialogs.**\nSetting dialogs shall be **tabbed, modeless, and live** — changing a parameter updates the\nmeasurement immediately, with no OK/Apply round-trip. **[V]**\n*This is why the hot-spot model and the dialogs coexist comfortably: both edit the same live\nstate, and neither blocks the display.*",
+  "body": "**`REQ-UI-070` (P1) — Tabbed, modeless, live dialogs.**\nSetting dialogs shall be **tabbed, modeless, and live** — changing a parameter updates the\nmeasurement immediately, with no OK/Apply round-trip. **[V]**\n*This is why the hot-spot model and the dialogs coexist comfortably: both edit the same live\nstate, and neither blocks the display.*\n**AC:** No setting dialog is modal: with one open, the measurement continues to update and\nthe main window remains interactive, including the hot-spot controls. Changing a parameter\napplies immediately — a test asserts the measurement reflects the new value with no OK or\nApply invoked, and that no such button exists on the dialog. Editing the same parameter from\na hot spot and from its dialog drives one piece of state: each surface reflects a change made\nfrom the other without needing to be reopened.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2621
+  "line": 2979
  },
  {
   "id": "REQ-UI-071",
@@ -2821,14 +2821,14 @@
   "num": "071",
   "priority": "P1",
   "title": "Dialog framework options",
-  "body": "**`REQ-UI-071` (P1) — Dialog framework options.**\nThe dialog framework shall expose, globally: **[V]**\n\n| Option | Values / behaviour |\n|---|---|\n| **Default Mode** | \"Tabs on top\" · \"Tabs on left\" · expanders vertical · expanders horizontal |\n| **Fixed Size** | Dialogs sized to the **largest tab they contain**, so switching tabs does not resize the window |\n| **Keep on Top** | Whether dialogs may go behind the main window |\n| **Persist Mode** | Dialogs reopen in the mode they were closed with, **across restarts** |\n| **Tabs Collapsed by Default** | Applies to \"Tabs on left\" only |\n\nIn WPF terms: a `TabControl` whose `TabStripPlacement` is user-switchable Top/Left, with an\nalternative `Expander`-stack rendering of identical content; the dialog measures to the union\nof all tabs; modeless with optional topmost.",
+  "body": "**`REQ-UI-071` (P1) — Dialog framework options.**\nThe dialog framework shall expose, globally: **[V]**\n\n| Option | Values / behaviour |\n|---|---|\n| **Default Mode** | \"Tabs on top\" · \"Tabs on left\" · expanders vertical · expanders horizontal |\n| **Fixed Size** | Dialogs sized to the **largest tab they contain**, so switching tabs does not resize the window |\n| **Keep on Top** | Whether dialogs may go behind the main window |\n| **Persist Mode** | Dialogs reopen in the mode they were closed with, **across restarts** |\n| **Tabs Collapsed by Default** | Applies to \"Tabs on left\" only |\n\nIn WPF terms: a `TabControl` whose `TabStripPlacement` is user-switchable Top/Left, with an\nalternative `Expander`-stack rendering of identical content; the dialog measures to the union\nof all tabs; modeless with optional topmost.\n\n**AC:** All four Default Modes render the same content and every control reachable in one is\nreachable in the others. With **Fixed Size** on, switching between tabs leaves the dialog's\nouter bounds unchanged and the size equals the union of all tabs, so the largest tab is not\nclipped. **Keep on Top** governs whether the dialog can fall behind the main window, tested\nboth ways. **Persist Mode** restores the mode a dialog was closed in across an application\nrestart, not merely within a session. **Tabs Collapsed by Default** applies under \"Tabs on\nleft\" and is inert under the others.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2627
+  "line": 2991
  },
  {
   "id": "REQ-UI-072",
@@ -2836,14 +2836,14 @@
   "num": "072",
   "priority": "P1",
   "title": "Analysis (MeasSetup) tab set",
-  "body": "**`REQ-UI-072` (P1) — Analysis (MeasSetup) tab set.**\n**Frequency | ResBW | Time | Detectors | Conversion | Average | Heatmaps**. **[V]**",
+  "body": "**`REQ-UI-072` (P1) — Analysis (MeasSetup) tab set.**\n**Frequency | ResBW | Time | Detectors | Conversion | Average | Heatmaps**. **[V]**\n**AC:** The Analysis dialog contains exactly these seven tabs, with these names, in this\norder, and no others. Each tab hosts the settings its name implies and each is populated —\nnone is a placeholder. The dialog obeys the `REQ-UI-070` and `REQ-UI-071` framework rules.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2642
+  "line": 3014
  },
  {
   "id": "REQ-UI-073",
@@ -2851,14 +2851,14 @@
   "num": "073",
   "priority": "P1",
   "title": "Display Preferences tab set",
-  "body": "**`REQ-UI-073` (P1) — Display Preferences tab set.**\n**Trace | Colour | User Map Colour | Font | Window**. **[V]** *(There is no separate\nGeneral/Theme/Appearance tab — theming lives under Window and Colour.)*",
+  "body": "**`REQ-UI-073` (P1) — Display Preferences tab set.**\n**Trace | Colour | User Map Colour | Font | Window**. **[V]** *(There is no separate\nGeneral/Theme/Appearance tab — theming lives under Window and Colour.)*\n**AC:** The Display Preferences dialog contains exactly these five tabs and no others — a\ntest fails on a tab named General, Theme or Appearance, since adding one is the natural\ninstinct and would split theming away from Colour and Window where this specification places\nit. Colour exposes the `REQ-UI-022` element set, User Map Colour the `REQ-UI-024` user map,\nand Font the three slots of `REQ-UI-080`. Changes made here persist per `REQ-UI-014`.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2645
+  "line": 3020
  },
  {
   "id": "REQ-UI-080",
@@ -2866,15 +2866,15 @@
   "num": "080",
   "priority": "P1",
   "title": "Font slots",
-  "body": "**`REQ-UI-080` (P1) — Font slots.**\nThe reference product exposes exactly **two** font slots: **Annotation** (\"font for Trace\nwindows\") and **Marker** (\"font for Marker window\"), applied globally. **[V]**\nOpenVSA shall provide these two **plus a third, Tabular**, for the symbol table and error\nsummary — because those require a fixed-width face while general trace annotation reads better\nproportional, and the reference product's two-slot scheme forces an unhappy compromise there\n(`REQ-UI-052`).\n**[U] Default typeface and size are unpublished.** Recommended: **Segoe UI 9 pt** for chrome\nand annotation, **Consolas 9 pt** for Markers, symbol table and error summary.",
+  "body": "**`REQ-UI-080` (P1) — Font slots.**\nThe reference product exposes exactly **two** font slots: **Annotation** (\"font for Trace\nwindows\") and **Marker** (\"font for Marker window\"), applied globally. **[V]**\nOpenVSA shall provide these two **plus a third, Tabular**, for the symbol table and error\nsummary — because those require a fixed-width face while general trace annotation reads better\nproportional, and the reference product's two-slot scheme forces an unhappy compromise there\n(`REQ-UI-052`).\n**[U] Default typeface and size are unpublished.** Recommended: **Segoe UI 9 pt** for chrome\nand annotation, **Consolas 9 pt** for Markers, symbol table and error summary.\n**AC:** Exactly three font slots exist — Annotation, Marker and Tabular — each independently\nsettable from the Font tab of `REQ-UI-073` and each applied globally to its own surfaces.\nSetting one leaves the other two unchanged. Marker and Tabular resolve to fixed-width\ntypefaces by default, asserted on the resolved face's pitch; Annotation may be proportional.\nThe symbol table and error summary of `REQ-UI-052` draw from Tabular, not Annotation, which\nis the whole reason the third slot exists. Defaults are Segoe UI 9 pt and Consolas 9 pt, with\na documented fallback where either is unavailable.",
   "phase": 1,
   "evidence": [
    "verified",
    "unverified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2651
+  "line": 3031
  },
  {
   "id": "REQ-UI-081",
@@ -2882,14 +2882,14 @@
   "num": "081",
   "priority": "P2",
   "title": "Theming and the honest answer to \"what era does it look like\"",
-  "body": "**`REQ-UI-081` (P2) — Theming and the honest answer to \"what era does it look like\".**\nThe reference product themes its chrome with stock Windows and Office shells, and the\navailable theme list is the clearest single statement of its visual era: **[V]**\n\n`AeroNormalColor · Classic · HighContrast · LunaHomestead · LunaMetallic · LunaNormalColor ·\nOffice2007Black · Office2007Blue · Office2007Silver · Office2010Black · Office2010Blue ·\nOffice2010Silver · RoyaleNormalColor`\n\nLuna = Windows XP, Royale = Server 2003/Media Center, Aero = Vista/7, Office2007/2010 = the\nribbon-era Office skins. **It is a Win32/WinForms docking application skinned with a\nthird-party UI suite — visually an Office 2007/2010-era program, not a WPF-native or\nFluent-era one.** Themes style **chrome only**; the graticule and traces are governed entirely\nby the colour settings of §13.3.",
+  "body": "**`REQ-UI-081` (P2) — Theming and the honest answer to \"what era does it look like\".**\nThe reference product themes its chrome with stock Windows and Office shells, and the\navailable theme list is the clearest single statement of its visual era: **[V]**\n\n`AeroNormalColor · Classic · HighContrast · LunaHomestead · LunaMetallic · LunaNormalColor ·\nOffice2007Black · Office2007Blue · Office2007Silver · Office2010Black · Office2010Blue ·\nOffice2010Silver · RoyaleNormalColor`\n\nLuna = Windows XP, Royale = Server 2003/Media Center, Aero = Vista/7, Office2007/2010 = the\nribbon-era Office skins. **It is a Win32/WinForms docking application skinned with a\nthird-party UI suite — visually an Office 2007/2010-era program, not a WPF-native or\nFluent-era one.** Themes style **chrome only**; the graticule and traces are governed entirely\nby the colour settings of §13.3.\n\n**AC:** This requirement is documentary — it records the reference product's visual era so\n`REQ-UI-082` can depart from it deliberately. What is testable is the separation it states:\nswitching theme changes chrome only, and every colour of `REQ-UI-022` — graticule, traces,\nannotation, backgrounds — samples identically before and after a theme change. A theme that\nalters a plot-surface colour fails. OpenVSA ships the themes of `REQ-UI-082`, not the listed\nLuna/Royale/Office set, which is quoted here as evidence rather than as a requirement.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2661
+  "line": 3048
  },
  {
   "id": "REQ-UI-082",
@@ -2897,14 +2897,14 @@
   "num": "082",
   "priority": "P2",
   "title": "OpenVSA's own visual direction",
-  "body": "**`REQ-UI-082` (P2) — OpenVSA's own visual direction.** **[DESIGN CHOICE]**\nOpenVSA shall *not* reproduce the Office-2007 chrome. It shall adopt a clean, neutral modern\nWindows appearance (light and dark themes, per `REQ-UI-013`… see `REQ-UI-090`) while\nreproducing exactly the parts that carry meaning: the three-zone plot layout, the annotation\npositions, the marker glyphs, the indicator strings, the error-summary text form, and above all\nthe hot-spot interaction. **Fidelity is owed to the interaction model and the information\ndesign, not to a fifteen-year-old button style.**",
+  "body": "**`REQ-UI-082` (P2) — OpenVSA's own visual direction.** **[DESIGN CHOICE]**\nOpenVSA shall *not* reproduce the Office-2007 chrome. It shall adopt a clean, neutral modern\nWindows appearance (light and dark themes, per `REQ-UI-013`… see `REQ-UI-090`) while\nreproducing exactly the parts that carry meaning: the three-zone plot layout, the annotation\npositions, the marker glyphs, the indicator strings, the error-summary text form, and above all\nthe hot-spot interaction. **Fidelity is owed to the interaction model and the information\ndesign, not to a fifteen-year-old button style.**\n**AC:** The chrome is not Office-2007: no theme reproducing that skin ships, and the theme\nlist is the light/dark/high-contrast set of `REQ-UI-090`. The parts named as load-bearing are\neach covered by their own criteria and all must pass — three-zone layout (`REQ-UI-010`),\nannotation positions (`REQ-UI-040`), marker glyphs (`REQ-UI-030`), indicator strings\n(`REQ-UI-041`), error-summary text form (`REQ-UI-053`) and the hot-spot interaction. This\nrequirement is met when those pass under a modern chrome, which is what distinguishes a\ndeliberate visual departure from an incomplete implementation.",
   "phase": 1,
   "evidence": [
    "design-choice"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2675
+  "line": 3069
  },
  {
   "id": "REQ-UI-090",
@@ -2912,12 +2912,12 @@
   "num": "090",
   "priority": "P2",
   "title": "Themes and accessibility of colour",
-  "body": "**`REQ-UI-090` (P2) — Themes and accessibility of colour.**\nLight and dark themes shall be provided, with trace colours distinguishable without relying on\nhue alone (differing also in luminance and, optionally, dash pattern), and a high-contrast\ntheme shall be supported.",
+  "body": "**`REQ-UI-090` (P2) — Themes and accessibility of colour.**\nLight and dark themes shall be provided, with trace colours distinguishable without relying on\nhue alone (differing also in luminance and, optionally, dash pattern), and a high-contrast\ntheme shall be supported.\n**AC:** Light, dark and high-contrast themes are all selectable, and switching between them\nrequires no restart. In each theme, every adjacent pair in the 20-entry trace colour table of\n`REQ-UI-020` differs in relative luminance by a stated minimum as well as in hue, so the\ntable is checked numerically rather than by eye; simulating the common forms of colour\nvision deficiency leaves every pair distinguishable, optionally with the aid of dash pattern.\nTrace and annotation contrast against `TraceBackground` meets a stated contrast ratio in all\nthree themes. The high-contrast theme follows the system high-contrast setting when one is\nactive.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2683
+  "line": 3084
  },
  {
   "id": "REQ-UI-091",
@@ -2930,7 +2930,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2688
+  "line": 3097
  },
  {
   "id": "REQ-STA-001",
@@ -2938,14 +2938,14 @@
   "num": "001",
   "priority": "P0",
   "title": "Setup save and recall",
-  "body": "**`REQ-STA-001` (P0) — Setup save and recall.**\nA saved state shall contain, matching the reference product's documented content:\nmeasurement type, frequency and span, trigger configuration, resolution bandwidth, input\nsettings (range, coupling, digital, trigger, external mixer), analysis parameters, trace\nwindow positions, trace data and overlay state, trace display properties (format, X/Y\nscaling, digital demodulation configuration, spectrogram settings), marker types, positions\nand calculations, and source parameters. **[V]**",
+  "body": "**`REQ-STA-001` (P0) — Setup save and recall.**\nA saved state shall contain, matching the reference product's documented content:\nmeasurement type, frequency and span, trigger configuration, resolution bandwidth, input\nsettings (range, coupling, digital, trigger, external mixer), analysis parameters, trace\nwindow positions, trace data and overlay state, trace display properties (format, X/Y\nscaling, digital demodulation configuration, spectrogram settings), marker types, positions\nand calculations, and source parameters. **[V]**\n**AC:** A state is saved from a configuration in which every listed item has been set away\nfrom its default, the application is reset, and the state recalled: each listed item returns\nto its saved value. The check enumerates the list rather than sampling it, so an item added\nto the state model without save/recall support fails. Recall is complete before the first\npost-recall acquisition, so the first trace reflects the recalled settings rather than the\nprevious ones.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2752
+  "line": 3161
  },
  {
   "id": "REQ-STA-002",
@@ -2953,14 +2953,14 @@
   "num": "002",
   "priority": "P1",
   "title": "Documented exclusions",
-  "body": "**`REQ-STA-002` (P1) — Documented exclusions.**\nA state shall **not** contain recordings, math functions, data registers or display\npreferences; these shall be saved and recalled independently. **[V]** The save dialog shall\nstate this explicitly rather than leaving users to discover it.",
+  "body": "**`REQ-STA-002` (P1) — Documented exclusions.**\nA state shall **not** contain recordings, math functions, data registers or display\npreferences; these shall be saved and recalled independently. **[V]** The save dialog shall\nstate this explicitly rather than leaving users to discover it.\n**AC:** With a recording loaded, math functions defined, data registers populated and display\npreferences changed, saving and recalling a state leaves all four untouched — neither\ncaptured into the state nor cleared by the recall, both of which are failures. Each is\nseparately saveable and recallable through its own command. The save dialog names these four\nexclusions in its own text, so the user is told rather than left to find out.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2760
+  "line": 3175
  },
  {
   "id": "REQ-STA-003",
@@ -2975,7 +2975,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2765
+  "line": 3185
  },
  {
   "id": "REQ-STA-004",
@@ -2983,14 +2983,14 @@
   "num": "004",
   "priority": "P1",
   "title": "Context-name matching on recall",
-  "body": "**`REQ-STA-004` (P1) — Context-name matching on recall.**\nRecalling a multi-measurement state shall match measurements to existing contexts by name,\nraising a specific, actionable error on mismatch rather than partially applying. **[V]**",
+  "body": "**`REQ-STA-004` (P1) — Context-name matching on recall.**\nRecalling a multi-measurement state shall match measurements to existing contexts by name,\nraising a specific, actionable error on mismatch rather than partially applying. **[V]**\n**AC:** Recalling a multi-measurement state into an application whose contexts carry the same\nnames restores each measurement to its own context. Where a name does not match, the recall\nis refused as a whole and the pre-recall configuration is intact — asserted by comparing full\nconfiguration before and after the failed recall, since a partial apply is the failure mode\nthis exists to prevent. The error names the context or contexts that did not match and what\nwas expected, rather than reporting a generic recall failure.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2773
+  "line": 3193
  },
  {
   "id": "REQ-STA-005",
@@ -2998,12 +2998,12 @@
   "num": "005",
   "priority": "P2",
   "title": "Presets",
-  "body": "**`REQ-STA-005` (P2) — Presets.** A factory preset returning all settings to documented\ndefaults, plus user-definable presets.",
+  "body": "**`REQ-STA-005` (P2) — Presets.** A factory preset returning all settings to documented\ndefaults, plus user-definable presets.\n**AC:** Factory preset returns every setting to the default this specification documents for\nit, enumerated over the settings model so a setting whose default is undocumented fails the\ntest rather than passing unnoticed. It leaves the hardware setup alone per `REQ-UI-061`.\nUser-defined presets can be created, applied and deleted, survive a restart, and applying one\nis equivalent to recalling the state it was captured from.",
   "phase": 1,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 2777
+  "line": 3203
  },
  {
   "id": "REQ-API-001",
@@ -3018,7 +3018,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2784
+  "line": 3215
  },
  {
   "id": "REQ-API-002",
@@ -3031,7 +3031,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2798
+  "line": 3229
  },
  {
   "id": "REQ-API-003",
@@ -3046,7 +3046,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2804
+  "line": 3235
  },
  {
   "id": "REQ-API-004",
@@ -3059,7 +3059,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2810
+  "line": 3241
  },
  {
   "id": "REQ-API-005",
@@ -3074,7 +3074,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2814
+  "line": 3245
  },
  {
   "id": "REQ-API-006",
@@ -3089,7 +3089,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2818
+  "line": 3249
  },
  {
   "id": "REQ-API-007",
@@ -3104,7 +3104,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2823
+  "line": 3254
  },
  {
   "id": "REQ-NFR-030",
@@ -3117,7 +3117,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2835
+  "line": 3266
  },
  {
   "id": "REQ-NFR-031",
@@ -3130,7 +3130,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2836
+  "line": 3267
  },
  {
   "id": "REQ-NFR-032",
@@ -3143,7 +3143,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2837
+  "line": 3268
  },
  {
   "id": "REQ-NFR-033",
@@ -3156,7 +3156,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2838
+  "line": 3269
  },
  {
   "id": "REQ-NFR-034",
@@ -3169,7 +3169,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2839
+  "line": 3270
  },
  {
   "id": "REQ-NFR-035",
@@ -3182,7 +3182,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2840
+  "line": 3271
  },
  {
   "id": "REQ-NFR-036",
@@ -3195,7 +3195,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2841
+  "line": 3272
  },
  {
   "id": "REQ-NFR-037",
@@ -3208,7 +3208,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2842
+  "line": 3273
  },
  {
   "id": "REQ-NFR-040",
@@ -3221,7 +3221,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2843
+  "line": 3274
  },
  {
   "id": "REQ-NFR-041",
@@ -3234,7 +3234,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2844
+  "line": 3275
  },
  {
   "id": "REQ-NFR-042",
@@ -3247,7 +3247,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2845
+  "line": 3276
  },
  {
   "id": "REQ-NFR-038",
@@ -3260,7 +3260,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2846
+  "line": 3277
  },
  {
   "id": "REQ-NFR-039",
@@ -3273,7 +3273,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2847
+  "line": 3278
  },
  {
   "id": "REQ-LIC-001",
@@ -3288,7 +3288,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2877
+  "line": 3308
  },
  {
   "id": "REQ-LIC-002",
@@ -3303,7 +3303,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2883
+  "line": 3314
  },
  {
   "id": "REQ-LIC-003",
@@ -3318,7 +3318,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2887
+  "line": 3318
  },
  {
   "id": "REQ-LIC-004",
@@ -3331,7 +3331,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2891
+  "line": 3322
  },
  {
   "id": "REQ-TST-001",
@@ -3344,7 +3344,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2904
+  "line": 3335
  },
  {
   "id": "REQ-TST-002",
@@ -3357,7 +3357,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2919
+  "line": 3350
  },
  {
   "id": "REQ-TST-003",
@@ -3370,7 +3370,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2946
+  "line": 3377
  },
  {
   "id": "REQ-TST-004",
@@ -3383,7 +3383,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2954
+  "line": 3385
  },
  {
   "id": "REQ-TST-004a",
@@ -3396,7 +3396,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2961
+  "line": 3392
  },
  {
   "id": "REQ-TST-005",
@@ -3409,7 +3409,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2971
+  "line": 3402
  },
  {
   "id": "REQ-TST-006",
@@ -3422,7 +3422,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2977
+  "line": 3408
  },
  {
   "id": "REQ-TST-007",
@@ -3435,7 +3435,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2981
+  "line": 3412
  },
  {
   "id": "REQ-TST-008",
@@ -3448,7 +3448,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2984
+  "line": 3415
  },
  {
   "id": "REQ-TST-009",
@@ -3461,7 +3461,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2987
+  "line": 3418
  },
  {
   "id": "REQ-PLN-001",
@@ -3474,6 +3474,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 3017
+  "line": 3448
  }
 ]
