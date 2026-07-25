@@ -42,7 +42,7 @@ namespace OpenVSA.Hal.Visa
         /// a scan whether an instrument is there or not, so discovery would report a full bus of
         /// imaginary equipment.
         /// </remarks>
-        public const string DefaultResource = "GPIB0::18::INSTR";
+        public const string DefaultResource = "GPIB0::17::INSTR";
 
         /// <summary><c>appSettings</c> key naming the VISA resource to open.</summary>
         public const string ResourceSettingKey = "OpenVSA.Visa.E4406A.Resource";
@@ -123,6 +123,13 @@ namespace OpenVSA.Hal.Visa
 
             try
             {
+                // Take the instrument as found, not as hoped. A device clear abandons any transfer
+                // in progress and empties the output queue; *CLS then clears the status registers.
+                // Without this, a previous program that left a query unread makes the first command
+                // here fail with -410, and the error names this driver rather than the cause.
+                session.Clear();
+                Send(session, E4406ACommands.ClearStatus);
+
                 DisplayName = Send(session, E4406ACommands.Identify, query: true);
 
                 Send(session, E4406ACommands.SelectBasicMode);
@@ -132,6 +139,7 @@ namespace OpenVSA.Hal.Visa
                 Send(session, E4406ACommands.SingleMeasurement);
                 Send(session, E4406ACommands.FlatTopFilter);
                 Send(session, E4406ACommands.AveragingOff);
+                Send(session, E4406ACommands.AutoAdcRange);
                 Send(session, E4406ACommands.DisableDisplay);
 
                 _capabilities = ProbeCapabilities(session);
@@ -302,7 +310,6 @@ namespace OpenVSA.Hal.Visa
             IInstrumentSession session = RequireSession();
 
             Send(session, E4406ACommands.SetCenterFrequency(plan.CenterFrequencyHz));
-            Send(session, E4406ACommands.SetReferenceLevel(plan.ReferenceLevelDbm));
             Send(session, E4406ACommands.SetBandwidth(plan.SpanHz));
 
             // Read back before computing the capture length: the instrument may not have honoured
@@ -404,7 +411,7 @@ namespace OpenVSA.Hal.Visa
                 source: Id,
                 extended: new Dictionary<string, object>
                 {
-                    { UsableBandwidthKey, _actualBandwidthHz },
+                    { IqBlockMetadata.UsableBandwidthKey, _actualBandwidthHz },
                     { ResourceKey, _resourceName },
                 });
 
@@ -472,8 +479,6 @@ namespace OpenVSA.Hal.Visa
             double minSpan = QueryDouble(session, E4406ACommands.BandwidthLimit(false));
             double maxSpan = QueryDouble(session, E4406ACommands.BandwidthLimit(true));
             double maxSweep = QueryDouble(session, E4406ACommands.SweepTimeLimit(true));
-            double minLevel = QueryDouble(session, E4406ACommands.ReferenceLevelLimit(false));
-            double maxLevel = QueryDouble(session, E4406ACommands.ReferenceLevelLimit(true));
 
             // The sample period at the widest bandwidth, which is the only way to learn this
             // instrument's rate-to-bandwidth relationship without assuming one.
@@ -486,7 +491,12 @@ namespace OpenVSA.Hal.Visa
                 maxSpan,
                 apertureAtMaxSpan > 0.0 ? 1.0 / apertureAtMaxSpan : maxSpan,
                 maxSweep,
-                new AmplitudeRange(minLevel, maxLevel));
+
+                // The display reference level, not a commanded input range: this instrument
+                // auto-ranges its attenuator in Basic mode, and its reference-level command is
+                // documented as belonging to the other modes. The upper bound is the instrument's
+                // own damage limit — "external attenuation required above 30 dBm".
+                new AmplitudeRange(-100.0, 30.0));
         }
 
         private void ReportCoercions(AcquisitionPlan plan)

@@ -17,6 +17,27 @@ namespace OpenVSA.Core
     /// </remarks>
     public readonly struct IqBlockMetadata
     {
+        /// <summary>
+        /// <see cref="Extended"/> key carrying the alias-free bandwidth of a block, in hertz.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// How much of the sample rate is usable is a property of the front end's decimation
+        /// filter, not a law of the product. <c>REQ-ACQ-001</c>'s <c>Fs = 1.28 · Span</c> describes
+        /// the reference product; a real instrument may differ — an E4406A digitises at 1.5 times
+        /// its information bandwidth — and a display that assumed the product's figure would draw
+        /// the filter's roll-off as though it were measurement data.
+        /// </para>
+        /// <para>
+        /// A front end that knows its alias-free bandwidth states it here. One that does not says
+        /// nothing, and the consumer falls back to the product law. Declared as a constant rather
+        /// than left as a string literal in two assemblies, because a key spelled differently at
+        /// either end fails by being silently absent.
+        /// </para>
+        /// </remarks>
+        public const string UsableBandwidthKey = "UsableBandwidthHz";
+
+
         /// <summary>Number of complex samples. The interleaved buffer holds twice this many floats.</summary>
         public readonly int SampleCount;
 

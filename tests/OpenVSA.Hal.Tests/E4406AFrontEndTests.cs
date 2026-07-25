@@ -80,8 +80,28 @@ namespace OpenVSA.Hal.Tests
                 Assert.Equal(3e9, caps.CenterFrequencyRange.MaxHz, 3);
                 Assert.Equal(10.0, caps.MinSpanHz, 3);
                 Assert.Equal(4e6, caps.MaxSpanHz, 3);
-                Assert.Equal(-40.0, caps.ReferenceLevelRange.MinDbm, 3);
-                Assert.Equal(10.0, caps.ReferenceLevelRange.MaxDbm, 3);
+            }
+        }
+
+        [Fact]
+        public async Task TheReferenceLevelIsADisplayRangeBecauseBasicModeAutoRangesTheInput()
+        {
+            // Found on real hardware: [:SENSe]:POWer[:RF]:RANGe[:UPPer] is documented as needing
+            // "the Service, cdmaOne, EDGE(w/GSM), GSM, NADC, PDC, cdma2000, or W-CDMA (3GPP)
+            // mode", and Basic is not among them - sent in Basic mode the instrument does not
+            // answer at all. So the attenuator is left on auto and no reference level is commanded.
+            var instrument = new FakeE4406A();
+
+            using (E4406AFrontEnd frontEnd = Connected(instrument))
+            {
+                await Task.Yield();
+
+                Assert.Contains(":SENSe:WAVeform:ADC:RANGe AUTO", frontEnd.Sent);
+                Assert.DoesNotContain(
+                    frontEnd.Sent, c => c.StartsWith(":SENSe:POWer:RF:RANGe", StringComparison.Ordinal));
+
+                // The instrument's own damage limit: "external attenuation required above 30 dBm".
+                Assert.Equal(30.0, frontEnd.Capabilities.ReferenceLevelRange.MaxDbm, 3);
             }
         }
 

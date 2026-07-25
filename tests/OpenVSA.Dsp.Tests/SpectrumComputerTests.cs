@@ -108,6 +108,50 @@ namespace OpenVSA.Dsp.Tests
         }
 
         [Fact]
+        public void AFrontEndsOwnUsableBandwidthBeatsTheProductLaw()
+        {
+            // Found against a real E4406A: it digitises at 1.5x its information bandwidth, not the
+            // product's 1.28x, so trimming by the law showed 11.72 MHz of axis where only 10 MHz
+            // was alias-free - 1.7 MHz of the anti-alias filter's roll-off drawn as measurement
+            // data. A front end that knows its usable bandwidth says so, and it wins.
+            const int length = 1024;
+            const double sampleRate = 15e6;
+            const double usable = 10e6;
+
+            using (IqBlock block = Tone(
+                length, sampleRate, 1e9, 0, 0.0, isBaseband: false, usableBandwidthHz: usable))
+            {
+                var computer = new SpectrumComputer { TrimToAnalysisSpan = true };
+                SpectrumFrame frame = computer.Compute(block);
+
+                // Never wider than the instrument says is alias-free, and within a bin of it: the
+                // usable bandwidth is not generally a whole number of bins, and the axis is
+                // symmetric, so it lands on the nearest odd count that fits inside.
+                Assert.True(
+                    frame.SpanHz <= usable && usable - frame.SpanHz <= 2.0 * frame.BinWidthHz,
+                    "Axis is " + frame.SpanHz + " Hz against a usable bandwidth of " + usable + " Hz.");
+                Assert.True(
+                    frame.SpanHz < sampleRate / AcquisitionLaw.ComplexZoomFactor,
+                    "The product law would have shown a wider axis than the instrument can support.");
+            }
+        }
+
+        [Fact]
+        public void WithoutADeclaredBandwidthTheProductLawStillApplies()
+        {
+            // A front end that says nothing gets REQ-ACQ-001's relationship, which is the right
+            // default for one built to the product's own acquisition law.
+            using (IqBlock block = Tone(8192, 12.8e6, 1e9, 0, 0.0, isBaseband: false))
+            {
+                var computer = new SpectrumComputer { TrimToAnalysisSpan = true };
+                SpectrumFrame frame = computer.Compute(block);
+
+                Assert.Equal(6401, frame.PointCount);
+                Assert.Equal(10e6, frame.SpanHz, 3);
+            }
+        }
+
+        [Fact]
         public void ABlockTooShortForAnAvailablePointCountIsShownWhole()
         {
             // 32 points would trim to 26, which is not a count any setting could ask for
@@ -249,8 +293,14 @@ namespace OpenVSA.Dsp.Tests
             double centerFrequencyHz,
             int bin,
             double amplitude,
-            bool isBaseband)
+            bool isBaseband,
+            double usableBandwidthHz = 0.0)
         {
+            var extended = usableBandwidthHz > 0.0
+                ? new System.Collections.Generic.Dictionary<string, object>
+                    { { IqBlockMetadata.UsableBandwidthKey, usableBandwidthHz } }
+                : null;
+
             var metadata = new IqBlockMetadata(
                 sampleCount: count,
                 sampleRateHz: sampleRateHz,
@@ -263,7 +313,7 @@ namespace OpenVSA.Dsp.Tests
                 triggerOffsetSeconds: 0.0,
                 triggerCorrectionsApplied: true,
                 source: new FrontEndId("test"),
-                extended: null);
+                extended: extended);
 
             IqBlock block = IqBlock.Rent(metadata);
             Span<float> samples = block.GetSamples();

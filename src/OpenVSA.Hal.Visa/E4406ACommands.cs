@@ -19,6 +19,17 @@ namespace OpenVSA.Hal.Visa
         /// <summary>Identification query.</summary>
         public const string Identify = "*IDN?";
 
+        /// <summary>
+        /// Clears the status registers and, with a device clear before it, the output queue.
+        /// </summary>
+        /// <remarks>
+        /// Sent before anything else, because the instrument is not necessarily as the last
+        /// program left it. A query whose response was never read leaves a reply waiting, and the
+        /// next command then earns <c>-410 Query INTERRUPTED</c> — which looks like a fault in
+        /// whatever command happened to be sent first rather than in the program that walked away.
+        /// </remarks>
+        public const string ClearStatus = "*CLS";
+
         /// <summary>Selects Basic mode, in which the waveform (time-domain) measurement lives.</summary>
         public const string SelectBasicMode = ":INSTrument:SELect BASIC";
 
@@ -105,13 +116,34 @@ namespace OpenVSA.Hal.Visa
         public static string SweepTimeLimit(bool maximum) =>
             ":SENSe:WAVeform:SWEep:TIME? " + (maximum ? "MAX" : "MIN");
 
-        /// <summary>Sets the input range's upper limit, in dBm.</summary>
-        public static string SetReferenceLevel(double dbm) =>
-            ":SENSe:POWer:RF:RANGe:UPPer " + Number(dbm) + " dBm";
+        /// <summary>
+        /// Lets the instrument set its own input attenuation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The reference level is not commandable in Basic mode, and asking cost a
+        /// timeout to discover.</strong> <c>[:SENSe]:POWer[:RF]:RANGe[:UPPer]</c> — "maximum
+        /// expected total power level at the radio unit under test" — is documented as requiring
+        /// "the Service, cdmaOne, EDGE(w/GSM), GSM, NADC, PDC, cdma2000, or W-CDMA (3GPP) mode",
+        /// and Basic is not among them. Sent in Basic mode the instrument does not answer at all.
+        /// </para>
+        /// <para>
+        /// <c>[:SENSe]:POWer[:RF]:ATTenuation:AUTO</c> is documented too, and this firmware
+        /// (A.08.10) rejects it with <c>-113 Undefined header</c> — so the manual is not a
+        /// substitute for asking the instrument. What Basic mode does have is the waveform
+        /// measurement's own ADC ranging, which is what auto-ranges the digitiser here, and its
+        /// factory default is already AUTO. Setting it explicitly makes the driver's assumption
+        /// visible rather than inherited from whatever the last user left behind.
+        /// </para>
+        /// <para>
+        /// So the input range is left to the instrument, and OpenVSA's reference level stays what
+        /// it is for a front end that returns volts: the top of the graticule.
+        /// </para>
+        /// </remarks>
+        public const string AutoAdcRange = ":SENSe:WAVeform:ADC:RANGe AUTO";
 
-        /// <summary>Queries an input-range limit.</summary>
-        public static string ReferenceLevelLimit(bool maximum) =>
-            ":SENSe:POWer:RF:RANGe:UPPer? " + (maximum ? "MAX" : "MIN");
+        /// <summary>Queries the input attenuation actually in use, in dB.</summary>
+        public const string Attenuation = ":SENSe:POWer:RF:ATTenuation?";
 
         /// <summary>Takes a measurement and returns the raw I/Q trace, interleaved, in volts.</summary>
         public const string ReadIqTrace = ":READ:WAVeform0?";

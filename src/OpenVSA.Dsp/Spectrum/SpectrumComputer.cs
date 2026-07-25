@@ -176,9 +176,39 @@ namespace OpenVSA.Dsp.Spectrum
             AmplitudeScale scale = _amplitudeChain.ScaleFor(block, _window, n);
             double binWidth = block.SampleRateHz / n;
 
+            double usableBandwidth = UsableBandwidthOf(block);
+
             return block.IsBaseband
-                ? OneSided(block, scratch, n, scale, binWidth)
-                : TwoSided(block, scratch, n, scale, binWidth);
+                ? OneSided(block, scratch, n, scale, binWidth, usableBandwidth)
+                : TwoSided(block, scratch, n, scale, binWidth, usableBandwidth);
+        }
+
+        /// <summary>
+        /// The alias-free bandwidth a block declares, or 0 if it declares none.
+        /// </summary>
+        /// <param name="block">The block.</param>
+        /// <remarks>
+        /// A front end that knows how much of its sample rate is usable says so; the product's
+        /// <c>Fs = 1.28 · Span</c> is then not consulted, because it describes the reference
+        /// product rather than the instrument that produced this block.
+        /// </remarks>
+        private static double UsableBandwidthOf(IqBlock block)
+        {
+            object declared;
+
+            if (block.Extended == null ||
+                !block.Extended.TryGetValue(IqBlockMetadata.UsableBandwidthKey, out declared))
+            {
+                return 0.0;
+            }
+
+            if (!(declared is double))
+            {
+                return 0.0;
+            }
+
+            var bandwidth = (double)declared;
+            return bandwidth > 0.0 && !double.IsInfinity(bandwidth) ? bandwidth : 0.0;
         }
 
         /// <summary>
@@ -191,11 +221,31 @@ namespace OpenVSA.Dsp.Spectrum
         /// unavailable count would put a point count on screen that no setting could have asked
         /// for, and the honest thing at that size is to show what there is.
         /// </remarks>
-        private int DisplayPointsFor(int transformLength, AnalysisPath path)
+        private int DisplayPointsFor(
+            int transformLength, AnalysisPath path, double usableBandwidthHz, double binWidthHz)
         {
             if (!TrimToAnalysisSpan)
             {
                 return 0;
+            }
+
+            if (usableBandwidthHz > 0.0 && binWidthHz > 0.0)
+            {
+                // The instrument's own figure wins. It is not required to land on an available
+                // point count - REQ-DSP-022's ladder describes what a measurement may be *asked*
+                // for, and this is what a particular instrument actually delivered.
+                //
+                // Rounded down, never up: the bandwidth is the width the front end says is
+                // alias-free, so a display a bin wider than that is showing the filter's roll-off
+                // as though it were data - which is the whole reason for trimming at all.
+                int declared = path == AnalysisPath.ComplexZoom
+                    ? (int)Math.Floor(usableBandwidthHz / 2.0 / binWidthHz) * 2 + 1
+                    : (int)Math.Floor(usableBandwidthHz / binWidthHz) + 1;
+
+                if (declared >= 2 && declared <= transformLength)
+                {
+                    return declared;
+                }
             }
 
             int points = AcquisitionLaw.PointsForTransformLength(transformLength, path);
@@ -206,10 +256,11 @@ namespace OpenVSA.Dsp.Spectrum
         /// The complex zoom/IF path: bins shifted so the axis ascends, trimmed to the analysis span.
         /// </summary>
         private SpectrumFrame TwoSided(
-            IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth)
+            IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth,
+            double usableBandwidthHz)
         {
             int half = n / 2;
-            int trimmed = DisplayPointsFor(n, AnalysisPath.ComplexZoom);
+            int trimmed = DisplayPointsFor(n, AnalysisPath.ComplexZoom, usableBandwidthHz, binWidth);
 
             // Bins either side of the centre. Untrimmed, that is the whole band; trimmed, the count
             // is 2m+1 so the axis is symmetric with a point exactly at the centre frequency.
@@ -250,11 +301,12 @@ namespace OpenVSA.Dsp.Spectrum
         /// Nyquist are not doubled — see <see cref="AmplitudeChain.OneSidedBinGainDb"/>.
         /// </remarks>
         private SpectrumFrame OneSided(
-            IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth)
+            IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth,
+            double usableBandwidthHz)
         {
             // From 0 Hz rather than about a centre, so there is no symmetry to preserve: the
             // displayed points are simply the first of them.
-            int trimmed = DisplayPointsFor(n, AnalysisPath.RealBaseband);
+            int trimmed = DisplayPointsFor(n, AnalysisPath.RealBaseband, usableBandwidthHz, binWidth);
             int points = trimmed > 0 ? trimmed : n / 2 + 1;
 
             var levels = new float[points];
