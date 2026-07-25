@@ -15,4 +15,12 @@
     <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    REQ-NFR-004 requires the active FFT provider to be selectable by configuration rather than by
+    recompiling, so FftProviders reads appSettings.
+  -->
+  <ItemGroup>
+    <Reference Include="System.Configuration" />
+  </ItemGroup>
+
 </Project>

@@ -1445,6 +1445,29 @@ within 0.5 dB where one is quoted.
 *Note:* the Flat Top default is deliberate and must be preserved — it surprises users who
 expect Hann, but it is the reference product's documented behaviour.
 
+**`REQ-DSP-010b` (P0) — Window parameter provenance.** **[V]**
+The tabulated ENBW is the binding figure; where the reference product does not publish a
+window's coefficients, the implementation shall choose parameters that reproduce it, and
+shall record how they were chosen. Two cases arose in implementation and are settled here so
+that a later reader does not "correct" them:
+
+| Window | Settled as |
+|---|---|
+| Kaiser-Bessel | "πα = 11.9" is the Kaiser shape parameter **β = 11.9 directly**, not $\alpha = 11.9/\pi$. β = 11.9 reproduces *both* tabulated figures — ENBW 2.001266 against 2.0013 and peak sidelobe −89.09 dB against −89.1 dB — whereas the other reading gives ENBW 1.23. Two independent figures agreeing is what settles it. |
+| Gaussian | σ = 0.1397 as stated (α = 3.58 ⇒ σ = 0.5/α) is used unaltered: it gives ENBW 2.020682 against 2.0212, 0.026 % low, and −73.46 dB against −73.5 dB. |
+| Gaussian Top | Not documented beyond its ENBW. Implemented as a Gaussian with σ solved for ENBW 2.2153 exactly, which also yields −85.2 dB — consistent with the "high dynamic range" the table claims for it. No sidelobe figure is tabulated, so only the ENBW binds. |
+| Flat Top | **No published flat top has ENBW 3.8194.** The nearest are Heinzel's HFT95 (3.8112) and HFT90D (3.8832), and the SRS/MATLAB flat top is 3.7702 — all outside the 0.1 % tolerance. Implemented as the convex blend of HFT95 and HFT90D at t = 0.115777, solved for 3.819400. The result is a sound flat top in its own right: −94.1 dB sidelobes and 0.0039 dB amplitude flatness over a bin, both between its parents. |
+
+*Why ENBW is the figure to match rather than the coefficients:* ENBW is the behaviourally
+visible quantity — it sets RBW through `REQ-DSP-020` and the noise-density correction through
+`REQ-DSP-011`. A window with the right ENBW and slightly different sidelobes behaves as the
+reference product does everywhere the user can observe; one with published coefficients and
+the wrong ENBW does not.
+
+**AC:** Every parameter not taken verbatim from the specification's table carries a recorded
+derivation in the implementation, and the ENBW it produces is asserted against the table by
+`REQ-DSP-010a`'s criterion rather than restated as a constant.
+
 **`REQ-DSP-011` (P1) — Coherent and incoherent gain correction.**
 Window amplitude correction (coherent gain, $\sum w_n / N$) shall be applied for
 discrete-tone amplitude readout, and noise-power correction (ENBW) for noise-density
