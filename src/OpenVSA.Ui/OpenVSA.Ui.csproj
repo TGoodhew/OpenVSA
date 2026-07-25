@@ -24,4 +24,40 @@
     <ProjectReference Include="..\OpenVSA.Api\OpenVSA.Api.csproj" />
   </ItemGroup>
 
+  <!--
+    Front ends are plug-ins, not references. REQ-ARC-001 bars every layer from L3 upward - this
+    one included - from a compile-time reference to any L0 transport assembly, so the shell
+    discovers them at run time through FrontEndRegistry instead.
+
+    ReferenceOutputAssembly="false" is what makes that real: it sequences the build so the
+    transports are compiled before this project, without putting them on the compile-time
+    reference list. OpenVSA.Architecture.Tests asserts the absence, so removing this attribute
+    fails the suite rather than quietly re-coupling the layers.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Hal.Sim\OpenVSA.Hal.Sim.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\OpenVSA.Hal.File\OpenVSA.Hal.File.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <!--
+    ReferenceOutputAssembly="false" also stops the outputs being copied, so they are copied
+    explicitly into the FrontEnds subdirectory that FrontEndRegistry probes. The subdirectory is
+    deliberate: it makes the plug-in boundary visible on disk, and mirrors the Personalities\
+    convention of REQ-ARC-003.
+  -->
+  <Target Name="CopyFrontEndPlugins" AfterTargets="Build">
+    <ItemGroup>
+      <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.Sim\$(OutputPath)OpenVSA.Hal.Sim.dll" />
+      <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.Sim\$(OutputPath)OpenVSA.Hal.Sim.pdb" />
+      <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.File\$(OutputPath)OpenVSA.Hal.File.dll" />
+      <FrontEndPlugin Include="$(MSBuildThisFileDirectory)..\OpenVSA.Hal.File\$(OutputPath)OpenVSA.Hal.File.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontEndPlugin)"
+          DestinationFolder="$(OutDir)FrontEnds"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(FrontEndPlugin.FullPath)')" />
+  </Target>
+
 </Project>

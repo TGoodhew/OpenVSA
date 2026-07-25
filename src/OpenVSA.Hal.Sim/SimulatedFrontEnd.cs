@@ -56,9 +56,23 @@ namespace OpenVSA.Hal.Sim
         private double _phaseAccumulator;
         private bool _disposed;
 
+        /// <summary>Creates a simulated front end with default signal settings.</summary>
+        /// <remarks>
+        /// Explicit, not an optional parameter on the constructor below. A constructor with all
+        /// parameters optional is <em>not</em> a parameterless constructor to reflection:
+        /// <c>GetConstructor(Type.EmptyTypes)</c> returns null for it and
+        /// <c>Activator.CreateInstance(type)</c> throws. Without this the simulator would compile,
+        /// pass every direct test, and then be silently rejected by <c>FrontEndRegistry</c> as
+        /// having no usable constructor.
+        /// </remarks>
+        public SimulatedFrontEnd()
+            : this(null)
+        {
+        }
+
         /// <summary>Creates a simulated front end.</summary>
         /// <param name="settings">Signal settings, or <c>null</c> for the defaults.</param>
-        public SimulatedFrontEnd(SimulatedSignalSettings settings = null)
+        public SimulatedFrontEnd(SimulatedSignalSettings settings)
         {
             _settings = settings ?? new SimulatedSignalSettings();
             _random = new DeterministicRandom(_settings.Seed);
