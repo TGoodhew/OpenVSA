@@ -160,16 +160,46 @@ namespace OpenVSA.Ui
                 _activeFrontEnd.Dispose();
             }
 
-            _activeFrontEnd = created;
+            _activeFrontEnd = null;
+            StartItem.IsEnabled = false;
+            SettingsGrid.IsEnabled = false;
 
             foreach (MenuItem sibling in SourceMenuItems())
             {
                 sibling.IsChecked = ReferenceEquals(sibling, clicked);
             }
 
-            StatusText.Content = descriptor.DisplayName + " selected";
-            CapabilitiesText.Text = DescribeCapabilities(created);
+            // Connected here rather than at Start, because a real instrument does not know its own
+            // limits until it has been asked: REQ-HAL-002 ranges every control from
+            // IFrontEndCapabilities, and for a VISA front end those are queried from the
+            // instrument. Connecting later would mean offering a settings pane with nothing to
+            // range against, and a failure reported a step after the one that caused it.
+            StatusText.Content = "Connecting to " + descriptor.DisplayName + "…";
+            CapabilitiesText.Text = string.Empty;
             PlanText.Text = string.Empty;
+
+            try
+            {
+                // Off the dispatcher: ConnectAsync may be synchronous inside, and a VISA session
+                // that has to time out takes seconds.
+                await Task.Run(() => created.ConnectAsync(CancellationToken.None))
+                    .ConfigureAwait(true);
+            }
+            catch (Exception failure)
+            {
+                created.Dispose();
+                clicked.IsChecked = false;
+                StatusText.Content = "Could not connect";
+                CapabilitiesText.Text =
+                    "Could not connect to " + descriptor.DisplayName + "." + Environment.NewLine +
+                    Environment.NewLine + failure.Message;
+                return;
+            }
+
+            _activeFrontEnd = created;
+
+            StatusText.Content = created.DisplayName + " connected";
+            CapabilitiesText.Text = DescribeCapabilities(created);
             StartItem.IsEnabled = true;
 
             RangeSettingsFor(created.Capabilities);
@@ -534,6 +564,15 @@ namespace OpenVSA.Ui
         private PlannedAcquisition BuildPlan()
         {
             IFrontEndCapabilities capabilities = _activeFrontEnd.Capabilities;
+
+            if (capabilities == null)
+            {
+                // A front end that declares nothing cannot have its settings ranged, and guessing
+                // limits for it is exactly what REQ-HAL-002 forbids.
+                return Reject(
+                    "This source has not declared its capabilities, so its settings cannot be " +
+                    "ranged. Re-select it under Hardware to connect again.");
+            }
 
             double centre;
             if (!EngineeringText.TryParseFrequency(CentreBox.Text, out centre))
