@@ -37,6 +37,29 @@ Two fields are derived rather than quoted, and should be read as such:
 - **`has_ac`** — whether the specification states mechanised acceptance criteria. Drives
   the `needs-ac` label. Requirements without acceptance criteria need them authored
   before implementation starts.
+- **`ac_exempt`** — set by an `**AC exempt:**` paragraph. See below.
+
+## How acceptance criteria are recognised
+
+Three forms, all matched literally on the marker at the start of a line:
+
+| Marker | Effect |
+|---|---|
+| `**AC:**` | Criteria for the requirement it follows. Clears `needs-ac`. |
+| `**AC (all):**` | Criteria for every table-row requirement in the same `###` section. |
+| `**AC exempt:**` | The requirement cannot be mechanised. Clears `needs-ac`; sets `ac_exempt`. |
+
+`**AC (all):**` exists because §6.2 states one set of criteria for a whole table of
+performance targets. A row requirement's body is only its own table cell, so without this
+the shared criteria would belong to no record and all seven targets would parse as
+un-mechanised while the specification plainly states them. The paragraph is copied into
+each row's body, so every issue carries its criteria rather than referring to a section.
+
+`**AC exempt:**` is for requirements no built artefact can be measured against —
+`REQ-PLN-001` ("Phases 0–4 are the MVP") governs how the plan may change, not how the
+product behaves. Marking it explicitly keeps `needs-ac` meaning "criteria are owed" rather
+than quietly mixing in requirements for which criteria are impossible. Use it sparingly:
+a requirement that is merely awkward to test is owed criteria, not an exemption.
 
 ## Issue titles
 

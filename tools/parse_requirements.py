@@ -34,6 +34,16 @@ CONT_RE = re.compile(r"^\*\*`(REQ-([A-Z0-9]+)-(\d+[a-z]?))`(?!\s*\(P[0-3]\))")
 
 HEADING_RE = re.compile(r"^#{1,4}\s")
 
+# §6.2 states one set of acceptance criteria for a whole table of performance targets. A
+# table row's body is only its own cell, so without this the shared criteria belong to no
+# record and all seven targets parse as un-mechanised when the specification does state them.
+SHARED_AC_RE = re.compile(r"^\*\*AC \(all\):\*\*")
+
+# Requirements that cannot be mechanised at all — planning constraints and the like. Marked
+# explicitly so `needs-ac` keeps meaning "criteria are owed" rather than silently mixing in
+# requirements for which no criteria are possible.
+AC_EXEMPT = "**AC exempt:**"
+
 
 # Most requirements carry their own short name in the specification
 # ("**`REQ-X-001` (P0) — Short name.**") and derive a good title automatically. These do
@@ -90,6 +100,33 @@ def evidence(text):
     return tags
 
 
+def shared_ac_blocks(lines):
+    """Find every **AC (all):** paragraph and the section of the document it governs.
+
+    Returns (section_start, section_end, text) triples, the bounds being the enclosing
+    headings. A shared block applies to the table rows in its own section only.
+    """
+    blocks = []
+    for i, line in enumerate(lines):
+        if not SHARED_AC_RE.match(line):
+            continue
+        end_para = i
+        while end_para < len(lines) and lines[end_para].strip():
+            end_para += 1
+        start = 0
+        for k in range(i, -1, -1):
+            if HEADING_RE.match(lines[k]):
+                start = k
+                break
+        end = len(lines)
+        for k in range(i + 1, len(lines)):
+            if HEADING_RE.match(lines[k]):
+                end = k
+                break
+        blocks.append((start, end, "\n".join(lines[i:end_para]).strip()))
+    return blocks
+
+
 def short_title(text):
     t = text.strip().rstrip(".")
     t = re.sub(r"\*\*|`|\[V\]|\[U\]|\[DESIGN CHOICE\]", "", t).strip()
@@ -123,6 +160,7 @@ def main():
 
     seen = {}
     records = []
+    row_ids = set()
     for idx, (i, kind, rid, area, num, pri, seed) in enumerate(starts):
         if kind == "row":
             body = seed
@@ -141,6 +179,7 @@ def main():
             rec["body"] += "\n\n---\n\n" + body
             # The qualification may carry the AC and the evidence grade.
             rec["has_ac"] = rec["has_ac"] or "**AC:**" in body
+            rec["ac_exempt"] = rec["ac_exempt"] or AC_EXEMPT in body
             for tag in evidence(body):
                 if tag not in rec["evidence"]:
                     rec["evidence"].append(tag)
@@ -152,6 +191,8 @@ def main():
             continue
 
         seen[rid] = len(records)
+        if kind == "row":
+            row_ids.add(rid)
         records.append({
             "id": rid,
             "area": area,
@@ -162,8 +203,17 @@ def main():
             "phase": phase_for(area, num),
             "evidence": evidence(body),
             "has_ac": "**AC:**" in body or "AC:" in body,
+            "ac_exempt": AC_EXEMPT in body,
             "line": i + 1,
         })
+
+    # Give each table-row requirement the acceptance criteria its section states for the
+    # whole table, so the issue carries them rather than pointing at a document section.
+    for start, end, text in shared_ac_blocks(lines):
+        for rec in records:
+            if rec["id"] in row_ids and start < rec["line"] - 1 < end and not rec["has_ac"]:
+                rec["body"] += "\n\n" + text
+                rec["has_ac"] = True
 
     stale = sorted(set(TITLE_OVERRIDES) - set(seen))
     if stale:
@@ -184,7 +234,9 @@ def main():
     print("areas:", dict(sorted(areas.items())))
     print("priorities:", dict(sorted(pris.items())))
     print("phases:", dict(sorted(phases.items())))
-    print("no AC:", sum(1 for r in records if not r["has_ac"]))
+    print("no AC:", sum(1 for r in records
+                        if not r["has_ac"] and not r["ac_exempt"]),
+          "(plus {} exempt)".format(sum(1 for r in records if r["ac_exempt"])))
 
     mentioned = set(re.findall(r"REQ-[A-Z0-9]+-\d+[a-z]?", "\n".join(lines)))
     missing = sorted(mentioned - set(seen))
