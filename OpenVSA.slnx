@@ -31,6 +31,7 @@
     <Project Path="tests/OpenVSA.Hal.Tests/OpenVSA.Hal.Tests.csproj" />
     <Project Path="tests/OpenVSA.Measurement.Tests/OpenVSA.Measurement.Tests.csproj" />
     <Project Path="tests/OpenVSA.Ui.Tests/OpenVSA.Ui.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Benchmarks/OpenVSA.Benchmarks.csproj" />
   </Folder>
 
   <Folder Name="/solution items/">

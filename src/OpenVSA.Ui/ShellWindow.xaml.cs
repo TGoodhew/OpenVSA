@@ -187,6 +187,13 @@ namespace OpenVSA.Ui
                 .Select(f => "  " + f.Source + " — " + f.Reason)
                 .ToArray();
 
+            DocumentPlaceholder.Text =
+                "The plot surface lands here. Trace geometry is drawn by the software rasteriser " +
+                "in Rendering\\, not by a chart control: REQ-NFR-006's min/max decimation and " +
+                "REQ-UI-042's hot-spot framework have to be ours either way, and the rasteriser " +
+                "already verifies REQ-UI-010 by sampling rendered pixels in CI.\n\n" +
+                SyncfusionLicense.StatusMessage;
+
             StatusText.Content = _registry.Providers.Count == 0
                 ? "No signal source available"
                 : "Ready";

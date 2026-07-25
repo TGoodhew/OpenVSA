@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenVSA.Benchmarks</RootNamespace>
+    <AssemblyName>OpenVSA.Benchmarks</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <!--
+    The performance gates of REQ-NFR-020 to REQ-NFR-026. Not a test project: BenchmarkDotNet
+    needs a Release-built executable it can launch as its own child process, and running it
+    under the xUnit host would measure the host.
+  -->
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
+  </ItemGroup>
+
+</Project>

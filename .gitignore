@@ -71,3 +71,9 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
+
+# Syncfusion licence key: a per-developer credential, never committed.
+syncfusion.license
+
+# BenchmarkDotNet output.
+BenchmarkDotNet.Artifacts/
