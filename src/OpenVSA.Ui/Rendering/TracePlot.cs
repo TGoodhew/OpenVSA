@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -45,11 +46,15 @@ namespace OpenVSA.Ui.Rendering
 
         private readonly Image _image;
         private readonly TextBlock _levelText;
-        private readonly TextBlock _peakText;
         private readonly TextBlock _analysisText;
-        private readonly TextBlock _startText;
+        private readonly TextBlock _markerText;
+        private readonly TextBlock _bottomLevelText;
         private readonly TextBlock _spanText;
-        private readonly TextBlock _stopText;
+        private readonly TextBlock _timeText;
+
+        private TraceSnapshot _snapshot;
+        private IReadOnlyList<PlotMarker> _markers = new PlotMarker[0];
+        private string _markerReadout = string.Empty;
 
         private PlotPalette _palette = PlotPalette.Dark;
         private WriteableBitmap _bitmap;
@@ -72,14 +77,34 @@ namespace OpenVSA.Ui.Rendering
 
             RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.NearestNeighbor);
             RenderOptions.SetEdgeMode(_image, EdgeMode.Aliased);
+
+            // Three columns and three rows, with the image spanning all of them. Alignment alone is
+            // not enough: a long marker readout and a long analysis string are both in the upper
+            // band, and aligned to the centre and the right of the same cell they overlap. Cells
+            // make the band divide the width instead, so text clips or wraps rather than colliding.
+            for (int i = 0; i < 3; i++)
+            {
+                ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
+            }
+
+            RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            RowDefinitions.Add(new RowDefinition { Height = new GridLength(1.0, GridUnitType.Star) });
+            RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            SetColumnSpan(_image, 3);
+            SetRowSpan(_image, 3);
             Children.Add(_image);
 
-            _levelText = AddAnnotation(HorizontalAlignment.Left, VerticalAlignment.Top);
-            _peakText = AddAnnotation(HorizontalAlignment.Center, VerticalAlignment.Top);
-            _analysisText = AddAnnotation(HorizontalAlignment.Right, VerticalAlignment.Top);
-            _startText = AddAnnotation(HorizontalAlignment.Left, VerticalAlignment.Bottom);
-            _spanText = AddAnnotation(HorizontalAlignment.Center, VerticalAlignment.Bottom);
-            _stopText = AddAnnotation(HorizontalAlignment.Right, VerticalAlignment.Bottom);
+            // Positions are REQ-UI-040's, which is sourced verbatim: Y-axis top scale top-left and
+            // per-division below it, Y-axis bottom scale bottom-left, trace format and resolution
+            // bandwidth in the upper band, centre frequency and main time length beneath the X axis,
+            // and the active-marker readout above the grid to the right.
+            _levelText = AddAnnotation(HorizontalAlignment.Left, 0, 0);
+            _analysisText = AddAnnotation(HorizontalAlignment.Center, 0, 1);
+            _markerText = AddAnnotation(HorizontalAlignment.Right, 0, 2);
+            _bottomLevelText = AddAnnotation(HorizontalAlignment.Left, 2, 0);
+            _spanText = AddAnnotation(HorizontalAlignment.Center, 2, 1);
+            _timeText = AddAnnotation(HorizontalAlignment.Right, 2, 2);
 
             ApplyPalette();
         }
@@ -182,40 +207,92 @@ namespace OpenVSA.Ui.Rendering
                 return false;
             }
 
+            _snapshot = snapshot;
             Redraw(snapshot);
             return true;
+        }
+
+        /// <summary>
+        /// Sets the markers to draw over the trace, and the active-marker readout.
+        /// </summary>
+        /// <param name="markers">The glyphs to draw, or <c>null</c> for none.</param>
+        /// <param name="readout">Text for the readout above the grid, right (<c>REQ-UI-040</c>).</param>
+        /// <remarks>
+        /// Redraws immediately from the last frame rather than waiting for the next one, so
+        /// selecting or moving a marker is seen at once even on a stopped measurement.
+        /// </remarks>
+        public void SetMarkers(IReadOnlyList<PlotMarker> markers, string readout)
+        {
+            ThreadAffinity.AssertOnUiThread("Setting markers");
+
+            _markers = markers ?? new PlotMarker[0];
+            _markerReadout = readout ?? string.Empty;
+            _markerText.Text = _markerReadout;
+
+            Redraw(_snapshot);
+        }
+
+        /// <summary>
+        /// The trace point a pixel position corresponds to, for placing a marker by clicking.
+        /// </summary>
+        /// <param name="position">Position within this control, in device-independent pixels.</param>
+        /// <returns>A point index, or −1 if the position is outside the graticule or there is no trace.</returns>
+        public int PointAt(Point position)
+        {
+            if (_layout == null || _snapshot == null)
+            {
+                return -1;
+            }
+
+            DpiScale dpi = VisualTreeHelper.GetDpi(this);
+            int x = (int)Math.Round(position.X * dpi.DpiScaleX);
+            int y = (int)Math.Round(position.Y * dpi.DpiScaleY);
+
+            if (!_layout.Graticule.Contains(x, y))
+            {
+                return -1;
+            }
+
+            return TraceEnvelope.IndexFor(
+                x - _layout.Graticule.X, _snapshot.Spectrum.PointCount, _snapshot.Columns);
         }
 
         /// <summary>Draws an empty graticule, discarding any trace.</summary>
         public void Clear()
         {
             ThreadAffinity.AssertOnUiThread("Clearing a trace");
+
+            _snapshot = null;
             Redraw(null);
 
             _levelText.Text = string.Empty;
-            _peakText.Text = string.Empty;
             _analysisText.Text = string.Empty;
-            _startText.Text = string.Empty;
+            _markerText.Text = string.Empty;
+            _bottomLevelText.Text = string.Empty;
             _spanText.Text = string.Empty;
-            _stopText.Text = string.Empty;
+            _timeText.Text = string.Empty;
         }
 
-        private TextBlock AddAnnotation(HorizontalAlignment horizontal, VerticalAlignment vertical)
+        private TextBlock AddAnnotation(HorizontalAlignment horizontal, int row, int column)
         {
             var text = new TextBlock
             {
                 HorizontalAlignment = horizontal,
-                VerticalAlignment = vertical,
+                VerticalAlignment = row == 0 ? VerticalAlignment.Top : VerticalAlignment.Bottom,
                 Margin = new Thickness(8.0, 6.0, 8.0, 6.0),
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 11.0,
                 IsHitTestVisible = false,
+                TextWrapping = TextWrapping.Wrap,
                 TextAlignment = horizontal == HorizontalAlignment.Right
                     ? TextAlignment.Right
-                    : TextAlignment.Left,
+                    : (horizontal == HorizontalAlignment.Center ? TextAlignment.Center : TextAlignment.Left),
             };
 
+            SetRow(text, row);
+            SetColumn(text, column);
             Children.Add(text);
+
             return text;
         }
 
@@ -313,6 +390,11 @@ namespace OpenVSA.Ui.Rendering
                 _palette,
                 snapshot == null ? ReadOnlySpan<float>.Empty : snapshot.MinMax);
 
+            if (snapshot != null)
+            {
+                DrawMarkers(snapshot);
+            }
+
             _surface.CopyTo(_transfer);
             _bitmap.WritePixels(
                 new Int32Rect(0, 0, _surface.Width, _surface.Height),
@@ -326,26 +408,80 @@ namespace OpenVSA.Ui.Rendering
             }
         }
 
+        /// <summary>
+        /// Draws each marker's glyph over the trace.
+        /// </summary>
+        /// <remarks>
+        /// After the trace, so a glyph is never hidden by the geometry it marks, and using the same
+        /// index-to-column mapping the envelope used — otherwise the glyph lands beside its feature.
+        /// </remarks>
+        private void DrawMarkers(TraceSnapshot snapshot)
+        {
+            foreach (PlotMarker marker in _markers)
+            {
+                if (marker.PointIndex < 0 || marker.PointIndex >= snapshot.Spectrum.PointCount)
+                {
+                    continue;
+                }
+
+                int column = TraceEnvelope.ColumnFor(
+                    marker.PointIndex, snapshot.Spectrum.PointCount, snapshot.Columns);
+
+                int x = _layout.Graticule.X + column;
+                int y = _layout.ValueToY(marker.LevelDbm);
+
+                PlotColor colour = marker.IsSelected
+                    ? _palette.SelectedMarker
+                    : _palette.NotSelectedMarker;
+
+                if (marker.IsFixed)
+                {
+                    MarkerGlyph.DrawCross(_surface, x, y, colour, marker.IsSelected);
+                }
+                else
+                {
+                    MarkerGlyph.DrawDiamond(_surface, x, y, colour, marker.IsSelected);
+                }
+            }
+        }
+
         private void UpdateAnnotation(SpectrumFrame frame)
         {
             _levelText.Text =
                 "Ref " + Level(frame.ReferenceLevelDbm) + Environment.NewLine +
                 DecibelsPerDivision.ToString("0", CultureInfo.CurrentCulture) + " dB/div";
 
-            int peak = frame.IndexOfPeak();
-            _peakText.Text = peak < 0
-                ? string.Empty
-                : "Peak  " + Frequency(frame.FrequencyAt(peak)) + "   " + Level(frame.LevelsDbm[peak]);
+            _bottomLevelText.Text = Level(BottomDbm);
 
             _analysisText.Text =
-                WindowText.Describe(frame.Window) + Environment.NewLine +
-                "RBW " + Frequency(frame.ResolutionBandwidthHz) + "   " +
-                frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts";
+                WindowText.Describe(frame.Window) + "   " +
+                frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts" +
+                Environment.NewLine +
+                "RBW " + Frequency(frame.ResolutionBandwidthHz);
 
-            _startText.Text = "Start " + Frequency(frame.StartFrequencyHz);
-            _stopText.Text = "Stop " + Frequency(frame.StopFrequencyHz);
             _spanText.Text =
-                "Center " + Frequency(frame.CenterFrequencyHz) + "   Span " + Frequency(frame.SpanHz);
+                "Center " + Frequency(frame.CenterFrequencyHz) +
+                "   Span " + Frequency(frame.SpanHz);
+
+            // Main time length, which REQ-ACQ-001 makes (N_f - 1) / Span.
+            _timeText.Text = frame.PointCount > 1 && frame.SpanHz > 0.0
+                ? "Time " + EngineeringText.Time((frame.PointCount - 1) / frame.SpanHz)
+                : string.Empty;
+
+            if (_markers.Count == 0)
+            {
+                // No marker: the readout slot shows the peak, which is what a user reaches for
+                // first and is labelled so it cannot be mistaken for a marker.
+                int peak = frame.IndexOfPeak();
+                _markerText.Text = peak < 0
+                    ? string.Empty
+                    : "Peak  " + Frequency(frame.FrequencyAt(peak)) + Environment.NewLine +
+                      Level(frame.LevelsDbm[peak]);
+            }
+            else
+            {
+                _markerText.Text = _markerReadout;
+            }
         }
 
         private static string Level(double dbm) =>

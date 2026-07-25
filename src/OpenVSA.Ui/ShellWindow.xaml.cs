@@ -13,6 +13,7 @@ using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
+using OpenVSA.Measurement.Markers;
 using OpenVSA.Ui.Rendering;
 
 // Aliased rather than imported: this file's own base class is System.Windows.Window, and importing
@@ -61,8 +62,19 @@ namespace OpenVSA.Ui
         private readonly RenderMarshal _marshal = new RenderMarshal();
         private readonly DispatcherTimer _statusTimer;
 
+        /// <summary>
+        /// The markers on the one trace that exists so far.
+        /// </summary>
+        /// <remarks>
+        /// Trace 'A': <c>REQ-UI-020</c> letters traces, and <c>REQ-UI-031</c>'s delta label needs
+        /// the letter to decide whether to print it. One trace means the cross-trace form cannot
+        /// arise yet, but the model carries the letter so that it will be right when it can.
+        /// </remarks>
+        private readonly MarkerSet _markers = new MarkerSet('A');
+
         private IFrontEnd _activeFrontEnd;
         private SpectrumEngine _engine;
+        private SpectrumFrame _frame;
 
         /// <summary>Creates the shell window.</summary>
         public ShellWindow()
@@ -630,10 +642,191 @@ namespace OpenVSA.Ui
         {
             TraceSnapshot snapshot = _marshal.TakeForRender();
 
-            if (snapshot != null)
+            if (snapshot == null)
             {
-                Plot.Show(snapshot);
+                return;
             }
+
+            _frame = snapshot.Spectrum;
+
+            if (Plot.Show(snapshot))
+            {
+                RefreshMarkers();
+            }
+        }
+
+        // ---- Markers ---------------------------------------------------------------------------
+
+        /// <summary>
+        /// Rebuilds the plot's marker overlay and readout from the marker set.
+        /// </summary>
+        /// <remarks>
+        /// Readings are taken here, on the UI thread, against the frame just drawn — a marker reads
+        /// what is on screen, so taking the reading anywhere else would let the two disagree by a
+        /// frame. It is a handful of array lookups per marker, not work proportional to the trace.
+        /// </remarks>
+        private void RefreshMarkers()
+        {
+            var primitives = new List<PlotMarker>(_markers.Markers.Count);
+            string readout = string.Empty;
+
+            foreach (Marker marker in _markers.Markers)
+            {
+                MarkerReading reading = marker.Read(_frame);
+                int index = marker.IndexIn(_frame);
+
+                if (index >= 0)
+                {
+                    // A delta marker's readout is a difference, but its glyph belongs at its own
+                    // position and level - not at the difference, which is not a place on the plot.
+                    double level = marker.Type == MarkerType.Fixed
+                        ? marker.FixedYDbm
+                        : _frame.LevelsDbm[index];
+
+                    primitives.Add(new PlotMarker(
+                        index, level, marker.Type == MarkerType.Fixed, marker.IsSelected));
+                }
+
+                if (marker.IsSelected)
+                {
+                    readout = DescribeMarker(marker, reading);
+                }
+            }
+
+            Plot.SetMarkers(primitives, readout);
+        }
+
+        /// <summary>The active-marker readout, as <c>REQ-UI-031</c> labels it.</summary>
+        private static string DescribeMarker(Marker marker, MarkerReading reading)
+        {
+            if (!reading.IsValid)
+            {
+                // REQ-UI-032's convention for a readout that has no value.
+                return marker.WindowLabel + "   NAN";
+            }
+
+            string level = reading.YDbm.ToString("+0.00;-0.00;0.00", CultureInfo.CurrentCulture) +
+                (marker.Type == MarkerType.Delta ? " dB" : " dBm");
+
+            // Two lines: the readout shares the upper band with the trace format and resolution
+            // bandwidth, and on one line it is wide enough to collide with them.
+            return marker.WindowLabel + "  " + EngineeringText.Frequency(reading.XHz, 6) +
+                Environment.NewLine + level;
+        }
+
+        private void OnPlotClicked(object sender, MouseButtonEventArgs e)
+        {
+            int index = Plot.PointAt(e.GetPosition(Plot));
+
+            if (index < 0 || _frame == null)
+            {
+                return;
+            }
+
+            PlaceMarker(() => _markers.AddNormal(_frame.FrequencyAt(index)));
+        }
+
+        private void OnAddMarker(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() =>
+            {
+                Marker marker = _markers.AddNormal(PeakFrequency());
+                return marker;
+            });
+
+        private void OnAddFixed(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() =>
+            {
+                int peak = _frame == null ? -1 : _frame.IndexOfPeak();
+                return peak < 0
+                    ? null
+                    : _markers.AddFixed(_frame.FrequencyAt(peak), _frame.LevelsDbm[peak]);
+            });
+
+        private void OnAddDelta(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() =>
+            {
+                Marker reference = _markers.Selected;
+
+                if (reference == null)
+                {
+                    SettingsMessage.Text = "Select a marker first: a delta marker measures from one.";
+                    return null;
+                }
+
+                return _markers.AddDelta(PeakFrequency(), reference);
+            });
+
+        private void OnPeakSearch(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() => _markers.PeakSearch(_frame));
+
+        private void OnNextPeak(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() => _markers.NextPeak(_frame));
+
+        private void OnMinimumSearch(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() => _markers.MinimumSearch(_frame));
+
+        private void OnDeleteMarker(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() =>
+            {
+                Marker selected = _markers.Selected;
+
+                if (selected != null)
+                {
+                    _markers.Remove(selected);
+                }
+
+                return null;
+            });
+
+        private void OnDeleteAllMarkers(object sender, RoutedEventArgs e) =>
+            PlaceMarker(() =>
+            {
+                // Backwards, so a delta marker is removed before the marker it references and the
+                // reference-integrity check never has to refuse.
+                for (int i = _markers.Markers.Count - 1; i >= 0; i--)
+                {
+                    _markers.Remove(_markers.Markers[i]);
+                }
+
+                return null;
+            });
+
+        /// <summary>
+        /// Runs a marker operation, reporting the named errors the marker model raises.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-MKR-001</c> and <c>REQ-MKR-002</c> both require refusals to be named rather than
+        /// silent — the twenty-first marker, and deleting a marker another one measures from. Both
+        /// arrive here as messages the user can act on.
+        /// </remarks>
+        private void PlaceMarker(Func<Marker> operation)
+        {
+            try
+            {
+                operation();
+                SettingsMessage.Text = string.Empty;
+            }
+            catch (InvalidOperationException refusal)
+            {
+                SettingsMessage.Text = refusal.Message;
+            }
+            catch (ArgumentException refusal)
+            {
+                SettingsMessage.Text = refusal.Message;
+            }
+
+            RefreshMarkers();
+        }
+
+        private double PeakFrequency()
+        {
+            if (_frame == null)
+            {
+                return 0.0;
+            }
+
+            int peak = _frame.IndexOfPeak();
+            return peak < 0 ? _frame.CenterFrequencyHz : _frame.FrequencyAt(peak);
         }
 
         private void OnEngineFaulted(object sender, Exception failure)
