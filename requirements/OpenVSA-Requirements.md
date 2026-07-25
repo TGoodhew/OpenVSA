@@ -3398,13 +3398,48 @@ reproducing exactly the parts that carry meaning: the three-zone plot layout, th
 positions, the marker glyphs, the indicator strings, the error-summary text form, and above all
 the hot-spot interaction. **Fidelity is owed to the interaction model and the information
 design, not to a fifteen-year-old button style.**
-**AC:** The chrome is not Office-2007: no theme reproducing that skin ships, and the theme
-list is the light/dark/high-contrast set of `REQ-UI-090`. The parts named as load-bearing are
-each covered by their own criteria and all must pass — three-zone layout (`REQ-UI-010`),
+**AC:** The chrome is not Office-2007: no theme reproducing that skin ships, and the shipped
+theme set is the Light/Dark pair of `REQ-UI-083`. The parts named as load-bearing are each
+covered by their own criteria and all must pass — three-zone layout (`REQ-UI-010`),
 annotation positions (`REQ-UI-040`), marker glyphs (`REQ-UI-030`), indicator strings
 (`REQ-UI-041`), error-summary text form (`REQ-UI-053`) and the hot-spot interaction. This
 requirement is met when those pass under a modern chrome, which is what distinguishes a
 deliberate visual departure from an incomplete implementation.
+
+**`REQ-UI-083` (P1) — Two shipped themes, and nothing that forecloses more.**
+OpenVSA shall ship exactly two chrome themes, **Light and Dark**. User-authored or custom
+themes are **not** in scope at this stage. However, the theming mechanism shall be built so
+that adding them later is a matter of supplying another resource dictionary, not of
+reworking the rendering code.
+
+*This is a scope decision with an architectural obligation attached, and the obligation is
+the part that will be got wrong.* Shipping two themes is easy to do in a way that makes a
+third expensive: hard-coded brushes, colours resolved through a `switch` on a two-valued
+enum, or a bool `IsDarkMode` threaded through view models all satisfy "light and dark" today
+and have to be unpicked later. None of that is more work to avoid now than to do.
+
+Concretely, and testably:
+
+- Every themed value resolves through a **resource dictionary keyed by name**, swappable at
+  runtime. Adding a theme means adding a dictionary; no code names a theme to decide a
+  colour.
+- Theme identity is **not a closed two-valued type**. No `enum Theme { Light, Dark }`
+  switched over to pick values, and no boolean "is dark" anywhere in the rendering or
+  view-model layers.
+- The chrome/plot separation of `REQ-UI-081` holds, so a future theme cannot silently
+  change measurement colours.
+
+**AC:** Exactly two themes ship, named Light and Dark, both selectable with no restart. The
+non-foreclosure obligation is verified by **actually doing the thing that is being deferred**:
+a test supplies a third resource dictionary at runtime and asserts the application renders
+with it correctly, with **no product code changed** — the only honest test of "a later custom
+theme is not made harder", since every weaker check passes on an implementation that has
+hard-coded the two. Architecture tests fail on a literal colour in any chrome or
+plot-surface rendering path (extending `REQ-UI-022`'s rule from plot elements to chrome), on
+a `switch` over a theme identity to select a value, and on a boolean dark-mode flag in the
+rendering or view-model layers. Every key in the shipped dictionaries is present in both, so
+a theme cannot be partially defined; the `REQ-UI-081` separation test passes for the third
+dictionary too.
 
 **`REQ-UI-090` (P2) — Themes and accessibility of colour.**
 Light and dark themes shall be provided, with trace colours distinguishable without relying on
@@ -3418,6 +3453,25 @@ vision deficiency leaves every pair distinguishable, optionally with the aid of 
 Trace and annotation contrast against `TraceBackground` meets a stated contrast ratio in all
 three themes. The high-contrast theme follows the system high-contrast setting when one is
 active.
+
+> **Deferred — possible future enhancement.** This requirement is not scheduled. Its issue
+> (#281) is closed and labelled `future-enhancement`; it is the only requirement in this
+> specification without an open issue, and the exception is deliberate rather than an
+> oversight in the backlog.
+>
+> *What is owed before it can be picked up.* The criteria above name "a stated minimum"
+> luminance delta and "a stated contrast ratio" without stating either. Those numbers are a
+> design decision, not a mechanical one: WCAG 1.4.3/1.4.11 (4.5:1 for text, 3:1 for non-text)
+> is the obvious starting point, but a graticule line is not body text, and pairwise trace
+> distinguishability is a property those ratios do not address at all. Until the thresholds
+> are chosen the criteria are not testable, which is why the requirement is deferred rather
+> than merely unimplemented.
+>
+> *What is unaffected.* Light and dark themes are still required, by `REQ-UI-083`, which
+> also carries the obligation not to foreclose further themes. What is deferred here is the
+> **accessibility guarantee** — the numeric luminance and contrast floors, colour-vision
+> simulation, and system high-contrast integration. When it is picked up, the third theme it
+> adds is exactly the case `REQ-UI-083`'s non-foreclosure test already exercises.
 
 **`REQ-UI-091` (P1) — Accessibility.**
 The application shall be operable entirely from the keyboard; all interactive elements shall

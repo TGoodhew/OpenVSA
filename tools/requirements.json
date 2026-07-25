@@ -2897,7 +2897,7 @@
   "num": "082",
   "priority": "P2",
   "title": "OpenVSA's own visual direction",
-  "body": "**`REQ-UI-082` (P2) — OpenVSA's own visual direction.** **[DESIGN CHOICE]**\nOpenVSA shall *not* reproduce the Office-2007 chrome. It shall adopt a clean, neutral modern\nWindows appearance (light and dark themes, per `REQ-UI-013`… see `REQ-UI-090`) while\nreproducing exactly the parts that carry meaning: the three-zone plot layout, the annotation\npositions, the marker glyphs, the indicator strings, the error-summary text form, and above all\nthe hot-spot interaction. **Fidelity is owed to the interaction model and the information\ndesign, not to a fifteen-year-old button style.**\n**AC:** The chrome is not Office-2007: no theme reproducing that skin ships, and the theme\nlist is the light/dark/high-contrast set of `REQ-UI-090`. The parts named as load-bearing are\neach covered by their own criteria and all must pass — three-zone layout (`REQ-UI-010`),\nannotation positions (`REQ-UI-040`), marker glyphs (`REQ-UI-030`), indicator strings\n(`REQ-UI-041`), error-summary text form (`REQ-UI-053`) and the hot-spot interaction. This\nrequirement is met when those pass under a modern chrome, which is what distinguishes a\ndeliberate visual departure from an incomplete implementation.",
+  "body": "**`REQ-UI-082` (P2) — OpenVSA's own visual direction.** **[DESIGN CHOICE]**\nOpenVSA shall *not* reproduce the Office-2007 chrome. It shall adopt a clean, neutral modern\nWindows appearance (light and dark themes, per `REQ-UI-013`… see `REQ-UI-090`) while\nreproducing exactly the parts that carry meaning: the three-zone plot layout, the annotation\npositions, the marker glyphs, the indicator strings, the error-summary text form, and above all\nthe hot-spot interaction. **Fidelity is owed to the interaction model and the information\ndesign, not to a fifteen-year-old button style.**\n**AC:** The chrome is not Office-2007: no theme reproducing that skin ships, and the shipped\ntheme set is the Light/Dark pair of `REQ-UI-083`. The parts named as load-bearing are each\ncovered by their own criteria and all must pass — three-zone layout (`REQ-UI-010`),\nannotation positions (`REQ-UI-040`), marker glyphs (`REQ-UI-030`), indicator strings\n(`REQ-UI-041`), error-summary text form (`REQ-UI-053`) and the hot-spot interaction. This\nrequirement is met when those pass under a modern chrome, which is what distinguishes a\ndeliberate visual departure from an incomplete implementation.",
   "phase": 1,
   "evidence": [
    "design-choice"
@@ -2907,17 +2907,30 @@
   "line": 3394
  },
  {
-  "id": "REQ-UI-090",
+  "id": "REQ-UI-083",
   "area": "UI",
-  "num": "090",
-  "priority": "P2",
-  "title": "Themes and accessibility of colour",
-  "body": "**`REQ-UI-090` (P2) — Themes and accessibility of colour.**\nLight and dark themes shall be provided, with trace colours distinguishable without relying on\nhue alone (differing also in luminance and, optionally, dash pattern), and a high-contrast\ntheme shall be supported.\n**AC:** Light, dark and high-contrast themes are all selectable, and switching between them\nrequires no restart. In each theme, every adjacent pair in the 20-entry trace colour table of\n`REQ-UI-020` differs in relative luminance by a stated minimum as well as in hue, so the\ntable is checked numerically rather than by eye; simulating the common forms of colour\nvision deficiency leaves every pair distinguishable, optionally with the aid of dash pattern.\nTrace and annotation contrast against `TraceBackground` meets a stated contrast ratio in all\nthree themes. The high-contrast theme follows the system high-contrast setting when one is\nactive.",
+  "num": "083",
+  "priority": "P1",
+  "title": "Two shipped themes, and nothing that forecloses more",
+  "body": "**`REQ-UI-083` (P1) — Two shipped themes, and nothing that forecloses more.**\nOpenVSA shall ship exactly two chrome themes, **Light and Dark**. User-authored or custom\nthemes are **not** in scope at this stage. However, the theming mechanism shall be built so\nthat adding them later is a matter of supplying another resource dictionary, not of\nreworking the rendering code.\n\n*This is a scope decision with an architectural obligation attached, and the obligation is\nthe part that will be got wrong.* Shipping two themes is easy to do in a way that makes a\nthird expensive: hard-coded brushes, colours resolved through a `switch` on a two-valued\nenum, or a bool `IsDarkMode` threaded through view models all satisfy \"light and dark\" today\nand have to be unpicked later. None of that is more work to avoid now than to do.\n\nConcretely, and testably:\n\n- Every themed value resolves through a **resource dictionary keyed by name**, swappable at\n  runtime. Adding a theme means adding a dictionary; no code names a theme to decide a\n  colour.\n- Theme identity is **not a closed two-valued type**. No `enum Theme { Light, Dark }`\n  switched over to pick values, and no boolean \"is dark\" anywhere in the rendering or\n  view-model layers.\n- The chrome/plot separation of `REQ-UI-081` holds, so a future theme cannot silently\n  change measurement colours.\n\n**AC:** Exactly two themes ship, named Light and Dark, both selectable with no restart. The\nnon-foreclosure obligation is verified by **actually doing the thing that is being deferred**:\na test supplies a third resource dictionary at runtime and asserts the application renders\nwith it correctly, with **no product code changed** — the only honest test of \"a later custom\ntheme is not made harder\", since every weaker check passes on an implementation that has\nhard-coded the two. Architecture tests fail on a literal colour in any chrome or\nplot-surface rendering path (extending `REQ-UI-022`'s rule from plot elements to chrome), on\na `switch` over a theme identity to select a value, and on a boolean dark-mode flag in the\nrendering or view-model layers. Every key in the shipped dictionaries is present in both, so\na theme cannot be partially defined; the `REQ-UI-081` separation test passes for the third\ndictionary too.",
   "phase": 1,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
   "line": 3409
+ },
+ {
+  "id": "REQ-UI-090",
+  "area": "UI",
+  "num": "090",
+  "priority": "P2",
+  "title": "Themes and accessibility of colour",
+  "body": "**`REQ-UI-090` (P2) — Themes and accessibility of colour.**\nLight and dark themes shall be provided, with trace colours distinguishable without relying on\nhue alone (differing also in luminance and, optionally, dash pattern), and a high-contrast\ntheme shall be supported.\n**AC:** Light, dark and high-contrast themes are all selectable, and switching between them\nrequires no restart. In each theme, every adjacent pair in the 20-entry trace colour table of\n`REQ-UI-020` differs in relative luminance by a stated minimum as well as in hue, so the\ntable is checked numerically rather than by eye; simulating the common forms of colour\nvision deficiency leaves every pair distinguishable, optionally with the aid of dash pattern.\nTrace and annotation contrast against `TraceBackground` meets a stated contrast ratio in all\nthree themes. The high-contrast theme follows the system high-contrast setting when one is\nactive.\n\n> **Deferred — possible future enhancement.** This requirement is not scheduled. Its issue\n> (#281) is closed and labelled `future-enhancement`; it is the only requirement in this\n> specification without an open issue, and the exception is deliberate rather than an\n> oversight in the backlog.\n>\n> *What is owed before it can be picked up.* The criteria above name \"a stated minimum\"\n> luminance delta and \"a stated contrast ratio\" without stating either. Those numbers are a\n> design decision, not a mechanical one: WCAG 1.4.3/1.4.11 (4.5:1 for text, 3:1 for non-text)\n> is the obvious starting point, but a graticule line is not body text, and pairwise trace\n> distinguishability is a property those ratios do not address at all. Until the thresholds\n> are chosen the criteria are not testable, which is why the requirement is deferred rather\n> than merely unimplemented.\n>\n> *What is unaffected.* Light and dark themes are still required, by `REQ-UI-083`, which\n> also carries the obligation not to foreclose further themes. What is deferred here is the\n> **accessibility guarantee** — the numeric luminance and contrast floors, colour-vision\n> simulation, and system high-contrast integration. When it is picked up, the third theme it\n> adds is exactly the case `REQ-UI-083`'s non-foreclosure test already exercises.",
+  "phase": 1,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 3444
  },
  {
   "id": "REQ-UI-091",
@@ -2930,7 +2943,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3422
+  "line": 3476
  },
  {
   "id": "REQ-STA-001",
@@ -2945,7 +2958,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3486
+  "line": 3540
  },
  {
   "id": "REQ-STA-002",
@@ -2960,7 +2973,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3500
+  "line": 3554
  },
  {
   "id": "REQ-STA-003",
@@ -2975,7 +2988,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3510
+  "line": 3564
  },
  {
   "id": "REQ-STA-004",
@@ -2990,7 +3003,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3518
+  "line": 3572
  },
  {
   "id": "REQ-STA-005",
@@ -3003,7 +3016,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3528
+  "line": 3582
  },
  {
   "id": "REQ-API-001",
@@ -3018,7 +3031,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3540
+  "line": 3594
  },
  {
   "id": "REQ-API-002",
@@ -3031,7 +3044,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3575
+  "line": 3629
  },
  {
   "id": "REQ-API-003",
@@ -3046,7 +3059,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3581
+  "line": 3635
  },
  {
   "id": "REQ-API-004",
@@ -3059,7 +3072,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3594
+  "line": 3648
  },
  {
   "id": "REQ-API-005",
@@ -3074,7 +3087,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3607
+  "line": 3661
  },
  {
   "id": "REQ-API-006",
@@ -3089,7 +3102,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3617
+  "line": 3671
  },
  {
   "id": "REQ-API-007",
@@ -3104,7 +3117,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3628
+  "line": 3682
  },
  {
   "id": "REQ-NFR-030",
@@ -3117,7 +3130,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3647
+  "line": 3701
  },
  {
   "id": "REQ-NFR-031",
@@ -3130,7 +3143,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3648
+  "line": 3702
  },
  {
   "id": "REQ-NFR-032",
@@ -3143,7 +3156,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3649
+  "line": 3703
  },
  {
   "id": "REQ-NFR-033",
@@ -3156,7 +3169,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3650
+  "line": 3704
  },
  {
   "id": "REQ-NFR-034",
@@ -3169,7 +3182,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3651
+  "line": 3705
  },
  {
   "id": "REQ-NFR-035",
@@ -3182,7 +3195,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3652
+  "line": 3706
  },
  {
   "id": "REQ-NFR-036",
@@ -3195,7 +3208,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3653
+  "line": 3707
  },
  {
   "id": "REQ-NFR-037",
@@ -3208,7 +3221,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3654
+  "line": 3708
  },
  {
   "id": "REQ-NFR-040",
@@ -3221,7 +3234,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3655
+  "line": 3709
  },
  {
   "id": "REQ-NFR-041",
@@ -3234,7 +3247,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3656
+  "line": 3710
  },
  {
   "id": "REQ-NFR-042",
@@ -3247,7 +3260,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3657
+  "line": 3711
  },
  {
   "id": "REQ-NFR-038",
@@ -3260,7 +3273,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3658
+  "line": 3712
  },
  {
   "id": "REQ-NFR-039",
@@ -3273,7 +3286,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3659
+  "line": 3713
  },
  {
   "id": "REQ-LIC-010",
@@ -3286,7 +3299,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3821
+  "line": 3875
  },
  {
   "id": "REQ-LIC-011",
@@ -3299,7 +3312,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3841
+  "line": 3895
  },
  {
   "id": "REQ-TST-001",
@@ -3312,7 +3325,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3865
+  "line": 3919
  },
  {
   "id": "REQ-TST-002",
@@ -3325,7 +3338,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3890
+  "line": 3944
  },
  {
   "id": "REQ-TST-003",
@@ -3338,7 +3351,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3917
+  "line": 3971
  },
  {
   "id": "REQ-TST-004",
@@ -3351,7 +3364,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3925
+  "line": 3979
  },
  {
   "id": "REQ-TST-004a",
@@ -3364,7 +3377,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3940
+  "line": 3994
  },
  {
   "id": "REQ-TST-005",
@@ -3377,7 +3390,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3957
+  "line": 4011
  },
  {
   "id": "REQ-TST-006",
@@ -3390,7 +3403,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3970
+  "line": 4024
  },
  {
   "id": "REQ-TST-007",
@@ -3403,7 +3416,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3991
+  "line": 4045
  },
  {
   "id": "REQ-TST-008",
@@ -3416,7 +3429,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4001
+  "line": 4055
  },
  {
   "id": "REQ-TST-009",
@@ -3429,7 +3442,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4010
+  "line": 4064
  },
  {
   "id": "REQ-PLN-001",
@@ -3442,6 +3455,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 4048
+  "line": 4102
  }
 ]

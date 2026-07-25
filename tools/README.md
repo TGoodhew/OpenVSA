@@ -84,11 +84,24 @@ normative wording and the acceptance criteria, so it must not be dropped.
 and skips anything that does not match, reporting `no matching requirement — skipped`. That
 makes hand-written tracking issues safe to keep alongside the generated backlog.
 
-Issue **#387, "Phase follow-up"**, is one such: it collects open items raised while
-authoring acceptance criteria that do not block the phase they came from. Append to it
-rather than opening a new issue. Cross-links from requirement issues are *comments*, not
+Issue **#387, "Phase follow-up"**, was one such: it collected open items raised while
+authoring acceptance criteria that did not block the phase they came from. Both were
+resolved and it is closed. If a later phase raises a non-blocking open item, open a fresh
+follow-up issue and note it here. Cross-links from requirement issues are *comments*, not
 body edits — the generator rewrites bodies and would discard them, but leaves comments
 alone.
+
+## The one requirement with no open issue
+
+`REQ-UI-090` (accessibility of colour) is deferred as a possible future enhancement. Its
+issue, #281, is closed and labelled `future-enhancement`, and §13 of the specification
+records the decision and what is owed before it can be picked up. The backlog is therefore
+**247 requirements, 246 open issues**, and that single difference is deliberate.
+
+Neither tool is confused by it: `create_issues.py` lists issues with `--state all`, so a
+re-run will not recreate #281 as a duplicate, and `sync_issues.py` keeps its body and labels
+current while it stays closed. Neither tool opens or closes issues — that is always a human
+decision.
 
 ## Concurrency
 
