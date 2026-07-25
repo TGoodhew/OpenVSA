@@ -3505,13 +3505,34 @@ A managed API shall expose the object model
 limit tests and recordings, sufficient to configure, run and read every measurement
 without the UI.
 
-> **[U] — Reference object model.** The reference product's exact .NET class hierarchy could
-> not be extracted (its API reference site is a JavaScript frameset). The hierarchy above is
+**[DESIGN CHOICE]** — **this is OpenVSA's own object model, and source-compatibility with
+the reference API is explicitly not a goal.**
+
+> *Where the shape came from.* The reference product's exact .NET class hierarchy could not
+> be extracted (its API reference site is a JavaScript frameset). The hierarchy above is
 > inferred from the documented COM model and from MATLAB integration examples that use
 > `Measurement`, `MeasurementExtension` and `InputExtension` objects with
-> `GetParameter`/`SetParameter`/`ParameterNames()`. **[V for those three type names]** If
-> source-compatibility with the reference API ever becomes a requirement, the API reference
-> site must be browsed directly first.
+> `GetParameter`/`SetParameter`/`ParameterNames()`. **[V for those three type names]**
+>
+> *Why parity is not pursued.* Matching the reference API would mean reproducing not just
+> class names but the **string keys** of `REQ-API-003`'s `GetParameter`/`SetParameter`
+> surface — far more numerous than the types, equally unverified, and a permanent
+> compatibility burden. No migration path for existing 89600 scripts has been asked for, and
+> the API is more useful designed around OpenVSA's own model. The inferred hierarchy is
+> adopted because it is a sound design, not because it matches anything.
+>
+> Should source-compatibility ever be wanted, it is a new requirement and begins with
+> browsing the reference API site directly. `REQ-API-005`'s COM surface would be the better
+> target, being the documented one.
+
+**AC:** The object model exposes the stated hierarchy, and it is **complete**: enumerated
+over the measurement catalogue, every measurement can be configured, run and read entirely
+through the API, with every trace data type of `REQ-DSP-040`/`REQ-DSP-041`, every marker
+function of `REQ-MKR-005`, limit tests and recordings reachable — a measurement reachable
+only from the UI fails the test. Combined with `REQ-API-002`, the same suite runs with no UI
+loaded. Parity with the reference API is **not** asserted by any test, and no test names a
+reference type or parameter string as an expected value; claiming untested compatibility is
+the failure mode this criterion guards against.
 
 **`REQ-API-002` (P1) — Headless operation.**
 The API shall be usable with no UI loaded, so that measurements can run in automated test
@@ -3524,25 +3545,60 @@ In addition to strongly-typed members, a `GetParameter`/`SetParameter`/`Paramete
 string-keyed surface shall be provided, mirroring the reference product and enabling
 scripting from environments with weak generics support (notably MATLAB via
 `NET.addAssembly`). **[V]**
+**AC:** `ParameterNames()` returns every parameter reachable through the strongly-typed
+members, and each name round-trips through `SetParameter`/`GetParameter` to the same value
+the typed member reports — the two surfaces drive one piece of state, so a parameter
+settable only one way fails. The generic surface is checked from a weak-generics caller, not
+only from C#, since that is what it exists for. An unknown parameter name raises the
+documented exception of `REQ-NFR-042` rather than being silently ignored. Parameter names
+are OpenVSA's own and are not asserted against the reference product's, per `REQ-API-001`.
 
 **`REQ-API-004` (P2) — SCPI server.**
 An optional SCPI-over-TCP server shall expose a documented subset of the API, so that
 OpenVSA can be driven from existing test frameworks. Command syntax shall follow SCPI-99.
+**AC:** The server is **off by default** and binds only when enabled, which `REQ-NFR-036`'s
+no-egress-without-opt-in rule requires; a test asserts no listening socket exists in a
+default install. Enabled, it accepts SCPI-99 syntax including the common commands, long and
+short mnemonic forms, compound headers and query suffixes, and rejects malformed input with
+a SCPI error rather than dropping the connection. The exposed subset is documented, and a
+test compares the documentation against the implemented command table so the two cannot
+drift. Every command maps onto the same API state as `REQ-API-001`, verified by setting a
+parameter over SCPI and reading it back through the .NET API. Activity appears in the
+`REQ-API-007` log.
 
 **`REQ-API-005` (P3) — COM interop surface.** A COM-callable wrapper for legacy clients.
 *Note:* the reference product's own COM API is documented as obsoleted and no longer
 updated **[V]**; OpenVSA should treat COM as legacy from the outset.
+**AC:** A COM client creates the object model, configures and runs a measurement and reads
+results, exercising the same paths as `REQ-API-001`. The wrapper adds no capability of its
+own — it delegates, so a feature reachable through COM but not through the .NET API fails.
+Being P3 and legacy, it is permitted to expose a documented subset rather than the whole
+surface; what it omits is listed, not discovered. Registration is optional and a default
+install that never registers COM is fully functional.
 
 **`REQ-API-006` (P2) — Macros.**
 User extensions shall be loadable as compiled .NET assemblies from a macros folder, with a
 Macros window listing and running them — mirroring the reference product, whose macros are
 full Visual Studio solutions rather than a scripting language. **[V]**
+**AC:** A compiled assembly dropped into the macros folder appears in the Macros window and
+runs, driving the measurement through `REQ-API-001`. Loading obeys `REQ-NFR-041` in full:
+only configured directories are searched, and an unsigned assembly raises the trust prompt
+rather than loading silently. A macro that throws is contained — the application survives
+with an error reported to the Macros window and the measurement unaffected. Removing the
+assembly removes the entry without a restart.
 
 **`REQ-API-007` (P2) — Command log window.**
 An Output/SCPI Log window shall echo API and SCPI activity, so users can discover the
 programmatic equivalent of UI actions they perform. **[V]**
 *Rationale:* this is the single most effective automation-discoverability feature an
 instrument application can offer.
+**AC:** Performing an action in the UI echoes the equivalent API or SCPI call into the log,
+and **that echoed text, replayed verbatim, reproduces the action** — the property that makes
+the window useful rather than decorative, and the one a paraphrased log fails. Coverage is
+enumerated over the settable parameters of `REQ-API-003`, so a UI control with no logged
+equivalent fails. The log is copyable, is bounded so a long session cannot exhaust memory
+per `REQ-NFR-012`'s spirit, and states when it has truncated rather than dropping entries
+silently.
 
 ---
 
@@ -3564,9 +3620,104 @@ instrument application can offer.
 | `REQ-NFR-038` | Public API surface documented with XML doc comments; docs generated in CI | P2 |
 | `REQ-NFR-039` | Code coverage ≥70 % overall, ≥90 % for `OpenVSA.Dsp` and `OpenVSA.Demod` | P1 |
 
+**`REQ-NFR-030`** fixes the platform floor.
+**AC:** The installer and the application both refuse to run below Windows 10 21H2 or on a
+non-x64 process, with a message naming the unmet requirement rather than failing obscurely.
+A missing .NET Framework 4.7.2 is detected before any managed entry point runs and reported
+the same way. The build emits x64 only, per `REQ-NFR-001` and the solution's single platform
+— a test fails on an AnyCPU or x86 output, since a 32-bit process cannot hold the buffers
+§6 requires.
+
+**`REQ-NFR-031`** governs installation privilege.
+**AC:** With VISA already present, a per-user installation completes as a standard user with
+no elevation prompt, and the installed application starts and runs. Where elevation is
+genuinely needed — a machine-wide install, or installing VISA itself — it is requested
+explicitly with the reason stated, never assumed. Uninstall as the same user removes
+everything the install wrote outside the user profile's data directories.
+
 **`REQ-NFR-032` deserves emphasis.** The ability to run the full analysis stack with no
 instrument attached is what makes the DSP developable, testable in CI, and demonstrable.
 It should be treated as an architectural constraint, not a convenience feature.
+**AC:** On a machine with no VISA runtime installed and no instrument attached, the
+application starts, the simulator and file-playback front ends are available, and a full
+demodulation measurement runs to an error summary. A test asserts the VISA assemblies are
+not loaded in that configuration, so the capability cannot regress into "starts, but only
+because VISA happened to be present". `REQ-NFR-036`'s no-egress rule holds throughout.
+
+**`REQ-NFR-033` needs a scope decision, or it contradicts the exact-string requirements.**
+This requirement is **externalisation only: no second locale is shipped.** Strings live in
+resources rather than in code so that translation is possible later; en-GB is the only
+locale provided, and no translation work is in scope.
+
+Two carve-outs, without which this requirement would break criteria already agreed
+elsewhere:
+
+- **Terminology is not localised.** The trace indicator strings of `REQ-UI-041`, the `NAN`
+  and `INF` readouts of `REQ-UI-032`, the error-summary row labels of `REQ-UI-053` and the
+  `SNR (MER)` label of `REQ-DEM-069` are fixed in every locale, exactly as SCPI mnemonics
+  are. Those requirements assert them as exact literals; making them translatable would
+  falsify their acceptance criteria. Chrome, menus, dialogs and messages localise;
+  measurement vocabulary does not.
+- **Files and exports use invariant culture.** Every path that writes a number to a file —
+  the export formats of `REQ-REC-005`, saved state, logs, reports — formats with
+  `CultureInfo.InvariantCulture`, independent of UI language. A comma decimal separator
+  would corrupt CSV outright, and `REQ-NFR-037`'s bit-for-bit reproducibility requires the
+  written form not to depend on machine locale.
+
+**AC:** No user-visible string is a literal in code — asserted by a check over the UI
+assemblies that fails on a hard-coded display string — and every one resolves through a
+resource lookup with en-GB satisfying all of them. The carve-outs are enforced rather than
+merely documented: the terminology above is asserted to come from a non-localised source, so
+adding it to a resource file fails; and a test formats numbers under a comma-decimal culture
+and asserts every export, state and log path still writes `.`, which catches the
+locale-dependent formatting bug at its source. Running the application under a non-en-GB
+system culture falls back to en-GB without missing strings or layout loss.
+
+**`REQ-NFR-034`** covers diagnosability in the field.
+**AC:** Log level is settable per subsystem and takes effect without a restart, verified by
+raising one subsystem's level and asserting only its output increases. Entries are
+structured — machine-parseable fields, not formatted prose — so a support bundle can be
+queried rather than read. The bundle export gathers logs, configuration and version
+information into one file in a single action, and **redacts nothing silently**: whatever it
+omits is listed in the bundle. Writing a log entry never blocks the measurement thread,
+which `REQ-NFR-011` and `REQ-NFR-012` make a correctness matter rather than a performance
+one.
+
+**`REQ-NFR-035`** is about not compounding a crash with data loss.
+**AC:** An unhandled exception produces a diagnostic report containing the exception, the
+build version and the active measurement configuration. The recording clause is tested
+directly rather than assumed: with a recording in progress, an exception is injected and the
+recording is afterwards found complete and readable up to the point of failure, not
+zero-length or truncated mid-record. The report is written before the process exits, and a
+failure to write it does not itself prevent the recording being closed cleanly — the
+ordering matters, so it is asserted.
+
+**`REQ-NFR-036`** is a privacy guarantee, and is tested as one.
+**AC:** In a default installation the application makes **no outbound network connection of
+any kind** — asserted by running the full start-configure-measure-exit cycle under a network
+monitor with the simulator as source and failing on any egress, not merely by absence of a
+telemetry component. There is no update check, no usage reporting and no crash upload
+without opt-in; opt-in is off by default and, where offered, states what would be sent
+before it is enabled. `REQ-API-004`'s SCPI server is the only listener and is off by
+default. Nothing about this depends on a licence or entitlement check, which
+`REQ-LIC-010` removes entirely.
+
+**`REQ-NFR-040`** covers report output.
+**AC:** A report generated from a measurement contains its traces, settings, error summary
+and, when requested, the `REQ-E44-006` instrument screen capture, in both PDF and HTML. The
+template is user-supplied: substituting a different template changes the layout without a
+rebuild, and a template referencing a field that does not exist fails with that field named
+rather than emitting a blank. Numbers in the report use invariant culture per `REQ-NFR-033`,
+and the metric provenance of `REQ-DEM-072` travels with the results, since a report is
+exactly where a number gets separated from its conditions.
+
+**`REQ-NFR-042`** covers the API's contract with its callers.
+**AC:** Every public API member documents the exceptions it can throw, and a test asserts
+that the exceptions actually thrown are within the documented set — an undocumented
+exception type escaping the API surface fails. Assembly and package versions follow semantic
+versioning, checked against the previous release by an API-diff tool so a breaking change
+without a major bump fails the build. The deprecation policy is published, and every member
+marked obsolete names its replacement and the version in which it will be removed.
 
 **`REQ-NFR-037` needs a qualification, or it silently contradicts the threading model.**
 Bit-for-bit reproducibility is incompatible with unordered parallel reduction: floating-point
@@ -3587,6 +3738,29 @@ the same machine, at every supported degree of parallelism.
 ten binary file formats from untrusted sources. `REQ-PER-002` addresses plug-in *faults* but
 says nothing about plug-in *malice*, and `REQ-REC-009` covers parser robustness. Together
 these are the product's entire attack surface and they should be treated as such deliberately.
+**AC:** Assemblies load only from the configured directories: a plug-in placed elsewhere on
+disk, or reachable by a relative path escaping a configured directory, is not loaded — the
+traversal case is tested explicitly, since a naive path join permits it. With signature
+enforcement on, an unsigned or invalidly signed assembly is refused and a validly signed one
+loads; with enforcement off, an unsigned assembly raises a trust prompt naming the file and
+its publisher, and declining leaves it unloaded. The prompt is not suppressible by the
+plug-in itself. Refusal is reported to the user rather than logged and swallowed, since a
+personality that silently fails to appear is indistinguishable from one that was never
+installed.
+
+**`REQ-NFR-038`** keeps the API documented as it changes.
+**AC:** Every public type and member carries XML doc comments — the build treats a missing
+comment on the public surface as an error, so documentation cannot lag behind the code — and
+CI generates the documentation on every run, failing on a malformed reference or a broken
+`cref`. The generated output is published as a build artefact.
+
+**`REQ-NFR-039`** sets the coverage floor.
+**AC:** CI measures line and branch coverage and fails below 70 % overall, or below 90 % for
+`OpenVSA.Dsp` and `OpenVSA.Demod` individually — the per-project floors are checked
+separately, since a high overall figure can hide a weak DSP project. Coverage is measured
+over the closed-form and property tests of `REQ-TST-001`, not inflated by tests that execute
+code without asserting on it; a test with no assertion fails review. The figure is reported
+per project on every run so a decline is visible before it crosses the threshold.
 
 ---
 
