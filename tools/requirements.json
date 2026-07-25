@@ -206,10 +206,10 @@
   "num": "004",
   "priority": "P1",
   "title": "Binary block transfer",
-  "body": "**`REQ-VISA-004` (P1) — Binary block transfer.**\nBulk trace/IQ transfers shall use **IEEE 488.2 definite-length arbitrary block responses**\n(`#<nd><len><payload>`, §8.7.9), with the data format selected by the **SCPI-99** commands\n`FORMat:DATA REAL,32` and `FORMat:BORDer`, never ASCII.\n*Rationale:* ASCII carries roughly 16–18 bytes per value against 4, so binary is about 4–5×\nfaster and far cheaper to parse. *(Note: ASCII at 8+ significant digits actually carries\n**more** precision than `REAL,32` — throughput and parse cost are the reasons to prefer\nbinary, not accuracy.)*",
+  "body": "**`REQ-VISA-004` (P1) — Binary block transfer.**\nBulk trace/IQ transfers shall use **IEEE 488.2 definite-length arbitrary block responses**\n(`#<nd><len><payload>`, §8.7.9), with the data format selected by the **SCPI-99** commands\n`FORMat:DATA REAL,32` and `FORMat:BORDer`, never ASCII.\n*Rationale:* ASCII carries roughly 16–18 bytes per value against 4, so binary is about 4–5×\nfaster and far cheaper to parse. *(Note: ASCII at 8+ significant digits actually carries\n**more** precision than `REAL,32` — throughput and parse cost are the reasons to prefer\nbinary, not accuracy.)*\n**AC:** Bulk transfers issue `FORMat:DATA REAL,32` and set `FORMat:BORDer`, and the reader\nparses the `#<nd><len><payload>` definite-length header correctly for header lengths across\nthe full 1–9 digit range. Byte order is honoured: a payload transferred under each\n`FORMat:BORDer` setting decodes to the same values, which a hard-coded endianness fails. No\nbulk path falls back to ASCII — a test fails on an ASCII bulk transfer. Measured throughput\nis at least 4× the ASCII equivalent for the same record, per `REQ-NFR-027`'s measured figures\nrather than a nominal one.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
   "line": 561
  },
@@ -224,7 +224,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 570
+  "line": 577
  },
  {
   "id": "REQ-NFR-008",
@@ -237,7 +237,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 585
+  "line": 592
  },
  {
   "id": "REQ-NFR-010",
@@ -250,7 +250,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 603
+  "line": 610
  },
  {
   "id": "REQ-NFR-011",
@@ -263,7 +263,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 617
+  "line": 624
  },
  {
   "id": "REQ-NFR-012",
@@ -276,7 +276,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 624
+  "line": 631
  },
  {
   "id": "REQ-NFR-020",
@@ -289,7 +289,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 638
+  "line": 645
  },
  {
   "id": "REQ-NFR-021",
@@ -302,7 +302,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 639
+  "line": 646
  },
  {
   "id": "REQ-NFR-022",
@@ -315,7 +315,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 640
+  "line": 647
  },
  {
   "id": "REQ-NFR-023",
@@ -328,7 +328,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 641
+  "line": 648
  },
  {
   "id": "REQ-NFR-024",
@@ -341,7 +341,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 642
+  "line": 649
  },
  {
   "id": "REQ-NFR-025",
@@ -354,7 +354,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 643
+  "line": 650
  },
  {
   "id": "REQ-NFR-026",
@@ -367,7 +367,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 644
+  "line": 651
  },
  {
   "id": "REQ-NFR-027",
@@ -380,7 +380,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 657
+  "line": 664
  },
  {
   "id": "REQ-DAT-001",
@@ -393,7 +393,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 708
+  "line": 715
  },
  {
   "id": "REQ-DAT-001a",
@@ -406,7 +406,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 717
+  "line": 724
  },
  {
   "id": "REQ-DAT-002",
@@ -421,7 +421,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 729
+  "line": 736
  },
  {
   "id": "REQ-DAT-003",
@@ -434,7 +434,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 741
+  "line": 748
  },
  {
   "id": "REQ-HAL-001",
@@ -447,7 +447,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 808
+  "line": 815
  },
  {
   "id": "REQ-HAL-002",
@@ -460,7 +460,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 816
+  "line": 823
  },
  {
   "id": "REQ-HAL-003",
@@ -473,7 +473,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 822
+  "line": 829
  },
  {
   "id": "REQ-DAT-010",
@@ -488,7 +488,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 831
+  "line": 838
  },
  {
   "id": "REQ-TRC-001",
@@ -501,7 +501,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 858
+  "line": 865
  },
  {
   "id": "REQ-TRC-001a",
@@ -516,7 +516,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 864
+  "line": 871
  },
  {
   "id": "REQ-TRC-002",
@@ -529,7 +529,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 879
+  "line": 886
  },
  {
   "id": "REQ-TRC-003",
@@ -542,7 +542,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 888
+  "line": 895
  },
  {
   "id": "REQ-ACQ-001",
@@ -555,7 +555,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 910
+  "line": 917
  },
  {
   "id": "REQ-ACQ-002",
@@ -570,7 +570,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 926
+  "line": 933
  },
  {
   "id": "REQ-ACQ-003",
@@ -585,7 +585,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 933
+  "line": 940
  },
  {
   "id": "REQ-ACQ-004",
@@ -598,7 +598,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 946
+  "line": 953
  },
  {
   "id": "REQ-AMP-001",
@@ -611,7 +611,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 962
+  "line": 969
  },
  {
   "id": "REQ-AMP-002",
@@ -624,7 +624,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 971
+  "line": 978
  },
  {
   "id": "REQ-AMP-003",
@@ -637,7 +637,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 978
+  "line": 985
  },
  {
   "id": "REQ-AMP-004",
@@ -650,7 +650,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 986
+  "line": 993
  },
  {
   "id": "REQ-ACQ-010",
@@ -663,7 +663,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 994
+  "line": 1001
  },
  {
   "id": "REQ-TRG-001",
@@ -678,7 +678,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1006
+  "line": 1013
  },
  {
   "id": "REQ-TRG-002",
@@ -693,7 +693,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1014
+  "line": 1021
  },
  {
   "id": "REQ-TRG-003",
@@ -708,7 +708,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1021
+  "line": 1028
  },
  {
   "id": "REQ-E44-001",
@@ -721,7 +721,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1031
+  "line": 1038
  },
  {
   "id": "REQ-E44-002",
@@ -729,12 +729,12 @@
   "num": "002",
   "priority": "P0",
   "title": "Basic-mode IQ capture path. [V — verified on the instrument]",
-  "body": "**`REQ-E44-002` (P0) — Basic-mode IQ capture path. [V — verified on the instrument]**\n\nThe driver shall place the instrument in **Basic** mode (`:INSTrument:SELect BASIC`), select\nthe **Waveform** (time-domain) measurement via `:CONFigure:WAVeform`, and retrieve results\nusing the three result suffixes below.\n\n> **Bench-verified 25 July 2026** against the E4406A at GPIB 17, firmware A.08.10, over\n> NI-VISA. Every value in this requirement was measured, not inferred. The instrument was\n> found in Basic mode / Channel Power at 2 GHz and was restored to that state afterwards.\n\n**The three Waveform result suffixes:**\n\n| Query | Returns |\n|---|---|\n| `:FETCh:WAVeform0?` | **Raw interleaved I,Q pairs** — `I₀,Q₀,I₁,Q₁,…`, exactly `2N` values |\n| `:FETCh:WAVeform1?` | **7 scalars** (see below) |\n| `:FETCh:WAVeform2?` | **Power versus time**, one value per sample, in dBm |\n\n`:READ:WAVeform<n>?` behaves identically but arms and acquires first.\n\n**Scalar block returned by `:FETCh:WAVeform1?`**, in order — verified against a real capture:\n\n| # | Quantity | Example |\n|---|---|---|\n| 1 | **Sample interval** $T_s$, seconds | `+7.33333333E-007` |\n| 2 | Mean power over the record, dBm | `-9.06845018E+001` |\n| 3 | Mean power over the burst/gate, dBm | `-9.06845018E+001` |\n| 4 | **Number of samples $N$** | `+15` |\n| 5 | Peak-to-mean ratio, dB | `+3.90391283E+000` |\n| 6 | Maximum point, dBm | `-8.67805890E+001` |\n| 7 | Minimum point, dBm | `-1.09926433E+002` |",
+  "body": "**`REQ-E44-002` (P0) — Basic-mode IQ capture path. [V — verified on the instrument]**\n\nThe driver shall place the instrument in **Basic** mode (`:INSTrument:SELect BASIC`), select\nthe **Waveform** (time-domain) measurement via `:CONFigure:WAVeform`, and retrieve results\nusing the three result suffixes below.\n\n> **Bench-verified 25 July 2026** against the E4406A at GPIB 17, firmware A.08.10, over\n> NI-VISA. Every value in this requirement was measured, not inferred. The instrument was\n> found in Basic mode / Channel Power at 2 GHz and was restored to that state afterwards.\n\n**The three Waveform result suffixes:**\n\n| Query | Returns |\n|---|---|\n| `:FETCh:WAVeform0?` | **Raw interleaved I,Q pairs** — `I₀,Q₀,I₁,Q₁,…`, exactly `2N` values |\n| `:FETCh:WAVeform1?` | **7 scalars** (see below) |\n| `:FETCh:WAVeform2?` | **Power versus time**, one value per sample, in dBm |\n\n`:READ:WAVeform<n>?` behaves identically but arms and acquires first.\n\n**Scalar block returned by `:FETCh:WAVeform1?`**, in order — verified against a real capture:\n\n| # | Quantity | Example |\n|---|---|---|\n| 1 | **Sample interval** $T_s$, seconds | `+7.33333333E-007` |\n| 2 | Mean power over the record, dBm | `-9.06845018E+001` |\n| 3 | Mean power over the burst/gate, dBm | `-9.06845018E+001` |\n| 4 | **Number of samples $N$** | `+15` |\n| 5 | Peak-to-mean ratio, dB | `+3.90391283E+000` |\n| 6 | Maximum point, dBm | `-8.67805890E+001` |\n| 7 | Minimum point, dBm | `-1.09926433E+002` |\n\n**AC:** The driver selects Basic mode and configures the Waveform measurement, and all three\nresult suffixes parse: `WAVeform0?` yields exactly $2N$ interleaved values with $N$ taken\nfrom scalar 4, `WAVeform1?` yields exactly 7 scalars in the documented order, and\n`WAVeform2?` yields $N$ power values. Scalar order is asserted positionally against a live\ncapture, since a transposed pair — mean power and burst power are equal on an ungated\ncapture — would otherwise pass unnoticed; the test uses a gated capture where they differ.\n`:READ:WAVeform<n>?` arms and acquires where `:FETCh` does not, verified by fetching twice\nand reading once and comparing which data changes. The driver restores the instrument's prior\nmode and centre frequency on disconnect, as the bench procedure did.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1037
+  "line": 1044
  },
  {
   "id": "REQ-E44-002a",
@@ -742,14 +742,14 @@
   "num": "002a",
   "priority": "P0",
   "title": "I/Q scaling.",
-  "body": "**`REQ-E44-002a` (P0) — I/Q scaling. [V]**\nThe values returned by `:FETCh:WAVeform0?` are **volts, peak-referenced**. Instantaneous power\nis therefore\n\n$$P = \\frac{I^2 + Q^2}{2 R},\\qquad R = 50\\,\\Omega$$\n\n**This was confirmed by reconstruction, not assumption:** computing mean, peak-to-mean, max and\nmin from a raw 15-sample capture reproduced all four of the instrument's own reported scalars\nto three decimal places (mean −90.685 dBm vs −90.6845 reported; peak-to-mean 3.904 vs 3.904;\nmax −86.781 vs −86.781; min −109.926 vs −109.926). Treating the values as RMS volts gives\n−87.674 dBm and is **wrong by 3.01 dB** — exactly the factor-of-two trap this requirement\nexists to prevent.",
+  "body": "**`REQ-E44-002a` (P0) — I/Q scaling. [V]**\nThe values returned by `:FETCh:WAVeform0?` are **volts, peak-referenced**. Instantaneous power\nis therefore\n\n$$P = \\frac{I^2 + Q^2}{2 R},\\qquad R = 50\\,\\Omega$$\n\n**This was confirmed by reconstruction, not assumption:** computing mean, peak-to-mean, max and\nmin from a raw 15-sample capture reproduced all four of the instrument's own reported scalars\nto three decimal places (mean −90.685 dBm vs −90.6845 reported; peak-to-mean 3.904 vs 3.904;\nmax −86.781 vs −86.781; min −109.926 vs −109.926). Treating the values as RMS volts gives\n−87.674 dBm and is **wrong by 3.01 dB** — exactly the factor-of-two trap this requirement\nexists to prevent.\n**AC:** The bench capture recorded in this requirement is kept as a fixture, and the driver's\nscaling reproduces all four instrument-reported scalars from its raw I/Q to three decimal\nplaces: mean −90.685 dBm, peak-to-mean 3.904 dB, max −86.781 dBm, min −109.926 dBm. The\nsame test asserts that an RMS interpretation yields −87.674 dBm and **fails** — the wrong\nanswer is pinned as well as the right one, because the two differ by exactly 3.01 dB and\nnothing else in the system would reveal the substitution. Power is computed as\n$(I^2+Q^2)/2R$ with $R = 50\\,\\Omega$.",
   "phase": 3,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1069
+  "line": 1086
  },
  {
   "id": "REQ-E44-002b",
@@ -757,14 +757,14 @@
   "num": "002b",
   "priority": "P0",
   "title": "Sample rate is quantised, and is set by RBW.",
-  "body": "**`REQ-E44-002b` (P0) — Sample rate is quantised, and is set by RBW. [V]**\n$T_s$ is always an integer multiple of **1/15 MHz ≈ 66.667 ns**, giving a maximum sample rate\nof **7.5 MHz**. Measured values:\n\n| RBW | $T_s$ | $F_s$ | multiple of 66.667 ns |\n|---|---|---|---|\n| 10 kHz | 7.533 µs | 132.7 kHz | 113 |\n| 100 kHz | 733.33 ns | 1.3636 MHz | 11 |\n| 257.5 kHz | 266.67 ns | 3.75 MHz | 4 |\n| 505 kHz | 200 ns | 5.0 MHz | 3 |\n| 752.5 kHz – 1 MHz | 133.33 ns | 7.5 MHz | 2 |\n\nThe driver shall therefore **never assume a requested sample rate is honoured**: set\n`:SENSe:WAVeform:BANDwidth:RESolution`, then **read $T_s$ back from scalar 1** and place that\nvalue in `IqBlock.SampleRateHz`. `REQ-HAL-001`'s negotiate-then-configure contract shall\nreport the coercion.\n*Note this is a different law from the reference product's $F_s = 1.28\\,\\text{Span}$\n(§2.2) — the E4406A's waveform path is RBW-driven with integer decimation, which is precisely\nwhy the HAL negotiates rather than assumes.*",
+  "body": "**`REQ-E44-002b` (P0) — Sample rate is quantised, and is set by RBW. [V]**\n$T_s$ is always an integer multiple of **1/15 MHz ≈ 66.667 ns**, giving a maximum sample rate\nof **7.5 MHz**. Measured values:\n\n| RBW | $T_s$ | $F_s$ | multiple of 66.667 ns |\n|---|---|---|---|\n| 10 kHz | 7.533 µs | 132.7 kHz | 113 |\n| 100 kHz | 733.33 ns | 1.3636 MHz | 11 |\n| 257.5 kHz | 266.67 ns | 3.75 MHz | 4 |\n| 505 kHz | 200 ns | 5.0 MHz | 3 |\n| 752.5 kHz – 1 MHz | 133.33 ns | 7.5 MHz | 2 |\n\nThe driver shall therefore **never assume a requested sample rate is honoured**: set\n`:SENSe:WAVeform:BANDwidth:RESolution`, then **read $T_s$ back from scalar 1** and place that\nvalue in `IqBlock.SampleRateHz`. `REQ-HAL-001`'s negotiate-then-configure contract shall\nreport the coercion.\n*Note this is a different law from the reference product's $F_s = 1.28\\,\\text{Span}$\n(§2.2) — the E4406A's waveform path is RBW-driven with integer decimation, which is precisely\nwhy the HAL negotiates rather than assumes.*\n**AC:** `IqBlock.SampleRateHz` is derived from $T_s$ **read back from scalar 1**, never from\nthe requested rate — a test requests a rate the instrument cannot honour and asserts the\nblock carries the coerced value, with the coercion reported through `REQ-HAL-001`'s\nnegotiate-then-configure contract. Every $T_s$ returned is an integer multiple of 1/15 MHz,\nchecked across the RBW settings tabulated above, and each tabulated RBW reproduces its\nmeasured $T_s$. A driver that echoes the requested rate fails, as does one applying the\nreference product's $F_s = 1.28\\,\\text{Span}$ law to this front end.",
   "phase": 3,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1082
+  "line": 1106
  },
  {
   "id": "REQ-E44-002c",
@@ -772,14 +772,14 @@
   "num": "002c",
   "priority": "P0",
   "title": "Record length and the truncation trap.",
-  "body": "**`REQ-E44-002c` (P0) — Record length and the truncation trap. [V]**\n$N = \\text{sweep time}/T_s + 1$ (measured: 20 ms at 7.5 MHz → `+150001`).\nSweep time accepts **1 µs to 100 s**, but capture memory caps the record at\n**950 000 samples** (≈7.6 MB of I/Q). Beyond that the instrument **silently truncates the\nacquisition and continues**, pushing\n\n```\n+22,\"Memory limit caused Data Acquisition to be truncated\"\n```\n\ninto the error queue. Requesting 200 ms at 7.5 MHz returns `N = 950000`, not the 1 500 001\nrequested — with no failed query and no obvious symptom.\n\n**The driver shall poll `:SYSTem:ERRor?` after every acquisition and surface error 22 as a\nfirst-class condition**, and shall independently verify that the returned $N$ matches the\nrequested record length. *This is the single most dangerous behaviour found on the instrument:\na caller that trusts its own sweep-time setting will silently analyse a shorter record than it\nbelieves it has.* Note also that the error queue is **sticky** — issue `*CLS` before an\nacquisition whose error state matters.",
+  "body": "**`REQ-E44-002c` (P0) — Record length and the truncation trap. [V]**\n$N = \\text{sweep time}/T_s + 1$ (measured: 20 ms at 7.5 MHz → `+150001`).\nSweep time accepts **1 µs to 100 s**, but capture memory caps the record at\n**950 000 samples** (≈7.6 MB of I/Q). Beyond that the instrument **silently truncates the\nacquisition and continues**, pushing\n\n```\n+22,\"Memory limit caused Data Acquisition to be truncated\"\n```\n\ninto the error queue. Requesting 200 ms at 7.5 MHz returns `N = 950000`, not the 1 500 001\nrequested — with no failed query and no obvious symptom.\n\n**The driver shall poll `:SYSTem:ERRor?` after every acquisition and surface error 22 as a\nfirst-class condition**, and shall independently verify that the returned $N$ matches the\nrequested record length. *This is the single most dangerous behaviour found on the instrument:\na caller that trusts its own sweep-time setting will silently analyse a shorter record than it\nbelieves it has.* Note also that the error queue is **sticky** — issue `*CLS` before an\nacquisition whose error state matters.\n**AC:** $N$ satisfies $\\text{sweep time}/T_s + 1$, checked against the measured case of 20 ms\nat 7.5 MHz returning 150 001. The truncation case is tested on the instrument: requesting\n200 ms at 7.5 MHz returns $N = 950\\,000$, and the driver raises a first-class error rather\nthan returning the short record as if complete. Both detection paths are asserted\nindependently — the `:SYSTem:ERRor?` poll surfacing error 22, **and** the returned $N$\ncompared against the requested length — since either alone can miss a truncation the other\ncatches. `*CLS` is issued before any acquisition whose error state matters, verified by a\ntest that leaves a stale error queued and confirms it is not misattributed to the next\nacquisition. Sweep times outside 1 µs to 100 s are rejected before reaching the instrument.",
   "phase": 3,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1102
+  "line": 1133
  },
  {
   "id": "REQ-E44-002d",
@@ -794,7 +794,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1122
+  "line": 1162
  },
  {
   "id": "REQ-E44-003",
@@ -807,7 +807,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1137
+  "line": 1177
  },
  {
   "id": "REQ-E44-004",
@@ -815,12 +815,12 @@
   "num": "004",
   "priority": "P2",
   "title": "B7C alignment and calibration passthrough",
-  "body": "**`REQ-E44-004` (P2) — B7C alignment and calibration passthrough.**\nThe driver shall expose `:CALibration:GIQ`, `:CALibration:IQ:CMR`,\n`:CALibration:IQ:FLATness` and `:CALibration:IQ:OFFSet` as explicit user-initiated\nmaintenance actions, never automatically.",
+  "body": "**`REQ-E44-004` (P2) — B7C alignment and calibration passthrough.**\nThe driver shall expose `:CALibration:GIQ`, `:CALibration:IQ:CMR`,\n`:CALibration:IQ:FLATness` and `:CALibration:IQ:OFFSet` as explicit user-initiated\nmaintenance actions, never automatically.\n**AC:** All four commands are reachable as maintenance actions, and none is issued on\nconnect, on mode change, on acquisition, or on any other automatic path — asserted by\nrecording the SCPI traffic across a full connect-configure-acquire-disconnect cycle and\nfailing if a calibration command appears. Each action reports completion or failure to the\nuser rather than running silently, and calibration state is reflected in the status bar per\n`REQ-UI-006`.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1146
+  "line": 1186
  },
  {
   "id": "REQ-E44-005",
@@ -833,7 +833,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1151
+  "line": 1197
  },
  {
   "id": "REQ-E44-006",
@@ -841,12 +841,12 @@
   "num": "006",
   "priority": "P2",
   "title": "Screen capture passthrough",
-  "body": "**`REQ-E44-006` (P2) — Screen capture passthrough.**\nThe driver shall optionally retrieve the instrument's own display (HP-GL plot or PCL print\nhardcopy) for inclusion in reports — useful for cross-checking OpenVSA's results against the\ninstrument's native personality measurements.",
+  "body": "**`REQ-E44-006` (P2) — Screen capture passthrough.**\nThe driver shall optionally retrieve the instrument's own display (HP-GL plot or PCL print\nhardcopy) for inclusion in reports — useful for cross-checking OpenVSA's results against the\ninstrument's native personality measurements.\n**AC:** A screen capture retrieved from the instrument renders as an image and embeds in a\n`REQ-NFR-040` report. Both offered forms are handled, or the unsupported one is declared\nunavailable rather than producing a corrupt file. The capture is optional and off by default:\na normal acquisition cycle issues no hardcopy command, asserted from the SCPI traffic, since\nthese transfers are slow enough to matter on a GPIB link (§6.3). Failure to retrieve degrades\nthe report gracefully instead of failing the measurement.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1158
+  "line": 1204
  },
  {
   "id": "REQ-E44-007",
@@ -859,7 +859,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1163
+  "line": 1215
  },
  {
   "id": "REQ-REC-001",
@@ -872,7 +872,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1174
+  "line": 1226
  },
  {
   "id": "REQ-REC-002",
@@ -885,7 +885,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1183
+  "line": 1235
  },
  {
   "id": "REQ-REC-003",
@@ -898,7 +898,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1189
+  "line": 1241
  },
  {
   "id": "REQ-REC-004",
@@ -913,7 +913,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1195
+  "line": 1247
  },
  {
   "id": "REQ-REC-005",
@@ -921,15 +921,15 @@
   "num": "005",
   "priority": "P1",
   "title": "Import and export format support",
-  "body": "**`REQ-REC-005` (P1) — Import and export format support.**\nThe following formats shall be supported for import (I) and/or export (E), matching the\nreference product's catalogue: **[V]**\n\n| Format | Extensions | I | E | Notes |\n|---|---|---|---|---|\n| OpenVSA native | `.ovsa` | ✓ | ✓ | full fidelity, all metadata |\n| CSV | `.csv` | ✓ | ✓ | ASCII, metadata in header comments |\n| Tab-delimited text | `.txt` | ✓ | ✓ | |\n| MATLAB MAT-file (v7.3/HDF5) | `.mat`, `.h5`, `.hdf` | ✓ | ✓ | large-file capable |\n| MATLAB MAT-file v4 | `.mat` | ✓ | ✓ | legacy |\n| BINF | `.binf` | ✓ | ✓ | little-endian real32 |\n| SDF (Fast / Export) | `.sdf`, `.dat` | ✓ | ✓ | legacy 89400-series interchange — see caveat |\n| VITA 49 / 49A / 49.2 | `.vita49`, `.pcap`, `.pcapng` | ✓ | ✓ | standard RF metadata packets |\n| N5106A / N5110A waveform | `.bin` | ✓ | ✓ | big- and little-endian variants |\n| E3238S time snapshot | `.cap` | ✓ | ✗ | recall only, legacy |\n\n> **⚠ [U] — SDF binary layout.** The byte-level SDF header field layout (offsets for centre\n> frequency, sample rate, timestamps) was **not** obtained during research. SDF was\n> historically publicly documented via the 89400-series \"SDF File Format Utilities\" manual;\n> that document must be obtained before the SDF reader/writer is implemented. Until then,\n> treat SDF as P2 and do not schedule it into an early phase.",
+  "body": "**`REQ-REC-005` (P1) — Import and export format support.**\nThe following formats shall be supported for import (I) and/or export (E), matching the\nreference product's catalogue: **[V]**\n\n| Format | Extensions | I | E | Notes |\n|---|---|---|---|---|\n| OpenVSA native | `.ovsa` | ✓ | ✓ | full fidelity, all metadata |\n| CSV | `.csv` | ✓ | ✓ | ASCII, metadata in header comments |\n| Tab-delimited text | `.txt` | ✓ | ✓ | |\n| MATLAB MAT-file (v7.3/HDF5) | `.mat`, `.h5`, `.hdf` | ✓ | ✓ | large-file capable |\n| MATLAB MAT-file v4 | `.mat` | ✓ | ✓ | legacy |\n| BINF | `.binf` | ✓ | ✓ | little-endian real32 |\n| SDF (Fast / Export) | `.sdf`, `.dat` | ✓ | ✓ | legacy 89400-series interchange — see caveat |\n| VITA 49 / 49A / 49.2 | `.vita49`, `.pcap`, `.pcapng` | ✓ | ✓ | standard RF metadata packets |\n| N5106A / N5110A waveform | `.bin` | ✓ | ✓ | big- and little-endian variants |\n| E3238S time snapshot | `.cap` | ✓ | ✗ | recall only, legacy |\n\n> **⚠ [U] — SDF binary layout.** The byte-level SDF header field layout (offsets for centre\n> frequency, sample rate, timestamps) was **not** obtained during research. SDF was\n> historically publicly documented via the 89400-series \"SDF File Format Utilities\" manual;\n> that document must be obtained before the SDF reader/writer is implemented. Until then,\n> treat SDF as P2 and do not schedule it into an early phase.\n\n**AC:** Each format supports exactly the directions ticked — a test asserts that E3238S is\nimport-only and that attempting to export it is refused with a named error rather than\nsilently producing nothing. Every format marked for both directions round-trips: a block\nexported and re-imported returns sample values within that format's stated precision, and\nthe native `.ovsa` format round-trips **bit-identically** with all metadata intact, which is\nwhat \"full fidelity\" claims. Formats with endianness variants are tested in both. Any\nmetadata a format cannot carry is reported per `REQ-REC-006`. SDF remains unimplemented\nuntil its documented byte-level layout is obtained; a stub that writes a plausible-looking\nbut unverified SDF file fails this criterion.",
   "phase": 3,
   "evidence": [
    "verified",
    "unverified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1206
+  "line": 1258
  },
  {
   "id": "REQ-REC-006",
@@ -937,14 +937,14 @@
   "num": "006",
   "priority": "P1",
   "title": "Export fidelity honesty",
-  "body": "**`REQ-REC-006` (P1) — Export fidelity honesty.**\nWhere an export format cannot carry trigger corrections or full metadata, the export dialog\nshall say so explicitly before writing, and the written file shall record the limitation.\n*Rationale:* the reference product has exactly this trap and it is a known source of\nconfusion. **[V]**",
+  "body": "**`REQ-REC-006` (P1) — Export fidelity honesty.**\nWhere an export format cannot carry trigger corrections or full metadata, the export dialog\nshall say so explicitly before writing, and the written file shall record the limitation.\n*Rationale:* the reference product has exactly this trap and it is a known source of\nconfusion. **[V]**\n**AC:** Exporting to a format that cannot carry trigger corrections or full metadata raises\nan explicit statement of what will be lost **before** the file is written, naming the fields\n— a warning shown afterwards, or a generic \"some data may be lost\", fails. The written file\nrecords the limitation in its own metadata where the format allows, so the loss is\ndiscoverable from the file alone. The lossy set is derived from each writer's declared\ncapabilities rather than hard-coded, so a new format cannot be added without declaring what\nit drops. Exporting `TriggerCorrectionsApplied = false` data is itself flagged, per\n`REQ-DAT-002`.",
   "phase": 3,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1229
+  "line": 1291
  },
  {
   "id": "REQ-REC-007",
@@ -952,12 +952,12 @@
   "num": "007",
   "priority": "P2",
   "title": "Recording size estimation",
-  "body": "**`REQ-REC-007` (P2) — Recording size estimation.** The UI shall show projected file size\nand remaining disk time before a recording starts.",
+  "body": "**`REQ-REC-007` (P2) — Recording size estimation.** The UI shall show projected file size\nand remaining disk time before a recording starts.\n**AC:** Before a recording starts the UI shows a projected file size and a remaining-disk\ntime. The projection is checked against reality: for a completed recording the actual size is\nwithin 5 % of the projection, across sample rates and formats. Remaining disk time uses free\nspace on the target volume at the time of the estimate, and a recording projected to exceed\nfree space is warned about before it starts rather than failing partway.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 1235
+  "line": 1305
  },
  {
   "id": "REQ-REC-008",
@@ -970,7 +970,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1238
+  "line": 1313
  },
  {
   "id": "REQ-REC-009",
@@ -983,7 +983,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1248
+  "line": 1323
  },
  {
   "id": "REQ-SIM-001",
@@ -996,7 +996,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1258
+  "line": 1333
  },
  {
   "id": "REQ-SIM-002",
@@ -1009,7 +1009,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1265
+  "line": 1340
  },
  {
   "id": "REQ-SIM-003",
@@ -1022,7 +1022,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1275
+  "line": 1350
  },
  {
   "id": "REQ-SIM-004",
@@ -1035,7 +1035,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1280
+  "line": 1355
  },
  {
   "id": "REQ-SIM-005",
@@ -1048,7 +1048,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1289
+  "line": 1364
  },
  {
   "id": "REQ-DSP-001",
@@ -1061,7 +1061,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1302
+  "line": 1377
  },
  {
   "id": "REQ-DSP-002",
@@ -1074,7 +1074,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1316
+  "line": 1391
  },
  {
   "id": "REQ-DSP-010",
@@ -1089,7 +1089,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1325
+  "line": 1400
  },
  {
   "id": "REQ-DSP-010a",
@@ -1102,7 +1102,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1346
+  "line": 1421
  },
  {
   "id": "REQ-DSP-011",
@@ -1115,7 +1115,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1362
+  "line": 1437
  },
  {
   "id": "REQ-DSP-012",
@@ -1130,7 +1130,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1370
+  "line": 1445
  },
  {
   "id": "REQ-DSP-020",
@@ -1145,7 +1145,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1380
+  "line": 1455
  },
  {
   "id": "REQ-DSP-021",
@@ -1160,7 +1160,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1387
+  "line": 1462
  },
  {
   "id": "REQ-DSP-022",
@@ -1173,7 +1173,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1398
+  "line": 1473
  },
  {
   "id": "REQ-DSP-023",
@@ -1188,7 +1188,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1416
+  "line": 1491
  },
  {
   "id": "REQ-DSP-023a",
@@ -1203,7 +1203,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1428
+  "line": 1503
  },
  {
   "id": "REQ-DSP-024",
@@ -1218,7 +1218,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1447
+  "line": 1522
  },
  {
   "id": "REQ-DSP-030",
@@ -1234,7 +1234,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1460
+  "line": 1535
  },
  {
   "id": "REQ-DSP-031",
@@ -1249,7 +1249,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1488
+  "line": 1563
  },
  {
   "id": "REQ-DSP-040",
@@ -1264,7 +1264,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1499
+  "line": 1574
  },
  {
   "id": "REQ-DSP-040a",
@@ -1277,7 +1277,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1514
+  "line": 1589
  },
  {
   "id": "REQ-DSP-041",
@@ -1292,7 +1292,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1530
+  "line": 1605
  },
  {
   "id": "REQ-DSP-042",
@@ -1305,7 +1305,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1542
+  "line": 1617
  },
  {
   "id": "REQ-DSP-043",
@@ -1320,7 +1320,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1553
+  "line": 1628
  },
  {
   "id": "REQ-DSP-044",
@@ -1333,7 +1333,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1563
+  "line": 1638
  },
  {
   "id": "REQ-DSP-045",
@@ -1346,7 +1346,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1573
+  "line": 1648
  },
  {
   "id": "REQ-DSP-046",
@@ -1361,7 +1361,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1581
+  "line": 1656
  },
  {
   "id": "REQ-DSP-050",
@@ -1376,7 +1376,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1596
+  "line": 1671
  },
  {
   "id": "REQ-MKR-001",
@@ -1391,7 +1391,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1610
+  "line": 1685
  },
  {
   "id": "REQ-MKR-002",
@@ -1406,7 +1406,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1621
+  "line": 1696
  },
  {
   "id": "REQ-MKR-003",
@@ -1421,7 +1421,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1634
+  "line": 1709
  },
  {
   "id": "REQ-MKR-004",
@@ -1436,7 +1436,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1649
+  "line": 1724
  },
  {
   "id": "REQ-MKR-005",
@@ -1451,7 +1451,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1658
+  "line": 1733
  },
  {
   "id": "REQ-MKR-006",
@@ -1466,7 +1466,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1670
+  "line": 1745
  },
  {
   "id": "REQ-MKR-007",
@@ -1481,7 +1481,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1679
+  "line": 1754
  },
  {
   "id": "REQ-LIM-001",
@@ -1496,7 +1496,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1691
+  "line": 1766
  },
  {
   "id": "REQ-LIM-002",
@@ -1511,7 +1511,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1704
+  "line": 1779
  },
  {
   "id": "REQ-LIM-003",
@@ -1526,7 +1526,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1712
+  "line": 1787
  },
  {
   "id": "REQ-CHM-001",
@@ -1539,7 +1539,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1723
+  "line": 1798
  },
  {
   "id": "REQ-CHM-002",
@@ -1552,7 +1552,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1734
+  "line": 1809
  },
  {
   "id": "REQ-CHM-003",
@@ -1565,7 +1565,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1743
+  "line": 1818
  },
  {
   "id": "REQ-DEM-001",
@@ -1578,7 +1578,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1760
+  "line": 1835
  },
  {
   "id": "REQ-DEM-002",
@@ -1593,7 +1593,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1791
+  "line": 1866
  },
  {
   "id": "REQ-DEM-010",
@@ -1609,7 +1609,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1809
+  "line": 1884
  },
  {
   "id": "REQ-DEM-010a",
@@ -1622,7 +1622,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1834
+  "line": 1909
  },
  {
   "id": "REQ-DEM-011",
@@ -1635,7 +1635,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1847
+  "line": 1922
  },
  {
   "id": "REQ-DEM-012",
@@ -1650,7 +1650,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1854
+  "line": 1929
  },
  {
   "id": "REQ-DEM-013",
@@ -1665,7 +1665,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1866
+  "line": 1941
  },
  {
   "id": "REQ-DEM-020",
@@ -1680,7 +1680,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1876
+  "line": 1951
  },
  {
   "id": "REQ-DEM-021",
@@ -1695,7 +1695,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1890
+  "line": 1965
  },
  {
   "id": "REQ-DEM-022",
@@ -1708,7 +1708,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1909
+  "line": 1984
  },
  {
   "id": "REQ-DEM-022a",
@@ -1721,7 +1721,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1929
+  "line": 2004
  },
  {
   "id": "REQ-DEM-023",
@@ -1734,7 +1734,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1951
+  "line": 2026
  },
  {
   "id": "REQ-DEM-030",
@@ -1749,7 +1749,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1965
+  "line": 2040
  },
  {
   "id": "REQ-DEM-031",
@@ -1764,7 +1764,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1976
+  "line": 2051
  },
  {
   "id": "REQ-DEM-032",
@@ -1779,7 +1779,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1984
+  "line": 2059
  },
  {
   "id": "REQ-DEM-033",
@@ -1794,7 +1794,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1994
+  "line": 2069
  },
  {
   "id": "REQ-DEM-034",
@@ -1809,7 +1809,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2007
+  "line": 2082
  },
  {
   "id": "REQ-DEM-034a",
@@ -1822,7 +1822,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2019
+  "line": 2094
  },
  {
   "id": "REQ-DEM-035",
@@ -1837,7 +1837,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2031
+  "line": 2106
  },
  {
   "id": "REQ-DEM-036",
@@ -1852,7 +1852,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2039
+  "line": 2114
  },
  {
   "id": "REQ-DEM-040",
@@ -1867,7 +1867,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2049
+  "line": 2124
  },
  {
   "id": "REQ-DEM-041",
@@ -1882,7 +1882,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2057
+  "line": 2132
  },
  {
   "id": "REQ-DEM-050",
@@ -1897,7 +1897,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2068
+  "line": 2143
  },
  {
   "id": "REQ-DEM-051",
@@ -1912,7 +1912,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2080
+  "line": 2155
  },
  {
   "id": "REQ-DEM-052",
@@ -1927,7 +1927,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2096
+  "line": 2171
  },
  {
   "id": "REQ-DEM-053",
@@ -1942,7 +1942,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2142
+  "line": 2217
  },
  {
   "id": "REQ-DEM-060",
@@ -1957,7 +1957,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2164
+  "line": 2239
  },
  {
   "id": "REQ-DEM-061",
@@ -1972,7 +1972,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2183
+  "line": 2258
  },
  {
   "id": "REQ-DEM-062",
@@ -1987,7 +1987,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2197
+  "line": 2272
  },
  {
   "id": "REQ-DEM-063",
@@ -2002,7 +2002,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2206
+  "line": 2281
  },
  {
   "id": "REQ-DEM-064",
@@ -2015,7 +2015,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2217
+  "line": 2292
  },
  {
   "id": "REQ-DEM-065",
@@ -2030,7 +2030,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2230
+  "line": 2305
  },
  {
   "id": "REQ-DEM-066",
@@ -2045,7 +2045,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2235
+  "line": 2310
  },
  {
   "id": "REQ-DEM-067",
@@ -2058,7 +2058,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2266
+  "line": 2341
  },
  {
   "id": "REQ-DEM-067a",
@@ -2073,7 +2073,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2294
+  "line": 2369
  },
  {
   "id": "REQ-DEM-068",
@@ -2088,7 +2088,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2315
+  "line": 2390
  },
  {
   "id": "REQ-DEM-069",
@@ -2103,7 +2103,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2328
+  "line": 2403
  },
  {
   "id": "REQ-DEM-070",
@@ -2118,7 +2118,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2346
+  "line": 2421
  },
  {
   "id": "REQ-DEM-071",
@@ -2133,7 +2133,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2360
+  "line": 2435
  },
  {
   "id": "REQ-DEM-072",
@@ -2146,7 +2146,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2370
+  "line": 2445
  },
  {
   "id": "REQ-DEM-080",
@@ -2162,7 +2162,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2386
+  "line": 2461
  },
  {
   "id": "REQ-DEM-081",
@@ -2177,7 +2177,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2415
+  "line": 2490
  },
  {
   "id": "REQ-DEM-082",
@@ -2190,7 +2190,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2426
+  "line": 2501
  },
  {
   "id": "REQ-DEM-083",
@@ -2203,7 +2203,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2432
+  "line": 2507
  },
  {
   "id": "REQ-PER-001",
@@ -2216,7 +2216,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2448
+  "line": 2523
  },
  {
   "id": "REQ-PER-002",
@@ -2229,7 +2229,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2478
+  "line": 2553
  },
  {
   "id": "REQ-PER-003",
@@ -2244,7 +2244,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2482
+  "line": 2557
  },
  {
   "id": "REQ-PER-010",
@@ -2257,7 +2257,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2512
+  "line": 2587
  },
  {
   "id": "REQ-PER-011",
@@ -2270,7 +2270,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 2515
+  "line": 2590
  },
  {
   "id": "REQ-UI-001",
@@ -2285,7 +2285,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2539
+  "line": 2614
  },
  {
   "id": "REQ-UI-002",
@@ -2300,7 +2300,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2562
+  "line": 2637
  },
  {
   "id": "REQ-UI-003",
@@ -2315,7 +2315,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2568
+  "line": 2643
  },
  {
   "id": "REQ-UI-004",
@@ -2330,7 +2330,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2577
+  "line": 2652
  },
  {
   "id": "REQ-UI-005",
@@ -2345,7 +2345,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2592
+  "line": 2667
  },
  {
   "id": "REQ-UI-006",
@@ -2360,7 +2360,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2616
+  "line": 2691
  },
  {
   "id": "REQ-UI-007",
@@ -2373,7 +2373,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2638
+  "line": 2713
  },
  {
   "id": "REQ-UI-010",
@@ -2388,7 +2388,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2654
+  "line": 2729
  },
  {
   "id": "REQ-UI-011",
@@ -2403,7 +2403,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2684
+  "line": 2759
  },
  {
   "id": "REQ-UI-012",
@@ -2416,7 +2416,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2691
+  "line": 2766
  },
  {
   "id": "REQ-UI-013",
@@ -2431,7 +2431,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2707
+  "line": 2782
  },
  {
   "id": "REQ-UI-014",
@@ -2446,7 +2446,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2721
+  "line": 2796
  },
  {
   "id": "REQ-UI-015",
@@ -2459,7 +2459,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2730
+  "line": 2805
  },
  {
   "id": "REQ-UI-020",
@@ -2474,7 +2474,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2748
+  "line": 2823
  },
  {
   "id": "REQ-UI-021",
@@ -2489,7 +2489,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2759
+  "line": 2834
  },
  {
   "id": "REQ-UI-022",
@@ -2502,7 +2502,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2772
+  "line": 2847
  },
  {
   "id": "REQ-UI-023",
@@ -2517,7 +2517,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2792
+  "line": 2867
  },
  {
   "id": "REQ-UI-024",
@@ -2532,7 +2532,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2810
+  "line": 2885
  },
  {
   "id": "REQ-UI-030",
@@ -2547,7 +2547,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2836
+  "line": 2911
  },
  {
   "id": "REQ-UI-031",
@@ -2562,7 +2562,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2856
+  "line": 2931
  },
  {
   "id": "REQ-UI-032",
@@ -2577,7 +2577,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2867
+  "line": 2942
  },
  {
   "id": "REQ-UI-033",
@@ -2592,7 +2592,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2881
+  "line": 2956
  },
  {
   "id": "REQ-UI-040",
@@ -2605,7 +2605,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2892
+  "line": 2967
  },
  {
   "id": "REQ-UI-041",
@@ -2620,7 +2620,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2915
+  "line": 2990
  },
  {
   "id": "REQ-UI-042",
@@ -2635,7 +2635,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2934
+  "line": 3009
  },
  {
   "id": "REQ-UI-050",
@@ -2650,7 +2650,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2964
+  "line": 3039
  },
  {
   "id": "REQ-UI-051",
@@ -2665,7 +2665,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2980
+  "line": 3055
  },
  {
   "id": "REQ-UI-052",
@@ -2680,7 +2680,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2996
+  "line": 3071
  },
  {
   "id": "REQ-UI-053",
@@ -2695,7 +2695,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3019
+  "line": 3094
  },
  {
   "id": "REQ-UI-054",
@@ -2710,7 +2710,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3045
+  "line": 3120
  },
  {
   "id": "REQ-UI-060",
@@ -2723,7 +2723,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3061
+  "line": 3136
  },
  {
   "id": "REQ-UI-061",
@@ -2738,7 +2738,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3079
+  "line": 3154
  },
  {
   "id": "REQ-UI-062",
@@ -2753,7 +2753,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3117
+  "line": 3192
  },
  {
   "id": "REQ-UI-063",
@@ -2768,7 +2768,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3129
+  "line": 3204
  },
  {
   "id": "REQ-UI-064",
@@ -2783,7 +2783,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3151
+  "line": 3226
  },
  {
   "id": "REQ-UI-065",
@@ -2798,7 +2798,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3159
+  "line": 3234
  },
  {
   "id": "REQ-UI-070",
@@ -2813,7 +2813,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3185
+  "line": 3260
  },
  {
   "id": "REQ-UI-071",
@@ -2828,7 +2828,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3197
+  "line": 3272
  },
  {
   "id": "REQ-UI-072",
@@ -2843,7 +2843,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3220
+  "line": 3295
  },
  {
   "id": "REQ-UI-073",
@@ -2858,7 +2858,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3226
+  "line": 3301
  },
  {
   "id": "REQ-UI-080",
@@ -2874,7 +2874,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3237
+  "line": 3312
  },
  {
   "id": "REQ-UI-081",
@@ -2889,7 +2889,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3254
+  "line": 3329
  },
  {
   "id": "REQ-UI-082",
@@ -2904,7 +2904,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3275
+  "line": 3350
  },
  {
   "id": "REQ-UI-090",
@@ -2917,7 +2917,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3290
+  "line": 3365
  },
  {
   "id": "REQ-UI-091",
@@ -2930,7 +2930,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3303
+  "line": 3378
  },
  {
   "id": "REQ-STA-001",
@@ -2945,7 +2945,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3367
+  "line": 3442
  },
  {
   "id": "REQ-STA-002",
@@ -2960,7 +2960,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3381
+  "line": 3456
  },
  {
   "id": "REQ-STA-003",
@@ -2975,7 +2975,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3391
+  "line": 3466
  },
  {
   "id": "REQ-STA-004",
@@ -2990,7 +2990,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3399
+  "line": 3474
  },
  {
   "id": "REQ-STA-005",
@@ -3003,7 +3003,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3409
+  "line": 3484
  },
  {
   "id": "REQ-API-001",
@@ -3018,7 +3018,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3421
+  "line": 3496
  },
  {
   "id": "REQ-API-002",
@@ -3031,7 +3031,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3435
+  "line": 3510
  },
  {
   "id": "REQ-API-003",
@@ -3046,7 +3046,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3441
+  "line": 3516
  },
  {
   "id": "REQ-API-004",
@@ -3059,7 +3059,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3447
+  "line": 3522
  },
  {
   "id": "REQ-API-005",
@@ -3074,7 +3074,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3451
+  "line": 3526
  },
  {
   "id": "REQ-API-006",
@@ -3089,7 +3089,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3455
+  "line": 3530
  },
  {
   "id": "REQ-API-007",
@@ -3104,7 +3104,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3460
+  "line": 3535
  },
  {
   "id": "REQ-NFR-030",
@@ -3117,7 +3117,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3472
+  "line": 3547
  },
  {
   "id": "REQ-NFR-031",
@@ -3130,7 +3130,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3473
+  "line": 3548
  },
  {
   "id": "REQ-NFR-032",
@@ -3143,7 +3143,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3474
+  "line": 3549
  },
  {
   "id": "REQ-NFR-033",
@@ -3156,7 +3156,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3475
+  "line": 3550
  },
  {
   "id": "REQ-NFR-034",
@@ -3169,7 +3169,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3476
+  "line": 3551
  },
  {
   "id": "REQ-NFR-035",
@@ -3182,7 +3182,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3477
+  "line": 3552
  },
  {
   "id": "REQ-NFR-036",
@@ -3195,7 +3195,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3478
+  "line": 3553
  },
  {
   "id": "REQ-NFR-037",
@@ -3208,7 +3208,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3479
+  "line": 3554
  },
  {
   "id": "REQ-NFR-040",
@@ -3221,7 +3221,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3480
+  "line": 3555
  },
  {
   "id": "REQ-NFR-041",
@@ -3234,7 +3234,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3481
+  "line": 3556
  },
  {
   "id": "REQ-NFR-042",
@@ -3247,7 +3247,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3482
+  "line": 3557
  },
  {
   "id": "REQ-NFR-038",
@@ -3260,7 +3260,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3483
+  "line": 3558
  },
  {
   "id": "REQ-NFR-039",
@@ -3273,7 +3273,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3484
+  "line": 3559
  },
  {
   "id": "REQ-LIC-001",
@@ -3288,7 +3288,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3514
+  "line": 3589
  },
  {
   "id": "REQ-LIC-002",
@@ -3303,7 +3303,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3520
+  "line": 3595
  },
  {
   "id": "REQ-LIC-003",
@@ -3318,7 +3318,7 @@
   ],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3524
+  "line": 3599
  },
  {
   "id": "REQ-LIC-004",
@@ -3331,7 +3331,7 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": false,
-  "line": 3528
+  "line": 3603
  },
  {
   "id": "REQ-TST-001",
@@ -3344,7 +3344,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3541
+  "line": 3616
  },
  {
   "id": "REQ-TST-002",
@@ -3357,7 +3357,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3566
+  "line": 3641
  },
  {
   "id": "REQ-TST-003",
@@ -3370,7 +3370,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3593
+  "line": 3668
  },
  {
   "id": "REQ-TST-004",
@@ -3378,12 +3378,12 @@
   "num": "004",
   "priority": "P1",
   "title": "E4406A comparison suite",
-  "body": "**`REQ-TST-004` (P1) — E4406A comparison suite.**\nPer `REQ-E44-007`, OpenVSA results shall be compared against the E4406A's own personality\nmeasurements for W-CDMA, EDGE and cdmaOne signals. Divergence beyond tolerance shall be\ninvestigated and either fixed or documented with an explanation.\n*This is the only truly independent check available on this bench and should be run at every\nrelease.*",
+  "body": "**`REQ-TST-004` (P1) — E4406A comparison suite.**\nPer `REQ-E44-007`, OpenVSA results shall be compared against the E4406A's own personality\nmeasurements for W-CDMA, EDGE and cdmaOne signals. Divergence beyond tolerance shall be\ninvestigated and either fixed or documented with an explanation.\n*This is the only truly independent check available on this bench and should be run at every\nrelease.*\n**AC:** The suite runs W-CDMA, EDGE and cdmaOne signals through both the E4406A's own\npersonality and OpenVSA's demodulator on the same capture, and compares the metrics they\nreport. Tolerances are those of `REQ-TST-004a` — relative to the measured value plus the\nresidual budget, not a bare absolute figure. Divergence beyond tolerance fails the run, and a\ndivergence accepted as understood is recorded with its explanation in a checked-in register,\nso an unexplained divergence cannot be quietly tolerated by adjusting the tolerance. The\nsuite runs at every release and is skipped, with an explicit skip report, when the instrument\nis absent rather than silently passing.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3601
+  "line": 3676
  },
  {
   "id": "REQ-TST-004a",
@@ -3391,12 +3391,12 @@
   "num": "004a",
   "priority": "P1",
   "title": "OpenVSA's own residual-EVM budget",
-  "body": "**`REQ-TST-004a` (P1) — OpenVSA's own residual-EVM budget.**\nOpenVSA shall define and verify a **self-noise / residual-EVM budget** — the EVM it reports for\nan ideal, impairment-free simulated signal — of **< 0.1 % RMS** for QPSK through 64-QAM and\n**< 0.3 %** for 1024-QAM and above.\n*Rationale:* `REQ-E44-007`'s \"within 0.5 percentage points\" is unanchored without this. Half a\npoint is generous at 15 % EVM and absurd at 1 %. Comparison tolerances shall be expressed\n**relative to the measured value plus the residual budget**, not as a bare absolute figure.\n*(Keysight's published residual-EVM specification for the reference demodulator was not located\nduring research — §20 Q9 — so this budget is self-imposed rather than matched.)*",
+  "body": "**`REQ-TST-004a` (P1) — OpenVSA's own residual-EVM budget.**\nOpenVSA shall define and verify a **self-noise / residual-EVM budget** — the EVM it reports for\nan ideal, impairment-free simulated signal — of **< 0.1 % RMS** for QPSK through 64-QAM and\n**< 0.3 %** for 1024-QAM and above.\n*Rationale:* `REQ-E44-007`'s \"within 0.5 percentage points\" is unanchored without this. Half a\npoint is generous at 15 % EVM and absurd at 1 %. Comparison tolerances shall be expressed\n**relative to the measured value plus the residual budget**, not as a bare absolute figure.\n*(Keysight's published residual-EVM specification for the reference demodulator was not located\nduring research — §20 Q9 — so this budget is self-imposed rather than matched.)*\n**AC:** An ideal impairment-free simulated signal is demodulated for each supported format\nand the reported EVM is below 0.1 % RMS for QPSK through 64-QAM and below 0.3 % for 1024-QAM\nand above; a format exceeding its budget fails. The budget is a published figure, recorded\nwhere users and the comparison suite can read it, not merely a test constant. `REQ-TST-004`'s\ntolerances are computed from the measured value **plus** this residual, and a test asserts\nthat composition — a bare 0.5 percentage-point comparison fails, since that is the unanchored\nform this requirement exists to replace.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3608
+  "line": 3691
  },
  {
   "id": "REQ-TST-005",
@@ -3404,12 +3404,12 @@
   "num": "005",
   "priority": "P2",
   "title": "Golden recordings",
-  "body": "**`REQ-TST-005` (P2) — Golden recordings.**\nA corpus of recorded IQ captures with known-correct expected results shall be maintained in\nversion control (or in an artefact store, given size), and replayed in CI.",
+  "body": "**`REQ-TST-005` (P2) — Golden recordings.**\nA corpus of recorded IQ captures with known-correct expected results shall be maintained in\nversion control (or in an artefact store, given size), and replayed in CI.\n**AC:** The corpus is versioned alongside the code, replayed in CI on every run, and each\nentry's expected results are **traceable to an independent source** — a closed-form value, a\ngenerator parameter, or an E4406A comparison per `REQ-TST-004` — recorded with the entry.\nAn entry whose expected value is simply a previous OpenVSA output fails review; that is the\ndistinction `REQ-TST-001` draws, and it is what makes this corpus a check rather than a\nrecord of past behaviour. Adding an entry requires its provenance; regenerating an expected\nvalue requires a stated reason.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3618
+  "line": 3708
  },
  {
   "id": "REQ-TST-006",
@@ -3417,12 +3417,12 @@
   "num": "006",
   "priority": "P1",
   "title": "Numerical regression: stored expected outputs for a fixed corpus,",
-  "body": "**`REQ-TST-006` (P1)** — Numerical regression: stored expected outputs for a fixed corpus,\ncompared with explicit tolerances rather than exact equality, with tolerances justified in\ncomments.",
+  "body": "**`REQ-TST-006` (P1)** — Numerical regression: stored expected outputs for a fixed corpus,\ncompared with explicit tolerances rather than exact equality, with tolerances justified in\ncomments.\n\n> **Scope, against `REQ-TST-001`.** These two requirements appear to conflict and do not.\n> `REQ-TST-001` governs **DSP primitives**, which must be checked against closed-form\n> analytic results and never against a previous run. This requirement governs **end-to-end\n> numerical regression**, which exists to detect unintended change across the whole chain.\n> A stored expected output is legitimate here and illegitimate there. The boundary is not\n> stylistic: a primitive validated against its own past output can be wrong and stay wrong,\n> whereas a whole-chain regression is comparing a system whose parts are independently\n> verified.\n\n**AC:** The regression suite lives separately from the primitive tests of `REQ-TST-001`, and\na test asserts that separation so a primitive check cannot migrate into the regression suite\nand lose its analytic reference. Every comparison uses an explicit tolerance — exact equality\nfails review — and each tolerance carries a comment justifying its magnitude in terms of the\nnumerical path, not \"this is what it produced\". Every stored expected output records the\nprovenance required by `REQ-TST-005`. A regression failure reports the observed and expected\nvalues with their difference expressed against the tolerance.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3624
+  "line": 3721
  },
  {
   "id": "REQ-TST-007",
@@ -3430,12 +3430,12 @@
   "num": "007",
   "priority": "P1",
   "title": "Performance regression per REQ-NFR-020–REQ-NFR-026, failing",
-  "body": "**`REQ-TST-007` (P1)** — Performance regression per `REQ-NFR-020`–`REQ-NFR-026`, failing\nthe build on >15 % regression.",
+  "body": "**`REQ-TST-007` (P1)** — Performance regression per `REQ-NFR-020`–`REQ-NFR-026`, failing\nthe build on >15 % regression.\n**AC:** All seven targets of `REQ-NFR-020`–`REQ-NFR-026` are measured by the harness those\nrequirements' shared criteria describe, including the rendered ones, and a deliberately\nintroduced 20 % slowdown fails the build while a 5 % one does not — the threshold is tested,\nnot merely configured. Baselines are stored per machine class, since the targets are stated\nfor the reference machine, and a run on unrecognised hardware reports that rather than\ncomparing against an inapplicable baseline. Measurements report variance, and a run too noisy\nto distinguish 15 % is reported as inconclusive rather than passed.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3628
+  "line": 3742
  },
  {
   "id": "REQ-TST-008",
@@ -3443,12 +3443,12 @@
   "num": "008",
   "priority": "P2",
   "title": "UI automation smoke tests covering window creation, trace",
-  "body": "**`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace\nconfiguration, state save/recall and marker interaction.",
+  "body": "**`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace\nconfiguration, state save/recall and marker interaction.\n**AC:** All four areas are exercised through the UI automation layer rather than by calling\nview models directly, so a binding or command-routing break is caught. The suite creates\ntrace and tool windows, configures a trace's data and format, saves and recalls a state and\nasserts the recalled configuration matches per `REQ-STA-001`, and places, moves and couples\nmarkers per `REQ-MKR-004`. It runs headless in CI, and a failure identifies the step and\ncaptures the visual tree at that point rather than reporting only a timeout.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3631
+  "line": 3752
  },
  {
   "id": "REQ-TST-009",
@@ -3456,12 +3456,12 @@
   "num": "009",
   "priority": "P1",
   "title": "A long-duration soak (≥8 hours) against the simulator asserting",
-  "body": "**`REQ-TST-009` (P1)** — A long-duration soak (≥8 hours) against the simulator asserting\nbounded memory, no handle leaks, and no degradation in update rate.",
+  "body": "**`REQ-TST-009` (P1)** — A long-duration soak (≥8 hours) against the simulator asserting\nbounded memory, no handle leaks, and no degradation in update rate.\n**AC:** The soak runs at least 8 hours against the simulator with traces updating and the UI\nlive. Managed and unmanaged memory are bounded: measured against a trend line over the run,\nnot merely against a ceiling, so a slow leak that stays under the cap still fails. Handle and\nGDI object counts return to their starting range after windows and traces are created and\ndestroyed repeatedly. Update rate over the final hour is within 5 % of the first hour, which\ncatches degradation that a start-and-end sample would miss. Pooled buffers per `REQ-NFR-011`\nshow no net growth, and the dropped-frame counter of `REQ-NFR-012` is reported at the end\nrather than checked only for boundedness.",
   "phase": 3,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3634
+  "line": 3761
  },
  {
   "id": "REQ-PLN-001",
@@ -3474,6 +3474,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 3664
+  "line": 3799
  }
 ]
