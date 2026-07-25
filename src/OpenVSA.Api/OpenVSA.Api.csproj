@@ -11,7 +11,6 @@
     <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
     <ProjectReference Include="..\OpenVSA.Capture\OpenVSA.Capture.csproj" />
     <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
-    <ProjectReference Include="..\OpenVSA.Licensing\OpenVSA.Licensing.csproj" />
   </ItemGroup>
 
 </Project>

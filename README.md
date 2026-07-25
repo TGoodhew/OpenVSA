@@ -18,8 +18,9 @@ authoritative source for everything below.
 ### Explicitly not goals
 
 - Reproducing Keysight source, proprietary file-format internals, or undocumented DSP.
-- Licence-file or entitlement interoperability. The licensing model here is *analogous*, never
-  interoperable.
+- Feature gating of any kind. OpenVSA is **one edition, free, with everything in it** — no
+  licence files, no entitlements, no activation, no paid tier (`REQ-LIC-010`). The reference
+  product's option SKUs appear in the specification only to explain its documentation.
 - Metrological traceability. OpenVSA reports what the front end delivers; absolute amplitude
   accuracy is a property of the instrument.
 - Real-time streaming with hard latency guarantees. Like the reference product, OpenVSA is a

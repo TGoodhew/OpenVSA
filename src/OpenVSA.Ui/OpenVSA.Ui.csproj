@@ -22,7 +22,6 @@
     <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
     <ProjectReference Include="..\OpenVSA.Personality\OpenVSA.Personality.csproj" />
     <ProjectReference Include="..\OpenVSA.Api\OpenVSA.Api.csproj" />
-    <ProjectReference Include="..\OpenVSA.Licensing\OpenVSA.Licensing.csproj" />
   </ItemGroup>
 
 </Project>

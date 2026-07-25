@@ -19,7 +19,6 @@
     <Project Path="src/OpenVSA.Demod/OpenVSA.Demod.csproj" />
     <Project Path="src/OpenVSA.Measurement/OpenVSA.Measurement.csproj" />
     <Project Path="src/OpenVSA.Personality/OpenVSA.Personality.csproj" />
-    <Project Path="src/OpenVSA.Licensing/OpenVSA.Licensing.csproj" />
     <Project Path="src/OpenVSA.Api/OpenVSA.Api.csproj" />
     <Project Path="src/OpenVSA.Ui/OpenVSA.Ui.csproj" />
   </Folder>

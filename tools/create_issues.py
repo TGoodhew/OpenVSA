@@ -32,7 +32,7 @@ AREA_LABELS = {
     "DSP": ("area:dsp", "1d76db", "Core DSP engine"),
     "E44": ("area:e44", "0e8a16", "Agilent E4406A front end"),
     "HAL": ("area:hal", "0e8a16", "Front-end abstraction layer"),
-    "LIC": ("area:lic", "fbca04", "Licensing and feature gating"),
+    "LIC": ("area:lic", "fbca04", "Distribution terms and feature availability"),
     "LIM": ("area:lim", "c5def5", "Limit lines and limit tests"),
     "MKR": ("area:mkr", "c5def5", "Markers"),
     "NFR": ("area:nfr", "d4c5f9", "Non-functional requirements"),
@@ -85,7 +85,7 @@ MILESTONES = {
         "formats, cross-validation harness. ROM 5-7 engineer-months."),
     4: ("Phase 4 — Automation & packaging",
         ".NET API, headless operation, SCPI server, macros, command log, "
-        "licensing/entitlements, installer. ROM 4-6 engineer-months."),
+        "installer. ROM 4-6 engineer-months."),
     5: ("Phase 5 — Personality wave 1",
         "GSM/EDGE, W-CDMA/HSPA, cdmaOne - each validated against the E4406A. "
         "ROM 8-12 engineer-months."),
