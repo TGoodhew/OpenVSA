@@ -103,8 +103,11 @@ not of the 89600A hardware. Throughout, "the reference product" means that softw
 
 ### 1.4 Out of scope
 
-- Reproduction of Keysight licence files, licence servers, or entitlement cryptography.
-  §16 specifies an *analogous* feature-gating mechanism, not an interoperable one.
+- Feature gating of any kind. OpenVSA ships as a **single edition with every feature
+  available to every user** (§16). It has no licence files, licence server, entitlement
+  cryptography, activation step or paid tier — neither Keysight's nor an analogous mechanism
+  of its own. The reference product's option SKUs are described in this document only to
+  explain what its documentation means, never as a structure to reproduce.
 - Calibration of, or metrological traceability for, connected hardware. OpenVSA reports
   what the front end delivers; absolute amplitude accuracy is the instrument's property.
 - Real-time streaming analysis with hard latency guarantees. Like the reference product,
@@ -338,7 +341,6 @@ launch, appears in the measurement-type selector, and runs — with no rebuild o
 | `OpenVSA.Personality` | Personality SDK | `IMeasurementPersonality`, `PersonalityHost` |
 | `OpenVSA.Ui` | WPF shell and views | `ShellWindow`, `TraceWindowView`, `PlotSurface` |
 | `OpenVSA.Api` | Automation surface | `Application`, `Measurement`, `Display`, `Trace`, `Marker` |
-| `OpenVSA.Licensing` | Feature gating | `IEntitlementProvider`, `FeatureGate` |
 
 ### 4.3 Signal flow
 
@@ -1578,9 +1580,11 @@ product's Option 200 set: **[V]**
 Spectrum · Raw Main Time · Instantaneous Main Time · PSD (power spectral density) ·
 Autocorrelation · CCDF · CDF · PDF · Correction · Math · No Data.
 
-**AC:** Every listed type is selectable and produces a trace with no demodulation licence
-installed, verified by a test running with the licence absent — the gating error this guards
-against is a base type made accidentally dependent on demodulation code. Each type is checked
+**AC:** Every listed type is selectable and produces a trace with the demodulation assemblies
+absent from the load path — the error this guards against is a base type made accidentally
+dependent on demodulation code. (The reference product enforced this split with an option
+SKU; OpenVSA has no such gate per `REQ-LIC-010`, so the check is an assembly-dependency one,
+which is stricter.) Each type is checked
 against its closed-form result per `REQ-TST-001` where one exists: PSD of band-limited white
 noise of known density reads that density to within 0.1 dB, autocorrelation of white noise is
 a unit impulse at zero lag, and the CCDF of Gaussian noise matches the analytic Rayleigh
@@ -2523,14 +2527,14 @@ symbol still exists, and clears cleanly if it does not.
 **`REQ-PER-001` (P0) — Personality SDK.**
 A documented plug-in contract shall allow a personality to declare its measurements,
 contribute setup UI, consume the capture stream, reuse core DSP and demodulation services,
-publish trace data types, and declare its licence entitlement.
+and publish trace data types. A personality declares no entitlement and is never gated: if
+it loads, it runs (`REQ-LIC-010`).
 
 ```csharp
 public interface IMeasurementPersonality
 {
     PersonalityId Id { get; }
     string        DisplayName { get; }
-    string        RequiredEntitlement { get; }
     IReadOnlyList<MeasurementDescriptor> Measurements { get; }
     IMeasurementInstance Create(MeasurementDescriptor descriptor, IAnalysisServices services);
 }
@@ -3174,8 +3178,10 @@ developer working from older documentation would naturally produce.
   Calculation…, Peak Search, Copy Marker To, Couple Markers, Copy to Clipboard, All Markers
   Off.
 - **Utilities** — Macros…, Event-Based Actions…, Trend/Statistics…, General Preferences…, SCPI
-  Preferences…, Display Preferences…, Toolbars…, Manage Registers…, Licenses…, Extension
-  Manager….
+  Preferences…, Display Preferences…, Toolbars…, Manage Registers…, Extension Manager….
+  *(The reference product has a **Licenses…** item here. OpenVSA has none — there is nothing
+  to license, per `REQ-LIC-010` — and `REQ-UI-061`'s exact-list criterion means adding one
+  fails the build.)*
 - **Window** — Output, SCPI Log, Event Log, Contexts, Block Diagram, Macros, Trace Layout, New
   Trace Window, Resize Traces, Collect Traces.
 - **Help** — Help (F1), Dynamic Help, Getting Started, Demos, Examples, API Reference, SCPI
@@ -3584,24 +3590,55 @@ these are the product's entire attack surface and they should be treated as such
 
 ---
 
-## 16. Licensing and feature gating
+## 16. Licensing and feature availability
 
-**`REQ-LIC-001` (P2) — Entitlement-based feature gating.**
-Features shall be gated by named entitlements resolved through `IEntitlementProvider`,
-checked at measurement instantiation and at UI menu enablement. The reference product gates
-by option SKU (Option 200 base analysis, 89601AYAC digital demodulation, per-standard BH-series
-personalities). **[V]**
+The reference product is commercial software sold in tiers: Option 200 for base analysis,
+89601AYAC for digital demodulation, a BH-series option per standard. Much of its
+documentation is organised around which option provides what, and this specification cites
+those SKUs where they explain what a feature is.
 
-**`REQ-LIC-002` (P2) — Licence models.** The provider abstraction shall accommodate
-node-locked/transportable, floating (concurrent checkout with check-in), dongle-derived and
-time-limited trial entitlements, mirroring the reference product's model. **[V]**
+**OpenVSA does not work that way.** It is one edition, free, with everything in it. The
+requirements below exist to state that as a binding property rather than a present-day
+accident, because feature gating is easy to introduce later and hard to remove.
 
-**`REQ-LIC-003` (P2) — Selective checkout.** Where floating entitlements are used, the
-user shall be able to select which options to check out, so unused seats return to the pool
-— matching the reference product's "Select Licensed Options" behaviour. **[V]**
+*Superseded:* `REQ-LIC-001` through `REQ-LIC-004` previously specified entitlement-based
+gating, licence models, selective checkout and an ungated development build. They were
+withdrawn when the product decision was taken that OpenVSA is fully functional for every
+user. The IDs are retired, not reused.
 
-**`REQ-LIC-004` (P1) — Ungated development mode.** A build configuration shall grant all
-entitlements unconditionally, so that gating never obstructs development or testing.
+**`REQ-LIC-010` (P0) — One edition, no feature gating.**
+Every feature OpenVSA ships is available to every user, unconditionally. There shall be no
+entitlement check, licence file, licence server, activation step, dongle, trial period,
+feature flag serving as a paid tier, or build configuration that produces a reduced edition.
+Personalities and plug-ins are covered too: a personality that loads, runs (`REQ-PER-001`).
+*Rationale:* this is a deliberate product decision, not an unimplemented feature. Anyone who
+downloads OpenVSA gets all of it. Stating it normatively means a later change of heart has to
+be argued for and re-specified, rather than arriving one `if` statement at a time.
+**AC:** No entitlement or licence-check type, interface or method exists in any shipped
+assembly, asserted by an architecture test over the public and internal surface that fails on
+a member matching entitlement/licence-gating naming, and by the absence of any
+licensing project from the solution. Every measurement, trace data type, demodulation format
+and personality can be instantiated and run in a default installation with no configuration —
+enumerated over the full catalogues of `REQ-DSP-040`, `REQ-DSP-041` and `REQ-DEM-010`, so a
+newly added feature cannot quietly arrive gated. Exactly one edition is produced: the build
+emits a single distributable, and a test fails if a build configuration name or an
+`#if` symbol partitions the feature set. The application starts and runs with no network
+access at all, which `REQ-NFR-036` already requires and which no activation step could
+satisfy.
+
+**`REQ-LIC-011` (P1) — Distribution terms.**
+OpenVSA shall be distributed under a permissive open-source licence (currently **MIT**, see
+`LICENSE`), and nothing in the shipped product shall impose a usage restriction beyond it —
+no runtime terms acceptance, no phone-home, no per-seat condition.
+*Interaction with `REQ-NFR-008`:* the dependency register exists partly to protect this. A
+copyleft dependency linked into a shipped binary would impose obligations the project's own
+licence does not, which is why `REQ-NFR-004` keeps the default FFT provider managed and
+copyleft-free.
+**AC:** A `LICENSE` file stating the project's terms is present in the repository and in the
+distributable. No shipped code path presents licence terms for acceptance or blocks
+functionality pending it. The `REQ-NFR-008` CI check passes, so no dependency in a shipped
+binary carries terms more restrictive than the project's own licence; introducing a GPL
+dependency fails that check and therefore this requirement too.
 
 ---
 
@@ -3784,7 +3821,7 @@ experience, multiply the Phase 2 and Phase 5+ figures substantially.
 | **1 — Core VSA** | All base trace data types and formats, RBW/time coupling, averaging, overlap, gating, markers, limit tests, ACP/OBW, trace math, amplitude/correction chain, state save/recall, docking layout, **full annotation and in-place hot-spot editing**, accessibility | DSP-020..050, AMP-001..004, TRC-001..003, MKR-001..007, LIM-001..003, CHM-001..003, STA-001..005, UI-001..091 | 10–15 |
 | **2 — Flexible demodulation** | Format catalogue, filters, block estimator, sync and pulse search, equaliser, full metrics suite, all demod result traces, impairment test matrix | DEM-001..083, TST-001..003 | 10–14 |
 | **3 — Hardware** | VISA layer, E4406A driver (after SCPI verification), recording, import/export formats, cross-validation harness | VISA-001..004, E44-001..007, REC-001..007, TST-004 | 5–7 |
-| **4 — Automation & packaging** | .NET API, headless operation, SCPI server, macros, command log, licensing/entitlements, installer | API-001..007, LIC-001..004, NFR-030..039 | 4–6 |
+| **4 — Automation & packaging** | .NET API, headless operation, SCPI server, macros, command log, installer | API-001..007, LIC-010..011, NFR-030..039 | 4–6 |
 | **5 — Personality wave 1** | GSM/EDGE, W-CDMA/HSPA, cdmaOne — each validated against the E4406A | PER-001..003, PER-010..011 | 8–12 |
 | **6 — Personality wave 2** | cdma2000/1xEV-DO, NADC/PDC, custom OFDM | | 6–9 |
 | **7 — Personality wave 3** | 802.11a/g/n/ac/ax, Bluetooth/BLE | | 8–12 |
@@ -3900,14 +3937,13 @@ Sources consulted in preparing this specification. Items marked ★ are the most
 - [Eye Diagrams (I-Eye / Q-Eye)](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/gui/content/dlg_trfmt_eye_digdemod.htm)
 - [PathWave VSA Digital Demodulation Analysis — Configuration Guide (89601AYAC)](https://assets-us-01.kc-usercontent.com/ecb176a6-5a2e-0000-8943-84491e5fc8d1/4a5b4cc1-db81-496d-b0fe-483e5744c7b4/89601AYAC%20PathWave%20VSA%20Digital%20Demodulation%20Analysis%20Config%20guide.pdf)
 
-**UI, state, formats, automation, licensing**
+**UI, state, formats, automation**
 
 - [Trace Window (89600B help)](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/gettingstarted/content/vsa_trace_window.htm) · [Window Menu](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/gui/content/mnu_window.htm) · [Block Diagram](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/gui/content/mnu_window_blockdiagram.htm)
 - [Standard Features and Measurement Capabilities](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/gui/content/std_featandmeas.htm)
 - ★ [Saving and Recalling Instrument Setups](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/gui/content/mnu_file_save_savesetup.htm)
 - ★ [Supported File Formats](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/sharing/content/supportedfilefmts.htm) · [Saving and Recalling Recordings](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/sharing/content/saving_and_recalling_recordings.htm) · [SDF (Fast) format](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/sharing/content/sdf_file_format.htm)
 - [About Programming the 89600 VSA](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/program/content/about_programming_the_89600b_vsa.htm) · [MATLAB and the 89600 VSA API](https://helpfiles.keysight.com/csg/89600B/WebHelp-apiref/DotNetApi-MatlabNotes.html)
-- [Floating License Overview](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/licensing/content/floating_lic.htm) · [Transportable License Overview](https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/licensing/content/pc_instrument_lic.htm)
 - [89600 VSA Software — Installation Guide (9018-03424)](https://www.keysight.com/us/en/assets/9018-03424/installation-guides/9018-03424.pdf) · [Quick Start Guide (9018-03882)](https://www.keysight.com/us/en/assets/9018-03882/quick-start-guides/9018-03882.pdf) · [Configuration Guide (5990-6386)](https://www.keysight.com/us/en/assets/7018-02671/configuration-guides/5990-6386.pdf)
 - [Keysight Vector Signal Analysis (89600 VSA) — Brochure (5990-6553)](https://www.keysight.com/us/en/assets/7018-02714/brochures/5990-6553.pdf)
 - [89600 VSA Software product page](https://www.keysight.com/us/en/products/software/pathwave-test-software/89600-vsa-software.html)

@@ -69,6 +69,18 @@ TITLE_OVERRIDES = {
 }
 
 
+# Requirement IDs that were withdrawn and whose numbers are deliberately not reused. The
+# specification still names them where it records why they went, so without this the
+# "mentioned but never defined" check — which exists to catch typos and renames — would carry
+# permanent false positives and stop being worth reading.
+RETIRED = {
+    "REQ-LIC-001": "entitlement-based feature gating",
+    "REQ-LIC-002": "licence models",
+    "REQ-LIC-003": "selective checkout",
+    "REQ-LIC-004": "ungated development mode",
+}
+
+
 def phase_for(area, num):
     n = int(re.match(r"\d+", num).group(0))
     if area == "NFR":
@@ -220,6 +232,13 @@ def main():
         print("ERROR: TITLE_OVERRIDES names requirements that do not exist:", stale)
         return 1
 
+    # A retired ID that has come back is a mistake in one direction or the other: either the
+    # number was reused, or the entry is stale. Both are worth failing on.
+    revived = sorted(set(RETIRED) & set(seen))
+    if revived:
+        print("ERROR: RETIRED names requirements that are defined after all:", revived)
+        return 1
+
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(records, fh, indent=1, ensure_ascii=False)
 
@@ -238,8 +257,10 @@ def main():
                         if not r["has_ac"] and not r["ac_exempt"]),
           "(plus {} exempt)".format(sum(1 for r in records if r["ac_exempt"])))
 
+    print("retired ({}): {}".format(len(RETIRED), ", ".join(sorted(RETIRED))))
+
     mentioned = set(re.findall(r"REQ-[A-Z0-9]+-\d+[a-z]?", "\n".join(lines)))
-    missing = sorted(mentioned - set(seen))
+    missing = sorted(mentioned - set(seen) - set(RETIRED))
     print("mentioned but never defined ({}):".format(len(missing)))
     for rid in missing:
         print("   ", rid)
