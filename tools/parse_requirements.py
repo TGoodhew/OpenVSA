@@ -35,6 +35,30 @@ CONT_RE = re.compile(r"^\*\*`(REQ-([A-Z0-9]+)-(\d+[a-z]?))`(?!\s*\(P[0-3]\))")
 HEADING_RE = re.compile(r"^#{1,4}\s")
 
 
+# Most requirements carry their own short name in the specification
+# ("**`REQ-X-001` (P0) — Short name.**") and derive a good title automatically. These do
+# not: they are stated as a bare sentence, or as a table row longer than the title cap, so
+# the derived title breaks off mid-clause. The names below are hand-written to say the same
+# thing in full. REQ-NFR-022 keeps its complete statement, matching its sibling rows.
+TITLE_OVERRIDES = {
+    "REQ-DAT-010": "Named measurement contexts",
+    "REQ-NFR-008": "Third-party dependency register and licence policy",
+    "REQ-NFR-022": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: "
+                   "complete analysis ≤50 ms",
+    "REQ-NFR-032": "Runs with no hardware and no VISA installed",
+    "REQ-NFR-035": "Diagnostic report on unhandled exception, without loss to in-progress "
+                   "recordings",
+    "REQ-NFR-037": "Bit-for-bit reproducible numeric results",
+    "REQ-NFR-040": "Report generation to PDF/HTML from a template",
+    "REQ-NFR-041": "Plug-in load directories and signature enforcement",
+    "REQ-NFR-042": "Automation API exception contract, versioning and deprecation policy",
+    "REQ-PER-010": "Wave 1 personality validation against the E4406A",
+    "REQ-PER-011": "Declared standard revision and documented deviations",
+    "REQ-PLN-001": "Phases 0–4 are the minimum viable product",
+    "REQ-TST-001": "DSP primitives tested against closed-form analytic results",
+}
+
+
 def phase_for(area, num):
     n = int(re.match(r"\d+", num).group(0))
     if area == "NFR":
@@ -133,13 +157,18 @@ def main():
             "area": area,
             "num": num,
             "priority": pri,
-            "title": short_title(seed),
+            "title": TITLE_OVERRIDES.get(rid) or short_title(seed),
             "body": body,
             "phase": phase_for(area, num),
             "evidence": evidence(body),
             "has_ac": "**AC:**" in body or "AC:" in body,
             "line": i + 1,
         })
+
+    stale = sorted(set(TITLE_OVERRIDES) - set(seen))
+    if stale:
+        print("ERROR: TITLE_OVERRIDES names requirements that do not exist:", stale)
+        return 1
 
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(records, fh, indent=1, ensure_ascii=False)

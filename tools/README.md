@@ -10,7 +10,7 @@ referenced by `OpenVSA.slnx`. Python 3.8+ and an authenticated `gh` CLI are requ
 |---|---|
 | `parse_requirements.py` | Parses the specification into `requirements.json`, one record per `REQ-<AREA>-<nnn>`. Deterministic: same input always yields byte-identical output. |
 | `create_issues.py` | Creates labels, milestones and one issue per requirement. Idempotent — skips requirements that already have an issue. |
-| `sync_issues.py` | Reconciles existing issues with `requirements.json`, repairing drifted bodies, labels and milestones. Run after re-parsing. |
+| `sync_issues.py` | Reconciles existing issues with `requirements.json`, repairing drifted titles, bodies, labels and milestones. Run after re-parsing. |
 | `dedupe_issues.py` | Deletes surplus duplicate issues, keeping the lowest issue number per requirement. |
 
 Every script takes `--dry-run`. Always dry-run first; `dedupe_issues.py` deletes
@@ -37,6 +37,18 @@ Two fields are derived rather than quoted, and should be read as such:
 - **`has_ac`** — whether the specification states mechanised acceptance criteria. Drives
   the `needs-ac` label. Requirements without acceptance criteria need them authored
   before implementation starts.
+
+## Issue titles
+
+A title is `REQ-<AREA>-<nnn>: <name>`. `sync_issues.py` matches an issue to its
+requirement on the ID prefix alone, so the name after the colon can be rewritten freely.
+
+Most names come from the specification's own `**\`REQ-X-001\` (P0) — Short name.**` form.
+Requirements stated as a bare sentence, or as a table row longer than the title cap, would
+otherwise break off mid-clause; those have hand-written names in `TITLE_OVERRIDES` in
+`parse_requirements.py`. Add an entry there rather than editing an issue title by hand,
+or the next sync will revert it. Naming a requirement that does not exist is an error, so
+a typo or a renamed requirement fails the parse rather than passing silently.
 
 Prose that qualifies an already-defined requirement without restating its priority — for
 example the paragraph beginning ``**`REQ-NFR-037` needs a qualification…`` — is appended

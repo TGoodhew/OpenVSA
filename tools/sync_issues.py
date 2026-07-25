@@ -58,6 +58,12 @@ def main():
             continue
 
         fixes = []
+        # Matching is on the `REQ-<AREA>-<nnn>:` prefix, so the rest of the title can be
+        # rewritten freely without breaking the link between issue and requirement.
+        want_title = "{}: {}".format(rec["id"], rec["title"])
+        if item["title"] != want_title:
+            fixes.append("title")
+
         expected = build_body(rec)
         if item["body"].replace("\r\n", "\n").strip() != expected.strip():
             fixes.append("body")
@@ -83,6 +89,8 @@ def main():
             continue
 
         cmd = ["issue", "edit", str(item["number"]), "--repo", REPO]
+        if "title" in fixes:
+            cmd += ["--title", want_title]
         if "body" in fixes:
             with open(tmp, "w", encoding="utf-8") as fh:
                 fh.write(expected)
