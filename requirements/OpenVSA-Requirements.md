@@ -437,6 +437,12 @@ contrast, have been free to use and redistribute under the **Intel Simplified So
 Licence** since the oneAPI transition (2020) and are viable native options. A managed default
 (Stockham or split-radix, or Math.NET Numerics) avoids the question entirely at some
 performance cost. The interface makes the choice deployment-time, not design-time.
+**AC:** At least two `IFftProvider` implementations are registered, one fully managed and one
+native. A provider-parametrised suite runs the same forward/inverse round-trip and Parseval
+checks against every registered provider and passes for each. Selecting the active provider
+is a configuration change that recompiles no DSP code, demonstrated by running the suite
+twice with different providers selected and the same binaries. The shipped default carries no
+copyleft obligation, which `REQ-NFR-008` enforces.
 
 **`REQ-NFR-004a` (P1) — FFT precision.** The reference provider shall be **double
 precision**; a single-precision provider may be offered for throughput.
@@ -468,6 +474,14 @@ tessellator**, so it does **not** scale to 500 k points and is not on its own a 
 shared-surface bridge (`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture`
 opened shared), and `D3DImage` degrades to software rendering under RDP or without WDDM.
 This is the single largest technical risk in using WPF for this application (§19, RISK-03).
+**AC:** The strategy selected for a trace is observable and tested at each band boundary
+(2 000 and ~20 000 points); selecting per-point `Polyline`/`Path` geometry above 2 000 points
+fails the test. The >20 000-point path meets `REQ-NFR-021` on the reference machine, and a
+`DrawingVisual` + `StreamGeometry` implementation of that same target is measured and
+recorded as failing it — the band boundaries are justified by measurement, not asserted.
+Under RDP, or with the shared-surface bridge unavailable, the surface falls back to the
+`WriteableBitmap` rasteriser and still renders correctly at reduced rate rather than failing.
+
 **`REQ-NFR-006` (P0) — Pixel-column decimation.** Traces with more points than available
 horizontal pixels shall be reduced by **min/max envelope decimation per pixel column**
 (retaining both extrema per column), never by naive point-skipping.
@@ -488,6 +502,13 @@ Framework 4.6.2 via `app.manifest` plus the
 > Core 3.0. This interacts directly with `REQ-NFR-005`: an `HwndHost`/`D3DImage` plot surface
 > will **not** receive child-window DPI-change notifications and must be recreated on DPI
 > change. Budget for that.
+
+**AC:** `app.manifest` declares per-monitor awareness V1 and does **not** declare PMv2, and
+the `Switch.System.Windows.DoNotScaleForDpiChanges=false` switch is present — both asserted
+by a test that reads the shipped manifest and configuration, so a later well-meaning edit to
+PMv2 fails the build. Dragging the main window between monitors of differing DPI rescales
+content without blurring and without layout loss, and a hosted `D3DImage`/`HwndHost` plot
+surface is recreated at the new DPI with its trace and scaling intact.
 
 **`REQ-NFR-007a` (P2) — Window scale factor.** Independently of monitor DPI, a user-settable
 content scale factor over the range **0.8 to 2.0, default 1.0**, shall be provided (the
@@ -567,6 +588,11 @@ back complete and byte-exact.
 written approval.
 *Specifically flagged:* FFTW (GPL), any GPL HDF5 tooling, and MATLAB-file libraries with
 restrictive terms.
+**AC:** A CI check enumerates every package reference across the solution and fails the build
+when one has no entry in `DEPENDENCIES.md`, when an entry omits its licence or its
+justification, or when an entry in `DEPENDENCIES.md` names a package no project references
+any longer. A dependency whose licence is GPL, or LGPL linked statically, fails the same
+check unless its entry records a written approval.
 
 ---
 
@@ -694,6 +720,11 @@ would silently read another consumer's live data. `IqBlock` shall therefore eith
 samples only through a method that throws `ObjectDisposedException` after disposal, or (b) be
 handed to the DSP layer exclusively as an immutable, ref-counted view. Raw public array
 exposure combined with pooling is **prohibited** — it makes `REQ-NFR-011` unenforceable.
+**AC:** No public member of `IqBlock` returns the pooled array itself, asserted by a test
+over the public surface. The use-after-dispose case is proved rather than assumed: dispose a
+block, rent the same buffer for a second block, then access the first block's samples — the
+access throws `ObjectDisposedException` instead of returning the second block's data. A
+build in which the accessor omits its disposal check fails that test.
 
 **`REQ-DAT-002` (P1) — Trigger-correction fidelity flag.**
 `TriggerCorrectionsApplied` shall record whether trigger delay/phase corrections have been
@@ -701,10 +732,19 @@ applied to the samples.
 *Rationale:* the reference product documents that trigger corrections are **not** applied to
 exported data except in its SDF (Fast) format — a real fidelity trap. **[V]** OpenVSA shall
 track this explicitly and propagate it into exported files rather than silently losing it.
+**AC:** Blocks acquired with and without trigger corrections carry different
+`TriggerCorrectionsApplied` values, and each value survives a round trip through every
+supported export and re-import format. A test enumerates the export writers and fails any
+that writes a constant or defaulted value for the flag, since that is precisely the silent
+loss this requirement exists to prevent.
 
 **`REQ-DAT-003` (P2) — `Complex32` value type.** A 8-byte `readonly struct Complex32`
 with SIMD-friendly layout shall be provided for interpreted access to `Samples`, but bulk
 DSP shall operate on the raw interleaved `float[]` to permit vectorisation.
+**AC:** `sizeof(Complex32)` is 8 and its field order matches the interleaved I,Q layout, so
+reinterpreting a `float[2N]` as `Complex32[N]` yields the same values element for element.
+A test over the public DSP surface fails if a bulk kernel takes `Complex32[]` rather than
+`float[]`.
 
 ### 7.2 Front-end contract
 
@@ -1214,10 +1254,19 @@ exactly reproducible.
 **`REQ-SIM-004` (P2) — Burst and pulse scenarios.** The generator shall produce bursted
 signals with settable on/off times, ramp shapes and inter-burst noise floor, for exercising
 pulse search (§11.5).
+**AC:** A generated burst, measured back from its own samples, reproduces the requested on
+and off times to within one sample, the requested ramp shape to within 1 % of its specified
+transition time, and the requested inter-burst noise floor to within 0.5 dB. Generation is
+seeded and reproducible under `REQ-SIM-003`, so these are exact comparisons against the
+requested parameters rather than against a previous run.
 
 **`REQ-SIM-005` (P2) — Standard-signal presets.** Presets producing structurally correct
 signals for each implemented personality (GSM burst, W-CDMA frame, LTE resource grid, …)
 shall be provided for personality development without hardware.
+**AC:** Each preset is decoded by the personality it targets with no manual parameter entry,
+and the recovered structure — burst, frame and slot boundaries, and modulation format —
+matches the preset's declared parameters. A preset naming a personality that is not yet
+implemented fails the parse rather than shipping as a preset that cannot be decoded.
 ---
 
 ## 9. Core DSP engine
@@ -1231,6 +1280,12 @@ in the DSP design shall assume causality or streaming operation.
 whole-block maximum-likelihood estimation of carrier, timing and phase strictly outperforms
 causal tracking loops, and it is why the reference product can lock reliably on short
 bursts. It is a deliberate architectural choice, not a compromise.
+**AC:** An architecture test over the public DSP surface fails if any analysis entry point
+takes an incremental or push-style form — a per-sample `Process`, a `Push`, or a stateful
+accumulator that survives between calls — rather than a complete block. The estimation
+consequence is tested directly: carrier, timing and phase estimates for a short burst are
+invariant, to the tolerances of `REQ-SIM-002`, to where in the block the burst sits. A causal
+tracking implementation cannot satisfy that, so the test discriminates.
 
 **`REQ-DSP-002` (P0) — Double-precision accumulation.**
 Sample storage may be single precision, but all accumulations (averaging, correlation, sums
@@ -1254,6 +1309,13 @@ figures, matching the reference product: **[V]**
 | Blackman-Harris (4-term) | 2.0044 | −92.0 dB | |
 | Kaiser-Bessel (πα = 11.9) | 2.0013 | −89.1 dB | faster sidelobe roll-off than Blackman-Harris |
 | Gaussian (α = 3.58, σ = 0.1397) | 2.0212 | −73.5 dB | special purpose only |
+
+**AC:** Every window in the table is implemented and selectable, and Flat Top is the default.
+Each window's measured ENBW, computed as $\mathrm{ENBW} = N \sum w_n^2 / (\sum w_n)^2$,
+matches its tabulated value to within 0.1 %, and its measured peak sidelobe matches the quoted
+figure to within 0.5 dB where one is quoted. These are the closed-form figures required by
+`REQ-TST-001`, not values captured from a previous run. `REQ-DSP-010a` fixes the window
+definition the tabulated figures assume and the FFT sizes over which the tolerance holds.
 
 **`REQ-DSP-010a` (P0) — Periodic (DFT-even) window definitions.**
 All windows shall use the **periodic** (DFT-even) definition, $w_n = f(n/N)$ for
@@ -1282,6 +1344,10 @@ within 0.1 dB.
 **`REQ-DSP-012` (P2) — Zero-span channel filter shape.** In zero-span/power-spectrum
 operation, "window type" shall be replaced by **Channel Filter Shape** (Gaussian, or
 None/anti-alias only), mirroring the reference product. **[V]**
+**AC:** Entering zero-span or power-spectrum operation replaces the window-type control with
+a Channel Filter Shape control offering Gaussian and None/anti-alias-only, and no window-type
+selection remains reachable in that mode. The selected shape is recorded in the trace state
+and in exported metadata, so a saved measurement records which filter produced it.
 
 ### 9.3 Spectrum computation and RBW
 
@@ -2208,6 +2274,14 @@ the graticule)"; `Grid` — "Color for the graticule lines"; `Annotation` — "C
 annotation (text outside of the graticule)"; `AnnotationBackground` — "Color for background of
 area outside of the trace graticule".
 
+**AC:** `TraceBackground`, `Grid`, `Annotation` and `AnnotationBackground` are four
+independently settable colours. Set each to a distinct value and render: sampling the
+rendered frame returns `TraceBackground` inside the graticule rectangle away from any grid
+line or trace, `Grid` on a graticule line, `AnnotationBackground` in the surrounding band away
+from text, and `Annotation` on annotation glyphs. Changing any one of the four leaves the
+other three regions' sampled values unchanged — the zones are genuinely independent, not two
+colours with a shared background.
+
 **`REQ-UI-011` (P1) — The annotation band reflows.**
 **Show Annotation** off shall remove all trace annotation, with **the graticule expanding to
 fill the reclaimed space**. **Show Grid Lines** off shall remove the graticule lines
@@ -2943,6 +3017,12 @@ breadth, and each wave is independently valuable and independently deferrable.
 **`REQ-PLN-001` (P0)** — Phases 0–4 shall be treated as the minimum viable product and
 shall not be descoped in favour of starting personality work early.
 *Rationale:* personalities built on an unproven core inherit and disguise its defects.
+**AC exempt:** *Planning constraint, not a product behaviour.* This requirement governs how
+the delivery plan may be changed, so no property of a built artefact can be measured to
+satisfy or violate it. It is honoured structurally instead: the backlog's milestones carry
+Phases 0–4, and a breach shows as Phase 5+ work starting while Phase 0–4 issues remain open —
+visible in the backlog, not in a test. Recorded as exempt rather than left unmechanised so
+that `needs-ac` continues to mean "criteria are owed", not "criteria are impossible".
 
 ---
 

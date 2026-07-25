@@ -151,7 +151,23 @@ def existing_issue_ids():
     return ids
 
 
+def needs_ac(rec):
+    """Whether acceptance criteria are still owed for this requirement.
+
+    A requirement marked `**AC exempt:**` in the specification is one no built artefact
+    can be measured against — a planning constraint, say. It is not owed criteria, so it
+    does not carry the label; the exemption and its reasoning are in the issue body.
+    """
+    return not rec["has_ac"] and not rec.get("ac_exempt")
+
+
 def build_body(rec):
+    if rec["has_ac"]:
+        ac_state = "yes"
+    elif rec.get("ac_exempt"):
+        ac_state = "exempt — not mechanisable"
+    else:
+        ac_state = "**no**"
     lines = [
         "> Auto-generated from [`{doc}`]({doc}) (revision 1.0), line {line}.".format(
             doc=DOC_PATH, line=rec["line"]),
@@ -164,14 +180,14 @@ def build_body(rec):
         "| Delivery phase | {} |".format(MILESTONES[rec["phase"]][0]),
         "| Evidence grade | {} |".format(
             ", ".join(rec["evidence"]) if rec["evidence"] else "n/a"),
-        "| Acceptance criteria in spec | {} |".format("yes" if rec["has_ac"] else "**no**"),
+        "| Acceptance criteria in spec | {} |".format(ac_state),
         "",
         "## Specification text",
         "",
         rec["body"],
         "",
     ]
-    if not rec["has_ac"]:
+    if needs_ac(rec):
         lines += [
             "## Note",
             "",
@@ -238,7 +254,7 @@ def run(args, records):
         title = "{}: {}".format(rec["id"], rec["title"])
         labels = ["requirement", rec["priority"], AREA_LABELS[rec["area"]][0]]
         labels += rec["evidence"]
-        if not rec["has_ac"]:
+        if needs_ac(rec):
             labels.append("needs-ac")
         print("[{}/{}] {}".format(n, len(todo), title))
         if args.dry_run:

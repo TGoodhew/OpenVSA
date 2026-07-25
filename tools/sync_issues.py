@@ -13,7 +13,7 @@ import os
 import sys
 
 from create_issues import (AREA_LABELS, EVIDENCE_LABELS, MILESTONES, REPO,
-                           build_body, gh)
+                           build_body, gh, needs_ac)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -26,7 +26,7 @@ EVIDENCE_NAMES = set(EVIDENCE_LABELS)
 def wanted_labels(rec):
     labels = {"requirement", rec["priority"], AREA_LABELS[rec["area"]][0]}
     labels |= set(rec["evidence"])
-    if not rec["has_ac"]:
+    if needs_ac(rec):
         labels.add("needs-ac")
     return labels
 

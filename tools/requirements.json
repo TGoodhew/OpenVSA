@@ -9,6 +9,7 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
+  "ac_exempt": false,
   "line": 299
  },
  {
@@ -21,6 +22,7 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
+  "ac_exempt": false,
   "line": 309
  },
  {
@@ -33,6 +35,7 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
+  "ac_exempt": false,
   "line": 318
  },
  {
@@ -45,6 +48,7 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
+  "ac_exempt": false,
   "line": 381
  },
  {
@@ -57,6 +61,7 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
+  "ac_exempt": false,
   "line": 395
  },
  {
@@ -69,6 +74,7 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
+  "ac_exempt": false,
   "line": 413
  },
  {
@@ -77,12 +83,13 @@
   "num": "004",
   "priority": "P0",
   "title": "FFT implementation choice",
-  "body": "**`REQ-NFR-004` (P0) — FFT implementation choice.** **[DESIGN CHOICE]**\nThe FFT shall sit behind an `IFftProvider` interface with at least two implementations: a\nfully managed default, and an optional native provider.\n*Rationale and licensing:* FFTW is **GPL** unless a commercial licence is purchased — it must\nnot be linked into a closed-source product without that licence. Intel oneMKL and IPP, by\ncontrast, have been free to use and redistribute under the **Intel Simplified Software\nLicence** since the oneAPI transition (2020) and are viable native options. A managed default\n(Stockham or split-radix, or Math.NET Numerics) avoids the question entirely at some\nperformance cost. The interface makes the choice deployment-time, not design-time.",
+  "body": "**`REQ-NFR-004` (P0) — FFT implementation choice.** **[DESIGN CHOICE]**\nThe FFT shall sit behind an `IFftProvider` interface with at least two implementations: a\nfully managed default, and an optional native provider.\n*Rationale and licensing:* FFTW is **GPL** unless a commercial licence is purchased — it must\nnot be linked into a closed-source product without that licence. Intel oneMKL and IPP, by\ncontrast, have been free to use and redistribute under the **Intel Simplified Software\nLicence** since the oneAPI transition (2020) and are viable native options. A managed default\n(Stockham or split-radix, or Math.NET Numerics) avoids the question entirely at some\nperformance cost. The interface makes the choice deployment-time, not design-time.\n**AC:** At least two `IFftProvider` implementations are registered, one fully managed and one\nnative. A provider-parametrised suite runs the same forward/inverse round-trip and Parseval\nchecks against every registered provider and passes for each. Selecting the active provider\nis a configuration change that recompiles no DSP code, demonstrated by running the suite\ntwice with different providers selected and the same binaries. The shipped default carries no\ncopyleft obligation, which `REQ-NFR-008` enforces.",
   "phase": 0,
   "evidence": [
    "design-choice"
   ],
-  "has_ac": false,
+  "has_ac": true,
+  "ac_exempt": false,
   "line": 431
  },
  {
@@ -95,7 +102,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 441
+  "ac_exempt": false,
+  "line": 447
  },
  {
   "id": "REQ-NFR-005",
@@ -103,11 +111,12 @@
   "num": "005",
   "priority": "P0",
   "title": "WPF rendering strategy for large traces",
-  "body": "**`REQ-NFR-005` (P0) — WPF rendering strategy for large traces.**\nTrace rendering shall **not** use WPF `Polyline`/`Path` elements with per-point geometry\nabove ~2 000 points. Permitted strategies, by point count:\n\n| Points | Strategy |\n|---|---|\n| ≤ 2 000 | `Polyline`/`Path` acceptable |\n| ≤ ~20 000 | `DrawingVisual` + `StreamGeometry` |\n| > ~20 000 | `WriteableBitmap` + software rasteriser, **or** `D3DImage` + shared-surface interop |\n\n*Rationale, stated precisely because the usual folk explanation is wrong:* the cost at high\npoint counts is **MilCore's anti-aliased geometry tessellation on the render thread, plus\nper-`Point` managed→native marshalling** — not the visual tree as such. `StreamGeometry`\ninside a `DrawingVisual` removes the per-*element* overhead but goes through the **same\ntessellator**, so it does **not** scale to 500 k points and is not on its own a solution for\n`REQ-NFR-021`.\n\n*Interop caveat that will otherwise be discovered late:* `D3DImage` accepts only an\n`IDirect3DSurface9` (D3D9Ex). A Direct2D 1.1 / D3D11 back end therefore requires a\nshared-surface bridge (`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture`\nopened shared), and `D3DImage` degrades to software rendering under RDP or without WDDM.\nThis is the single largest technical risk in using WPF for this application (§19, RISK-03).",
+  "body": "**`REQ-NFR-005` (P0) — WPF rendering strategy for large traces.**\nTrace rendering shall **not** use WPF `Polyline`/`Path` elements with per-point geometry\nabove ~2 000 points. Permitted strategies, by point count:\n\n| Points | Strategy |\n|---|---|\n| ≤ 2 000 | `Polyline`/`Path` acceptable |\n| ≤ ~20 000 | `DrawingVisual` + `StreamGeometry` |\n| > ~20 000 | `WriteableBitmap` + software rasteriser, **or** `D3DImage` + shared-surface interop |\n\n*Rationale, stated precisely because the usual folk explanation is wrong:* the cost at high\npoint counts is **MilCore's anti-aliased geometry tessellation on the render thread, plus\nper-`Point` managed→native marshalling** — not the visual tree as such. `StreamGeometry`\ninside a `DrawingVisual` removes the per-*element* overhead but goes through the **same\ntessellator**, so it does **not** scale to 500 k points and is not on its own a solution for\n`REQ-NFR-021`.\n\n*Interop caveat that will otherwise be discovered late:* `D3DImage` accepts only an\n`IDirect3DSurface9` (D3D9Ex). A Direct2D 1.1 / D3D11 back end therefore requires a\nshared-surface bridge (`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture`\nopened shared), and `D3DImage` degrades to software rendering under RDP or without WDDM.\nThis is the single largest technical risk in using WPF for this application (§19, RISK-03).\n**AC:** The strategy selected for a trace is observable and tested at each band boundary\n(2 000 and ~20 000 points); selecting per-point `Polyline`/`Path` geometry above 2 000 points\nfails the test. The >20 000-point path meets `REQ-NFR-021` on the reference machine, and a\n`DrawingVisual` + `StreamGeometry` implementation of that same target is measured and\nrecorded as failing it — the band boundaries are justified by measurement, not asserted.\nUnder RDP, or with the shared-surface bridge unavailable, the surface falls back to the\n`WriteableBitmap` rasteriser and still renders correctly at reduced rate rather than failing.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 449
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 455
  },
  {
   "id": "REQ-NFR-006",
@@ -119,7 +128,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 471
+  "ac_exempt": false,
+  "line": 485
  },
  {
   "id": "REQ-NFR-007",
@@ -127,11 +137,12 @@
   "num": "007",
   "priority": "P1",
   "title": "Per-monitor DPI awareness (V1)",
-  "body": "**`REQ-NFR-007` (P1) — Per-monitor DPI awareness (V1).**\nThe application shall declare **per-monitor DPI awareness V1**, which WPF supports from .NET\nFramework 4.6.2 via `app.manifest` plus the\n`Switch.System.Windows.DoNotScaleForDpiChanges=false` configuration switch.\n\n> **Do not specify PerMonitorV2 on this stack.** PMv2 is a Windows 10 1703+ awareness context\n> whose behaviours (non-client-area scaling, child-HWND `WM_DPICHANGED` propagation, dialog\n> scaling) WPF on .NET Framework does not implement — full PMv2 support arrived with .NET\n> Core 3.0. This interacts directly with `REQ-NFR-005`: an `HwndHost`/`D3DImage` plot surface\n> will **not** receive child-window DPI-change notifications and must be recreated on DPI\n> change. Budget for that.",
+  "body": "**`REQ-NFR-007` (P1) — Per-monitor DPI awareness (V1).**\nThe application shall declare **per-monitor DPI awareness V1**, which WPF supports from .NET\nFramework 4.6.2 via `app.manifest` plus the\n`Switch.System.Windows.DoNotScaleForDpiChanges=false` configuration switch.\n\n> **Do not specify PerMonitorV2 on this stack.** PMv2 is a Windows 10 1703+ awareness context\n> whose behaviours (non-client-area scaling, child-HWND `WM_DPICHANGED` propagation, dialog\n> scaling) WPF on .NET Framework does not implement — full PMv2 support arrived with .NET\n> Core 3.0. This interacts directly with `REQ-NFR-005`: an `HwndHost`/`D3DImage` plot surface\n> will **not** receive child-window DPI-change notifications and must be recreated on DPI\n> change. Budget for that.\n\n**AC:** `app.manifest` declares per-monitor awareness V1 and does **not** declare PMv2, and\nthe `Switch.System.Windows.DoNotScaleForDpiChanges=false` switch is present — both asserted\nby a test that reads the shipped manifest and configuration, so a later well-meaning edit to\nPMv2 fails the build. Dragging the main window between monitors of differing DPI rescales\ncontent without blurring and without layout loss, and a hosted `D3DImage`/`HwndHost` plot\nsurface is recreated at the new DPI with its trace and scaling intact.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 480
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 494
  },
  {
   "id": "REQ-NFR-007a",
@@ -145,7 +156,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 492
+  "ac_exempt": false,
+  "line": 513
  },
  {
   "id": "REQ-VISA-001",
@@ -157,7 +169,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 501
+  "ac_exempt": false,
+  "line": 522
  },
  {
   "id": "REQ-VISA-002",
@@ -171,7 +184,8 @@
    "unverified"
   ],
   "has_ac": true,
-  "line": 519
+  "ac_exempt": false,
+  "line": 540
  },
  {
   "id": "REQ-VISA-003",
@@ -183,7 +197,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 533
+  "ac_exempt": false,
+  "line": 554
  },
  {
   "id": "REQ-VISA-004",
@@ -195,7 +210,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 540
+  "ac_exempt": false,
+  "line": 561
  },
  {
   "id": "REQ-VISA-005",
@@ -207,7 +223,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 549
+  "ac_exempt": false,
+  "line": 570
  },
  {
   "id": "REQ-NFR-008",
@@ -215,11 +232,12 @@
   "num": "008",
   "priority": "P2",
   "title": "Third-party dependency register and licence policy",
-  "body": "**`REQ-NFR-008` (P2)** — Every third-party dependency shall be recorded in a\n`DEPENDENCIES.md` with its licence and the justification for its use. Copyleft\n(GPL/LGPL-static) dependencies shall not be introduced into shipped binaries without\nwritten approval.\n*Specifically flagged:* FFTW (GPL), any GPL HDF5 tooling, and MATLAB-file libraries with\nrestrictive terms.",
+  "body": "**`REQ-NFR-008` (P2)** — Every third-party dependency shall be recorded in a\n`DEPENDENCIES.md` with its licence and the justification for its use. Copyleft\n(GPL/LGPL-static) dependencies shall not be introduced into shipped binaries without\nwritten approval.\n*Specifically flagged:* FFTW (GPL), any GPL HDF5 tooling, and MATLAB-file libraries with\nrestrictive terms.\n**AC:** A CI check enumerates every package reference across the solution and fails the build\nwhen one has no entry in `DEPENDENCIES.md`, when an entry omits its licence or its\njustification, or when an entry in `DEPENDENCIES.md` names a package no project references\nany longer. A dependency whose licence is GPL, or LGPL linked statically, fails the same\ncheck unless its entry records a written approval.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 564
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 585
  },
  {
   "id": "REQ-NFR-010",
@@ -231,7 +249,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 577
+  "ac_exempt": false,
+  "line": 603
  },
  {
   "id": "REQ-NFR-011",
@@ -243,7 +262,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 591
+  "ac_exempt": false,
+  "line": 617
  },
  {
   "id": "REQ-NFR-012",
@@ -255,7 +275,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 598
+  "ac_exempt": false,
+  "line": 624
  },
  {
   "id": "REQ-NFR-020",
@@ -263,11 +284,12 @@
   "num": "020",
   "priority": "P1",
   "title": "Spectrum, 8 192-point FFT, single trace, rendered: ≥60 updates/s sustained",
-  "body": "Spectrum, 8 192-point FFT, single trace, **rendered**: ≥60 updates/s sustained",
+  "body": "Spectrum, 8 192-point FFT, single trace, **rendered**: ≥60 updates/s sustained\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 612
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 638
  },
  {
   "id": "REQ-NFR-021",
@@ -275,11 +297,12 @@
   "num": "021",
   "priority": "P1",
   "title": "Spectrum, 1 048 576-point FFT, rendered with min/max decimation: ≥10 updates/s",
-  "body": "Spectrum, 1 048 576-point FFT, **rendered with min/max decimation**: ≥10 updates/s",
+  "body": "Spectrum, 1 048 576-point FFT, **rendered with min/max decimation**: ≥10 updates/s\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 613
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 639
  },
  {
   "id": "REQ-NFR-022",
@@ -287,11 +310,12 @@
   "num": "022",
   "priority": "P1",
   "title": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: complete analysis ≤50 ms",
-  "body": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: complete analysis ≤50 ms",
+  "body": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: complete analysis ≤50 ms\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 614
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 640
  },
  {
   "id": "REQ-NFR-023",
@@ -299,11 +323,12 @@
   "num": "023",
   "priority": "P2",
   "title": "Flexible demod, 1024-QAM, 4 000 symbols, equaliser on (31 symbols): ≤400 ms",
-  "body": "Flexible demod, 1024-QAM, 4 000 symbols, equaliser on (31 symbols): ≤400 ms",
+  "body": "Flexible demod, 1024-QAM, 4 000 symbols, equaliser on (31 symbols): ≤400 ms\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 615
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 641
  },
  {
   "id": "REQ-NFR-024",
@@ -311,11 +336,12 @@
   "num": "024",
   "priority": "P1",
   "title": "20 simultaneous trace windows updating: aggregate ≥10 updates/s, UI input latency <100 ms",
-  "body": "20 simultaneous trace windows updating: aggregate ≥10 updates/s, UI input latency <100 ms",
+  "body": "20 simultaneous trace windows updating: aggregate ≥10 updates/s, UI input latency <100 ms\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 616
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 642
  },
  {
   "id": "REQ-NFR-025",
@@ -323,11 +349,12 @@
   "num": "025",
   "priority": "P2",
   "title": "Cold start to first trace displayed (simulated source): ≤3 s",
-  "body": "Cold start to first trace displayed (simulated source): ≤3 s",
+  "body": "Cold start to first trace displayed (simulated source): ≤3 s\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 617
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 643
  },
  {
   "id": "REQ-NFR-026",
@@ -335,11 +362,12 @@
   "num": "026",
   "priority": "P2",
   "title": "Playback of a 4 GB recording: sustained ≥1× real-time at the recorded sample rate",
-  "body": "Playback of a 4 GB recording: sustained ≥1× real-time at the recorded sample rate",
+  "body": "Playback of a 4 GB recording: sustained ≥1× real-time at the recorded sample rate\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 618
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 644
  },
  {
   "id": "REQ-NFR-027",
@@ -351,7 +379,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 631
+  "ac_exempt": false,
+  "line": 657
  },
  {
   "id": "REQ-DAT-001",
@@ -363,7 +392,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 682
+  "ac_exempt": false,
+  "line": 708
  },
  {
   "id": "REQ-DAT-001a",
@@ -371,11 +401,12 @@
   "num": "001a",
   "priority": "P1",
   "title": "Buffer ownership and use-after-dispose",
-  "body": "**`REQ-DAT-001a` (P1) — Buffer ownership and use-after-dispose.**\nBecause `Samples` is a pooled array exposed publicly on an `IDisposable`, use-after-`Dispose`\nwould silently read another consumer's live data. `IqBlock` shall therefore either (a) expose\nsamples only through a method that throws `ObjectDisposedException` after disposal, or (b) be\nhanded to the DSP layer exclusively as an immutable, ref-counted view. Raw public array\nexposure combined with pooling is **prohibited** — it makes `REQ-NFR-011` unenforceable.",
+  "body": "**`REQ-DAT-001a` (P1) — Buffer ownership and use-after-dispose.**\nBecause `Samples` is a pooled array exposed publicly on an `IDisposable`, use-after-`Dispose`\nwould silently read another consumer's live data. `IqBlock` shall therefore either (a) expose\nsamples only through a method that throws `ObjectDisposedException` after disposal, or (b) be\nhanded to the DSP layer exclusively as an immutable, ref-counted view. Raw public array\nexposure combined with pooling is **prohibited** — it makes `REQ-NFR-011` unenforceable.\n**AC:** No public member of `IqBlock` returns the pooled array itself, asserted by a test\nover the public surface. The use-after-dispose case is proved rather than assumed: dispose a\nblock, rent the same buffer for a second block, then access the first block's samples — the\naccess throws `ObjectDisposedException` instead of returning the second block's data. A\nbuild in which the accessor omits its disposal check fails that test.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 691
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 717
  },
  {
   "id": "REQ-DAT-002",
@@ -383,13 +414,14 @@
   "num": "002",
   "priority": "P1",
   "title": "Trigger-correction fidelity flag",
-  "body": "**`REQ-DAT-002` (P1) — Trigger-correction fidelity flag.**\n`TriggerCorrectionsApplied` shall record whether trigger delay/phase corrections have been\napplied to the samples.\n*Rationale:* the reference product documents that trigger corrections are **not** applied to\nexported data except in its SDF (Fast) format — a real fidelity trap. **[V]** OpenVSA shall\ntrack this explicitly and propagate it into exported files rather than silently losing it.",
+  "body": "**`REQ-DAT-002` (P1) — Trigger-correction fidelity flag.**\n`TriggerCorrectionsApplied` shall record whether trigger delay/phase corrections have been\napplied to the samples.\n*Rationale:* the reference product documents that trigger corrections are **not** applied to\nexported data except in its SDF (Fast) format — a real fidelity trap. **[V]** OpenVSA shall\ntrack this explicitly and propagate it into exported files rather than silently losing it.\n**AC:** Blocks acquired with and without trigger corrections carry different\n`TriggerCorrectionsApplied` values, and each value survives a round trip through every\nsupported export and re-import format. A test enumerates the export writers and fails any\nthat writes a constant or defaulted value for the flag, since that is precisely the silent\nloss this requirement exists to prevent.",
   "phase": 0,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
-  "line": 698
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 729
  },
  {
   "id": "REQ-DAT-003",
@@ -397,11 +429,12 @@
   "num": "003",
   "priority": "P2",
   "title": "Complex32 value type",
-  "body": "**`REQ-DAT-003` (P2) — `Complex32` value type.** A 8-byte `readonly struct Complex32`\nwith SIMD-friendly layout shall be provided for interpreted access to `Samples`, but bulk\nDSP shall operate on the raw interleaved `float[]` to permit vectorisation.",
+  "body": "**`REQ-DAT-003` (P2) — `Complex32` value type.** A 8-byte `readonly struct Complex32`\nwith SIMD-friendly layout shall be provided for interpreted access to `Samples`, but bulk\nDSP shall operate on the raw interleaved `float[]` to permit vectorisation.\n**AC:** `sizeof(Complex32)` is 8 and its field order matches the interleaved I,Q layout, so\nreinterpreting a `float[2N]` as `Complex32[N]` yields the same values element for element.\nA test over the public DSP surface fails if a bulk kernel takes `Complex32[]` rather than\n`float[]`.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 705
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 741
  },
  {
   "id": "REQ-HAL-001",
@@ -413,7 +446,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 768
+  "ac_exempt": false,
+  "line": 808
  },
  {
   "id": "REQ-HAL-002",
@@ -425,7 +459,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 776
+  "ac_exempt": false,
+  "line": 816
  },
  {
   "id": "REQ-HAL-003",
@@ -437,7 +472,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 782
+  "ac_exempt": false,
+  "line": 822
  },
  {
   "id": "REQ-DAT-010",
@@ -451,7 +487,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 791
+  "ac_exempt": false,
+  "line": 831
  },
  {
   "id": "REQ-TRC-001",
@@ -463,7 +500,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 818
+  "ac_exempt": false,
+  "line": 858
  },
  {
   "id": "REQ-TRC-001a",
@@ -477,7 +515,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 824
+  "ac_exempt": false,
+  "line": 864
  },
  {
   "id": "REQ-TRC-002",
@@ -489,7 +528,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 832
+  "ac_exempt": false,
+  "line": 872
  },
  {
   "id": "REQ-TRC-003",
@@ -501,7 +541,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 841
+  "ac_exempt": false,
+  "line": 881
  },
  {
   "id": "REQ-ACQ-001",
@@ -513,7 +554,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 855
+  "ac_exempt": false,
+  "line": 895
  },
  {
   "id": "REQ-ACQ-002",
@@ -527,7 +569,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 871
+  "ac_exempt": false,
+  "line": 911
  },
  {
   "id": "REQ-ACQ-003",
@@ -541,7 +584,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 878
+  "ac_exempt": false,
+  "line": 918
  },
  {
   "id": "REQ-ACQ-004",
@@ -553,7 +597,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 891
+  "ac_exempt": false,
+  "line": 931
  },
  {
   "id": "REQ-AMP-001",
@@ -565,7 +610,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 901
+  "ac_exempt": false,
+  "line": 941
  },
  {
   "id": "REQ-AMP-002",
@@ -577,7 +623,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 910
+  "ac_exempt": false,
+  "line": 950
  },
  {
   "id": "REQ-AMP-003",
@@ -589,7 +636,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 917
+  "ac_exempt": false,
+  "line": 957
  },
  {
   "id": "REQ-AMP-004",
@@ -601,7 +649,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 925
+  "ac_exempt": false,
+  "line": 965
  },
  {
   "id": "REQ-ACQ-010",
@@ -613,7 +662,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 928
+  "ac_exempt": false,
+  "line": 968
  },
  {
   "id": "REQ-TRG-001",
@@ -627,7 +677,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 940
+  "ac_exempt": false,
+  "line": 980
  },
  {
   "id": "REQ-TRG-002",
@@ -641,7 +692,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 948
+  "ac_exempt": false,
+  "line": 988
  },
  {
   "id": "REQ-TRG-003",
@@ -655,7 +707,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 955
+  "ac_exempt": false,
+  "line": 995
  },
  {
   "id": "REQ-E44-001",
@@ -667,7 +720,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 965
+  "ac_exempt": false,
+  "line": 1005
  },
  {
   "id": "REQ-E44-002",
@@ -679,7 +733,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 971
+  "ac_exempt": false,
+  "line": 1011
  },
  {
   "id": "REQ-E44-002a",
@@ -693,7 +748,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1003
+  "ac_exempt": false,
+  "line": 1043
  },
  {
   "id": "REQ-E44-002b",
@@ -707,7 +763,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1016
+  "ac_exempt": false,
+  "line": 1056
  },
  {
   "id": "REQ-E44-002c",
@@ -721,7 +778,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1036
+  "ac_exempt": false,
+  "line": 1076
  },
  {
   "id": "REQ-E44-002d",
@@ -735,7 +793,8 @@
    "unverified"
   ],
   "has_ac": true,
-  "line": 1056
+  "ac_exempt": false,
+  "line": 1096
  },
  {
   "id": "REQ-E44-003",
@@ -747,7 +806,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1071
+  "ac_exempt": false,
+  "line": 1111
  },
  {
   "id": "REQ-E44-004",
@@ -759,7 +819,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 1080
+  "ac_exempt": false,
+  "line": 1120
  },
  {
   "id": "REQ-E44-005",
@@ -771,7 +832,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1085
+  "ac_exempt": false,
+  "line": 1125
  },
  {
   "id": "REQ-E44-006",
@@ -783,7 +845,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 1092
+  "ac_exempt": false,
+  "line": 1132
  },
  {
   "id": "REQ-E44-007",
@@ -795,7 +858,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1097
+  "ac_exempt": false,
+  "line": 1137
  },
  {
   "id": "REQ-REC-001",
@@ -807,7 +871,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1108
+  "ac_exempt": false,
+  "line": 1148
  },
  {
   "id": "REQ-REC-002",
@@ -819,7 +884,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1117
+  "ac_exempt": false,
+  "line": 1157
  },
  {
   "id": "REQ-REC-003",
@@ -831,7 +897,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1123
+  "ac_exempt": false,
+  "line": 1163
  },
  {
   "id": "REQ-REC-004",
@@ -845,7 +912,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1129
+  "ac_exempt": false,
+  "line": 1169
  },
  {
   "id": "REQ-REC-005",
@@ -860,7 +928,8 @@
    "unverified"
   ],
   "has_ac": false,
-  "line": 1140
+  "ac_exempt": false,
+  "line": 1180
  },
  {
   "id": "REQ-REC-006",
@@ -874,7 +943,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1163
+  "ac_exempt": false,
+  "line": 1203
  },
  {
   "id": "REQ-REC-007",
@@ -886,7 +956,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 1169
+  "ac_exempt": false,
+  "line": 1209
  },
  {
   "id": "REQ-REC-008",
@@ -898,7 +969,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1172
+  "ac_exempt": false,
+  "line": 1212
  },
  {
   "id": "REQ-REC-009",
@@ -910,7 +982,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": true,
-  "line": 1182
+  "ac_exempt": false,
+  "line": 1222
  },
  {
   "id": "REQ-SIM-001",
@@ -922,7 +995,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 1192
+  "ac_exempt": false,
+  "line": 1232
  },
  {
   "id": "REQ-SIM-002",
@@ -934,7 +1008,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 1199
+  "ac_exempt": false,
+  "line": 1239
  },
  {
   "id": "REQ-SIM-003",
@@ -946,7 +1021,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 1209
+  "ac_exempt": false,
+  "line": 1249
  },
  {
   "id": "REQ-SIM-004",
@@ -954,11 +1030,12 @@
   "num": "004",
   "priority": "P2",
   "title": "Burst and pulse scenarios",
-  "body": "**`REQ-SIM-004` (P2) — Burst and pulse scenarios.** The generator shall produce bursted\nsignals with settable on/off times, ramp shapes and inter-burst noise floor, for exercising\npulse search (§11.5).",
+  "body": "**`REQ-SIM-004` (P2) — Burst and pulse scenarios.** The generator shall produce bursted\nsignals with settable on/off times, ramp shapes and inter-burst noise floor, for exercising\npulse search (§11.5).\n**AC:** A generated burst, measured back from its own samples, reproduces the requested on\nand off times to within one sample, the requested ramp shape to within 1 % of its specified\ntransition time, and the requested inter-burst noise floor to within 0.5 dB. Generation is\nseeded and reproducible under `REQ-SIM-003`, so these are exact comparisons against the\nrequested parameters rather than against a previous run.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 1214
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1254
  },
  {
   "id": "REQ-SIM-005",
@@ -966,11 +1043,12 @@
   "num": "005",
   "priority": "P2",
   "title": "Standard-signal presets",
-  "body": "**`REQ-SIM-005` (P2) — Standard-signal presets.** Presets producing structurally correct\nsignals for each implemented personality (GSM burst, W-CDMA frame, LTE resource grid, …)\nshall be provided for personality development without hardware.",
+  "body": "**`REQ-SIM-005` (P2) — Standard-signal presets.** Presets producing structurally correct\nsignals for each implemented personality (GSM burst, W-CDMA frame, LTE resource grid, …)\nshall be provided for personality development without hardware.\n**AC:** Each preset is decoded by the personality it targets with no manual parameter entry,\nand the recovered structure — burst, frame and slot boundaries, and modulation format —\nmatches the preset's declared parameters. A preset naming a personality that is not yet\nimplemented fails the parse rather than shipping as a preset that cannot be decoded.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 1218
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1263
  },
  {
   "id": "REQ-DSP-001",
@@ -978,11 +1056,12 @@
   "num": "001",
   "priority": "P0",
   "title": "Block-based, non-real-time analysis",
-  "body": "**`REQ-DSP-001` (P0) — Block-based, non-real-time analysis.**\nAnalysis shall operate on finite blocks with full random access to the whole block. Nothing\nin the DSP design shall assume causality or streaming operation.\n*Rationale:* this is what makes the reference product's estimation quality achievable —\nwhole-block maximum-likelihood estimation of carrier, timing and phase strictly outperforms\ncausal tracking loops, and it is why the reference product can lock reliably on short\nbursts. It is a deliberate architectural choice, not a compromise.",
+  "body": "**`REQ-DSP-001` (P0) — Block-based, non-real-time analysis.**\nAnalysis shall operate on finite blocks with full random access to the whole block. Nothing\nin the DSP design shall assume causality or streaming operation.\n*Rationale:* this is what makes the reference product's estimation quality achievable —\nwhole-block maximum-likelihood estimation of carrier, timing and phase strictly outperforms\ncausal tracking loops, and it is why the reference product can lock reliably on short\nbursts. It is a deliberate architectural choice, not a compromise.\n**AC:** An architecture test over the public DSP surface fails if any analysis entry point\ntakes an incremental or push-style form — a per-sample `Process`, a `Push`, or a stateful\naccumulator that survives between calls — rather than a complete block. The estimation\nconsequence is tested directly: carrier, timing and phase estimates for a short burst are\ninvariant, to the tolerances of `REQ-SIM-002`, to where in the block the burst sits. A causal\ntracking implementation cannot satisfy that, so the test discriminates.",
   "phase": 0,
   "evidence": [],
-  "has_ac": false,
-  "line": 1227
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1276
  },
  {
   "id": "REQ-DSP-002",
@@ -994,7 +1073,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 1235
+  "ac_exempt": false,
+  "line": 1290
  },
  {
   "id": "REQ-DSP-010",
@@ -1002,13 +1082,14 @@
   "num": "010",
   "priority": "P0",
   "title": "Window function set",
-  "body": "**`REQ-DSP-010` (P0) — Window function set.**\nThe following windows shall be provided with the stated normalised ENBW (Hz·s) and sidelobe\nfigures, matching the reference product: **[V]**\n\n| Window | Normalised ENBW | Peak sidelobe | Notes |\n|---|---|---|---|\n| Uniform (rectangular) | 1.0000 | −13.3 dB | self-windowing/transient signals |\n| Hann (\"Hanning\") | 1.5000 | −31.5 dB | general purpose, random noise; unsuitable for bursts/chirps |\n| Gaussian Top | 2.2153 | — | high dynamic range, better resolution than Hann |\n| Flat Top | 3.8194 | — | **default**; amplitude accuracy over resolution |\n| Blackman-Harris (4-term) | 2.0044 | −92.0 dB | |\n| Kaiser-Bessel (πα = 11.9) | 2.0013 | −89.1 dB | faster sidelobe roll-off than Blackman-Harris |\n| Gaussian (α = 3.58, σ = 0.1397) | 2.0212 | −73.5 dB | special purpose only |",
+  "body": "**`REQ-DSP-010` (P0) — Window function set.**\nThe following windows shall be provided with the stated normalised ENBW (Hz·s) and sidelobe\nfigures, matching the reference product: **[V]**\n\n| Window | Normalised ENBW | Peak sidelobe | Notes |\n|---|---|---|---|\n| Uniform (rectangular) | 1.0000 | −13.3 dB | self-windowing/transient signals |\n| Hann (\"Hanning\") | 1.5000 | −31.5 dB | general purpose, random noise; unsuitable for bursts/chirps |\n| Gaussian Top | 2.2153 | — | high dynamic range, better resolution than Hann |\n| Flat Top | 3.8194 | — | **default**; amplitude accuracy over resolution |\n| Blackman-Harris (4-term) | 2.0044 | −92.0 dB | |\n| Kaiser-Bessel (πα = 11.9) | 2.0013 | −89.1 dB | faster sidelobe roll-off than Blackman-Harris |\n| Gaussian (α = 3.58, σ = 0.1397) | 2.0212 | −73.5 dB | special purpose only |\n\n**AC:** Every window in the table is implemented and selectable, and Flat Top is the default.\nEach window's measured ENBW, computed as $\\mathrm{ENBW} = N \\sum w_n^2 / (\\sum w_n)^2$,\nmatches its tabulated value to within 0.1 %, and its measured peak sidelobe matches the quoted\nfigure to within 0.5 dB where one is quoted. These are the closed-form figures required by\n`REQ-TST-001`, not values captured from a previous run. `REQ-DSP-010a` fixes the window\ndefinition the tabulated figures assume and the FFT sizes over which the tolerance holds.",
   "phase": 0,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
-  "line": 1244
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1299
  },
  {
   "id": "REQ-DSP-010a",
@@ -1020,7 +1101,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 1258
+  "ac_exempt": false,
+  "line": 1320
  },
  {
   "id": "REQ-DSP-011",
@@ -1032,7 +1114,8 @@
   "phase": 0,
   "evidence": [],
   "has_ac": true,
-  "line": 1274
+  "ac_exempt": false,
+  "line": 1336
  },
  {
   "id": "REQ-DSP-012",
@@ -1040,13 +1123,14 @@
   "num": "012",
   "priority": "P2",
   "title": "Zero-span channel filter shape",
-  "body": "**`REQ-DSP-012` (P2) — Zero-span channel filter shape.** In zero-span/power-spectrum\noperation, \"window type\" shall be replaced by **Channel Filter Shape** (Gaussian, or\nNone/anti-alias only), mirroring the reference product. **[V]**",
+  "body": "**`REQ-DSP-012` (P2) — Zero-span channel filter shape.** In zero-span/power-spectrum\noperation, \"window type\" shall be replaced by **Channel Filter Shape** (Gaussian, or\nNone/anti-alias only), mirroring the reference product. **[V]**\n**AC:** Entering zero-span or power-spectrum operation replaces the window-type control with\na Channel Filter Shape control offering Gaussian and None/anti-alias-only, and no window-type\nselection remains reachable in that mode. The selected shape is recorded in the trace state\nand in exported metadata, so a saved measurement records which filter produced it.",
   "phase": 0,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
-  "line": 1282
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1344
  },
  {
   "id": "REQ-DSP-020",
@@ -1060,7 +1144,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1288
+  "ac_exempt": false,
+  "line": 1354
  },
  {
   "id": "REQ-DSP-021",
@@ -1074,7 +1159,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1295
+  "ac_exempt": false,
+  "line": 1361
  },
  {
   "id": "REQ-DSP-022",
@@ -1086,7 +1172,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 1300
+  "ac_exempt": false,
+  "line": 1366
  },
  {
   "id": "REQ-DSP-023",
@@ -1100,7 +1187,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1318
+  "ac_exempt": false,
+  "line": 1384
  },
  {
   "id": "REQ-DSP-023a",
@@ -1114,7 +1202,8 @@
    "design-choice"
   ],
   "has_ac": true,
-  "line": 1330
+  "ac_exempt": false,
+  "line": 1396
  },
  {
   "id": "REQ-DSP-024",
@@ -1128,7 +1217,8 @@
    "unverified"
   ],
   "has_ac": false,
-  "line": 1349
+  "ac_exempt": false,
+  "line": 1415
  },
  {
   "id": "REQ-DSP-030",
@@ -1143,7 +1233,8 @@
    "unverified"
   ],
   "has_ac": true,
-  "line": 1356
+  "ac_exempt": false,
+  "line": 1422
  },
  {
   "id": "REQ-DSP-031",
@@ -1157,7 +1248,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1384
+  "ac_exempt": false,
+  "line": 1450
  },
  {
   "id": "REQ-DSP-040",
@@ -1171,7 +1263,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1390
+  "ac_exempt": false,
+  "line": 1456
  },
  {
   "id": "REQ-DSP-040a",
@@ -1183,7 +1276,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 1397
+  "ac_exempt": false,
+  "line": 1463
  },
  {
   "id": "REQ-DSP-041",
@@ -1197,7 +1291,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1407
+  "ac_exempt": false,
+  "line": 1473
  },
  {
   "id": "REQ-DSP-042",
@@ -1209,7 +1304,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 1412
+  "ac_exempt": false,
+  "line": 1478
  },
  {
   "id": "REQ-DSP-043",
@@ -1223,7 +1319,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1423
+  "ac_exempt": false,
+  "line": 1489
  },
  {
   "id": "REQ-DSP-044",
@@ -1235,7 +1332,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 1427
+  "ac_exempt": false,
+  "line": 1493
  },
  {
   "id": "REQ-DSP-045",
@@ -1247,7 +1345,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 1431
+  "ac_exempt": false,
+  "line": 1497
  },
  {
   "id": "REQ-DSP-046",
@@ -1261,7 +1360,8 @@
    "unverified"
   ],
   "has_ac": false,
-  "line": 1435
+  "ac_exempt": false,
+  "line": 1501
  },
  {
   "id": "REQ-DSP-050",
@@ -1275,7 +1375,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1443
+  "ac_exempt": false,
+  "line": 1509
  },
  {
   "id": "REQ-MKR-001",
@@ -1289,7 +1390,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1457
+  "ac_exempt": false,
+  "line": 1523
  },
  {
   "id": "REQ-MKR-002",
@@ -1303,7 +1405,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1461
+  "ac_exempt": false,
+  "line": 1527
  },
  {
   "id": "REQ-MKR-003",
@@ -1317,7 +1420,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1469
+  "ac_exempt": false,
+  "line": 1535
  },
  {
   "id": "REQ-MKR-004",
@@ -1331,7 +1435,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1484
+  "ac_exempt": false,
+  "line": 1550
  },
  {
   "id": "REQ-MKR-005",
@@ -1345,7 +1450,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1487
+  "ac_exempt": false,
+  "line": 1553
  },
  {
   "id": "REQ-MKR-006",
@@ -1359,7 +1465,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1491
+  "ac_exempt": false,
+  "line": 1557
  },
  {
   "id": "REQ-MKR-007",
@@ -1373,7 +1480,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1494
+  "ac_exempt": false,
+  "line": 1560
  },
  {
   "id": "REQ-LIM-001",
@@ -1387,7 +1495,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1500
+  "ac_exempt": false,
+  "line": 1566
  },
  {
   "id": "REQ-LIM-002",
@@ -1401,7 +1510,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1506
+  "ac_exempt": false,
+  "line": 1572
  },
  {
   "id": "REQ-LIM-003",
@@ -1415,7 +1525,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1514
+  "ac_exempt": false,
+  "line": 1580
  },
  {
   "id": "REQ-CHM-001",
@@ -1427,7 +1538,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 1520
+  "ac_exempt": false,
+  "line": 1586
  },
  {
   "id": "REQ-CHM-002",
@@ -1439,7 +1551,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 1525
+  "ac_exempt": false,
+  "line": 1591
  },
  {
   "id": "REQ-CHM-003",
@@ -1451,7 +1564,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 1528
+  "ac_exempt": false,
+  "line": 1594
  },
  {
   "id": "REQ-DEM-001",
@@ -1463,7 +1577,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 1540
+  "ac_exempt": false,
+  "line": 1606
  },
  {
   "id": "REQ-DEM-002",
@@ -1477,7 +1592,8 @@
    "design-choice"
   ],
   "has_ac": true,
-  "line": 1562
+  "ac_exempt": false,
+  "line": 1628
  },
  {
   "id": "REQ-DEM-010",
@@ -1492,7 +1608,8 @@
    "unverified"
   ],
   "has_ac": true,
-  "line": 1580
+  "ac_exempt": false,
+  "line": 1646
  },
  {
   "id": "REQ-DEM-010a",
@@ -1504,7 +1621,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": true,
-  "line": 1605
+  "ac_exempt": false,
+  "line": 1671
  },
  {
   "id": "REQ-DEM-011",
@@ -1516,7 +1634,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": true,
-  "line": 1618
+  "ac_exempt": false,
+  "line": 1684
  },
  {
   "id": "REQ-DEM-012",
@@ -1530,7 +1649,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1625
+  "ac_exempt": false,
+  "line": 1691
  },
  {
   "id": "REQ-DEM-013",
@@ -1544,7 +1664,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1630
+  "ac_exempt": false,
+  "line": 1696
  },
  {
   "id": "REQ-DEM-020",
@@ -1558,7 +1679,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1635
+  "ac_exempt": false,
+  "line": 1701
  },
  {
   "id": "REQ-DEM-021",
@@ -1572,7 +1694,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1643
+  "ac_exempt": false,
+  "line": 1709
  },
  {
   "id": "REQ-DEM-022",
@@ -1584,7 +1707,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 1654
+  "ac_exempt": false,
+  "line": 1720
  },
  {
   "id": "REQ-DEM-022a",
@@ -1596,7 +1720,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": true,
-  "line": 1667
+  "ac_exempt": false,
+  "line": 1733
  },
  {
   "id": "REQ-DEM-023",
@@ -1608,7 +1733,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 1689
+  "ac_exempt": false,
+  "line": 1755
  },
  {
   "id": "REQ-DEM-030",
@@ -1622,7 +1748,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1696
+  "ac_exempt": false,
+  "line": 1762
  },
  {
   "id": "REQ-DEM-031",
@@ -1636,7 +1763,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1707
+  "ac_exempt": false,
+  "line": 1773
  },
  {
   "id": "REQ-DEM-032",
@@ -1650,7 +1778,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1715
+  "ac_exempt": false,
+  "line": 1781
  },
  {
   "id": "REQ-DEM-033",
@@ -1664,7 +1793,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1719
+  "ac_exempt": false,
+  "line": 1785
  },
  {
   "id": "REQ-DEM-034",
@@ -1678,7 +1808,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1726
+  "ac_exempt": false,
+  "line": 1792
  },
  {
   "id": "REQ-DEM-034a",
@@ -1690,7 +1821,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": true,
-  "line": 1731
+  "ac_exempt": false,
+  "line": 1797
  },
  {
   "id": "REQ-DEM-035",
@@ -1704,7 +1836,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1743
+  "ac_exempt": false,
+  "line": 1809
  },
  {
   "id": "REQ-DEM-036",
@@ -1718,7 +1851,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1746
+  "ac_exempt": false,
+  "line": 1812
  },
  {
   "id": "REQ-DEM-040",
@@ -1732,7 +1866,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1756
+  "ac_exempt": false,
+  "line": 1822
  },
  {
   "id": "REQ-DEM-041",
@@ -1746,7 +1881,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1764
+  "ac_exempt": false,
+  "line": 1830
  },
  {
   "id": "REQ-DEM-050",
@@ -1760,7 +1896,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1775
+  "ac_exempt": false,
+  "line": 1841
  },
  {
   "id": "REQ-DEM-051",
@@ -1774,7 +1911,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1780
+  "ac_exempt": false,
+  "line": 1846
  },
  {
   "id": "REQ-DEM-052",
@@ -1788,7 +1926,8 @@
    "design-choice"
   ],
   "has_ac": false,
-  "line": 1788
+  "ac_exempt": false,
+  "line": 1854
  },
  {
   "id": "REQ-DEM-053",
@@ -1802,7 +1941,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1822
+  "ac_exempt": false,
+  "line": 1888
  },
  {
   "id": "REQ-DEM-060",
@@ -1816,7 +1956,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1844
+  "ac_exempt": false,
+  "line": 1910
  },
  {
   "id": "REQ-DEM-061",
@@ -1830,7 +1971,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1855
+  "ac_exempt": false,
+  "line": 1921
  },
  {
   "id": "REQ-DEM-062",
@@ -1844,7 +1986,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1869
+  "ac_exempt": false,
+  "line": 1935
  },
  {
   "id": "REQ-DEM-063",
@@ -1858,7 +2001,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1873
+  "ac_exempt": false,
+  "line": 1939
  },
  {
   "id": "REQ-DEM-064",
@@ -1870,7 +2014,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 1879
+  "ac_exempt": false,
+  "line": 1945
  },
  {
   "id": "REQ-DEM-065",
@@ -1884,7 +2029,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 1886
+  "ac_exempt": false,
+  "line": 1952
  },
  {
   "id": "REQ-DEM-066",
@@ -1898,7 +2044,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1891
+  "ac_exempt": false,
+  "line": 1957
  },
  {
   "id": "REQ-DEM-067",
@@ -1910,7 +2057,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 1912
+  "ac_exempt": false,
+  "line": 1978
  },
  {
   "id": "REQ-DEM-067a",
@@ -1924,7 +2072,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1932
+  "ac_exempt": false,
+  "line": 1998
  },
  {
   "id": "REQ-DEM-068",
@@ -1938,7 +2087,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1944
+  "ac_exempt": false,
+  "line": 2010
  },
  {
   "id": "REQ-DEM-069",
@@ -1952,7 +2102,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1951
+  "ac_exempt": false,
+  "line": 2017
  },
  {
   "id": "REQ-DEM-070",
@@ -1966,7 +2117,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1962
+  "ac_exempt": false,
+  "line": 2028
  },
  {
   "id": "REQ-DEM-071",
@@ -1980,7 +2132,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 1968
+  "ac_exempt": false,
+  "line": 2034
  },
  {
   "id": "REQ-DEM-072",
@@ -1992,7 +2145,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 1972
+  "ac_exempt": false,
+  "line": 2038
  },
  {
   "id": "REQ-DEM-080",
@@ -2007,7 +2161,8 @@
    "unverified"
   ],
   "has_ac": false,
-  "line": 1981
+  "ac_exempt": false,
+  "line": 2047
  },
  {
   "id": "REQ-DEM-081",
@@ -2021,7 +2176,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2001
+  "ac_exempt": false,
+  "line": 2067
  },
  {
   "id": "REQ-DEM-082",
@@ -2033,7 +2189,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": true,
-  "line": 2006
+  "ac_exempt": false,
+  "line": 2072
  },
  {
   "id": "REQ-DEM-083",
@@ -2045,7 +2202,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 2012
+  "ac_exempt": false,
+  "line": 2078
  },
  {
   "id": "REQ-PER-001",
@@ -2057,7 +2215,8 @@
   "phase": 5,
   "evidence": [],
   "has_ac": true,
-  "line": 2022
+  "ac_exempt": false,
+  "line": 2088
  },
  {
   "id": "REQ-PER-002",
@@ -2069,7 +2228,8 @@
   "phase": 5,
   "evidence": [],
   "has_ac": false,
-  "line": 2052
+  "ac_exempt": false,
+  "line": 2118
  },
  {
   "id": "REQ-PER-003",
@@ -2083,7 +2243,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2056
+  "ac_exempt": false,
+  "line": 2122
  },
  {
   "id": "REQ-PER-010",
@@ -2095,7 +2256,8 @@
   "phase": 5,
   "evidence": [],
   "has_ac": false,
-  "line": 2086
+  "ac_exempt": false,
+  "line": 2152
  },
  {
   "id": "REQ-PER-011",
@@ -2107,7 +2269,8 @@
   "phase": 5,
   "evidence": [],
   "has_ac": false,
-  "line": 2089
+  "ac_exempt": false,
+  "line": 2155
  },
  {
   "id": "REQ-UI-001",
@@ -2121,7 +2284,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2113
+  "ac_exempt": false,
+  "line": 2179
  },
  {
   "id": "REQ-UI-002",
@@ -2135,7 +2299,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2129
+  "ac_exempt": false,
+  "line": 2195
  },
  {
   "id": "REQ-UI-003",
@@ -2149,7 +2314,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 2132
+  "ac_exempt": false,
+  "line": 2198
  },
  {
   "id": "REQ-UI-004",
@@ -2163,7 +2329,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2141
+  "ac_exempt": false,
+  "line": 2207
  },
  {
   "id": "REQ-UI-005",
@@ -2177,7 +2344,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2149
+  "ac_exempt": false,
+  "line": 2215
  },
  {
   "id": "REQ-UI-006",
@@ -2191,7 +2359,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2165
+  "ac_exempt": false,
+  "line": 2231
  },
  {
   "id": "REQ-UI-007",
@@ -2203,7 +2372,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2179
+  "ac_exempt": false,
+  "line": 2245
  },
  {
   "id": "REQ-UI-010",
@@ -2211,13 +2381,14 @@
   "num": "010",
   "priority": "P0",
   "title": "Three independently coloured zones",
-  "body": "**`REQ-UI-010` (P0) — Three independently coloured zones.**\nThis is the single most load-bearing layout fact, taken from the reference product's own\ndisplay-colour enumeration: **[V]**\n\n```\n┌─────────────────────────────────────────────────┐  ← AnnotationBackground\n│  annotation text (Annotation colour)            │     (outer band)\n│   ┌───────────────────────────────────────┐     │\n│   │                                       │     │  ← TraceBackground\n│   │   graticule (Grid colour)             │     │     (inner rectangle,\n│   │   trace geometry                      │     │      behind the graticule)\n│   │                                       │     │\n│   └───────────────────────────────────────┘     │\n│  annotation text                                │\n└─────────────────────────────────────────────────┘\n```\n\nVerbatim definitions: `TraceBackground` — \"Color for the background of the trace data (behind\nthe graticule)\"; `Grid` — \"Color for the graticule lines\"; `Annotation` — \"Color for the trace\nannotation (text outside of the graticule)\"; `AnnotationBackground` — \"Color for background of\narea outside of the trace graticule\".",
+  "body": "**`REQ-UI-010` (P0) — Three independently coloured zones.**\nThis is the single most load-bearing layout fact, taken from the reference product's own\ndisplay-colour enumeration: **[V]**\n\n```\n┌─────────────────────────────────────────────────┐  ← AnnotationBackground\n│  annotation text (Annotation colour)            │     (outer band)\n│   ┌───────────────────────────────────────┐     │\n│   │                                       │     │  ← TraceBackground\n│   │   graticule (Grid colour)             │     │     (inner rectangle,\n│   │   trace geometry                      │     │      behind the graticule)\n│   │                                       │     │\n│   └───────────────────────────────────────┘     │\n│  annotation text                                │\n└─────────────────────────────────────────────────┘\n```\n\nVerbatim definitions: `TraceBackground` — \"Color for the background of the trace data (behind\nthe graticule)\"; `Grid` — \"Color for the graticule lines\"; `Annotation` — \"Color for the trace\nannotation (text outside of the graticule)\"; `AnnotationBackground` — \"Color for background of\narea outside of the trace graticule\".\n\n**AC:** `TraceBackground`, `Grid`, `Annotation` and `AnnotationBackground` are four\nindependently settable colours. Set each to a distinct value and render: sampling the\nrendered frame returns `TraceBackground` inside the graticule rectangle away from any grid\nline or trace, `Grid` on a graticule line, `AnnotationBackground` in the surrounding band away\nfrom text, and `Annotation` on annotation glyphs. Changing any one of the four leaves the\nother three regions' sampled values unchanged — the zones are genuinely independent, not two\ncolours with a shared background.",
   "phase": 0,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
-  "line": 2189
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 2255
  },
  {
   "id": "REQ-UI-011",
@@ -2231,7 +2402,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 2211
+  "ac_exempt": false,
+  "line": 2285
  },
  {
   "id": "REQ-UI-012",
@@ -2243,7 +2415,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2218
+  "ac_exempt": false,
+  "line": 2292
  },
  {
   "id": "REQ-UI-013",
@@ -2257,7 +2430,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2229
+  "ac_exempt": false,
+  "line": 2303
  },
  {
   "id": "REQ-UI-014",
@@ -2271,7 +2445,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2237
+  "ac_exempt": false,
+  "line": 2311
  },
  {
   "id": "REQ-UI-015",
@@ -2283,7 +2458,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2241
+  "ac_exempt": false,
+  "line": 2315
  },
  {
   "id": "REQ-UI-020",
@@ -2297,7 +2473,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2253
+  "ac_exempt": false,
+  "line": 2327
  },
  {
   "id": "REQ-UI-021",
@@ -2311,7 +2488,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2258
+  "ac_exempt": false,
+  "line": 2332
  },
  {
   "id": "REQ-UI-022",
@@ -2323,7 +2501,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2265
+  "ac_exempt": false,
+  "line": 2339
  },
  {
   "id": "REQ-UI-023",
@@ -2337,7 +2516,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2278
+  "ac_exempt": false,
+  "line": 2352
  },
  {
   "id": "REQ-UI-024",
@@ -2351,7 +2531,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2289
+  "ac_exempt": false,
+  "line": 2363
  },
  {
   "id": "REQ-UI-030",
@@ -2365,7 +2546,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2306
+  "ac_exempt": false,
+  "line": 2380
  },
  {
   "id": "REQ-UI-031",
@@ -2379,7 +2561,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2320
+  "ac_exempt": false,
+  "line": 2394
  },
  {
   "id": "REQ-UI-032",
@@ -2393,7 +2576,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2326
+  "ac_exempt": false,
+  "line": 2400
  },
  {
   "id": "REQ-UI-033",
@@ -2407,7 +2591,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2334
+  "ac_exempt": false,
+  "line": 2408
  },
  {
   "id": "REQ-UI-040",
@@ -2419,7 +2604,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2341
+  "ac_exempt": false,
+  "line": 2415
  },
  {
   "id": "REQ-UI-041",
@@ -2433,7 +2619,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2356
+  "ac_exempt": false,
+  "line": 2430
  },
  {
   "id": "REQ-UI-042",
@@ -2447,7 +2634,8 @@
    "verified"
   ],
   "has_ac": true,
-  "line": 2369
+  "ac_exempt": false,
+  "line": 2443
  },
  {
   "id": "REQ-UI-050",
@@ -2461,7 +2649,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2399
+  "ac_exempt": false,
+  "line": 2473
  },
  {
   "id": "REQ-UI-051",
@@ -2475,7 +2664,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2408
+  "ac_exempt": false,
+  "line": 2482
  },
  {
   "id": "REQ-UI-052",
@@ -2489,7 +2679,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2417
+  "ac_exempt": false,
+  "line": 2491
  },
  {
   "id": "REQ-UI-053",
@@ -2503,7 +2694,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2433
+  "ac_exempt": false,
+  "line": 2507
  },
  {
   "id": "REQ-UI-054",
@@ -2517,7 +2709,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2452
+  "ac_exempt": false,
+  "line": 2526
  },
  {
   "id": "REQ-UI-060",
@@ -2529,7 +2722,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2461
+  "ac_exempt": false,
+  "line": 2535
  },
  {
   "id": "REQ-UI-061",
@@ -2543,7 +2737,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2474
+  "ac_exempt": false,
+  "line": 2548
  },
  {
   "id": "REQ-UI-062",
@@ -2557,7 +2752,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2504
+  "ac_exempt": false,
+  "line": 2578
  },
  {
   "id": "REQ-UI-063",
@@ -2571,7 +2767,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2511
+  "ac_exempt": false,
+  "line": 2585
  },
  {
   "id": "REQ-UI-064",
@@ -2585,7 +2782,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2523
+  "ac_exempt": false,
+  "line": 2597
  },
  {
   "id": "REQ-UI-065",
@@ -2599,7 +2797,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2527
+  "ac_exempt": false,
+  "line": 2601
  },
  {
   "id": "REQ-UI-070",
@@ -2613,7 +2812,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2547
+  "ac_exempt": false,
+  "line": 2621
  },
  {
   "id": "REQ-UI-071",
@@ -2627,7 +2827,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2553
+  "ac_exempt": false,
+  "line": 2627
  },
  {
   "id": "REQ-UI-072",
@@ -2641,7 +2842,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2568
+  "ac_exempt": false,
+  "line": 2642
  },
  {
   "id": "REQ-UI-073",
@@ -2655,7 +2857,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2571
+  "ac_exempt": false,
+  "line": 2645
  },
  {
   "id": "REQ-UI-080",
@@ -2670,7 +2873,8 @@
    "unverified"
   ],
   "has_ac": false,
-  "line": 2577
+  "ac_exempt": false,
+  "line": 2651
  },
  {
   "id": "REQ-UI-081",
@@ -2684,7 +2888,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2587
+  "ac_exempt": false,
+  "line": 2661
  },
  {
   "id": "REQ-UI-082",
@@ -2698,7 +2903,8 @@
    "design-choice"
   ],
   "has_ac": false,
-  "line": 2601
+  "ac_exempt": false,
+  "line": 2675
  },
  {
   "id": "REQ-UI-090",
@@ -2710,7 +2916,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2609
+  "ac_exempt": false,
+  "line": 2683
  },
  {
   "id": "REQ-UI-091",
@@ -2722,7 +2929,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": true,
-  "line": 2614
+  "ac_exempt": false,
+  "line": 2688
  },
  {
   "id": "REQ-STA-001",
@@ -2736,7 +2944,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2678
+  "ac_exempt": false,
+  "line": 2752
  },
  {
   "id": "REQ-STA-002",
@@ -2750,7 +2959,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2686
+  "ac_exempt": false,
+  "line": 2760
  },
  {
   "id": "REQ-STA-003",
@@ -2764,7 +2974,8 @@
    "design-choice"
   ],
   "has_ac": true,
-  "line": 2691
+  "ac_exempt": false,
+  "line": 2765
  },
  {
   "id": "REQ-STA-004",
@@ -2778,7 +2989,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2699
+  "ac_exempt": false,
+  "line": 2773
  },
  {
   "id": "REQ-STA-005",
@@ -2790,7 +3002,8 @@
   "phase": 1,
   "evidence": [],
   "has_ac": false,
-  "line": 2703
+  "ac_exempt": false,
+  "line": 2777
  },
  {
   "id": "REQ-API-001",
@@ -2804,7 +3017,8 @@
    "unverified"
   ],
   "has_ac": false,
-  "line": 2710
+  "ac_exempt": false,
+  "line": 2784
  },
  {
   "id": "REQ-API-002",
@@ -2816,7 +3030,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": true,
-  "line": 2724
+  "ac_exempt": false,
+  "line": 2798
  },
  {
   "id": "REQ-API-003",
@@ -2830,7 +3045,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2730
+  "ac_exempt": false,
+  "line": 2804
  },
  {
   "id": "REQ-API-004",
@@ -2842,7 +3058,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2736
+  "ac_exempt": false,
+  "line": 2810
  },
  {
   "id": "REQ-API-005",
@@ -2856,7 +3073,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2740
+  "ac_exempt": false,
+  "line": 2814
  },
  {
   "id": "REQ-API-006",
@@ -2870,7 +3088,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2744
+  "ac_exempt": false,
+  "line": 2818
  },
  {
   "id": "REQ-API-007",
@@ -2884,7 +3103,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2749
+  "ac_exempt": false,
+  "line": 2823
  },
  {
   "id": "REQ-NFR-030",
@@ -2896,7 +3116,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2761
+  "ac_exempt": false,
+  "line": 2835
  },
  {
   "id": "REQ-NFR-031",
@@ -2908,7 +3129,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2762
+  "ac_exempt": false,
+  "line": 2836
  },
  {
   "id": "REQ-NFR-032",
@@ -2920,7 +3142,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2763
+  "ac_exempt": false,
+  "line": 2837
  },
  {
   "id": "REQ-NFR-033",
@@ -2932,7 +3155,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2764
+  "ac_exempt": false,
+  "line": 2838
  },
  {
   "id": "REQ-NFR-034",
@@ -2944,7 +3168,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2765
+  "ac_exempt": false,
+  "line": 2839
  },
  {
   "id": "REQ-NFR-035",
@@ -2956,7 +3181,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2766
+  "ac_exempt": false,
+  "line": 2840
  },
  {
   "id": "REQ-NFR-036",
@@ -2968,7 +3194,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2767
+  "ac_exempt": false,
+  "line": 2841
  },
  {
   "id": "REQ-NFR-037",
@@ -2980,7 +3207,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": true,
-  "line": 2768
+  "ac_exempt": false,
+  "line": 2842
  },
  {
   "id": "REQ-NFR-040",
@@ -2992,7 +3220,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2769
+  "ac_exempt": false,
+  "line": 2843
  },
  {
   "id": "REQ-NFR-041",
@@ -3004,7 +3233,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2770
+  "ac_exempt": false,
+  "line": 2844
  },
  {
   "id": "REQ-NFR-042",
@@ -3016,7 +3246,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2771
+  "ac_exempt": false,
+  "line": 2845
  },
  {
   "id": "REQ-NFR-038",
@@ -3028,7 +3259,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2772
+  "ac_exempt": false,
+  "line": 2846
  },
  {
   "id": "REQ-NFR-039",
@@ -3040,7 +3272,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2773
+  "ac_exempt": false,
+  "line": 2847
  },
  {
   "id": "REQ-LIC-001",
@@ -3054,7 +3287,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2803
+  "ac_exempt": false,
+  "line": 2877
  },
  {
   "id": "REQ-LIC-002",
@@ -3068,7 +3302,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2809
+  "ac_exempt": false,
+  "line": 2883
  },
  {
   "id": "REQ-LIC-003",
@@ -3082,7 +3317,8 @@
    "verified"
   ],
   "has_ac": false,
-  "line": 2813
+  "ac_exempt": false,
+  "line": 2887
  },
  {
   "id": "REQ-LIC-004",
@@ -3094,7 +3330,8 @@
   "phase": 4,
   "evidence": [],
   "has_ac": false,
-  "line": 2817
+  "ac_exempt": false,
+  "line": 2891
  },
  {
   "id": "REQ-TST-001",
@@ -3106,7 +3343,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": false,
-  "line": 2830
+  "ac_exempt": false,
+  "line": 2904
  },
  {
   "id": "REQ-TST-002",
@@ -3118,7 +3356,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": true,
-  "line": 2845
+  "ac_exempt": false,
+  "line": 2919
  },
  {
   "id": "REQ-TST-003",
@@ -3130,7 +3369,8 @@
   "phase": 2,
   "evidence": [],
   "has_ac": true,
-  "line": 2872
+  "ac_exempt": false,
+  "line": 2946
  },
  {
   "id": "REQ-TST-004",
@@ -3142,7 +3382,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 2880
+  "ac_exempt": false,
+  "line": 2954
  },
  {
   "id": "REQ-TST-004a",
@@ -3154,7 +3395,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 2887
+  "ac_exempt": false,
+  "line": 2961
  },
  {
   "id": "REQ-TST-005",
@@ -3166,7 +3408,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 2897
+  "ac_exempt": false,
+  "line": 2971
  },
  {
   "id": "REQ-TST-006",
@@ -3178,7 +3421,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 2903
+  "ac_exempt": false,
+  "line": 2977
  },
  {
   "id": "REQ-TST-007",
@@ -3190,7 +3434,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 2907
+  "ac_exempt": false,
+  "line": 2981
  },
  {
   "id": "REQ-TST-008",
@@ -3202,7 +3447,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 2910
+  "ac_exempt": false,
+  "line": 2984
  },
  {
   "id": "REQ-TST-009",
@@ -3214,7 +3460,8 @@
   "phase": 3,
   "evidence": [],
   "has_ac": false,
-  "line": 2913
+  "ac_exempt": false,
+  "line": 2987
  },
  {
   "id": "REQ-PLN-001",
@@ -3222,10 +3469,11 @@
   "num": "001",
   "priority": "P0",
   "title": "Phases 0–4 are the minimum viable product",
-  "body": "**`REQ-PLN-001` (P0)** — Phases 0–4 shall be treated as the minimum viable product and\nshall not be descoped in favour of starting personality work early.\n*Rationale:* personalities built on an unproven core inherit and disguise its defects.",
+  "body": "**`REQ-PLN-001` (P0)** — Phases 0–4 shall be treated as the minimum viable product and\nshall not be descoped in favour of starting personality work early.\n*Rationale:* personalities built on an unproven core inherit and disguise its defects.\n**AC exempt:** *Planning constraint, not a product behaviour.* This requirement governs how\nthe delivery plan may be changed, so no property of a built artefact can be measured to\nsatisfy or violate it. It is honoured structurally instead: the backlog's milestones carry\nPhases 0–4, and a breach shows as Phase 5+ work starting while Phase 0–4 issues remain open —\nvisible in the backlog, not in a test. Recorded as exempt rather than left unmechanised so\nthat `needs-ac` continues to mean \"criteria are owed\", not \"criteria are impossible\".",
   "phase": 0,
   "evidence": [],
   "has_ac": false,
-  "line": 2943
+  "ac_exempt": true,
+  "line": 3017
  }
 ]
