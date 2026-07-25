@@ -3011,12 +3011,12 @@
   "num": "001",
   "priority": "P1",
   "title": ".NET automation API",
-  "body": "**`REQ-API-001` (P1) — .NET automation API.**\nA managed API shall expose the object model\n`Application → Measurement(s) → Input / Trigger / Display → Trace(s) → Marker(s)`, plus\nlimit tests and recordings, sufficient to configure, run and read every measurement\nwithout the UI.\n\n> **[U] — Reference object model.** The reference product's exact .NET class hierarchy could\n> not be extracted (its API reference site is a JavaScript frameset). The hierarchy above is\n> inferred from the documented COM model and from MATLAB integration examples that use\n> `Measurement`, `MeasurementExtension` and `InputExtension` objects with\n> `GetParameter`/`SetParameter`/`ParameterNames()`. **[V for those three type names]** If\n> source-compatibility with the reference API ever becomes a requirement, the API reference\n> site must be browsed directly first.",
+  "body": "**`REQ-API-001` (P1) — .NET automation API.**\nA managed API shall expose the object model\n`Application → Measurement(s) → Input / Trigger / Display → Trace(s) → Marker(s)`, plus\nlimit tests and recordings, sufficient to configure, run and read every measurement\nwithout the UI.\n\n**[DESIGN CHOICE]** — **this is OpenVSA's own object model, and source-compatibility with\nthe reference API is explicitly not a goal.**\n\n> *Where the shape came from.* The reference product's exact .NET class hierarchy could not\n> be extracted (its API reference site is a JavaScript frameset). The hierarchy above is\n> inferred from the documented COM model and from MATLAB integration examples that use\n> `Measurement`, `MeasurementExtension` and `InputExtension` objects with\n> `GetParameter`/`SetParameter`/`ParameterNames()`. **[V for those three type names]**\n>\n> *Why parity is not pursued.* Matching the reference API would mean reproducing not just\n> class names but the **string keys** of `REQ-API-003`'s `GetParameter`/`SetParameter`\n> surface — far more numerous than the types, equally unverified, and a permanent\n> compatibility burden. No migration path for existing 89600 scripts has been asked for, and\n> the API is more useful designed around OpenVSA's own model. The inferred hierarchy is\n> adopted because it is a sound design, not because it matches anything.\n>\n> Should source-compatibility ever be wanted, it is a new requirement and begins with\n> browsing the reference API site directly. `REQ-API-005`'s COM surface would be the better\n> target, being the documented one.\n\n**AC:** The object model exposes the stated hierarchy, and it is **complete**: enumerated\nover the measurement catalogue, every measurement can be configured, run and read entirely\nthrough the API, with every trace data type of `REQ-DSP-040`/`REQ-DSP-041`, every marker\nfunction of `REQ-MKR-005`, limit tests and recordings reachable — a measurement reachable\nonly from the UI fails the test. Combined with `REQ-API-002`, the same suite runs with no UI\nloaded. Parity with the reference API is **not** asserted by any test, and no test names a\nreference type or parameter string as an expected value; claiming untested compatibility is\nthe failure mode this criterion guards against.",
   "phase": 4,
   "evidence": [
-   "unverified"
+   "design-choice"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
   "line": 3502
  },
@@ -3031,7 +3031,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3516
+  "line": 3537
  },
  {
   "id": "REQ-API-003",
@@ -3039,14 +3039,14 @@
   "num": "003",
   "priority": "P2",
   "title": "Generic parameter access",
-  "body": "**`REQ-API-003` (P2) — Generic parameter access.**\nIn addition to strongly-typed members, a `GetParameter`/`SetParameter`/`ParameterNames()`\nstring-keyed surface shall be provided, mirroring the reference product and enabling\nscripting from environments with weak generics support (notably MATLAB via\n`NET.addAssembly`). **[V]**",
+  "body": "**`REQ-API-003` (P2) — Generic parameter access.**\nIn addition to strongly-typed members, a `GetParameter`/`SetParameter`/`ParameterNames()`\nstring-keyed surface shall be provided, mirroring the reference product and enabling\nscripting from environments with weak generics support (notably MATLAB via\n`NET.addAssembly`). **[V]**\n**AC:** `ParameterNames()` returns every parameter reachable through the strongly-typed\nmembers, and each name round-trips through `SetParameter`/`GetParameter` to the same value\nthe typed member reports — the two surfaces drive one piece of state, so a parameter\nsettable only one way fails. The generic surface is checked from a weak-generics caller, not\nonly from C#, since that is what it exists for. An unknown parameter name raises the\ndocumented exception of `REQ-NFR-042` rather than being silently ignored. Parameter names\nare OpenVSA's own and are not asserted against the reference product's, per `REQ-API-001`.",
   "phase": 4,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3522
+  "line": 3543
  },
  {
   "id": "REQ-API-004",
@@ -3054,12 +3054,12 @@
   "num": "004",
   "priority": "P2",
   "title": "SCPI server",
-  "body": "**`REQ-API-004` (P2) — SCPI server.**\nAn optional SCPI-over-TCP server shall expose a documented subset of the API, so that\nOpenVSA can be driven from existing test frameworks. Command syntax shall follow SCPI-99.",
+  "body": "**`REQ-API-004` (P2) — SCPI server.**\nAn optional SCPI-over-TCP server shall expose a documented subset of the API, so that\nOpenVSA can be driven from existing test frameworks. Command syntax shall follow SCPI-99.\n**AC:** The server is **off by default** and binds only when enabled, which `REQ-NFR-036`'s\nno-egress-without-opt-in rule requires; a test asserts no listening socket exists in a\ndefault install. Enabled, it accepts SCPI-99 syntax including the common commands, long and\nshort mnemonic forms, compound headers and query suffixes, and rejects malformed input with\na SCPI error rather than dropping the connection. The exposed subset is documented, and a\ntest compares the documentation against the implemented command table so the two cannot\ndrift. Every command maps onto the same API state as `REQ-API-001`, verified by setting a\nparameter over SCPI and reading it back through the .NET API. Activity appears in the\n`REQ-API-007` log.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3528
+  "line": 3556
  },
  {
   "id": "REQ-API-005",
@@ -3067,14 +3067,14 @@
   "num": "005",
   "priority": "P3",
   "title": "COM interop surface",
-  "body": "**`REQ-API-005` (P3) — COM interop surface.** A COM-callable wrapper for legacy clients.\n*Note:* the reference product's own COM API is documented as obsoleted and no longer\nupdated **[V]**; OpenVSA should treat COM as legacy from the outset.",
+  "body": "**`REQ-API-005` (P3) — COM interop surface.** A COM-callable wrapper for legacy clients.\n*Note:* the reference product's own COM API is documented as obsoleted and no longer\nupdated **[V]**; OpenVSA should treat COM as legacy from the outset.\n**AC:** A COM client creates the object model, configures and runs a measurement and reads\nresults, exercising the same paths as `REQ-API-001`. The wrapper adds no capability of its\nown — it delegates, so a feature reachable through COM but not through the .NET API fails.\nBeing P3 and legacy, it is permitted to expose a documented subset rather than the whole\nsurface; what it omits is listed, not discovered. Registration is optional and a default\ninstall that never registers COM is fully functional.",
   "phase": 4,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3532
+  "line": 3569
  },
  {
   "id": "REQ-API-006",
@@ -3082,14 +3082,14 @@
   "num": "006",
   "priority": "P2",
   "title": "Macros",
-  "body": "**`REQ-API-006` (P2) — Macros.**\nUser extensions shall be loadable as compiled .NET assemblies from a macros folder, with a\nMacros window listing and running them — mirroring the reference product, whose macros are\nfull Visual Studio solutions rather than a scripting language. **[V]**",
+  "body": "**`REQ-API-006` (P2) — Macros.**\nUser extensions shall be loadable as compiled .NET assemblies from a macros folder, with a\nMacros window listing and running them — mirroring the reference product, whose macros are\nfull Visual Studio solutions rather than a scripting language. **[V]**\n**AC:** A compiled assembly dropped into the macros folder appears in the Macros window and\nruns, driving the measurement through `REQ-API-001`. Loading obeys `REQ-NFR-041` in full:\nonly configured directories are searched, and an unsigned assembly raises the trust prompt\nrather than loading silently. A macro that throws is contained — the application survives\nwith an error reported to the Macros window and the measurement unaffected. Removing the\nassembly removes the entry without a restart.",
   "phase": 4,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3536
+  "line": 3579
  },
  {
   "id": "REQ-API-007",
@@ -3097,14 +3097,14 @@
   "num": "007",
   "priority": "P2",
   "title": "Command log window",
-  "body": "**`REQ-API-007` (P2) — Command log window.**\nAn Output/SCPI Log window shall echo API and SCPI activity, so users can discover the\nprogrammatic equivalent of UI actions they perform. **[V]**\n*Rationale:* this is the single most effective automation-discoverability feature an\ninstrument application can offer.",
+  "body": "**`REQ-API-007` (P2) — Command log window.**\nAn Output/SCPI Log window shall echo API and SCPI activity, so users can discover the\nprogrammatic equivalent of UI actions they perform. **[V]**\n*Rationale:* this is the single most effective automation-discoverability feature an\ninstrument application can offer.\n**AC:** Performing an action in the UI echoes the equivalent API or SCPI call into the log,\nand **that echoed text, replayed verbatim, reproduces the action** — the property that makes\nthe window useful rather than decorative, and the one a paraphrased log fails. Coverage is\nenumerated over the settable parameters of `REQ-API-003`, so a UI control with no logged\nequivalent fails. The log is copyable, is bounded so a long session cannot exhaust memory\nper `REQ-NFR-012`'s spirit, and states when it has truncated rather than dropping entries\nsilently.",
   "phase": 4,
   "evidence": [
    "verified"
   ],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3541
+  "line": 3590
  },
  {
   "id": "REQ-NFR-030",
@@ -3112,12 +3112,12 @@
   "num": "030",
   "priority": "P0",
   "title": "Windows 10 21H2 or later, x64; .NET Framework 4.7.2 present",
-  "body": "Windows 10 21H2 or later, x64; .NET Framework 4.7.2 present",
+  "body": "Windows 10 21H2 or later, x64; .NET Framework 4.7.2 present\n\n---\n\n**`REQ-NFR-030`** fixes the platform floor.\n**AC:** The installer and the application both refuse to run below Windows 10 21H2 or on a\nnon-x64 process, with a message naming the unmet requirement rather than failing obscurely.\nA missing .NET Framework 4.7.2 is detected before any managed entry point runs and reported\nthe same way. The build emits x64 only, per `REQ-NFR-001` and the solution's single platform\n— a test fails on an AnyCPU or x86 output, since a 32-bit process cannot hold the buffers\n§6 requires.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3553
+  "line": 3609
  },
  {
   "id": "REQ-NFR-031",
@@ -3125,12 +3125,12 @@
   "num": "031",
   "priority": "P2",
   "title": "Installer deploys without administrative rights where VISA is already present",
-  "body": "Installer deploys without administrative rights where VISA is already present",
+  "body": "Installer deploys without administrative rights where VISA is already present\n\n---\n\n**`REQ-NFR-031`** governs installation privilege.\n**AC:** With VISA already present, a per-user installation completes as a standard user with\nno elevation prompt, and the installed application starts and runs. Where elevation is\ngenuinely needed — a machine-wide install, or installing VISA itself — it is requested\nexplicitly with the reason stated, never assumed. Uninstall as the same user removes\neverything the install wrote outside the user profile's data directories.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3554
+  "line": 3610
  },
  {
   "id": "REQ-NFR-032",
@@ -3138,12 +3138,12 @@
   "num": "032",
   "priority": "P0",
   "title": "Runs with no hardware and no VISA installed",
-  "body": "Application starts and runs usefully with **no** hardware and **no** VISA installed (simulator + file playback only)\n\n---\n\n**`REQ-NFR-032` deserves emphasis.** The ability to run the full analysis stack with no\ninstrument attached is what makes the DSP developable, testable in CI, and demonstrable.\nIt should be treated as an architectural constraint, not a convenience feature.",
+  "body": "Application starts and runs usefully with **no** hardware and **no** VISA installed (simulator + file playback only)\n\n---\n\n**`REQ-NFR-032` deserves emphasis.** The ability to run the full analysis stack with no\ninstrument attached is what makes the DSP developable, testable in CI, and demonstrable.\nIt should be treated as an architectural constraint, not a convenience feature.\n**AC:** On a machine with no VISA runtime installed and no instrument attached, the\napplication starts, the simulator and file-playback front ends are available, and a full\ndemodulation measurement runs to an error summary. A test asserts the VISA assemblies are\nnot loaded in that configuration, so the capability cannot regress into \"starts, but only\nbecause VISA happened to be present\". `REQ-NFR-036`'s no-egress rule holds throughout.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3555
+  "line": 3611
  },
  {
   "id": "REQ-NFR-033",
@@ -3151,12 +3151,12 @@
   "num": "033",
   "priority": "P2",
   "title": "All user-visible strings externalised for localisation; en-GB default",
-  "body": "All user-visible strings externalised for localisation; en-GB default",
+  "body": "All user-visible strings externalised for localisation; en-GB default\n\n---\n\n**`REQ-NFR-033` needs a scope decision, or it contradicts the exact-string requirements.**\nThis requirement is **externalisation only: no second locale is shipped.** Strings live in\nresources rather than in code so that translation is possible later; en-GB is the only\nlocale provided, and no translation work is in scope.\n\nTwo carve-outs, without which this requirement would break criteria already agreed\nelsewhere:\n\n- **Terminology is not localised.** The trace indicator strings of `REQ-UI-041`, the `NAN`\n  and `INF` readouts of `REQ-UI-032`, the error-summary row labels of `REQ-UI-053` and the\n  `SNR (MER)` label of `REQ-DEM-069` are fixed in every locale, exactly as SCPI mnemonics\n  are. Those requirements assert them as exact literals; making them translatable would\n  falsify their acceptance criteria. Chrome, menus, dialogs and messages localise;\n  measurement vocabulary does not.\n- **Files and exports use invariant culture.** Every path that writes a number to a file —\n  the export formats of `REQ-REC-005`, saved state, logs, reports — formats with\n  `CultureInfo.InvariantCulture`, independent of UI language. A comma decimal separator\n  would corrupt CSV outright, and `REQ-NFR-037`'s bit-for-bit reproducibility requires the\n  written form not to depend on machine locale.\n\n**AC:** No user-visible string is a literal in code — asserted by a check over the UI\nassemblies that fails on a hard-coded display string — and every one resolves through a\nresource lookup with en-GB satisfying all of them. The carve-outs are enforced rather than\nmerely documented: the terminology above is asserted to come from a non-localised source, so\nadding it to a resource file fails; and a test formats numbers under a comma-decimal culture\nand asserts every export, state and log path still writes `.`, which catches the\nlocale-dependent formatting bug at its source. Running the application under a non-en-GB\nsystem culture falls back to en-GB without missing strings or layout loss.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3556
+  "line": 3612
  },
  {
   "id": "REQ-NFR-034",
@@ -3164,12 +3164,12 @@
   "num": "034",
   "priority": "P1",
   "title": "Structured logging with per-subsystem levels; log bundle export for support",
-  "body": "Structured logging with per-subsystem levels; log bundle export for support",
+  "body": "Structured logging with per-subsystem levels; log bundle export for support\n\n---\n\n**`REQ-NFR-034`** covers diagnosability in the field.\n**AC:** Log level is settable per subsystem and takes effect without a restart, verified by\nraising one subsystem's level and asserting only its output increases. Entries are\nstructured — machine-parseable fields, not formatted prose — so a support bundle can be\nqueried rather than read. The bundle export gathers logs, configuration and version\ninformation into one file in a single action, and **redacts nothing silently**: whatever it\nomits is listed in the bundle. Writing a log entry never blocks the measurement thread,\nwhich `REQ-NFR-011` and `REQ-NFR-012` make a correctness matter rather than a performance\none.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3557
+  "line": 3613
  },
  {
   "id": "REQ-NFR-035",
@@ -3177,12 +3177,12 @@
   "num": "035",
   "priority": "P1",
   "title": "Diagnostic report on unhandled exception, without loss to in-progress recordings",
-  "body": "Unhandled exceptions produce a diagnostic report without data loss to in-progress recordings",
+  "body": "Unhandled exceptions produce a diagnostic report without data loss to in-progress recordings\n\n---\n\n**`REQ-NFR-035`** is about not compounding a crash with data loss.\n**AC:** An unhandled exception produces a diagnostic report containing the exception, the\nbuild version and the active measurement configuration. The recording clause is tested\ndirectly rather than assumed: with a recording in progress, an exception is injected and the\nrecording is afterwards found complete and readable up to the point of failure, not\nzero-length or truncated mid-record. The report is written before the process exits, and a\nfailure to write it does not itself prevent the recording being closed cleanly — the\nordering matters, so it is asserted.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3558
+  "line": 3614
  },
  {
   "id": "REQ-NFR-036",
@@ -3190,12 +3190,12 @@
   "num": "036",
   "priority": "P0",
   "title": "No telemetry or network egress without explicit opt-in",
-  "body": "No telemetry or network egress without explicit opt-in",
+  "body": "No telemetry or network egress without explicit opt-in\n\n---\n\n**`REQ-NFR-036`** is a privacy guarantee, and is tested as one.\n**AC:** In a default installation the application makes **no outbound network connection of\nany kind** — asserted by running the full start-configure-measure-exit cycle under a network\nmonitor with the simulator as source and failing on any egress, not merely by absence of a\ntelemetry component. There is no update check, no usage reporting and no crash upload\nwithout opt-in; opt-in is off by default and, where offered, states what would be sent\nbefore it is enabled. `REQ-API-004`'s SCPI server is the only listener and is off by\ndefault. Nothing about this depends on a licence or entitlement check, which\n`REQ-LIC-010` removes entirely.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3559
+  "line": 3615
  },
  {
   "id": "REQ-NFR-037",
@@ -3208,7 +3208,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3560
+  "line": 3616
  },
  {
   "id": "REQ-NFR-040",
@@ -3216,12 +3216,12 @@
   "num": "040",
   "priority": "P2",
   "title": "Report generation to PDF/HTML from a template",
-  "body": "Report generation: export a measurement (traces, settings, error summary, optional instrument screen capture) to PDF/HTML with a template",
+  "body": "Report generation: export a measurement (traces, settings, error summary, optional instrument screen capture) to PDF/HTML with a template\n\n---\n\n**`REQ-NFR-040`** covers report output.\n**AC:** A report generated from a measurement contains its traces, settings, error summary\nand, when requested, the `REQ-E44-006` instrument screen capture, in both PDF and HTML. The\ntemplate is user-supplied: substituting a different template changes the layout without a\nrebuild, and a template referencing a field that does not exist fails with that field named\nrather than emitting a blank. Numbers in the report use invariant culture per `REQ-NFR-033`,\nand the metric provenance of `REQ-DEM-072` travels with the results, since a report is\nexactly where a number gets separated from its conditions.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3561
+  "line": 3617
  },
  {
   "id": "REQ-NFR-041",
@@ -3229,12 +3229,12 @@
   "num": "041",
   "priority": "P1",
   "title": "Plug-in load directories and signature enforcement",
-  "body": "Plug-in assemblies (personalities, macros) loaded only from configured directories, with optional Authenticode signature enforcement and a clear trust prompt for unsigned code\n\n---\n\n**`REQ-NFR-041` — why plug-in trust is a requirement and not paranoia.** `REQ-ARC-003` and\n`REQ-API-006` load arbitrary .NET assemblies from disk directories, and `REQ-REC-005` parses\nten binary file formats from untrusted sources. `REQ-PER-002` addresses plug-in *faults* but\nsays nothing about plug-in *malice*, and `REQ-REC-009` covers parser robustness. Together\nthese are the product's entire attack surface and they should be treated as such deliberately.",
+  "body": "Plug-in assemblies (personalities, macros) loaded only from configured directories, with optional Authenticode signature enforcement and a clear trust prompt for unsigned code\n\n---\n\n**`REQ-NFR-041` — why plug-in trust is a requirement and not paranoia.** `REQ-ARC-003` and\n`REQ-API-006` load arbitrary .NET assemblies from disk directories, and `REQ-REC-005` parses\nten binary file formats from untrusted sources. `REQ-PER-002` addresses plug-in *faults* but\nsays nothing about plug-in *malice*, and `REQ-REC-009` covers parser robustness. Together\nthese are the product's entire attack surface and they should be treated as such deliberately.\n**AC:** Assemblies load only from the configured directories: a plug-in placed elsewhere on\ndisk, or reachable by a relative path escaping a configured directory, is not loaded — the\ntraversal case is tested explicitly, since a naive path join permits it. With signature\nenforcement on, an unsigned or invalidly signed assembly is refused and a validly signed one\nloads; with enforcement off, an unsigned assembly raises a trust prompt naming the file and\nits publisher, and declining leaves it unloaded. The prompt is not suppressible by the\nplug-in itself. Refusal is reported to the user rather than logged and swallowed, since a\npersonality that silently fails to appear is indistinguishable from one that was never\ninstalled.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3562
+  "line": 3618
  },
  {
   "id": "REQ-NFR-042",
@@ -3242,12 +3242,12 @@
   "num": "042",
   "priority": "P2",
   "title": "Automation API exception contract, versioning and deprecation policy",
-  "body": "Automation API: documented exception contract, semantic API versioning, and a published deprecation policy",
+  "body": "Automation API: documented exception contract, semantic API versioning, and a published deprecation policy\n\n---\n\n**`REQ-NFR-042`** covers the API's contract with its callers.\n**AC:** Every public API member documents the exceptions it can throw, and a test asserts\nthat the exceptions actually thrown are within the documented set — an undocumented\nexception type escaping the API surface fails. Assembly and package versions follow semantic\nversioning, checked against the previous release by an API-diff tool so a breaking change\nwithout a major bump fails the build. The deprecation policy is published, and every member\nmarked obsolete names its replacement and the version in which it will be removed.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3563
+  "line": 3619
  },
  {
   "id": "REQ-NFR-038",
@@ -3255,12 +3255,12 @@
   "num": "038",
   "priority": "P2",
   "title": "Public API surface documented with XML doc comments; docs generated in CI",
-  "body": "Public API surface documented with XML doc comments; docs generated in CI",
+  "body": "Public API surface documented with XML doc comments; docs generated in CI\n\n---\n\n**`REQ-NFR-038`** keeps the API documented as it changes.\n**AC:** Every public type and member carries XML doc comments — the build treats a missing\ncomment on the public surface as an error, so documentation cannot lag behind the code — and\nCI generates the documentation on every run, failing on a malformed reference or a broken\n`cref`. The generated output is published as a build artefact.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3564
+  "line": 3620
  },
  {
   "id": "REQ-NFR-039",
@@ -3268,12 +3268,12 @@
   "num": "039",
   "priority": "P1",
   "title": "Code coverage ≥70 % overall, ≥90 % for OpenVSA.Dsp and OpenVSA.Demod",
-  "body": "Code coverage ≥70 % overall, ≥90 % for `OpenVSA.Dsp` and `OpenVSA.Demod`",
+  "body": "Code coverage ≥70 % overall, ≥90 % for `OpenVSA.Dsp` and `OpenVSA.Demod`\n\n---\n\n**`REQ-NFR-039`** sets the coverage floor.\n**AC:** CI measures line and branch coverage and fails below 70 % overall, or below 90 % for\n`OpenVSA.Dsp` and `OpenVSA.Demod` individually — the per-project floors are checked\nseparately, since a high overall figure can hide a weak DSP project. Coverage is measured\nover the closed-form and property tests of `REQ-TST-001`, not inflated by tests that execute\ncode without asserting on it; a test with no assertion fails review. The figure is reported\nper project on every run so a decline is visible before it crosses the threshold.",
   "phase": 4,
   "evidence": [],
-  "has_ac": false,
+  "has_ac": true,
   "ac_exempt": false,
-  "line": 3565
+  "line": 3621
  },
  {
   "id": "REQ-LIC-010",
@@ -3286,7 +3286,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3609
+  "line": 3783
  },
  {
   "id": "REQ-LIC-011",
@@ -3299,7 +3299,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3629
+  "line": 3803
  },
  {
   "id": "REQ-TST-001",
@@ -3312,7 +3312,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3653
+  "line": 3827
  },
  {
   "id": "REQ-TST-002",
@@ -3325,7 +3325,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3678
+  "line": 3852
  },
  {
   "id": "REQ-TST-003",
@@ -3338,7 +3338,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3705
+  "line": 3879
  },
  {
   "id": "REQ-TST-004",
@@ -3351,7 +3351,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3713
+  "line": 3887
  },
  {
   "id": "REQ-TST-004a",
@@ -3364,7 +3364,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3728
+  "line": 3902
  },
  {
   "id": "REQ-TST-005",
@@ -3377,7 +3377,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3745
+  "line": 3919
  },
  {
   "id": "REQ-TST-006",
@@ -3390,7 +3390,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3758
+  "line": 3932
  },
  {
   "id": "REQ-TST-007",
@@ -3403,7 +3403,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3779
+  "line": 3953
  },
  {
   "id": "REQ-TST-008",
@@ -3416,7 +3416,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3789
+  "line": 3963
  },
  {
   "id": "REQ-TST-009",
@@ -3429,7 +3429,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3798
+  "line": 3972
  },
  {
   "id": "REQ-PLN-001",
@@ -3442,6 +3442,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 3836
+  "line": 4010
  }
 ]
