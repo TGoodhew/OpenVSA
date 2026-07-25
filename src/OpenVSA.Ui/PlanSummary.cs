@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using OpenVSA.Core;
 using OpenVSA.Hal;
+using OpenVSA.Measurement;
 
 namespace OpenVSA.Ui
 {
@@ -23,12 +26,21 @@ namespace OpenVSA.Ui
     public static class PlanSummary
     {
         /// <summary>
-        /// Describes a plan and every coercion it carries.
+        /// Describes a plan, the setup that produced it, and every coercion either made.
         /// </summary>
         /// <param name="plan">The negotiated plan.</param>
+        /// <param name="planned">The planned acquisition, or <c>null</c> if there was none.</param>
+        /// <param name="capabilities">
+        /// The front end's capabilities, or <c>null</c>. Supplied so the point count can be shown
+        /// against the most this instrument could have given, which is the difference between
+        /// "801 points" and "801 of a possible 65 601".
+        /// </param>
         /// <returns>Display text naming each honoured value, and each coerced one with its reason.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="plan"/> is null.</exception>
-        public static string Describe(AcquisitionPlan plan)
+        public static string Describe(
+            AcquisitionPlan plan,
+            PlannedAcquisition planned = null,
+            IFrontEndCapabilities capabilities = null)
         {
             if (plan == null)
             {
@@ -41,34 +53,95 @@ namespace OpenVSA.Ui
             Append(text, "Centre frequency", Frequency(plan.CenterFrequencyHz));
             Append(text, "Span", Frequency(plan.SpanHz));
             Append(text, "Sample rate", Frequency(plan.SampleRateHz));
+            Append(text, "Path", plan.Path == AnalysisPath.RealBaseband ? "real baseband" : "complex zoom");
             Append(text, "Block size", plan.SamplesPerBlock.ToString(CultureInfo.CurrentCulture) + " samples");
             Append(text, "Reference level", plan.ReferenceLevelDbm.ToString("0.##", CultureInfo.CurrentCulture) + " dBm");
             Append(text, "Gap-free", plan.SupportsGapFreeStreaming ? "yes" : "no");
 
+            if (planned != null)
+            {
+                Append(text, "Frequency points", DescribePoints(planned, capabilities, plan.Path));
+                Append(text, "Max time record", Time(planned.MaxTimeSeconds));
+            }
+
             text.AppendLine();
 
-            if (!plan.Coerced)
+            int coerced = plan.Coercions.Count + (planned == null ? 0 : planned.Coercions.Count);
+
+            if (coerced == 0)
             {
                 text.AppendLine("Every requested value was honoured.");
                 return text.ToString();
             }
 
-            text.AppendLine(plan.Coercions.Count == 1
+            text.AppendLine(coerced == 1
                 ? "One request was coerced:"
-                : plan.Coercions.Count + " requests were coerced:");
+                : coerced + " requests were coerced:");
 
-            foreach (ParameterCoercion coercion in plan.Coercions)
+            if (planned != null)
+            {
+                AppendCoercions(text, planned.Coercions);
+            }
+
+            AppendCoercions(text, plan.Coercions);
+
+            return text.ToString();
+        }
+
+        private static void AppendCoercions(
+            StringBuilder text, IReadOnlyList<ParameterCoercion> coercions)
+        {
+            foreach (ParameterCoercion coercion in coercions)
             {
                 // The reason is carried through verbatim. Paraphrasing it here would put the
-                // explanation of a coercion in two places, and the front end is the only one of
+                // explanation of a coercion in two places, and whoever made it is the only one of
                 // them that knows why.
                 text.AppendLine(
                     "  " + coercion.Parameter + ": asked " +
                     Plain(coercion.Requested) + ", got " + Plain(coercion.Honoured) +
                     " — " + coercion.Reason);
             }
+        }
 
-            return text.ToString();
+        /// <summary>
+        /// The point count, against the most this front end could have delivered.
+        /// </summary>
+        private static string DescribePoints(
+            PlannedAcquisition planned, IFrontEndCapabilities capabilities, AnalysisPath path)
+        {
+            string points = planned.FrequencyPoints.ToString(CultureInfo.CurrentCulture);
+
+            if (capabilities == null)
+            {
+                return points;
+            }
+
+            int available = AcquisitionPlanner.MaximumPointsFor(capabilities, path);
+
+            return available <= planned.FrequencyPoints
+                ? points + " (this front end's maximum)"
+                : points + " of a possible " + available.ToString(CultureInfo.CurrentCulture);
+        }
+
+        /// <summary>Engineering-notation time, for the maximum time record.</summary>
+        private static string Time(double seconds)
+        {
+            if (seconds >= 1.0)
+            {
+                return seconds.ToString("0.###", CultureInfo.CurrentCulture) + " s";
+            }
+
+            if (seconds >= 1e-3)
+            {
+                return (seconds * 1e3).ToString("0.###", CultureInfo.CurrentCulture) + " ms";
+            }
+
+            if (seconds >= 1e-6)
+            {
+                return (seconds * 1e6).ToString("0.###", CultureInfo.CurrentCulture) + " us";
+            }
+
+            return (seconds * 1e9).ToString("0.###", CultureInfo.CurrentCulture) + " ns";
         }
 
         private static void Append(StringBuilder text, string label, string value) =>

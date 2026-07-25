@@ -154,13 +154,26 @@ namespace OpenVSA.Hal.Sim
                 span = caps.MinSpanHz;
             }
 
-            // Fs = 1.28 x span, the reference product's law (§2.2). Unlike the E4406A's quantised
-            // RBW-driven rate, the simulator can honour this exactly — which is precisely why the
-            // HAL negotiates rather than assuming a single law for all sources.
-            double sampleRate = span * 1.28;
+            // The path decides the sample-rate law: 1.28 x span on the complex path, 2.56 x span on
+            // the real one (REQ-ACQ-001). A front end that cannot deliver real baseband coerces the
+            // path rather than quietly acquiring the other one.
+            AnalysisPath path = request.Path;
+
+            if (path == AnalysisPath.RealBaseband && !caps.SupportsBasebandIq)
+            {
+                coercions.Add(new ParameterCoercion(
+                    "Path", (double)AnalysisPath.RealBaseband, (double)AnalysisPath.ComplexZoom,
+                    "this front end has no real-baseband path"));
+                path = AnalysisPath.ComplexZoom;
+            }
+
+            // Unlike an instrument with a quantised, RBW-driven rate, the simulator can honour the
+            // law exactly - which is precisely why the HAL negotiates rather than assuming a single
+            // law for all sources, and why every consumer reads the rate back from the plan.
+            double sampleRate = AcquisitionLaw.SampleRateFor(span, path);
             if (sampleRate > caps.MaxSampleRateHz)
             {
-                double honouredSpan = caps.MaxSampleRateHz / 1.28;
+                double honouredSpan = AcquisitionLaw.SpanFor(caps.MaxSampleRateHz, path);
                 coercions.Add(new ParameterCoercion(
                     "SampleRate", sampleRate, caps.MaxSampleRateHz,
                     "span implies a sample rate above the front-end maximum"));
@@ -192,7 +205,8 @@ namespace OpenVSA.Hal.Sim
             // computed property of the plan so no caller learns to special-case the source type.
             const bool gapFree = true;
 
-            return new AcquisitionPlan(centre, span, sampleRate, samples, refLevel, gapFree, coercions);
+            return new AcquisitionPlan(
+                centre, span, sampleRate, samples, refLevel, gapFree, coercions, path);
         }
 
         /// <inheritdoc />
@@ -255,8 +269,11 @@ namespace OpenVSA.Hal.Sim
             var metadata = new IqBlockMetadata(
                 sampleCount: plan.SamplesPerBlock,
                 sampleRateHz: plan.SampleRateHz,
-                centerFrequencyHz: plan.CenterFrequencyHz,
-                isBaseband: false,
+
+                // On the real path the acquisition is from 0 Hz, whatever centre frequency was
+                // asked for: a baseband digitiser has no local oscillator to tune.
+                centerFrequencyHz: plan.Path == AnalysisPath.RealBaseband ? 0.0 : plan.CenterFrequencyHz,
+                isBaseband: plan.Path == AnalysisPath.RealBaseband,
                 fullScaleVolts: 1.0,
                 referenceLevelDbm: plan.ReferenceLevelDbm,
                 sequenceNumber: _sequenceNumber++,
@@ -300,15 +317,29 @@ namespace OpenVSA.Hal.Sim
                 sigma = Math.Sqrt(signalPower / snrLinear / 2.0);
             }
 
+            // On the real path there is no quadrature channel: the signal is a real cosine and Q is
+            // zero. The tone is placed at the same frequency the complex path would have put it,
+            // measured from 0 Hz rather than from a centre frequency.
+            bool real = plan.Path == AnalysisPath.RealBaseband;
+
+            if (real)
+            {
+                phaseStep = 2.0 * Math.PI * (plan.SpanHz / 4.0 + _settings.ToneOffsetHz) / plan.SampleRateHz;
+            }
+
             for (int n = 0; n < count; n++)
             {
                 double i = amplitude * Math.Cos(_phaseAccumulator);
-                double q = amplitude * Math.Sin(_phaseAccumulator);
+                double q = real ? 0.0 : amplitude * Math.Sin(_phaseAccumulator);
 
                 if (addNoise)
                 {
                     i += sigma * _random.NextGaussian();
-                    q += sigma * _random.NextGaussian();
+
+                    if (!real)
+                    {
+                        q += sigma * _random.NextGaussian();
+                    }
                 }
 
                 samples[n * 2] = (float)i;

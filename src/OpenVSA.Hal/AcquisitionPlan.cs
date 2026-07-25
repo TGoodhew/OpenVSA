@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using OpenVSA.Core;
 
 namespace OpenVSA.Hal
 {
@@ -79,6 +80,11 @@ namespace OpenVSA.Hal
         /// throughput, never hard-coded per front end — see <c>REQ-NFR-027</c>.
         /// </param>
         /// <param name="coercions">Parameters that could not be honoured as requested.</param>
+        /// <param name="path">
+        /// The acquisition path that will be used, which may differ from the one requested — a
+        /// front end with no baseband capability coerces to <see cref="AnalysisPath.ComplexZoom"/>
+        /// and says so.
+        /// </param>
         public AcquisitionPlan(
             double centerFrequencyHz,
             double spanHz,
@@ -86,7 +92,8 @@ namespace OpenVSA.Hal
             int samplesPerBlock,
             double referenceLevelDbm,
             bool supportsGapFreeStreaming,
-            IEnumerable<ParameterCoercion> coercions)
+            IEnumerable<ParameterCoercion> coercions,
+            AnalysisPath path = AnalysisPath.ComplexZoom)
         {
             CenterFrequencyHz = centerFrequencyHz;
             SpanHz = spanHz;
@@ -95,7 +102,11 @@ namespace OpenVSA.Hal
             ReferenceLevelDbm = referenceLevelDbm;
             SupportsGapFreeStreaming = supportsGapFreeStreaming;
             Coercions = (coercions ?? Enumerable.Empty<ParameterCoercion>()).ToList().AsReadOnly();
+            Path = path;
         }
+
+        /// <summary>The acquisition path that will be used (<c>REQ-ACQ-001</c>).</summary>
+        public AnalysisPath Path { get; }
 
         /// <summary>Honoured centre frequency, in hertz.</summary>
         public double CenterFrequencyHz { get; }

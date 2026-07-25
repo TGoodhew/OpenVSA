@@ -1,4 +1,5 @@
 using System;
+using OpenVSA.Core;
 
 namespace OpenVSA.Hal
 {
@@ -18,12 +19,19 @@ namespace OpenVSA.Hal
         /// <param name="spanHz">Requested span, in hertz; must be positive and finite.</param>
         /// <param name="samplesPerBlock">Requested block size, in complex samples; must be positive.</param>
         /// <param name="referenceLevelDbm">Requested reference level, in dBm; must be finite.</param>
+        /// <param name="path">
+        /// Which acquisition path to use. Optional, and defaulted to
+        /// <see cref="AnalysisPath.ComplexZoom"/> because that is the path every front end supports;
+        /// <c>IFrontEndCapabilities.SupportsBasebandIq</c> says whether the other one may be asked
+        /// for, and a front end that cannot honour it coerces rather than failing.
+        /// </param>
         /// <exception cref="ArgumentOutOfRangeException">A value is not finite or not positive.</exception>
         public AcquisitionRequest(
             double centerFrequencyHz,
             double spanHz,
             int samplesPerBlock,
-            double referenceLevelDbm)
+            double referenceLevelDbm,
+            AnalysisPath path = AnalysisPath.ComplexZoom)
         {
             if (double.IsNaN(centerFrequencyHz) || double.IsInfinity(centerFrequencyHz))
             {
@@ -53,6 +61,7 @@ namespace OpenVSA.Hal
             SpanHz = spanHz;
             SamplesPerBlock = samplesPerBlock;
             ReferenceLevelDbm = referenceLevelDbm;
+            Path = path;
         }
 
         /// <summary>Requested centre frequency, in hertz.</summary>
@@ -66,5 +75,8 @@ namespace OpenVSA.Hal
 
         /// <summary>Requested reference level, in dBm.</summary>
         public double ReferenceLevelDbm { get; }
+
+        /// <summary>Requested acquisition path (<c>REQ-ACQ-001</c>).</summary>
+        public AnalysisPath Path { get; }
     }
 }

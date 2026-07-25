@@ -35,6 +35,61 @@ namespace OpenVSA.Hal.Tests
             }
         }
 
+        // ---- REQ-ACQ-001: the requested path decides the sample-rate law ----------------------
+
+        [Fact]
+        public void TheComplexPathUsesTheComplexRateLaw()
+        {
+            using (var frontEnd = new SimulatedFrontEnd())
+            {
+                AcquisitionPlan plan = frontEnd.Negotiate(
+                    new AcquisitionRequest(1e9, 10e6, 8192, -10.0, AnalysisPath.ComplexZoom));
+
+                Assert.Equal(AnalysisPath.ComplexZoom, plan.Path);
+                Assert.Equal(12.8e6, plan.SampleRateHz, 3);
+            }
+        }
+
+        [Fact]
+        public void TheRealPathUsesTheRealRateLaw_AndDeliversRealSamples()
+        {
+            using (var frontEnd = new SimulatedFrontEnd())
+            {
+                AcquisitionPlan plan = frontEnd.Negotiate(
+                    new AcquisitionRequest(1e9, 10e6, 8192, -10.0, AnalysisPath.RealBaseband));
+
+                Assert.Equal(AnalysisPath.RealBaseband, plan.Path);
+                Assert.Equal(25.6e6, plan.SampleRateHz, 3);
+            }
+        }
+
+        [Fact]
+        public async Task ARealBasebandBlockHasNoQuadratureChannel()
+        {
+            using (var frontEnd = new SimulatedFrontEnd())
+            {
+                await frontEnd.ConnectAsync(CancellationToken.None);
+                AcquisitionPlan plan = frontEnd.Negotiate(
+                    new AcquisitionRequest(1e9, 10e6, 1024, -10.0, AnalysisPath.RealBaseband));
+                await frontEnd.ConfigureAsync(plan, CancellationToken.None);
+                await frontEnd.ArmAsync(CancellationToken.None);
+
+                using (IqBlock block = await frontEnd.AcquireNextAsync(CancellationToken.None))
+                {
+                    // A baseband digitiser has no local oscillator to tune, so the block is from
+                    // 0 Hz whatever centre frequency was asked for.
+                    Assert.True(block.IsBaseband);
+                    Assert.Equal(0.0, block.CenterFrequencyHz);
+
+                    float[] samples = block.GetSamples().ToArray();
+                    for (int n = 0; n < block.SampleCount; n++)
+                    {
+                        Assert.Equal(0.0f, samples[n * 2 + 1]);
+                    }
+                }
+            }
+        }
+
         // ---- REQ-SIM-003: deterministic, seeded generation -----------------------------------
 
         [Fact]

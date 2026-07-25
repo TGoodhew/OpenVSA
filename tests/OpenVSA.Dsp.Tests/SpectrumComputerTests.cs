@@ -69,12 +69,14 @@ namespace OpenVSA.Dsp.Tests
 
             using (IqBlock block = Tone(length, sampleRate, centre, 0, 0.0, isBaseband: false))
             {
-                var computer = new SpectrumComputer { DisplaySpanHz = span };
+                var computer = new SpectrumComputer { TrimToAnalysisSpan = true };
                 SpectrumFrame frame = computer.Compute(block);
 
-                // 8192 / 1.28 = 6400 bins across, so 6401 points: odd, symmetric about centre, and
-                // exactly the point count the reference product's own relation gives.
+                // 8192 / 1.28 = 6400 bins across, so 6401 points: odd, symmetric about centre, an
+                // available count under REQ-DSP-022, and derived from the block that arrived rather
+                // than from the span the caller happened to know about.
                 Assert.Equal(6401, frame.PointCount);
+                Assert.True(FrequencyPoints.IsValid(frame.PointCount));
                 Assert.Equal(span, frame.SpanHz, 3);
                 Assert.Equal(centre - span / 2.0, frame.StartFrequencyHz, 3);
                 Assert.Equal(centre + span / 2.0, frame.StopFrequencyHz, 3);
@@ -94,7 +96,7 @@ namespace OpenVSA.Dsp.Tests
             {
                 using (IqBlock block = Tone(length, sampleRate, centre, bin, 0.5, isBaseband: false))
                 {
-                    var computer = new SpectrumComputer { DisplaySpanHz = span };
+                    var computer = new SpectrumComputer { TrimToAnalysisSpan = true };
                     SpectrumFrame frame = computer.Compute(block);
 
                     Assert.Equal(
@@ -106,14 +108,34 @@ namespace OpenVSA.Dsp.Tests
         }
 
         [Fact]
-        public void ADisplaySpanWiderThanTheAcquisitionIsClampedToIt()
+        public void ABlockTooShortForAnAvailablePointCountIsShownWhole()
         {
-            using (IqBlock block = Tone(1024, 12.8e6, 1e9, 0, 0.0, isBaseband: false))
+            // 32 points would trim to 26, which is not a count any setting could ask for
+            // (REQ-DSP-022's minimum is 51). Showing what there is beats putting an impossible
+            // point count on the screen.
+            using (IqBlock block = Tone(32, 12.8e6, 1e9, 4, 0.5, isBaseband: false))
             {
-                var computer = new SpectrumComputer { DisplaySpanHz = 100e6 };
+                var computer = new SpectrumComputer { TrimToAnalysisSpan = true };
                 SpectrumFrame frame = computer.Compute(block);
 
-                Assert.True(frame.SpanHz <= 12.8e6 + 1e-6);
+                Assert.Equal(32, frame.PointCount);
+            }
+        }
+
+        [Fact]
+        public void TheTrimmedBasebandAxisIsAlsoAnAvailablePointCount()
+        {
+            // 2.56 rather than 1.28, so the same transform length gives half as many points. Using
+            // the complex factor here is the defect REQ-ACQ-001 names, and it would show up as an
+            // axis twice as wide as the analysis span.
+            using (IqBlock block = Tone(8192, 25.6e6, 0.0, 2000, 0.5, isBaseband: true))
+            {
+                var computer = new SpectrumComputer { TrimToAnalysisSpan = true };
+                SpectrumFrame frame = computer.Compute(block);
+
+                Assert.Equal(3201, frame.PointCount);
+                Assert.True(FrequencyPoints.IsValid(frame.PointCount));
+                Assert.Equal(10e6, frame.SpanHz, 3);
             }
         }
 

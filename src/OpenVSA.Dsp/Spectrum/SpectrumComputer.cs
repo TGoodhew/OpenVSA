@@ -63,25 +63,32 @@ namespace OpenVSA.Dsp.Spectrum
         public AmplitudeChain AmplitudeChain => _amplitudeChain;
 
         /// <summary>
-        /// Width of the frequency axis to display, in hertz. Zero shows the whole Nyquist band.
+        /// Whether to display the analysis span rather than the whole acquired band.
         /// </summary>
         /// <remarks>
         /// <para>
         /// The acquired band is deliberately wider than the analysis span — <c>REQ-ACQ-001</c>'s
-        /// <c>Fs = 1.28 Span</c> — and the surplus is where the front end's anti-alias filter rolls
-        /// off. Displaying it would show the user the transition band as if it were measurement
-        /// data, and would put a number on the axis that disagrees with the span they asked for.
+        /// <c>Fs = 1.28 · Span</c> — and the surplus is where the front end's anti-alias filter
+        /// rolls off. Displaying it shows the user the transition band as if it were measurement
+        /// data, and puts a number on the axis that disagrees with the span they asked for.
         /// </para>
         /// <para>
-        /// The trim is symmetric about the centre bin and always leaves an odd number of points, so
-        /// the axis is exactly <c>Span</c> wide with a point at each end and one at the centre —
-        /// which is why the reference product's point counts are odd (801, 6401) rather than powers
-        /// of two. The rest of <c>REQ-ACQ-001</c> and <c>REQ-DSP-022</c> — deriving the point count
-        /// from RBW, the <c>50·2^k</c> constraint, Auto mode — belongs to the acquisition planner
-        /// and is not done here.
+        /// <strong>The point count follows the block, not a request.</strong> It is derived from
+        /// the transform length of the data that actually arrived, through
+        /// <see cref="AcquisitionLaw.PointsForTransformLength"/> — so what is displayed is always
+        /// what the instrument was able to capture. Nothing here is told a span, a point count or a
+        /// sample rate to expect, which is what keeps it correct for a front end that quantises its
+        /// sample rate instead of honouring <c>1.28 · Span</c> exactly.
+        /// </para>
+        /// <para>
+        /// The trim is symmetric about the centre bin on the complex path and starts at 0 Hz on the
+        /// real one, and the resulting count is always an available one under
+        /// <see cref="FrequencyPoints"/> — every power-of-two transform length maps to a
+        /// <c>50 · 2^k + 1</c> point count by construction. A block too short to yield an available
+        /// count is displayed whole rather than trimmed to an unavailable one.
         /// </para>
         /// </remarks>
-        public double DisplaySpanHz { get; set; }
+        public bool TrimToAnalysisSpan { get; set; }
 
         /// <summary>
         /// The transform length used for a block of the given size: the largest power of two that
@@ -175,25 +182,40 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>
-        /// The complex zoom/IF path: bins shifted so the axis ascends, trimmed to the display span.
+        /// Points to display for a transform length, or 0 to display the whole acquired band.
+        /// </summary>
+        /// <param name="transformLength">The transform length the block actually gave.</param>
+        /// <param name="path">The acquisition path the block came from.</param>
+        /// <remarks>
+        /// A block too short for an available point count is shown whole. Trimming it to an
+        /// unavailable count would put a point count on screen that no setting could have asked
+        /// for, and the honest thing at that size is to show what there is.
+        /// </remarks>
+        private int DisplayPointsFor(int transformLength, AnalysisPath path)
+        {
+            if (!TrimToAnalysisSpan)
+            {
+                return 0;
+            }
+
+            int points = AcquisitionLaw.PointsForTransformLength(transformLength, path);
+            return FrequencyPoints.IsValid(points) ? points : 0;
+        }
+
+        /// <summary>
+        /// The complex zoom/IF path: bins shifted so the axis ascends, trimmed to the analysis span.
         /// </summary>
         private SpectrumFrame TwoSided(
             IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth)
         {
             int half = n / 2;
+            int trimmed = DisplayPointsFor(n, AnalysisPath.ComplexZoom);
 
-            // Bins either side of the centre. Untrimmed, that is the whole band; trimmed, it is
-            // half the display span, and the point count is 2m+1 so the axis is symmetric.
-            int m = half;
-
-            if (DisplaySpanHz > 0.0)
-            {
-                int requested = (int)Math.Round(DisplaySpanHz / 2.0 / binWidth);
-                m = requested < 1 ? 1 : (requested > half ? half : requested);
-            }
-
-            int points = DisplaySpanHz > 0.0 ? m * 2 + 1 : n;
-            int first = DisplaySpanHz > 0.0 ? half - m : 0;
+            // Bins either side of the centre. Untrimmed, that is the whole band; trimmed, the count
+            // is 2m+1 so the axis is symmetric with a point exactly at the centre frequency.
+            int points = trimmed > 0 ? trimmed : n;
+            int m = (points - 1) / 2;
+            int first = trimmed > 0 ? half - m : 0;
             var levels = new float[points];
 
             for (int i = 0; i < points; i++)
@@ -230,15 +252,10 @@ namespace OpenVSA.Dsp.Spectrum
         private SpectrumFrame OneSided(
             IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth)
         {
-            int points = n / 2 + 1;
-
-            if (DisplaySpanHz > 0.0)
-            {
-                // From 0 Hz rather than about a centre, so no symmetry to preserve: the span is
-                // simply the number of bins that fit in it.
-                int requested = (int)Math.Round(DisplaySpanHz / binWidth) + 1;
-                points = requested < 2 ? 2 : (requested > points ? points : requested);
-            }
+            // From 0 Hz rather than about a centre, so there is no symmetry to preserve: the
+            // displayed points are simply the first of them.
+            int trimmed = DisplayPointsFor(n, AnalysisPath.RealBaseband);
+            int points = trimmed > 0 ? trimmed : n / 2 + 1;
 
             var levels = new float[points];
             AmplitudeScale doubled = scale.WithAdditionalOffset(AmplitudeChain.OneSidedBinGainDb);
