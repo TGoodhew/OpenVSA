@@ -696,7 +696,11 @@ namespace OpenVSA.Core
     /// <summary>Interleaved single-precision complex sample buffer plus acquisition metadata.</summary>
     public sealed class IqBlock : IDisposable
     {
-        public float[] Samples { get; }          // interleaved I,Q,I,Q…  length = 2*SampleCount
+        // Interleaved I,Q,I,Q…, exactly 2*SampleCount elements. A METHOD, not a property
+        // returning the pooled array — see REQ-DAT-001a, which prohibits raw public array
+        // exposure on a pooled IDisposable. Throws ObjectDisposedException after Dispose.
+        public Span<float> GetSamples();
+
         public int      SampleCount { get; }
         public double   SampleRateHz { get; }
         public double   CenterFrequencyHz { get; }
@@ -718,10 +722,15 @@ namespace OpenVSA.Core
 Every field above is mandatory for every front end; a front end that cannot supply a value
 shall supply a documented, explicitly-flagged default rather than a silent zero.
 **AC:** A conformance suite runs against every front-end implementation and asserts metadata
-completeness and self-consistency: $F_s > 0$; **`Samples.Length ≥ 2 × SampleCount`** (a pooled
-array is `Rent`ed at *at least* the requested size, so exact equality must **not** be
-asserted — only the first `2 × SampleCount` elements are meaningful); centre frequency within
-the front end's declared range.
+completeness and self-consistency: $F_s > 0$; **`GetSamples().Length == 2 × SampleCount`**;
+centre frequency within the front end's declared range.
+
+> *Why exact equality here, when a pooled array would forbid it.* `ArrayPool.Rent` returns an
+> array of **at least** the requested size, so an earlier form of this criterion asserted
+> `Samples.Length ≥ 2 × SampleCount` against the raw array. `REQ-DAT-001a` prohibits exposing
+> that array at all, and the accessor it mandates returns a view of exactly the meaningful
+> region — so the criterion becomes an equality, which is stronger. The oversize rented
+> buffer is an implementation detail no caller can observe, which is the point.
 
 **`REQ-DAT-001a` (P1) — Buffer ownership and use-after-dispose.**
 Because `Samples` is a pooled array exposed publicly on an `IDisposable`, use-after-`Dispose`
