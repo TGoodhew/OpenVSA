@@ -72,8 +72,12 @@ Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 
-# Syncfusion licence key: a per-developer credential, never committed.
-syncfusion.license
+# Secrets. The Syncfusion licence key is a per-developer credential and this repository is
+# public, so a key in the tree is a leaked credential. local.secrets.config.example is the
+# committed template; the real file never is.
+local.secrets.config
+*.secrets.config
+!*.secrets.config.example
 
 # BenchmarkDotNet output.
 BenchmarkDotNet.Artifacts/

@@ -114,7 +114,7 @@ namespace OpenVSA.Hal.Tests
 
             Assert.True(first >= 1);
             Assert.Equal(0, second);
-            Assert.Single(registry.Providers.Where(p => p.DisplayName == "Simulated source"));
+            Assert.Single(registry.Providers, p => p.DisplayName == "Simulated source");
         }
 
         // ---- Failures are data, not exceptions --------------------------------------------------

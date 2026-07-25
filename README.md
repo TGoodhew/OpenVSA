@@ -73,6 +73,38 @@ The application runs with **no hardware and no VISA installed** (`REQ-NFR-032`),
 simulated source and file playback. That is an architectural constraint, not a convenience —
 it is what makes the DSP developable, testable in CI and demonstrable.
 
+## Setup
+
+### Syncfusion licence key
+
+The shell uses Syncfusion WPF controls for its generic furniture — docking, grids, editors,
+ribbon. They require a licence key registered at start-up, or they display an unlicensed banner.
+
+**A key is not needed to build or run.** Without one the application launches in trial mode and
+says so. Nothing is gated: OpenVSA ships as one free edition with everything included, and the
+key is a build-time step for contributors, never a gate on anything a user receives.
+
+To remove the banner, get your own key — a **free Community licence** is available from
+Syncfusion for qualifying individuals and organisations — and supply it either way:
+
+**Environment variable** (takes precedence):
+
+```powershell
+[Environment]::SetEnvironmentVariable('SYNCFUSION_LICENSE_KEY', '<your key>', 'User')
+```
+
+**Or a local config file:**
+
+```powershell
+copy src\OpenVSA.Ui\local.secrets.config.example src\OpenVSA.Ui\local.secrets.config
+# then edit it and replace the placeholder with your key
+```
+
+> **The key must never be committed.** This repository is public, so a key in the tree is a
+> leaked credential regardless of what it costs. `local.secrets.config` and `*.secrets.config`
+> are git-ignored; only the `.example` template is tracked. Do not put the key in `App.config`,
+> which *is* tracked.
+
 ## Verification
 
 DSP defects are quiet: the software produces a plausible number that is wrong, and nobody
