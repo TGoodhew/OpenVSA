@@ -203,6 +203,58 @@ namespace OpenVSA.Measurement.Markers
         public Marker MinimumSearch(SpectrumFrame frame) =>
             frame == null ? null : MoveSelectedTo(frame, PeakFinder.Lowest(frame));
 
+        /// <summary>
+        /// Moves every peak-tracking marker onto the nearest peak of a new frame
+        /// (<c>REQ-MKR-005</c>).
+        /// </summary>
+        /// <param name="frame">The new spectrum.</param>
+        /// <returns>The markers that moved.</returns>
+        /// <remarks>
+        /// <para>
+        /// Nearest peak, not highest. A marker put on the third tone of a comb must stay on the
+        /// third tone when it drifts, and a search for the highest peak would move it to the first
+        /// one on the very first acquisition.
+        /// </para>
+        /// <para>
+        /// A fixed marker does not track even if asked to: locking the value it reads is what a
+        /// fixed marker is, and a locked value that moved would be neither.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<Marker> RetrackPeaks(SpectrumFrame frame)
+        {
+            var moved = new List<Marker>();
+
+            if (frame == null)
+            {
+                return new ReadOnlyCollection<Marker>(moved);
+            }
+
+            foreach (Marker marker in _markers)
+            {
+                if (!marker.TracksPeak || marker.Type == MarkerType.Fixed)
+                {
+                    continue;
+                }
+
+                int peak = PeakFinder.Nearest(frame, marker.IndexIn(frame));
+
+                if (peak < 0)
+                {
+                    continue;
+                }
+
+                double landed = frame.FrequencyAt(peak);
+
+                if (landed != marker.XHz)
+                {
+                    marker.XHz = landed;
+                    moved.Add(marker);
+                }
+            }
+
+            return new ReadOnlyCollection<Marker>(moved);
+        }
+
         private Marker MoveSelectedTo(SpectrumFrame frame, int index)
         {
             Marker marker = Selected;

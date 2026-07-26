@@ -152,6 +152,8 @@ namespace OpenVSA.TestHarness
                     ExerciseNoiseCorrection(block, frame, actualToneHz);
                     ExerciseChannelMeasurements(frame, actualToneHz);
                     ExerciseCrossChannelAvailability();
+                    ExerciseMarkerCollection(block, frame, actualToneHz);
+                    ExerciseCompositionOrder(block);
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
                     ExerciseFormats(frame);
@@ -956,6 +958,315 @@ namespace OpenVSA.TestHarness
                     CrossChannelDataTypes.All.Count + " cross-channel types offered" +
                     (why.Length == 0 ? string.Empty : " — " + why));
             });
+        }
+
+        /// <summary>
+        /// Marker coupling, tracking and readouts across two real traces
+        /// (<c>REQ-MKR-002</c>, <c>REQ-MKR-004</c>, <c>REQ-MKR-005</c>, <c>REQ-MKR-006</c>).
+        /// </summary>
+        /// <remarks>
+        /// The two traces are the same acquisition analysed at different transform lengths, which
+        /// gives them the same span and different point counts — exactly the pair
+        /// <c>REQ-MKR-004</c>'s criterion asks for, and one that a coupling implemented on sample
+        /// index would pass on synthetic traces of matched length and fail here.
+        /// </remarks>
+        private void ExerciseMarkerCollection(IqBlock block, SpectrumFrame fine, double toneHz)
+        {
+            var markers = new MarkerCollection { Coupled = true };
+
+            SpectrumFrame coarse = Step("REQ-MKR-004", "Two traces of the same span, different point counts", () =>
+            {
+                var computer = new SpectrumComputer(WindowType.FlatTop, null, null)
+                {
+                    TrimToAnalysisSpan = true,
+
+                    // Half the transform the record would naturally take, so the second trace
+                    // covers the same span with half the points.
+                    MaxTransformLength = Math.Max(
+                        2, SpectrumComputer.TransformLengthFor(block.SampleCount) / 2),
+                };
+
+                SpectrumFrame second = computer.Compute(block);
+
+                bool ok = second.PointCount != fine.PointCount &&
+                          Math.Abs(second.BinWidthHz - 2.0 * fine.BinWidthHz) <
+                              0.01 * fine.BinWidthHz;
+
+                return new Outcome<SpectrumFrame>(
+                    ok, second,
+                    "trace A: " + fine.PointCount + " points at " + Hz(fine.BinWidthHz) +
+                    "; trace B: " + second.PointCount + " points at " + Hz(second.BinWidthHz));
+            });
+
+            if (coarse == null)
+            {
+                return;
+            }
+
+            markers.Update('A', fine);
+            markers.Update('B', coarse);
+
+            Step("REQ-MKR-004", "Coupled markers move to the same frequency, not the same bin", () =>
+            {
+                MarkerSet a = markers.ForTrace('A');
+                MarkerSet b = markers.ForTrace('B');
+
+                Marker a1 = a.AddNormal(fine.CenterFrequencyHz);
+                Marker b1 = b.AddNormal(coarse.CenterFrequencyHz);
+
+                IReadOnlyList<Marker> moved = markers.MoveTo(a1, toneHz);
+
+                int aIndex = a1.IndexIn(fine);
+                int bIndex = b1.IndexIn(coarse);
+
+                // The same frequency in both, and - because the point counts differ - not the same
+                // index. Coupling by index is the implementation this catches.
+                bool ok = moved.Count == 2 &&
+                          Math.Abs(a1.XHz - b1.XHz) < 1e-6 &&
+                          aIndex != bIndex &&
+                          Math.Abs(fine.FrequencyAt(aIndex) - coarse.FrequencyAt(bIndex)) <
+                              coarse.BinWidthHz;
+
+                return new Outcome<int>(
+                    ok, moved.Count,
+                    "marker 1 dragged to " + Hz(toneHz) + " on A moved " + moved.Count +
+                    " markers; bin " + aIndex + " on A and bin " + bIndex +
+                    " on B, both reading " + Hz(fine.FrequencyAt(aIndex)));
+            });
+
+            Step("REQ-MKR-005", "A tracking marker settles on the carrier from beside it", () =>
+            {
+                MarkerSet a = markers.ForTrace('A');
+
+                // Placed two bins off the carrier, with tracking on. Re-reading the same
+                // acquisition is enough to show the search runs: a tracking marker moves onto the
+                // nearest peak, and beside a real carrier that is the carrier.
+                Marker tracker = a.AddNormal(toneHz + 2.0 * fine.BinWidthHz);
+                tracker.TracksPeak = true;
+
+                double before = tracker.XHz;
+
+                markers.Update('A', fine);
+
+                double error = tracker.XHz - toneHz;
+                bool ok = Math.Abs(error) <= fine.BinWidthHz && tracker.XHz != before;
+
+                return new Outcome<double>(
+                    ok, error,
+                    "placed " + Hz(before - toneHz) + " off the carrier, tracked to " +
+                    Signed(error) + " Hz of it");
+            });
+
+            Step("REQ-MKR-005", "Marker to centre frequency and copy value write what was read", () =>
+            {
+                var target = new RecordingTarget();
+                MarkerSet a = markers.ForTrace('A');
+
+                a.Select(a.Markers[0]);
+                a.PeakSearch(fine);
+
+                Marker peak = a.Selected;
+                MarkerReading reading = peak.Read(fine);
+
+                double centre = MarkerFunctions.ToCenterFrequency(peak, fine, target);
+                double level = MarkerFunctions.ToReferenceLevel(peak, fine, target);
+                double copied = MarkerFunctions.CopyValueToParameter(
+                    peak, fine, "TriggerLevel", target);
+
+                bool ok = Math.Abs(centre - reading.XHz) < 1e-6 &&
+                          Math.Abs(level - reading.YDbm) < 1e-9 &&
+                          Math.Abs(copied - reading.YDbm) < 1e-9 &&
+                          Math.Abs(target.CenterHz - centre) < 1e-6 &&
+                          Math.Abs(target.ReferenceDbm - level) < 1e-9 &&
+                          Math.Abs(target.TriggerLevelDbm - copied) < 1e-9;
+
+                return new Outcome<double>(
+                    ok, centre,
+                    "peak at " + Hz(reading.XHz) + ", " + Db(reading.YDbm) +
+                    ": centre set to " + Hz(target.CenterHz) + ", reference to " +
+                    Db(target.ReferenceDbm) + ", TriggerLevel to " + Db(target.TriggerLevelDbm));
+            });
+
+            Step("REQ-MKR-006", "The two readout surfaces cannot disagree", () =>
+            {
+                markers.ActiveTrace = 'A';
+
+                MarkerReadout above = markers.ActiveReadout;
+
+                if (above == null)
+                {
+                    return Failed<int>("no marker was active");
+                }
+
+                MarkerReadout row = null;
+                int rows = 0;
+                int onOtherTraces = 0;
+
+                foreach (MarkerReadout readout in markers.Readouts())
+                {
+                    rows++;
+
+                    if (readout.TraceLetter != 'A')
+                    {
+                        onOtherTraces++;
+                    }
+
+                    if (ReferenceEquals(readout.Marker, above.Marker))
+                    {
+                        row = readout;
+                    }
+                }
+
+                // The window lists every marker on every trace, and the row for the active marker
+                // reads identically to the above-grid readout - because there is one readout and
+                // both surfaces render it.
+                bool ok = row != null &&
+                          row.Text == above.Text &&
+                          onOtherTraces > 0;
+
+                return new Outcome<int>(
+                    ok, rows,
+                    rows + " rows across " + markers.TraceCount + " traces, " + onOtherTraces +
+                    " of them not on the active trace; the active row reads '" +
+                    (row == null ? "(missing)" : row.Text) + "' either way in");
+            });
+        }
+
+        /// <summary>
+        /// Runs the real acquisition through the declared pipeline (<c>REQ-TRC-003</c>).
+        /// </summary>
+        private void ExerciseCompositionOrder(IqBlock block)
+        {
+            Step("REQ-TRC-003", "The pipeline runs the stages in the declared order", () =>
+            {
+                var pipeline = new AnalysisPipeline(
+                    new SpectrumComputer(WindowType.FlatTop, null, null))
+                {
+                    Gate = new TimeGate(0.0, block.SampleCount / 2.0 / block.SampleRateHz),
+                    Averager = new TraceAverager(AveragingType.RmsVideo, 4),
+                    Accumulator = new AccumulatingTrace
+                    {
+                        Accumulator = TraceAccumulator.Spectrogram,
+                    },
+                    Format = TraceFormat.LogMagnitude,
+                };
+
+                pipeline.Run(block);
+
+                IReadOnlyList<AnalysisStage> ran = pipeline.LastRunStages;
+                bool ok = ran.Count == CompositionOrder.Stages.Count;
+
+                for (int i = 0; ok && i < ran.Count; i++)
+                {
+                    ok = ran[i] == CompositionOrder.Stages[i];
+                }
+
+                return new Outcome<int>(
+                    ok, ran.Count,
+                    string.Join(" → ", ran) + ", against a declaration of " +
+                    string.Join(" → ", CompositionOrder.Stages));
+            });
+
+            Step("REQ-TRC-003", "Gating before windowing is what couples RBW to the gate", () =>
+            {
+                // The order is pinned by measurement rather than by comment: the window is sized to
+                // what survived the gate, so a quarter-length gate coarsens the RBW fourfold on the
+                // instrument's own record.
+                var gated = new AnalysisPipeline(
+                    new SpectrumComputer(WindowType.FlatTop, null, null)
+                    {
+                        TrimToAnalysisSpan = true,
+                    })
+                {
+                    Gate = new TimeGate(0.0, block.SampleCount / 4.0 / block.SampleRateHz),
+                };
+
+                var whole = new AnalysisPipeline(
+                    new SpectrumComputer(WindowType.FlatTop, null, null)
+                    {
+                        TrimToAnalysisSpan = true,
+                    });
+
+                gated.Run(block);
+                whole.Run(block);
+
+                double ratio = gated.LastFrame.ResolutionBandwidthHz /
+                               whole.LastFrame.ResolutionBandwidthHz;
+
+                // The window really was sized to the gated record, not to the whole one.
+                bool ok = ratio > 2.0 &&
+                          gated.LastWindow.Length < whole.LastWindow.Length;
+
+                return new Outcome<double>(
+                    ok, ratio,
+                    "a quarter-length gate takes the window from " + whole.LastWindow.Length +
+                    " to " + gated.LastWindow.Length + " points and the RBW from " +
+                    Hz(whole.LastFrame.ResolutionBandwidthHz) + " to " +
+                    Hz(gated.LastFrame.ResolutionBandwidthHz) + ", a ratio of " +
+                    ratio.ToString("0.00", CultureInfo.CurrentCulture));
+            });
+
+            Step("REQ-TRC-003", "Every combination is legal or refused with a reason", () =>
+            {
+                int total = 0;
+                int refused = 0;
+                string sample = null;
+
+                foreach (KeyValuePair<CompositionSelection, CompositionVerdict> entry in
+                    CompositionOrder.AllCombinations())
+                {
+                    total++;
+
+                    if (entry.Value.IsLegal)
+                    {
+                        continue;
+                    }
+
+                    refused++;
+
+                    if (string.IsNullOrEmpty(entry.Value.Reason))
+                    {
+                        return Failed<int>(entry.Key + " was refused without saying why");
+                    }
+
+                    if (sample == null)
+                    {
+                        sample = entry.Key.ToString();
+                    }
+                }
+
+                bool ok = total > 0 && refused > 0 && refused < total;
+
+                return new Outcome<int>(
+                    ok, total,
+                    total + " combinations, " + refused +
+                    " refused with a named reason, first being " + sample);
+            });
+        }
+
+        /// <summary>Records what a marker function wrote, so the exercise can check it arrived.</summary>
+        private sealed class RecordingTarget : IMarkerParameterTarget
+        {
+            public double CenterHz { get; private set; } = double.NaN;
+
+            public double ReferenceDbm { get; private set; } = double.NaN;
+
+            public double TriggerLevelDbm { get; private set; } = double.NaN;
+
+            public void SetCenterFrequency(double hz) => CenterHz = hz;
+
+            public void SetReferenceLevel(double dbm) => ReferenceDbm = dbm;
+
+            public void SetParameter(string parameter, double value)
+            {
+                if (!string.Equals(parameter, "TriggerLevel", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(
+                        "This exercise offers only TriggerLevel.", nameof(parameter));
+                }
+
+                TriggerLevelDbm = value;
+            }
         }
 
         private void ExerciseOverlap(IqBlock block, double toneHz)
