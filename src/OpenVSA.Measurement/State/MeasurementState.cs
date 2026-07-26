@@ -4,6 +4,7 @@ using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
 using OpenVSA.Hal;
+using OpenVSA.Measurement.Limits;
 
 namespace OpenVSA.Measurement.State
 {
@@ -255,6 +256,67 @@ namespace OpenVSA.Measurement.State
     }
 
     /// <summary>
+    /// One vertex of a saved limit line (<c>REQ-LIM-001</c>).
+    /// </summary>
+    public sealed class LimitPointState
+    {
+        /// <summary>Frequency, in hertz.</summary>
+        public double XHz { get; set; }
+
+        /// <summary>Level, in dBm.</summary>
+        public double YDbm { get; set; }
+
+        /// <summary>
+        /// Whether a segment runs from the previous point to this one.
+        /// </summary>
+        /// <remarks>
+        /// Saved because it is not decoration: a point with it clear starts a new segment, and the
+        /// gap before it is not tested at all. A recalled mask that lost these flags would test
+        /// bands the original left unconstrained, and would do it silently — the line would look
+        /// right on screen apart from the gaps being filled in.
+        /// </remarks>
+        public bool ConnectToPrevious { get; set; } = true;
+    }
+
+    /// <summary>
+    /// A saved limit line: its name, its side, its margin and its points (<c>REQ-LIM-001</c>).
+    /// </summary>
+    public sealed class LimitLineState
+    {
+        /// <summary>User-facing name.</summary>
+        public string Name { get; set; } = "Limit 1";
+
+        /// <summary>Which side of the line the trace must stay on: <c>Upper</c> or <c>Lower</c>.</summary>
+        public LimitSide Side { get; set; } = LimitSide.Upper;
+
+        /// <summary>Margin in dB, applied on the passing side.</summary>
+        public double MarginDb { get; set; }
+
+        /// <summary>The vertices, in order.</summary>
+        public List<LimitPointState> Points { get; set; } = new List<LimitPointState>();
+    }
+
+    /// <summary>
+    /// A saved limit test: a name, whether it is enabled, and its lines (<c>REQ-LIM-001</c>).
+    /// </summary>
+    /// <remarks>
+    /// The third level of the hierarchy the requirement asks for. All three are named and all
+    /// three names are saved, so a failure recalled a week later can still be reported as "which
+    /// test, which line, where" rather than as a bare verdict against an anonymous shape.
+    /// </remarks>
+    public sealed class LimitTestState
+    {
+        /// <summary>User-facing name.</summary>
+        public string Name { get; set; } = "Limit Test 1";
+
+        /// <summary>Whether this test is evaluated at all.</summary>
+        public bool IsEnabled { get; set; } = true;
+
+        /// <summary>The lines belonging to this test.</summary>
+        public List<LimitLineState> Lines { get; set; } = new List<LimitLineState>();
+    }
+
+    /// <summary>
     /// The source (tracking generator) settings a state carries (<c>REQ-STA-001</c>).
     /// </summary>
     public sealed class SourceState
@@ -344,6 +406,15 @@ namespace OpenVSA.Measurement.State
 
         /// <summary>Markers: types, positions and calculations.</summary>
         public List<MarkerState> Markers { get; set; } = new List<MarkerState>();
+
+        /// <summary>
+        /// Limit tests, with their lines and points (<c>REQ-LIM-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// Empty by default. A limit line is something a user drew or imported, so a new
+        /// measurement has none — unlike a marker, where one is the useful starting point.
+        /// </remarks>
+        public List<LimitTestState> LimitTests { get; set; } = new List<LimitTestState>();
 
         /// <inheritdoc />
         public override string ToString() =>
