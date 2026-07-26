@@ -83,5 +83,24 @@ namespace OpenVSA.Architecture.Tests
 
             Assert.DoesNotContain("OpenVSA.Hal", referenced);
         }
+
+        [Fact]
+        public void The_Base_Trace_Types_Do_Not_Depend_On_Demodulation()
+        {
+            // REQ-DSP-040's criterion, and it is an assembly-dependency check rather than a
+            // feature check on purpose. The reference product kept the base trace types apart from
+            // demodulation with an option SKU; OpenVSA has no such gate (REQ-LIC-010), so what
+            // stops a base type quietly acquiring a demodulation dependency is this test.
+            //
+            // Stricter than a licence check would have been: a dependency here fails the build's
+            // test run rather than showing up as an unexpectedly licensed feature.
+            var referenced = Assembly.Load("OpenVSA.Dsp")
+                .GetReferencedAssemblies()
+                .Select(a => a.Name)
+                .ToArray();
+
+            Assert.DoesNotContain("OpenVSA.Demod", referenced);
+            Assert.DoesNotContain("OpenVSA.Measurement", referenced);
+        }
     }
 }

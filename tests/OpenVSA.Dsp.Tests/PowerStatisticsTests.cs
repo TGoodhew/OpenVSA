@@ -26,9 +26,13 @@ namespace OpenVSA.Dsp.Tests
             // 0.2 dB *horizontally* of P(x) = exp(-10^(x/10)) over 0-10 dB. Horizontally matters -
             // "within 0.2 dB" of a probability is meaningless on a log axis.
             //
-            // The sample count is part of the criterion too: at x = 10 dB the true probability is
-            // e^-10, about 4.5e-5, so a short capture has nothing there to measure.
-            const int samples = 2_000_000;
+            // The sample count is part of the criterion too, and the requirement puts a number on
+            // it: at least 10^7 independent samples. At x = 10 dB the true probability is e^-10,
+            // about 4.5e-5, so 10^7 samples put roughly 450 of them in the tail being measured -
+            // enough for the estimate there to have converged. Two million, which this test used
+            // before the criterion was read closely, leaves about 90, and a curve fitted through
+            // 90 samples is not what "within 0.2 dB" is asking about.
+            const int samples = 10_000_000;
 
             using (IqBlock block = GaussianNoise(samples, seed: 20260725))
             {
