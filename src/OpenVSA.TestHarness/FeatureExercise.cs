@@ -166,6 +166,8 @@ namespace OpenVSA.TestHarness
             }
 
             ExercisePlanning(spanHz);
+            await ExerciseSpectrogramAsync(centerFrequencyHz, spanHz, levelDbm, ct)
+                .ConfigureAwait(false);
             await ExerciseAutoRangeAsync(
                 centerFrequencyHz, spanHz, toneHz, levelDbm, measuredPeakDbm, ct)
                 .ConfigureAwait(false);
@@ -1629,6 +1631,168 @@ namespace OpenVSA.TestHarness
         /// noise and the awkward numbers a real measurement has.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// Steps the generator across the span and checks the spectrogram's ridge
+        /// (<c>REQ-DSP-043</c>).
+        /// </summary>
+        /// <remarks>
+        /// The requirement's criterion is worded to catch a particular failure: a spectrogram that
+        /// drew <em>something</em> while having its time axis reversed or its frequency axis
+        /// mis-scaled. Testing it needs a signal whose frequency is known at each moment, which is
+        /// what the generator is for — a real sweep, one acquisition per step, and the ridge
+        /// checked against what the generator said it was doing at the time.
+        /// </remarks>
+        private async Task ExerciseSpectrogramAsync(
+            double centerFrequencyHz, double spanHz, double levelDbm, CancellationToken ct)
+        {
+            const int steps = 9;
+
+            var trace = new AccumulatingTrace(steps)
+            {
+                Accumulator = TraceAccumulator.Spectrogram,
+            };
+
+            var computer = new SpectrumComputer(WindowType.FlatTop, null, null)
+            {
+                TrimToAnalysisSpan = true,
+            };
+
+            // Across the middle of the span rather than the whole of it, so that the tone stays
+            // clear of the roll-off at the band edges where a peak search would be reading the
+            // filter rather than the carrier.
+            var placed = new double[steps];
+            double firstHz = centerFrequencyHz - spanHz / 4.0;
+            double lastHz = centerFrequencyHz + spanHz / 4.0;
+
+            for (int i = 0; i < steps; i++)
+            {
+                double wantedHz = firstHz + (lastHz - firstHz) * i / (steps - 1);
+
+                _stimulus.SetContinuousWave(wantedHz, levelDbm);
+
+                // From the read-back, never from what was asked for: a coerced carrier must move
+                // the expectation with it.
+                placed[i] = _stimulus.FrequencyHz;
+
+                IqBlock block = await AcquireAsync(centerFrequencyHz, spanHz, ct)
+                    .ConfigureAwait(false);
+
+                if (block == null)
+                {
+                    Record("REQ-DSP-043", "A swept tone renders as a diagonal ridge", false,
+                        "no block was produced at step " + i);
+                    return;
+                }
+
+                using (block)
+                {
+                    trace.Add(computer.Compute(block));
+                }
+            }
+
+            Step("REQ-DSP-043", "A swept tone renders as a diagonal ridge", () =>
+            {
+                Spectrogram history = trace.Spectrogram;
+
+                if (history.RowCount != steps)
+                {
+                    return Failed<double>(
+                        history.RowCount + " rows accumulated of " + steps + " acquisitions");
+                }
+
+                double worstBins = 0.0;
+
+                for (int r = 0; r < steps; r++)
+                {
+                    SpectrumFrame row = history.Row(r);
+                    int peak = row.IndexOfPeak();
+
+                    if (peak < 0)
+                    {
+                        return Failed<double>("row " + r + " held no peak");
+                    }
+
+                    worstBins = Math.Max(
+                        worstBins,
+                        Math.Abs(row.FrequencyAt(peak) - placed[r]) / row.BinWidthHz);
+                }
+
+                // Row 0 is the oldest, so the ridge must ascend. A history indexed the other way
+                // round draws a ridge that looks entirely plausible and runs backwards in time.
+                bool ascends =
+                    history.Row(0).FrequencyAt(history.Row(0).IndexOfPeak()) <
+                    history.Newest.FrequencyAt(history.Newest.IndexOfPeak());
+
+                bool ok = worstBins <= 1.0 && ascends;
+
+                return new Outcome<double>(
+                    ok, worstBins,
+                    steps + " steps from " + Hz(placed[0]) + " to " + Hz(placed[steps - 1]) +
+                    ": worst row " + worstBins.ToString("0.00", CultureInfo.CurrentCulture) +
+                    " bins out of " + Hz(history.Newest.BinWidthHz) + ", ridge ascends: " +
+                    ascends + ", over " +
+                    history.HistorySeconds.ToString("0.00", CultureInfo.CurrentCulture) + " s");
+            });
+
+            Step("REQ-DSP-043", "A trace-select marker reads back the row at that time", () =>
+            {
+                Spectrogram history = trace.Spectrogram;
+
+                if (history.RowCount < 3)
+                {
+                    return Failed<double>("not enough history to select within");
+                }
+
+                // Between two rows, nearer the earlier one - the position a dragged marker
+                // actually lands at.
+                int wanted = history.RowCount / 2;
+                double gap = history.SecondsBeforeNewest(wanted - 1) -
+                             history.SecondsBeforeNewest(wanted);
+                DateTime between = history.Row(wanted).AcquiredUtc.AddSeconds(gap * 0.3);
+
+                SpectrumFrame selected = trace.SelectRowAt(between);
+                int peak = selected.IndexOfPeak();
+
+                bool ok = ReferenceEquals(selected, history.Row(wanted)) &&
+                          peak >= 0 &&
+                          Math.Abs(selected.FrequencyAt(peak) - placed[wanted]) <=
+                              selected.BinWidthHz;
+
+                return new Outcome<double>(
+                    ok, history.SecondsBeforeNewest(wanted),
+                    "a marker " + (gap * 0.3 * 1e3).ToString("0.0", CultureInfo.CurrentCulture) +
+                    " ms past row " + wanted + " selects row " + wanted + ", reading " +
+                    Hz(selected.FrequencyAt(peak)) + " against a carrier placed at " +
+                    Hz(placed[wanted]));
+            });
+
+            Step("REQ-TRC-001a", "A format change keeps the history; an accumulator change drops it", () =>
+            {
+                int before = trace.Spectrogram.RowCount;
+
+                if (before == 0)
+                {
+                    return Failed<int>("no history to preserve");
+                }
+
+                SpectrumFrame oldest = trace.Spectrogram.Oldest;
+
+                trace.Format = TraceFormat.UnwrappedPhase;
+
+                bool kept = trace.Spectrogram.RowCount == before &&
+                            ReferenceEquals(trace.Spectrogram.Oldest, oldest);
+
+                trace.Accumulator = TraceAccumulator.DigitalPersistence;
+
+                bool dropped = trace.Spectrogram.IsEmpty;
+
+                return new Outcome<int>(
+                    kept && dropped, before,
+                    before + " rows survived a format change to " + TraceFormat.UnwrappedPhase +
+                    " and were discarded by a change to " + TraceAccumulator.DigitalPersistence);
+            });
+        }
+
         private async Task ExerciseAutoRangeAsync(
             double centerFrequencyHz,
             double spanHz,
