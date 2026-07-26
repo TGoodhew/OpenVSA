@@ -14,6 +14,7 @@ using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
 using OpenVSA.Measurement.Markers;
+using OpenVSA.Ui.HotSpots;
 using OpenVSA.Ui.Rendering;
 
 // Aliased rather than imported: this file's own base class is System.Windows.Window, and importing
@@ -72,6 +73,11 @@ namespace OpenVSA.Ui
         /// </remarks>
         private readonly MarkerSet _markers = new MarkerSet('A');
 
+        /// <summary>The conditions annotated inside the grid (<c>REQ-UI-041</c>).</summary>
+        private readonly TraceIndicators _indicators = new TraceIndicators();
+
+        private readonly DispatcherTimer _hotSpotSettle;
+
         private IFrontEnd _activeFrontEnd;
         private SpectrumEngine _engine;
         private SpectrumFrame _frame;
@@ -87,6 +93,25 @@ namespace OpenVSA.Ui
 
             Plot.GraticuleColumnsChanged += (sender, e) => _marshal.Columns = Plot.GraticuleColumns;
             _marshal.Columns = Plot.GraticuleColumns;
+
+            // REQ-UI-042: a hot spot edited on the plot is the same change as one typed into the
+            // settings pane, so it goes through the pane rather than round it - one path to a
+            // re-plan, and the pane keeps showing what the measurement is actually set to.
+            Plot.ParameterChanged += OnPlotParameterChanged;
+            Plot.DialogRequested += (sender, spot) => ValueEntryDialog.Prompt(this, spot);
+
+            // Coalesced, because a wheel turned through a dozen notches would otherwise re-plan and
+            // re-arm the instrument a dozen times - seconds of GPIB traffic for a value the user is
+            // still moving.
+            _hotSpotSettle = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(400.0),
+            };
+
+            _hotSpotSettle.Tick += OnHotSpotSettled;
+
+            _indicators.Set(TraceIndicator.NoData);
+            Plot.SetIndicators(_indicators);
 
             foreach (WindowType type in Enum.GetValues(typeof(WindowType)))
             {
@@ -691,6 +716,100 @@ namespace OpenVSA.Ui
             if (Plot.Show(snapshot))
             {
                 RefreshMarkers();
+            }
+
+            UpdateIndicators(snapshot);
+        }
+
+        /// <summary>
+        /// Refreshes the conditions annotated inside the grid (<c>REQ-UI-041</c>).
+        /// </summary>
+        /// <remarks>
+        /// Only the two this stage can know about. The rest belong to conditions detected further
+        /// down — carrier lock, sync search, equalisation — and are set from there when those
+        /// exist; nothing here fabricates a state it cannot observe.
+        /// </remarks>
+        private void UpdateIndicators(TraceSnapshot snapshot)
+        {
+            _indicators.Clear(TraceIndicator.NoData);
+
+            // "ALL POINTS": every acquired point has a column of its own, so nothing is being
+            // enveloped away and what is on screen is the measurement rather than a reduction of it.
+            _indicators.SetActive(
+                TraceIndicator.AllPoints, snapshot.Columns >= snapshot.Spectrum.PointCount);
+
+            Plot.SetIndicators(_indicators);
+        }
+
+        // ---- Hot spots -------------------------------------------------------------------------
+
+        /// <summary>
+        /// Applies a hot spot edited on the plot (<c>REQ-UI-042</c>).
+        /// </summary>
+        /// <remarks>
+        /// The value is written into the settings pane and the pane's own apply is run, so the two
+        /// cannot disagree about what the measurement is set to — which is the failure mode of
+        /// letting the plot talk to the planner directly.
+        /// </remarks>
+        private void OnPlotParameterChanged(object sender, HotSpot spot)
+        {
+            if (ReferenceEquals(spot, Plot.CenterFrequencyHotSpot))
+            {
+                CentreBox.Text = EngineeringText.Frequency(NumberBehind(spot), 6);
+            }
+            else if (ReferenceEquals(spot, Plot.ResolutionBandwidthHotSpot))
+            {
+                ResolutionBandwidthBox.Text = EngineeringText.Frequency(NumberBehind(spot), 6);
+
+                // The bandwidth is only a setting when the point count is automatic; otherwise it
+                // is derived, and typing into it would be typing into a readout.
+                SelectAutomaticPoints();
+            }
+            else if (ReferenceEquals(spot, Plot.MainTimeHotSpot))
+            {
+                // REQ-ACQ-001 makes main time (N_f - 1) / Span, so setting the time sets the span.
+                double seconds = NumberBehind(spot);
+
+                if (_frame == null || _frame.PointCount < 2 || !(seconds > 0.0))
+                {
+                    return;
+                }
+
+                SpanBox.Text = EngineeringText.Frequency((_frame.PointCount - 1) / seconds, 6);
+            }
+            else
+            {
+                // Trace format and trigger channel have nowhere to go yet: one trace, one format.
+                return;
+            }
+
+            _hotSpotSettle.Stop();
+            _hotSpotSettle.Start();
+        }
+
+        private void OnHotSpotSettled(object sender, EventArgs e)
+        {
+            _hotSpotSettle.Stop();
+            OnApplySettings(this, new RoutedEventArgs());
+        }
+
+        private static double NumberBehind(HotSpot spot)
+        {
+            var numeric = spot.Value as NumericHotSpotValue;
+            return numeric == null ? 0.0 : numeric.Value;
+        }
+
+        private void SelectAutomaticPoints()
+        {
+            foreach (object item in PointsBox.Items)
+            {
+                var choice = item as PointsChoice;
+
+                if (choice != null && choice.Points == 0)
+                {
+                    PointsBox.SelectedItem = choice;
+                    return;
+                }
             }
         }
 

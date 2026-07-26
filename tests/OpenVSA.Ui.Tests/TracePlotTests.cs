@@ -111,7 +111,9 @@ namespace OpenVSA.Ui.Tests
                 TracePlot plot = Laid(out _, out _);
 
                 Assert.Equal(
-                    plot.TopDbm - TracePlot.DecibelsPerDivision * 10.0, plot.BottomDbm, 6);
+                    plot.TopDbm - plot.DecibelsPerDivision * TracePlot.VerticalDivisions,
+                    plot.BottomDbm,
+                    6);
             });
         }
 

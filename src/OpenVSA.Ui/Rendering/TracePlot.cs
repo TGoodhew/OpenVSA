@@ -7,21 +7,29 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenVSA.Core.Threading;
 using OpenVSA.Dsp.Spectrum;
+using OpenVSA.Ui.HotSpots;
 
 namespace OpenVSA.Ui.Rendering
 {
     /// <summary>
-    /// The plot surface: a rasterised graticule and trace with WPF text in the annotation band.
+    /// The plot surface: a rasterised graticule and trace with editable WPF annotation over it.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The split is the one <c>REQ-UI-010</c> and <c>REQ-UI-042</c> together force. Trace geometry
     /// goes through <see cref="PlotRasterizer"/> into a <see cref="WriteableBitmap"/>, because at
-    /// the point counts of <c>REQ-NFR-021</c> nothing else keeps up. Annotation is real
-    /// <see cref="TextBlock"/>s on top, because the hot spots of <c>REQ-UI-042</c> need
-    /// hit-testing, hover feedback and in-place editing — all of which are cheap against elements
-    /// and expensive against rasterised glyphs, and that requirement is explicit that retrofitting
-    /// the editing model later is the costly path.
+    /// the point counts of <c>REQ-NFR-021</c> nothing else keeps up. Annotation is real elements on
+    /// top, because the hot spots of <c>REQ-UI-042</c> need hit-testing, hover feedback and in-place
+    /// editing — all of which are cheap against elements and expensive against rasterised glyphs,
+    /// and that requirement is explicit that retrofitting the editing model later is the costly
+    /// path.
+    /// </para>
+    /// <para>
+    /// <strong>Positions are <c>REQ-UI-040</c>'s, and the arrangement enforces them.</strong> The
+    /// annotation band is a fixed-height row above and below the graticule and a fixed-width margin
+    /// either side, so no annotation can drift over the trace as its text grows. The single
+    /// exception is the indicator strings, which the requirement puts <em>inside</em> the grid's
+    /// upper-right corner — and which are the only thing drawn there.
     /// </para>
     /// <para>
     /// <strong>What this control does not do is compute.</strong> It receives a
@@ -29,28 +37,32 @@ namespace OpenVSA.Ui.Rendering
     /// pump thread, and does nothing per acquired point — only per pixel. That is what keeps the
     /// dispatcher inside <c>REQ-NFR-010</c>'s "no DSP, no blocking wait over 16 ms".
     /// </para>
-    /// <para>
-    /// The annotation set here is the minimum a spectrum needs to be read: reference level, scale,
-    /// window and RBW, the frequency axis ends, and the peak. <c>REQ-UI-040</c>'s full catalogue of
-    /// annotation positions and <c>REQ-UI-042</c>'s click-to-edit behaviour are later work, and the
-    /// text elements exist here so that work has something to attach to.
-    /// </para>
     /// </remarks>
     public sealed class TracePlot : Grid
     {
         /// <summary>Annotation band thickness, in device-independent pixels.</summary>
         public const double AnnotationBandDip = 44.0;
 
-        /// <summary>Vertical scale, in dB per graticule division.</summary>
-        public const double DecibelsPerDivision = 10.0;
+        /// <summary>Vertical scale a plot starts at, in dB per graticule division.</summary>
+        public const double DefaultDecibelsPerDivision = 10.0;
+
+        /// <summary>Graticule divisions down the screen.</summary>
+        public const int VerticalDivisions = 10;
 
         private readonly Image _image;
-        private readonly TextBlock _levelText;
+        private readonly HotSpot _topScale;
+        private readonly HotSpot _perDivision;
+        private readonly HotSpot _bottomScale;
+        private readonly HotSpot _format;
+        private readonly HotSpot _resolutionBandwidth;
+        private readonly HotSpot _triggerChannel;
+        private readonly HotSpot _centerFrequency;
+        private readonly HotSpot _mainTime;
         private readonly TextBlock _analysisText;
         private readonly TextBlock _markerText;
-        private readonly TextBlock _bottomLevelText;
-        private readonly TextBlock _spanText;
-        private readonly TextBlock _timeText;
+        private readonly TextBlock _indicatorText;
+        private readonly List<FrameworkElement> _annotation = new List<FrameworkElement>();
+        private readonly List<HotSpot> _hotSpots = new List<HotSpot>();
 
         private TraceSnapshot _snapshot;
         private IReadOnlyList<PlotMarker> _markers = new PlotMarker[0];
@@ -62,8 +74,11 @@ namespace OpenVSA.Ui.Rendering
         private PlotLayout _layout;
         private byte[] _transfer;
         private double _topDbm = 20.0;
+        private double _referenceLevelDbm = 20.0;
+        private double _decibelsPerDivision = DefaultDecibelsPerDivision;
         private int _marginPixels = 48;
         private Size _builtFor = Size.Empty;
+        private bool _suppressParameterEvents;
 
         /// <summary>Creates an empty plot.</summary>
         public TracePlot()
@@ -73,40 +88,198 @@ namespace OpenVSA.Ui.Rendering
                 Stretch = Stretch.Fill,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
+                IsHitTestVisible = false,
             };
 
             RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.NearestNeighbor);
             RenderOptions.SetEdgeMode(_image, EdgeMode.Aliased);
 
-            // Three columns and three rows, with the image spanning all of them. Alignment alone is
-            // not enough: a long marker readout and a long analysis string are both in the upper
-            // band, and aligned to the centre and the right of the same cell they overlap. Cells
-            // make the band divide the width instead, so text clips or wraps rather than colliding.
+            // Three columns and three rows, with the image spanning all of them. The outer rows are
+            // fixed at the annotation band's thickness rather than sized to their content, which is
+            // what makes REQ-UI-040's "all other trace annotation lies outside the graticule" a
+            // property of the layout instead of a property of how long the strings happen to be.
             for (int i = 0; i < 3; i++)
             {
                 ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
             }
 
-            RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            RowDefinitions.Add(new RowDefinition { Height = new GridLength(AnnotationBandDip) });
             RowDefinitions.Add(new RowDefinition { Height = new GridLength(1.0, GridUnitType.Star) });
-            RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            RowDefinitions.Add(new RowDefinition { Height = new GridLength(AnnotationBandDip) });
 
             SetColumnSpan(_image, 3);
             SetRowSpan(_image, 3);
             Children.Add(_image);
 
-            // Positions are REQ-UI-040's, which is sourced verbatim: Y-axis top scale top-left and
-            // per-division below it, Y-axis bottom scale bottom-left, trace format and resolution
-            // bandwidth in the upper band, centre frequency and main time length beneath the X axis,
-            // and the active-marker readout above the grid to the right.
-            _levelText = AddAnnotation(HorizontalAlignment.Left, 0, 0);
-            _analysisText = AddAnnotation(HorizontalAlignment.Center, 0, 1);
-            _markerText = AddAnnotation(HorizontalAlignment.Right, 0, 2);
-            _bottomLevelText = AddAnnotation(HorizontalAlignment.Left, 2, 0);
-            _spanText = AddAnnotation(HorizontalAlignment.Center, 2, 1);
-            _timeText = AddAnnotation(HorizontalAlignment.Right, 2, 2);
+            // REQ-UI-040's recommended placement, which follows from the Y-reference default:
+            // Y-axis top scale top-left with per-division below it, Y-axis bottom scale
+            // bottom-left, trace format / resolution bandwidth / trigger channel in the upper band,
+            // centre frequency and main time length centred beneath the X axis, and the
+            // active-marker readout above the grid to the right.
+            _topScale = NewHotSpot(string.Empty, HorizontalAlignment.Left);
+            _perDivision = NewHotSpot(string.Empty, HorizontalAlignment.Left);
+            AddStack(Orientation.Vertical, 0, 0, HorizontalAlignment.Left, VerticalAlignment.Top,
+                _topScale, _perDivision);
 
+            _format = NewHotSpot(string.Empty, HorizontalAlignment.Center);
+            _resolutionBandwidth = NewHotSpot("RBW ", HorizontalAlignment.Center);
+            _triggerChannel = NewHotSpot("Trig ", HorizontalAlignment.Center);
+            _analysisText = NewLabel(HorizontalAlignment.Center);
+
+            StackPanel upper = AddStack(
+                Orientation.Vertical, 0, 1, HorizontalAlignment.Center, VerticalAlignment.Top);
+            upper.Children.Add(Row(_format, _resolutionBandwidth, _triggerChannel));
+            upper.Children.Add(_analysisText);
+
+            _markerText = NewLabel(HorizontalAlignment.Right);
+            Place(_markerText, 0, 2, HorizontalAlignment.Right, VerticalAlignment.Top);
+
+            _bottomScale = NewHotSpot(string.Empty, HorizontalAlignment.Left);
+            Place(_bottomScale, 2, 0, HorizontalAlignment.Left, VerticalAlignment.Bottom);
+
+            _centerFrequency = NewHotSpot("Center ", HorizontalAlignment.Center);
+            _mainTime = NewHotSpot("Time ", HorizontalAlignment.Center);
+            AddStack(Orientation.Horizontal, 2, 1, HorizontalAlignment.Center,
+                VerticalAlignment.Bottom, _centerFrequency, _mainTime);
+
+            // The one piece of annotation that belongs inside the graticule (REQ-UI-040), pushed in
+            // from the top right by the band's thickness so it clears the graticule's own border.
+            _indicatorText = NewLabel(HorizontalAlignment.Right);
+            _indicatorText.VerticalAlignment = VerticalAlignment.Top;
+            _indicatorText.Margin = new Thickness(0.0, AnnotationBandDip + 6.0, AnnotationBandDip + 6.0, 0.0);
+            SetRowSpan(_indicatorText, 3);
+            SetColumnSpan(_indicatorText, 3);
+            SetRow(_indicatorText, 0);
+            SetColumn(_indicatorText, 0);
+            Children.Add(_indicatorText);
+
+            BuildValues();
             ApplyPalette();
+        }
+
+        /// <summary>Raised when the graticule changes width, and so the column count to decimate to.</summary>
+        public event EventHandler GraticuleColumnsChanged;
+
+        /// <summary>
+        /// Raised when a hot spot's value is changed by the user (<c>REQ-UI-042</c>).
+        /// </summary>
+        /// <remarks>
+        /// The plot knows what a parameter now reads; only the shell knows what to do about it —
+        /// re-plan the acquisition, re-scale the axis, or change the trigger. Reporting it rather
+        /// than acting on it is what keeps the control free of the measurement.
+        /// </remarks>
+        public event EventHandler<HotSpot> ParameterChanged;
+
+        /// <summary>Raised when a hot spot asks for its data-entry dialog (double click).</summary>
+        public event EventHandler<HotSpot> DialogRequested;
+
+        /// <summary>
+        /// Pixel columns across the graticule: what a <see cref="RenderMarshal"/> must decimate to.
+        /// </summary>
+        public int GraticuleColumns => _layout == null ? 0 : _layout.Graticule.Width;
+
+        /// <summary>The colours of <c>REQ-UI-010</c>'s zones.</summary>
+        /// <exception cref="ArgumentNullException">The value is null.</exception>
+        public PlotPalette Palette
+        {
+            get { return _palette; }
+
+            set
+            {
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value));
+                }
+
+                _palette = value;
+                ApplyPalette();
+                Redraw(null);
+            }
+        }
+
+        /// <summary>Level at the top of the graticule, in dBm. Follows the reference level.</summary>
+        public double TopDbm => _topDbm;
+
+        /// <summary>Level at the bottom of the graticule, in dBm.</summary>
+        public double BottomDbm => _topDbm - _decibelsPerDivision * VerticalDivisions;
+
+        /// <summary>Vertical scale, in dB per graticule division.</summary>
+        public double DecibelsPerDivision => _decibelsPerDivision;
+
+        /// <summary>The hot spot over the Y-axis top scale.</summary>
+        public HotSpot TopScaleHotSpot => _topScale;
+
+        /// <summary>The hot spot over the Y-axis per-division scale.</summary>
+        public HotSpot PerDivisionHotSpot => _perDivision;
+
+        /// <summary>The hot spot over the Y-axis bottom scale.</summary>
+        public HotSpot BottomScaleHotSpot => _bottomScale;
+
+        /// <summary>The hot spot over the trace format.</summary>
+        public HotSpot FormatHotSpot => _format;
+
+        /// <summary>The hot spot over the resolution bandwidth.</summary>
+        public HotSpot ResolutionBandwidthHotSpot => _resolutionBandwidth;
+
+        /// <summary>The hot spot over the trigger channel.</summary>
+        public HotSpot TriggerChannelHotSpot => _triggerChannel;
+
+        /// <summary>The hot spot over the centre frequency.</summary>
+        public HotSpot CenterFrequencyHotSpot => _centerFrequency;
+
+        /// <summary>The hot spot over the main time length.</summary>
+        public HotSpot MainTimeHotSpot => _mainTime;
+
+        /// <summary>Every hot spot on the plot, in the order they were created.</summary>
+        public IReadOnlyList<HotSpot> HotSpots => _hotSpots;
+
+        /// <summary>
+        /// Trace annotation other than the indicator strings.
+        /// </summary>
+        /// <remarks>
+        /// Exposed so that <c>REQ-UI-040</c>'s "the indicator strings are the only annotation drawn
+        /// inside the graticule" can be measured from the arranged control rather than asserted by
+        /// inspection.
+        /// </remarks>
+        public IReadOnlyList<FrameworkElement> AnnotationElements => _annotation;
+
+        /// <summary>The element holding the trace indicator strings (<c>REQ-UI-041</c>).</summary>
+        public FrameworkElement IndicatorElement => _indicatorText;
+
+        /// <summary>The graticule's rectangle within this control, in device-independent pixels.</summary>
+        public Rect GraticuleBounds =>
+            new Rect(
+                AnnotationBandDip,
+                AnnotationBandDip,
+                Math.Max(0.0, ActualWidth - 2.0 * AnnotationBandDip),
+                Math.Max(0.0, ActualHeight - 2.0 * AnnotationBandDip));
+
+        /// <summary>
+        /// Where an element sits within this control, in device-independent pixels.
+        /// </summary>
+        /// <param name="element">A descendant of this control.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="element"/> is null.</exception>
+        public Rect BoundsOf(FrameworkElement element)
+        {
+            if (element == null)
+            {
+                throw new ArgumentNullException(nameof(element));
+            }
+
+            Point origin = element.TranslatePoint(new Point(0.0, 0.0), this);
+            return new Rect(origin, element.RenderSize);
+        }
+
+        /// <summary>
+        /// Sets the trace indicator strings shown in the grid's upper-right corner
+        /// (<c>REQ-UI-041</c>).
+        /// </summary>
+        /// <param name="indicators">The active indicators, or <c>null</c> for none.</param>
+        public void SetIndicators(TraceIndicators indicators)
+        {
+            ThreadAffinity.AssertOnUiThread("Setting trace indicators");
+
+            _indicatorText.Text = indicators == null ? string.Empty : indicators.Text;
         }
 
         /// <summary>Arranges the control, rebuilding the surface when its size has changed.</summary>
@@ -141,39 +314,6 @@ namespace OpenVSA.Ui.Rendering
             Rebuild(_builtFor);
         }
 
-        /// <summary>Raised when the graticule changes width, and so the column count to decimate to.</summary>
-        public event EventHandler GraticuleColumnsChanged;
-
-        /// <summary>
-        /// Pixel columns across the graticule: what a <see cref="RenderMarshal"/> must decimate to.
-        /// </summary>
-        public int GraticuleColumns => _layout == null ? 0 : _layout.Graticule.Width;
-
-        /// <summary>The colours of <c>REQ-UI-010</c>'s four zones.</summary>
-        /// <exception cref="ArgumentNullException">The value is null.</exception>
-        public PlotPalette Palette
-        {
-            get { return _palette; }
-
-            set
-            {
-                if (value == null)
-                {
-                    throw new ArgumentNullException(nameof(value));
-                }
-
-                _palette = value;
-                ApplyPalette();
-                Redraw(null);
-            }
-        }
-
-        /// <summary>Level at the top of the graticule, in dBm. Follows the reference level.</summary>
-        public double TopDbm => _topDbm;
-
-        /// <summary>Level at the bottom of the graticule, in dBm.</summary>
-        public double BottomDbm => _topDbm - DecibelsPerDivision * (_layout == null ? 10 : _layout.VerticalDivisions);
-
         /// <summary>
         /// Draws a snapshot.
         /// </summary>
@@ -195,10 +335,13 @@ namespace OpenVSA.Ui.Rendering
             }
 
             // The reference level sets the top of the graticule, so a change of range re-scales the
-            // axis rather than sending the trace off the top of the screen.
-            if (Math.Abs(snapshot.Spectrum.ReferenceLevelDbm - _topDbm) > 1e-9)
+            // axis rather than sending the trace off the top of the screen. Compared against the
+            // last reference level rather than against the current top, so that a top scale the
+            // user set by hand is not undone by the next frame.
+            if (Math.Abs(snapshot.Spectrum.ReferenceLevelDbm - _referenceLevelDbm) > 1e-9)
             {
-                _topDbm = snapshot.Spectrum.ReferenceLevelDbm;
+                _referenceLevelDbm = snapshot.Spectrum.ReferenceLevelDbm;
+                _topDbm = _referenceLevelDbm;
                 BuildLayout();
             }
 
@@ -265,50 +408,262 @@ namespace OpenVSA.Ui.Rendering
             _snapshot = null;
             Redraw(null);
 
-            _levelText.Text = string.Empty;
             _analysisText.Text = string.Empty;
             _markerText.Text = string.Empty;
-            _bottomLevelText.Text = string.Empty;
-            _spanText.Text = string.Empty;
-            _timeText.Text = string.Empty;
+            _indicatorText.Text = string.Empty;
         }
 
-        private TextBlock AddAnnotation(HorizontalAlignment horizontal, int row, int column)
+        // ---- Annotation construction -----------------------------------------------------------
+
+        private HotSpot NewHotSpot(string label, HorizontalAlignment horizontal)
+        {
+            var spot = new HotSpot
+            {
+                Label = label,
+                Margin = new Thickness(6.0, 1.0, 6.0, 1.0),
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 11.0,
+                HorizontalAlignment = horizontal,
+                TextAlignment = AlignmentOf(horizontal),
+            };
+
+            spot.ValueChanged += OnHotSpotChanged;
+            spot.DialogRequested += OnHotSpotDialogRequested;
+
+            _hotSpots.Add(spot);
+            _annotation.Add(spot);
+            return spot;
+        }
+
+        private TextBlock NewLabel(HorizontalAlignment horizontal)
         {
             var text = new TextBlock
             {
-                HorizontalAlignment = horizontal,
-                VerticalAlignment = row == 0 ? VerticalAlignment.Top : VerticalAlignment.Bottom,
-                Margin = new Thickness(8.0, 6.0, 8.0, 6.0),
+                Margin = new Thickness(6.0, 1.0, 6.0, 1.0),
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 11.0,
                 IsHitTestVisible = false,
-                TextWrapping = TextWrapping.Wrap,
-                TextAlignment = horizontal == HorizontalAlignment.Right
-                    ? TextAlignment.Right
-                    : (horizontal == HorizontalAlignment.Center ? TextAlignment.Center : TextAlignment.Left),
+                HorizontalAlignment = horizontal,
+                TextAlignment = AlignmentOf(horizontal),
             };
-
-            SetRow(text, row);
-            SetColumn(text, column);
-            Children.Add(text);
 
             return text;
         }
 
-        private void ApplyPalette()
+        private static TextAlignment AlignmentOf(HorizontalAlignment horizontal)
         {
-            var brush = new SolidColorBrush(ToMediaColor(_palette.Annotation));
-            brush.Freeze();
-
-            foreach (UIElement child in Children)
+            if (horizontal == HorizontalAlignment.Right)
             {
-                var text = child as TextBlock;
-                if (text != null)
+                return TextAlignment.Right;
+            }
+
+            return horizontal == HorizontalAlignment.Center
+                ? TextAlignment.Center
+                : TextAlignment.Left;
+        }
+
+        private static StackPanel Row(params UIElement[] children)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal };
+
+            foreach (UIElement child in children)
+            {
+                panel.Children.Add(child);
+            }
+
+            return panel;
+        }
+
+        private StackPanel AddStack(
+            Orientation orientation,
+            int row,
+            int column,
+            HorizontalAlignment horizontal,
+            VerticalAlignment vertical,
+            params UIElement[] children)
+        {
+            var panel = new StackPanel { Orientation = orientation };
+
+            foreach (UIElement child in children)
+            {
+                panel.Children.Add(child);
+            }
+
+            Place(panel, row, column, horizontal, vertical);
+            return panel;
+        }
+
+        private void Place(
+            FrameworkElement element,
+            int row,
+            int column,
+            HorizontalAlignment horizontal,
+            VerticalAlignment vertical)
+        {
+            element.HorizontalAlignment = horizontal;
+            element.VerticalAlignment = vertical;
+
+            SetRow(element, row);
+            SetColumn(element, column);
+            Children.Add(element);
+
+            if (!_annotation.Contains(element) && !(element is Panel))
+            {
+                _annotation.Add(element);
+            }
+        }
+
+        /// <summary>
+        /// Gives every hot spot the quantity it edits, with the step an arrow key should move it by.
+        /// </summary>
+        /// <remarks>
+        /// Steps are chosen from what the parameter is for rather than from its magnitude: a
+        /// reference level moves in whole decibels, a per-division scale through the 1-2-5 ladder a
+        /// graticule is readable at, and a centre frequency by a proportion, because it is set
+        /// anywhere from kilohertz to gigahertz and no single increment suits both ends.
+        /// </remarks>
+        private void BuildValues()
+        {
+            _topScale.Value = NumericHotSpotValue.Decibels(_topDbm);
+
+            _perDivision.Value = new ChoiceHotSpotValue(
+                new[] { "1 dB/div", "2 dB/div", "5 dB/div", "10 dB/div", "20 dB/div" }, 3);
+
+            _bottomScale.Value = NumericHotSpotValue.Decibels(BottomDbm);
+
+            _format.Value = new ChoiceHotSpotValue(TraceFormatText.Names, 0);
+
+            var bandwidth = NumericHotSpotValue.Frequency(1e3, 1.0);
+            bandwidth.ProportionalStep = 0.1;
+            bandwidth.Minimum = 1e-3;
+            _resolutionBandwidth.Value = bandwidth;
+
+            _triggerChannel.Value = new ChoiceHotSpotValue(new[] { "Ch 1", "Ch 2", "Ext", "Free Run" }, 0);
+
+            var center = NumericHotSpotValue.Frequency(1e9, 1e3);
+            center.ProportionalStep = 0.01;
+            center.Minimum = 0.0;
+            _centerFrequency.Value = center;
+
+            var time = NumericHotSpotValue.Time(1e-3, 1e-6);
+            time.ProportionalStep = 0.1;
+            time.Minimum = 1e-12;
+            _mainTime.Value = time;
+        }
+
+        private void OnHotSpotChanged(object sender, EventArgs e)
+        {
+            var spot = (HotSpot)sender;
+
+            ApplyScaleChange(spot);
+
+            if (_suppressParameterEvents)
+            {
+                return;
+            }
+
+            EventHandler<HotSpot> handler = ParameterChanged;
+
+            if (handler != null)
+            {
+                handler(this, spot);
+            }
+        }
+
+        /// <summary>
+        /// Applies the two hot spots the plot itself owns: the vertical scale and its top.
+        /// </summary>
+        /// <remarks>
+        /// Everything else is the shell's business. These two are not: they change nothing about
+        /// the acquisition, only how it is drawn, and routing them out and back would make the axis
+        /// lag the click by a frame.
+        /// </remarks>
+        private void ApplyScaleChange(HotSpot spot)
+        {
+            if (ReferenceEquals(spot, _topScale))
+            {
+                _topDbm = ((NumericHotSpotValue)_topScale.Value).Value;
+            }
+            else if (ReferenceEquals(spot, _bottomScale))
+            {
+                // The bottom follows the top and the scale, so setting it moves the top rather than
+                // stretching the axis - which is what keeps the per-division reading true.
+                _topDbm = ((NumericHotSpotValue)_bottomScale.Value).Value +
+                    _decibelsPerDivision * VerticalDivisions;
+            }
+            else if (ReferenceEquals(spot, _perDivision))
+            {
+                double parsed;
+
+                if (double.TryParse(
+                        ((ChoiceHotSpotValue)_perDivision.Value).Text.Split(' ')[0],
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out parsed) &&
+                    parsed > 0.0)
                 {
-                    text.Foreground = brush;
+                    _decibelsPerDivision = parsed;
                 }
             }
+            else
+            {
+                return;
+            }
+
+            RefreshScaleText();
+            BuildLayout();
+            Redraw(_snapshot);
+        }
+
+        private void RefreshScaleText()
+        {
+            _suppressParameterEvents = true;
+
+            try
+            {
+                ((NumericHotSpotValue)_topScale.Value).Value = _topDbm;
+                ((NumericHotSpotValue)_bottomScale.Value).Value = BottomDbm;
+                _topScale.Refresh();
+                _bottomScale.Refresh();
+            }
+            finally
+            {
+                _suppressParameterEvents = false;
+            }
+        }
+
+        private void OnHotSpotDialogRequested(object sender, EventArgs e)
+        {
+            EventHandler<HotSpot> handler = DialogRequested;
+
+            if (handler != null)
+            {
+                handler(this, (HotSpot)sender);
+            }
+        }
+
+        private void ApplyPalette()
+        {
+            var annotation = new SolidColorBrush(ToMediaColor(_palette.Annotation));
+            annotation.Freeze();
+
+            foreach (FrameworkElement element in _annotation)
+            {
+                var text = element as TextBlock;
+
+                if (text != null)
+                {
+                    text.Foreground = annotation;
+                }
+            }
+
+            _markerText.Foreground = annotation;
+
+            // Its own colour, because it is the only annotation over the trace background rather
+            // than the annotation background (REQ-UI-040).
+            var indicator = new SolidColorBrush(ToMediaColor(_palette.Indicator));
+            indicator.Freeze();
+            _indicatorText.Foreground = indicator;
 
             Background = new SolidColorBrush(ToMediaColor(_palette.AnnotationBackground));
         }
@@ -374,7 +729,7 @@ namespace OpenVSA.Ui.Rendering
                 _surface.Height,
                 _marginPixels,
                 _topDbm,
-                _topDbm - DecibelsPerDivision * 10.0);
+                BottomDbm);
         }
 
         private void Redraw(TraceSnapshot snapshot)
@@ -483,28 +838,36 @@ namespace OpenVSA.Ui.Rendering
                 " eff)";
         }
 
+        /// <summary>
+        /// Refreshes the annotation from a frame, leaving alone anything the user is editing.
+        /// </summary>
+        /// <remarks>
+        /// The exemption matters more than it looks: a measurement updating sixty times a second
+        /// would otherwise overwrite a half-typed entry between two keystrokes.
+        /// </remarks>
         private void UpdateAnnotation(SpectrumFrame frame)
         {
-            _levelText.Text =
-                "Ref " + Level(frame.ReferenceLevelDbm) + Environment.NewLine +
-                DecibelsPerDivision.ToString("0", CultureInfo.CurrentCulture) + " dB/div";
+            _suppressParameterEvents = true;
 
-            _bottomLevelText.Text = Level(BottomDbm);
+            try
+            {
+                Set(_resolutionBandwidth, frame.ResolutionBandwidthHz);
+                Set(_centerFrequency, frame.CenterFrequencyHz);
+
+                if (frame.PointCount > 1 && frame.SpanHz > 0.0)
+                {
+                    Set(_mainTime, (frame.PointCount - 1) / frame.SpanHz);
+                }
+            }
+            finally
+            {
+                _suppressParameterEvents = false;
+            }
 
             _analysisText.Text =
                 WindowText.Describe(frame.Window) + "   " +
                 frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts" +
-                Environment.NewLine +
-                "RBW " + Frequency(frame.ResolutionBandwidthHz) + AveragingNote(frame);
-
-            _spanText.Text =
-                "Center " + Frequency(frame.CenterFrequencyHz) +
-                "   Span " + Frequency(frame.SpanHz);
-
-            // Main time length, which REQ-ACQ-001 makes (N_f - 1) / Span.
-            _timeText.Text = frame.PointCount > 1 && frame.SpanHz > 0.0
-                ? "Time " + EngineeringText.Time((frame.PointCount - 1) / frame.SpanHz)
-                : string.Empty;
+                AveragingNote(frame) + "   Span " + Frequency(frame.SpanHz);
 
             if (_markers.Count == 0)
             {
@@ -520,6 +883,18 @@ namespace OpenVSA.Ui.Rendering
             {
                 _markerText.Text = _markerReadout;
             }
+        }
+
+        private static void Set(HotSpot spot, double value)
+        {
+            if (spot.IsEditing)
+            {
+                return;
+            }
+
+            var numeric = (NumericHotSpotValue)spot.Value;
+            numeric.Value = value;
+            spot.Refresh();
         }
 
         private static string Level(double dbm) =>
