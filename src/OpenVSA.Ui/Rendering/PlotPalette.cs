@@ -62,7 +62,32 @@ namespace OpenVSA.Ui.Rendering
             PlotColor trace,
             PlotColor selectedMarker,
             PlotColor notSelectedMarker)
+            : this(
+                traceBackground, grid, annotation, annotationBackground, trace, selectedMarker,
+                notSelectedMarker, annotation)
         {
+        }
+
+        /// <summary>Creates a palette.</summary>
+        /// <param name="traceBackground">Background behind the graticule.</param>
+        /// <param name="grid">Graticule lines.</param>
+        /// <param name="annotation">Annotation text outside the graticule.</param>
+        /// <param name="annotationBackground">Background outside the graticule.</param>
+        /// <param name="trace">Trace geometry.</param>
+        /// <param name="selectedMarker">The selected marker's glyph.</param>
+        /// <param name="notSelectedMarker">Every other marker's glyph.</param>
+        /// <param name="indicator">Trace indicator messages inside the graticule.</param>
+        public PlotPalette(
+            PlotColor traceBackground,
+            PlotColor grid,
+            PlotColor annotation,
+            PlotColor annotationBackground,
+            PlotColor trace,
+            PlotColor selectedMarker,
+            PlotColor notSelectedMarker,
+            PlotColor indicator)
+        {
+            Indicator = indicator;
             TraceBackground = traceBackground;
             Grid = grid;
             Annotation = annotation;
@@ -100,6 +125,17 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>Colour for every marker that is not selected.</summary>
         public PlotColor NotSelectedMarker { get; }
 
+        /// <summary>
+        /// Colour for the trace indicator messages (<c>REQ-UI-040</c>, <c>REQ-UI-041</c>).
+        /// </summary>
+        /// <remarks>
+        /// Its own colour, and the reason is positional: the indicators are the only annotation
+        /// drawn <em>inside</em> the graticule, over the trace background rather than the
+        /// annotation background, and a colour chosen to read against the one is not guaranteed to
+        /// read against the other.
+        /// </remarks>
+        public PlotColor Indicator { get; }
+
         /// <summary>The dark theme, and the default.</summary>
         public static PlotPalette Dark { get; } = new PlotPalette(
             traceBackground: PlotColor.FromArgb(0xFF101014),
@@ -108,7 +144,8 @@ namespace OpenVSA.Ui.Rendering
             annotationBackground: PlotColor.FromArgb(0xFF1E1E24),
             trace: PlotColor.FromArgb(0xFFFFD200),
             selectedMarker: PlotColor.FromArgb(0xFFFFFFFF),
-            notSelectedMarker: PlotColor.FromArgb(0xFF9090A0));
+            notSelectedMarker: PlotColor.FromArgb(0xFF9090A0),
+            indicator: PlotColor.FromArgb(0xFFFF6A3C));
 
         /// <summary>The light theme.</summary>
         public static PlotPalette Light { get; } = new PlotPalette(
@@ -118,31 +155,37 @@ namespace OpenVSA.Ui.Rendering
             annotationBackground: PlotColor.FromArgb(0xFFF0F0F3),
             trace: PlotColor.FromArgb(0xFF0050C8),
             selectedMarker: PlotColor.FromArgb(0xFF101010),
-            notSelectedMarker: PlotColor.FromArgb(0xFF707080));
+            notSelectedMarker: PlotColor.FromArgb(0xFF707080),
+            indicator: PlotColor.FromArgb(0xFFC02000));
 
         /// <summary>Returns a copy with a different trace background.</summary>
         /// <param name="value">The new colour.</param>
         public PlotPalette WithTraceBackground(PlotColor value) =>
-            new PlotPalette(value, Grid, Annotation, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker);
+            new PlotPalette(value, Grid, Annotation, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker, Indicator);
 
         /// <summary>Returns a copy with a different grid colour.</summary>
         /// <param name="value">The new colour.</param>
         public PlotPalette WithGrid(PlotColor value) =>
-            new PlotPalette(TraceBackground, value, Annotation, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker);
+            new PlotPalette(TraceBackground, value, Annotation, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker, Indicator);
 
         /// <summary>Returns a copy with a different annotation colour.</summary>
         /// <param name="value">The new colour.</param>
         public PlotPalette WithAnnotation(PlotColor value) =>
-            new PlotPalette(TraceBackground, Grid, value, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker);
+            new PlotPalette(TraceBackground, Grid, value, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker, Indicator);
 
         /// <summary>Returns a copy with a different annotation background.</summary>
         /// <param name="value">The new colour.</param>
         public PlotPalette WithAnnotationBackground(PlotColor value) =>
-            new PlotPalette(TraceBackground, Grid, Annotation, value, Trace, SelectedMarker, NotSelectedMarker);
+            new PlotPalette(TraceBackground, Grid, Annotation, value, Trace, SelectedMarker, NotSelectedMarker, Indicator);
 
         /// <summary>Returns a copy with a different trace colour.</summary>
         /// <param name="value">The new colour.</param>
         public PlotPalette WithTrace(PlotColor value) =>
-            new PlotPalette(TraceBackground, Grid, Annotation, AnnotationBackground, value, SelectedMarker, NotSelectedMarker);
+            new PlotPalette(TraceBackground, Grid, Annotation, AnnotationBackground, value, SelectedMarker, NotSelectedMarker, Indicator);
+
+        /// <summary>Returns a copy with a different indicator colour.</summary>
+        /// <param name="value">The new colour.</param>
+        public PlotPalette WithIndicator(PlotColor value) =>
+            new PlotPalette(TraceBackground, Grid, Annotation, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker, value);
     }
 }
