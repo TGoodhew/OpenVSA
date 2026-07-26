@@ -14,4 +14,16 @@
     <ProjectReference Include="..\OpenVSA.Demod\OpenVSA.Demod.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      REQ-STA-003 asks for human-readable, diffable, versioned JSON with unknown fields preserved
+      byte-for-byte on round-trip. The in-box DataContractJsonSerializer writes JSON but not
+      readable JSON, and hand-rolling a parser that gets escapes, surrogate pairs and number
+      formats right is a large amount of code with real risk for no requirement that asks for it.
+      JObject models exactly what the requirement wants: a document whose unrecognised members are
+      still there after a load and a save.
+    -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
 </Project>

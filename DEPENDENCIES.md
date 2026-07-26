@@ -21,6 +21,23 @@ restrictive terms.
 | `Syncfusion.SfGrid.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Marker, limit-line and demod error-summary tables. |
 | `Syncfusion.Shared.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Numeric editors, used as the entry control inside the `REQ-UI-042` hot-spot framework. |
 | `IviFoundation.Visa` | 8.0.2 | IVI Foundation (permissive; redistribution of the shared components permitted) | `REQ-VISA-001`: `Ivi.Visa.dll` alone, referenced by `OpenVSA.Hal.Visa`. See the note below on why nothing is shipped. |
+| `Newtonsoft.Json` | 13.0.3 | MIT | `REQ-STA-003`'s state format. See the note below. |
+
+### Note: why a JSON library rather than the in-box serialiser
+
+`REQ-STA-003` asks for three things at once: human-readable and diffable output, a schema version,
+and **unknown fields preserved byte-for-byte on round-trip**. The last is what settles it. Without
+it an older build is a one-way door — opening a colleague's setup silently discards everything it
+does not understand, and the loss surfaces later, on their machine.
+
+`DataContractJsonSerializer` is in the box but writes unindented output, and `IExtensibleDataObject`
+preserves unknown members only for the data-contract shapes it controls. Hand-rolling a parser that
+gets string escapes, surrogate pairs and number formats right is a large amount of code with real
+risk and no requirement asking for it. `JObject` models exactly what the requirement describes: a
+document whose unrecognised members are still there after a load and a save, at any depth.
+
+Referenced by `OpenVSA.Measurement` only. Nothing below L4 knows the state is JSON, and the state
+model itself carries no attribute from the library — the preserved members travel as text.
 
 ### Note: the VISA package ships nothing
 
