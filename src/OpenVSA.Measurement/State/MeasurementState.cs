@@ -104,6 +104,18 @@ namespace OpenVSA.Measurement.State
         /// <summary>Overlap between analysis frames (<c>REQ-ACQ-003</c>).</summary>
         public double Overlap { get; set; }
 
+        /// <summary>
+        /// What a span change does to the frequency axis (<c>REQ-DSP-023</c>'s
+        /// <em>Zoom If Span Change</em>).
+        /// </summary>
+        /// <remarks>
+        /// Carried here rather than left to the session, because it changes what the <em>next</em>
+        /// span the user types will mean. A recalled state whose span behaviour reverted to the
+        /// default would do the right thing until the moment someone changed the span, which is
+        /// the worst place for a setting to go missing.
+        /// </remarks>
+        public SpanChangeBehaviour SpanChange { get; set; } = SpanChangeBehaviour.Zoom;
+
         /// <summary>Averaging type (<c>REQ-DSP-030</c>).</summary>
         public AveragingType Averaging { get; set; } = AveragingType.Off;
 
