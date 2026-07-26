@@ -349,8 +349,23 @@ namespace OpenVSA.Dsp.Spectrum
         /// </param>
         /// <exception cref="ArgumentException">The destination is the wrong length.</exception>
         public void Format(TraceFormat format, Span<float> destination) =>
+            Format(format, destination, null);
+
+        /// <summary>
+        /// Renders this frame in a display format, with explicit phase and group-delay settings.
+        /// </summary>
+        /// <param name="format">The format to produce.</param>
+        /// <param name="destination">
+        /// Receives <c>PointCount × <see cref="TraceFormatter.ValuesPerPoint"/></c> values.
+        /// </param>
+        /// <param name="options">
+        /// Aperture and jump tolerance (<c>REQ-DSP-044</c>, <c>REQ-DSP-045</c>), or <c>null</c> for
+        /// the defaults.
+        /// </param>
+        /// <exception cref="ArgumentException">The destination is the wrong length.</exception>
+        public void Format(TraceFormat format, Span<float> destination, TraceFormatOptions options) =>
             TraceFormatter.Format(
-                new ReadOnlySpan<float>(_complex), format, _scale, BinWidthHz, destination);
+                new ReadOnlySpan<float>(_complex), format, _scale, BinWidthHz, destination, options);
 
         /// <summary>Frequency of point 0, in hertz.</summary>
         public double StartFrequencyHz { get; }

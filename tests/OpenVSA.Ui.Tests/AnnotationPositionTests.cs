@@ -297,6 +297,49 @@ namespace OpenVSA.Ui.Tests
             });
         }
 
+        [Fact]
+        public void TheGroupDelayApertureAppearsInTheAnnotationOnlyWhenItApplies()
+        {
+            // REQ-DSP-045 requires the aperture in the trace annotation, and REQ-DSP-044 the
+            // unwrap reference - both because the setting changes what is drawn, so a trace
+            // without it cannot be reproduced. Neither belongs beside a log-magnitude trace, where
+            // it had no bearing on anything.
+            OnStaThread(() =>
+            {
+                TracePlot plot = Laid();
+                plot.FormatOptions = new TraceFormatOptions(apertureBins: 16);
+                plot.Show(Snapshot(plot));
+
+                var analysis = (System.Windows.Controls.TextBlock)Named(plot, " pts");
+
+                _output.WriteLine("log magnitude: " + analysis.Text.Replace(Environment.NewLine, " | "));
+                Assert.DoesNotContain("Aperture", analysis.Text);
+
+                plot.FormatHotSpot.Value.TrySet(
+                    TraceFormatText.Describe(TraceFormat.GroupDelay));
+                plot.FormatHotSpot.Refresh();
+                plot.Show(Snapshot(plot));
+
+                _output.WriteLine("group delay:   " + analysis.Text.Replace(Environment.NewLine, " | "));
+                Assert.Contains("Aperture 16 bins", analysis.Text);
+
+                plot.FormatHotSpot.Value.TrySet(
+                    TraceFormatText.Describe(TraceFormat.UnwrappedPhase));
+                plot.FormatHotSpot.Refresh();
+                plot.Show(Snapshot(plot));
+
+                _output.WriteLine("unwrapped:     " + analysis.Text.Replace(Environment.NewLine, " | "));
+                Assert.Contains("point 0", analysis.Text);
+            });
+        }
+
+        [Fact]
+        public void ThePlotRefusesFormatOptionsOfNull()
+        {
+            OnStaThread(() =>
+                Assert.Throws<ArgumentNullException>(() => new TracePlot().FormatOptions = null));
+        }
+
         private static TraceIndicators Overloaded()
         {
             var indicators = new TraceIndicators();

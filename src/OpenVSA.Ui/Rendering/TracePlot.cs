@@ -76,6 +76,7 @@ namespace OpenVSA.Ui.Rendering
         private double _topDbm = 20.0;
         private double _referenceLevelDbm = 20.0;
         private double _decibelsPerDivision = DefaultDecibelsPerDivision;
+        private TraceFormatOptions _formatOptions = TraceFormatOptions.Default;
         private int _marginPixels = 48;
         private Size _builtFor = Size.Empty;
         private bool _suppressParameterEvents;
@@ -232,6 +233,50 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>Every hot spot on the plot, in the order they were created.</summary>
         public IReadOnlyList<HotSpot> HotSpots => _hotSpots;
+
+        /// <summary>
+        /// The group-delay aperture and unwrap tolerance in force (<c>REQ-DSP-045</c>,
+        /// <c>REQ-DSP-044</c>).
+        /// </summary>
+        /// <remarks>
+        /// Both requirements ask for the setting to appear in the trace annotation, and the reason
+        /// is the same in each: the setting changes what is drawn, so a trace without it is a
+        /// measurement nobody can reproduce. <see cref="UpdateAnnotation"/> shows it only for the
+        /// formats it bears on.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">The value is null.</exception>
+        public TraceFormatOptions FormatOptions
+        {
+            get { return _formatOptions; }
+
+            set
+            {
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value));
+                }
+
+                _formatOptions = value;
+
+                if (_snapshot != null)
+                {
+                    UpdateAnnotation(_snapshot.Spectrum);
+                }
+            }
+        }
+
+        /// <summary>The format the trace is currently drawn in.</summary>
+        public TraceFormat CurrentFormat
+        {
+            get
+            {
+                TraceFormat format;
+
+                return TraceFormatText.TryParse(_format.Value.Text, out format)
+                    ? format
+                    : TraceFormat.LogMagnitude;
+            }
+        }
 
         /// <summary>
         /// Trace annotation other than the indicator strings.
@@ -557,6 +602,14 @@ namespace OpenVSA.Ui.Rendering
 
             ApplyScaleChange(spot);
 
+            // Changing format changes which settings bear on the trace, so the note beside it has
+            // to follow at once rather than at the next frame - on a stopped measurement there may
+            // not be one.
+            if (ReferenceEquals(spot, _format) && _snapshot != null)
+            {
+                UpdateAnnotation(_snapshot.Spectrum);
+            }
+
             if (_suppressParameterEvents)
             {
                 return;
@@ -864,10 +917,16 @@ namespace OpenVSA.Ui.Rendering
                 _suppressParameterEvents = false;
             }
 
+            // The aperture and the unwrap reference appear only for the formats they bear on
+            // (REQ-DSP-045, REQ-DSP-044), so the annotation never describes a setting that had no
+            // effect on what is being looked at.
+            string formatNote = _formatOptions.Describe(CurrentFormat);
+
             _analysisText.Text =
                 WindowText.Describe(frame.Window) + "   " +
                 frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts" +
-                AveragingNote(frame) + "   Span " + Frequency(frame.SpanHz);
+                AveragingNote(frame) + "   Span " + Frequency(frame.SpanHz) +
+                (formatNote.Length == 0 ? string.Empty : "   " + formatNote);
 
             if (_markers.Count == 0)
             {
