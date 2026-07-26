@@ -168,6 +168,70 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>
+        /// Creates a frame from calibrated complex values, copying them.
+        /// </summary>
+        /// <param name="complex">Interleaved real, imaginary values in volts peak; two per point.</param>
+        /// <param name="startFrequencyHz">Frequency of point 0, in hertz.</param>
+        /// <param name="binWidthHz">Spacing between points, in hertz; must be positive.</param>
+        /// <param name="window">Window used to compute them.</param>
+        /// <param name="equivalentNoiseBandwidthBins">The window's ENBW in bins.</param>
+        /// <param name="referenceImpedanceOhms">Reference impedance for the decibel formats.</param>
+        /// <returns>An immutable frame.</returns>
+        /// <exception cref="ArgumentException"><paramref name="complex"/> is empty or has an odd length.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="binWidthHz"/> is not positive.</exception>
+        /// <remarks>
+        /// For a consumer holding a spectrum already in volts — stored data, or a test building one
+        /// directly. Live measurement does not take this path, so the copy is not on the hot loop.
+        /// </remarks>
+        public static SpectrumFrame FromComplex(
+            ReadOnlySpan<float> complex,
+            double startFrequencyHz,
+            double binWidthHz,
+            WindowType window,
+            double equivalentNoiseBandwidthBins,
+            double referenceImpedanceOhms = AmplitudeChain.DefaultReferenceImpedanceOhms)
+        {
+            if (complex.Length == 0 || complex.Length % 2 != 0)
+            {
+                throw new ArgumentException(
+                    "A complex spectrum needs two values per point and at least one point.",
+                    nameof(complex));
+            }
+
+            if (!(binWidthHz > 0.0) || double.IsInfinity(binWidthHz))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(binWidthHz), binWidthHz, "Bin width must be positive and finite.");
+            }
+
+            var copy = new float[complex.Length];
+            complex.CopyTo(new Span<float>(copy));
+
+            int points = complex.Length / 2;
+            double span = binWidthHz * (points - 1);
+
+            // Values are already volts, so the linear half of the chain is unity and only the
+            // impedance term remains.
+            var scale = new AmplitudeScale(
+                1.0, -10.0 * Math.Log10(2.0 * referenceImpedanceOhms) + 30.0);
+
+            return new SpectrumFrame(
+                copy,
+                scale,
+                startFrequencyHz,
+                binWidthHz,
+                startFrequencyHz + span / 2.0,
+                binWidthHz * points,
+                isBaseband: false,
+                window: window,
+                equivalentNoiseBandwidthBins: equivalentNoiseBandwidthBins,
+                referenceLevelDbm: 0.0,
+                sequenceNumber: 0,
+                acquiredUtc: DateTime.UtcNow,
+                source: default(FrontEndId));
+        }
+
+        /// <summary>
         /// The levels in dBm, ascending in frequency, in a view that cannot be written through.
         /// </summary>
         /// <remarks>
@@ -206,6 +270,57 @@ namespace OpenVSA.Dsp.Spectrum
 
         /// <summary>The amplitude scale these values were calibrated with.</summary>
         public AmplitudeScale Scale => _scale;
+
+        /// <summary>
+        /// Whether this frame's complex values carry meaningful phase.
+        /// </summary>
+        /// <remarks>
+        /// False after power-domain averaging, which squares the values and discards phase
+        /// irrecoverably. <c>REQ-TRC-002</c> uses this to make the phase formats unselectable for
+        /// such a trace rather than displaying a phase of zero as though it were measured.
+        /// </remarks>
+        public bool HasPhase { get; private set; } = true;
+
+        /// <summary>Acquisitions this frame represents; 1 for an unaveraged one.</summary>
+        public int AverageCount { get; private set; } = 1;
+
+        /// <summary>
+        /// Returns a copy carrying different complex values, keeping this frame's axis.
+        /// </summary>
+        /// <param name="complex">Interleaved real, imaginary values in volts; ownership passes here.</param>
+        /// <param name="hasPhase">Whether the new values carry phase.</param>
+        /// <param name="averageCount">Acquisitions the new values represent.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="complex"/> is null.</exception>
+        /// <exception cref="ArgumentException">The length does not match this frame's point count.</exception>
+        /// <remarks>
+        /// For an averager, which produces new values over the same frequency axis. Internal
+        /// because it takes ownership of the array, which cannot be enforced — the same reasoning
+        /// as <see cref="Adopt"/>.
+        /// </remarks>
+        internal SpectrumFrame WithComplex(float[] complex, bool hasPhase, int averageCount)
+        {
+            if (complex == null)
+            {
+                throw new ArgumentNullException(nameof(complex));
+            }
+
+            if (complex.Length != _complex.Length)
+            {
+                throw new ArgumentException(
+                    "Expected " + _complex.Length + " values to match this frame's axis, got " +
+                    complex.Length + ".",
+                    nameof(complex));
+            }
+
+            return new SpectrumFrame(
+                complex, _scale, StartFrequencyHz, BinWidthHz, CenterFrequencyHz, SampleRateHz,
+                IsBaseband, Window, EquivalentNoiseBandwidthBins, ReferenceLevelDbm,
+                SequenceNumber, AcquiredUtc, Source)
+            {
+                HasPhase = hasPhase,
+                AverageCount = averageCount,
+            };
+        }
 
         /// <summary>Number of displayed frequency points.</summary>
         public int PointCount => _complex.Length / 2;
