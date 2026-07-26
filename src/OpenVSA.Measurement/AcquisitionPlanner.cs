@@ -265,6 +265,182 @@ namespace OpenVSA.Measurement
                 window, automatic: true, coercions: coercions);
         }
 
+        /// <summary>
+        /// Plans an acquisition from a requested main time length, clamping with guidance
+        /// (<c>REQ-ACQ-002</c>).
+        /// </summary>
+        /// <param name="capabilities">What the front end can do.</param>
+        /// <param name="centerFrequencyHz">Centre frequency, in hertz.</param>
+        /// <param name="spanHz">Span, in hertz.</param>
+        /// <param name="mainTimeSeconds">Requested main time length, in seconds; must be positive.</param>
+        /// <param name="referenceLevelDbm">Reference level, in dBm.</param>
+        /// <param name="path">Which acquisition path.</param>
+        /// <param name="window">Analysis window.</param>
+        /// <returns>The plan, carrying a coercion when the request had to be clamped.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="capabilities"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="mainTimeSeconds"/> is not positive.</exception>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-ACQ-001</c> makes main time <c>(N_f − 1)/Span</c>, so a longer record is bought
+        /// either with more frequency points or with less span. A request beyond what the front end
+        /// can hold is clamped — but <c>REQ-ACQ-002</c> is explicit that a bare error is not
+        /// enough: the coercion names <strong>both</strong> remedies and the numbers each would
+        /// need.
+        /// </para>
+        /// <para>
+        /// The reason it names both is that either may be the wrong one. Narrowing the span
+        /// discards signal the user may have been looking at; raising the point count costs
+        /// acquisition time and memory. Which trade is acceptable is the user's to make, and they
+        /// cannot make it from a message that says only "too long".
+        /// </para>
+        /// </remarks>
+        public static PlannedAcquisition PlanForMainTime(
+            IFrontEndCapabilities capabilities,
+            double centerFrequencyHz,
+            double spanHz,
+            double mainTimeSeconds,
+            double referenceLevelDbm,
+            AnalysisPath path,
+            WindowType window = Window.Default)
+        {
+            if (capabilities == null)
+            {
+                throw new ArgumentNullException(nameof(capabilities));
+            }
+
+            if (!(mainTimeSeconds > 0.0) || double.IsInfinity(mainTimeSeconds))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(mainTimeSeconds), mainTimeSeconds,
+                    "A main time length must be positive and finite.");
+            }
+
+            // T = (N_f - 1) / Span, so N_f = T*Span + 1.
+            double wantedIntervals = mainTimeSeconds * spanHz;
+            int wanted = SmallestCountCovering(wantedIntervals);
+
+            if (wanted == 0)
+            {
+                wanted = FrequencyPoints.Maximum;
+            }
+
+            int available = MaximumPointsFor(capabilities, path);
+            var coercions = new List<ParameterCoercion>();
+
+            if (wanted > available && available > 1)
+            {
+                double honoured = (available - 1) / spanHz;
+
+                coercions.Add(new ParameterCoercion(
+                    "MainTimeLength",
+                    mainTimeSeconds,
+                    honoured,
+                    Remedies(mainTimeSeconds, spanHz, available)));
+
+                wanted = available;
+            }
+
+            return Build(
+                capabilities, centerFrequencyHz, spanHz, wanted, referenceLevelDbm, path,
+                window, automatic: false, coercions: coercions);
+        }
+
+        /// <summary>
+        /// The two remedies for a clamped main time, with the numbers each would need
+        /// (<c>REQ-ACQ-002</c>).
+        /// </summary>
+        /// <param name="wantedSeconds">The main time length asked for.</param>
+        /// <param name="spanHz">The span in force.</param>
+        /// <param name="availablePoints">The most points this front end can deliver.</param>
+        /// <exception cref="ArgumentOutOfRangeException">A value is out of range.</exception>
+        /// <remarks>
+        /// Public because the same sentence belongs in the settings pane's message and in the
+        /// coercion carried out of the planner, and two copies of it would drift.
+        /// </remarks>
+        public static string Remedies(double wantedSeconds, double spanHz, int availablePoints)
+        {
+            if (!(wantedSeconds > 0.0))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(wantedSeconds), wantedSeconds, "A main time length must be positive.");
+            }
+
+            if (!(spanHz > 0.0))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(spanHz), spanHz, "A span must be positive.");
+            }
+
+            if (availablePoints < 2)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(availablePoints), availablePoints,
+                    "A main time length needs at least two frequency points.");
+            }
+
+            double honoured = (availablePoints - 1) / spanHz;
+
+            // Narrower span, at the point count actually available.
+            double neededSpan = (availablePoints - 1) / wantedSeconds;
+
+            // More points, at the span actually set. Rounded up to an available count, because a
+            // remedy the user cannot select is not a remedy.
+            int neededPoints = SmallestCountCovering(wantedSeconds * spanHz);
+
+            string points = neededPoints == 0
+                ? "increase the frequency points beyond " +
+                  FrequencyPoints.Maximum.ToString(CultureInfo.CurrentCulture) +
+                  ", which is more than the maximum"
+                : "increase the frequency points to " +
+                  neededPoints.ToString(CultureInfo.CurrentCulture);
+
+            return
+                "Main time is limited to " + Seconds(honoured) + " by " +
+                availablePoints.ToString(CultureInfo.CurrentCulture) +
+                " frequency points over a span of " + Hertz(spanHz) + ". To reach " +
+                Seconds(wantedSeconds) + ", either reduce the span to " + Hertz(neededSpan) +
+                ", or " + points + ".";
+        }
+
+        private static string Seconds(double value)
+        {
+            double magnitude = Math.Abs(value);
+
+            if (magnitude >= 1.0)
+            {
+                return value.ToString("0.###", CultureInfo.CurrentCulture) + " s";
+            }
+
+            if (magnitude >= 1e-3)
+            {
+                return (value * 1e3).ToString("0.###", CultureInfo.CurrentCulture) + " ms";
+            }
+
+            if (magnitude >= 1e-6)
+            {
+                return (value * 1e6).ToString("0.###", CultureInfo.CurrentCulture) + " us";
+            }
+
+            return (value * 1e9).ToString("0.###", CultureInfo.CurrentCulture) + " ns";
+        }
+
+        private static string Hertz(double value)
+        {
+            double magnitude = Math.Abs(value);
+
+            if (magnitude >= 1e6)
+            {
+                return (value / 1e6).ToString("0.###", CultureInfo.CurrentCulture) + " MHz";
+            }
+
+            if (magnitude >= 1e3)
+            {
+                return (value / 1e3).ToString("0.###", CultureInfo.CurrentCulture) + " kHz";
+            }
+
+            return value.ToString("0.###", CultureInfo.CurrentCulture) + " Hz";
+        }
+
         /// <summary>Length at which a window's ENBW is evaluated before the transform size is known.</summary>
         private const int EnbwReferenceLength = 4096;
 

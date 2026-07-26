@@ -519,7 +519,12 @@ namespace OpenVSA.Hal.Visa
                 fullScaleVolts: 1.0,
                 referenceLevelDbm: _plan.ReferenceLevelDbm,
                 sequenceNumber: _sequenceNumber++,
-                acquiredUtc: DateTime.UtcNow,
+                // REQ-ACQ-010: a monotonic clock, not DateTime.UtcNow, whose granularity is
+                // longer than a block. Each transfer is a separate arm-and-read over the bus,
+                // so the timeline is placed by the clock per block rather than counted on from
+                // the last - there is a real gap between them and claiming otherwise would be
+                // a fiction.
+                acquiredUtc: AcquisitionClock.UtcNow,
                 triggerOffsetSeconds: 0.0,
 
                 // No trigger is applied, so there is no trigger delay to correct for and nothing
