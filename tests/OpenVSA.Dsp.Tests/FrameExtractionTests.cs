@@ -131,6 +131,44 @@ namespace OpenVSA.Dsp.Tests
         }
 
         [Fact]
+        public void EveryFrameAgreesOnWhenTheTriggerHappened()
+        {
+            // The frames are cuts of one acquisition, so they cannot disagree about when its
+            // trigger was. The timestamp advances and the offset shrinks by the same amount: move
+            // one without the other and the trigger appears to walk backwards frame by frame.
+            using (IqBlock block = Ramp(1000))
+            {
+                List<IqBlock> frames = FrameExtraction.Extract(block, 500, 0.5).ToList();
+
+                try
+                {
+                    DateTime expected = BlockTimeline.TriggerInstant(
+                        block.AcquiredUtc, block.TriggerOffsetSeconds);
+
+                    for (int f = 0; f < frames.Count; f++)
+                    {
+                        Assert.True(
+                            frames[f].AcquiredUtc >= block.AcquiredUtc,
+                            "frame " + f + " starts before the block it was cut from.");
+                        DateTime actual = BlockTimeline.TriggerInstant(
+                            frames[f].AcquiredUtc, frames[f].TriggerOffsetSeconds);
+
+                        // To the tick, which is the resolution the two halves are rounded at -
+                        // the defect this guards against moves the instant by 195 of them.
+                        Assert.True(
+                            Math.Abs((actual - expected).Ticks) <= 1,
+                            "frame " + f + " puts the trigger " + (actual - expected).Ticks +
+                            " ticks from where the block does.");
+                    }
+                }
+                finally
+                {
+                    frames.ForEach(f => f.Dispose());
+                }
+            }
+        }
+
+        [Fact]
         public void ARecordShorterThanOneFrameYieldsNothing()
         {
             Assert.Equal(0, FrameExtraction.FrameCount(99, 100, 0.5));

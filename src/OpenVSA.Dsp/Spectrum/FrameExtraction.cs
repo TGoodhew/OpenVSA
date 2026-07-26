@@ -116,6 +116,7 @@ namespace OpenVSA.Dsp.Spectrum
             for (int f = 0; f < frames; f++)
             {
                 int first = f * advance;
+                double advanceSeconds = first / block.SampleRateHz;
 
                 var metadata = new IqBlockMetadata(
                     sampleCount: recordSamples,
@@ -128,8 +129,15 @@ namespace OpenVSA.Dsp.Spectrum
                     // Each frame is its own acquisition as far as everything downstream is
                     // concerned, so it carries its own place in the sequence.
                     sequenceNumber: block.SequenceNumber + f,
-                    acquiredUtc: block.AcquiredUtc,
-                    triggerOffsetSeconds: block.TriggerOffsetSeconds - first / block.SampleRateHz,
+
+                    // The timestamp is the first sample and the trigger lies TriggerOffsetSeconds
+                    // after it (REQ-ACQ-010), so a frame that starts later carries a later
+                    // timestamp and a correspondingly smaller offset. Moving only the offset would
+                    // leave every frame reporting the trigger at a different instant from the
+                    // block it was cut from, and from the frame before it.
+                    acquiredUtc: block.AcquiredUtc.AddTicks(
+                        (long)Math.Round(advanceSeconds * TimeSpan.TicksPerSecond)),
+                    triggerOffsetSeconds: block.TriggerOffsetSeconds - advanceSeconds,
                     triggerCorrectionsApplied: block.TriggerCorrectionsApplied,
                     source: block.Source,
                     extended: block.Extended);
