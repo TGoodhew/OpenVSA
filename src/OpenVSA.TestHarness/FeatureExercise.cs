@@ -569,6 +569,50 @@ namespace OpenVSA.TestHarness
                     ", each with a reason");
             });
 
+            Step("REQ-TRG-001", "A steady carrier above the level triggers at all", () =>
+            {
+                // The regression step for the defect this exercise found. Half the peak envelope
+                // is a level a continuous carrier sits above from the first sample and never
+                // approaches from below, so a strict edge search finds nothing and the analyser
+                // waits for ever on a signal that plainly satisfies the condition.
+                //
+                // Kept separate from the step below deliberately: that one uses the mean envelope,
+                // which a real carrier's noise crosses hundreds of times, and would therefore pass
+                // whether or not this defect were fixed.
+                double peakVolts = PeakMagnitude(block);
+
+                if (!(peakVolts > 0.0))
+                {
+                    return Failed<int>("the block is silent, so nothing can trigger on it");
+                }
+
+                var settings = new TriggerSettings(
+                    TriggerStyle.Level, levelVolts: peakVolts * 0.5);
+
+                IReadOnlyList<int> instants = TriggerSearch.Instants(block, settings);
+
+                double startVolts = Math.Sqrt(block.GetSample(0).MagnitudeSquared);
+                bool startsAbove = startVolts > peakVolts * 0.5;
+
+                if (!startsAbove)
+                {
+                    return Failed<int>(
+                        "the block does not start above half its peak envelope, so this step " +
+                        "is not exercising the case it exists for");
+                }
+
+                bool ok = instants.Count > 0 && instants[0] == 0;
+
+                return new Outcome<int>(
+                    ok, instants.Count,
+                    "record starts at " +
+                    (startVolts * 1e3).ToString("0.000", CultureInfo.CurrentCulture) +
+                    " mV against a level of " +
+                    (peakVolts * 0.5 * 1e3).ToString("0.000", CultureInfo.CurrentCulture) +
+                    " mV: " + instants.Count + " trigger(s), first at sample " +
+                    (instants.Count > 0 ? instants[0].ToString(CultureInfo.CurrentCulture) : "none"));
+            });
+
             Step("REQ-TRG-002", "A level trigger fires on the real block, with pre-trigger", () =>
             {
                 // A carrier's envelope wobbles about its mean, so the mean is a level the real
@@ -866,6 +910,23 @@ namespace OpenVSA.TestHarness
             }
 
             return kept;
+        }
+
+        private static double PeakMagnitude(IqBlock block)
+        {
+            double peak = 0.0;
+
+            for (int n = 0; n < block.SampleCount; n++)
+            {
+                double magnitudeSquared = block.GetSample(n).MagnitudeSquared;
+
+                if (magnitudeSquared > peak)
+                {
+                    peak = magnitudeSquared;
+                }
+            }
+
+            return Math.Sqrt(peak);
         }
 
         private static int Triggers(
