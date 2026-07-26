@@ -28,6 +28,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/OpenVSA.Architecture.Tests/OpenVSA.Architecture.Tests.csproj" />
     <Project Path="tests/OpenVSA.Core.Tests/OpenVSA.Core.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Capture.Tests/OpenVSA.Capture.Tests.csproj" />
     <Project Path="tests/OpenVSA.Dsp.Tests/OpenVSA.Dsp.Tests.csproj" />
     <Project Path="tests/OpenVSA.Demod.Tests/OpenVSA.Demod.Tests.csproj" />
     <Project Path="tests/OpenVSA.Hal.Tests/OpenVSA.Hal.Tests.csproj" />

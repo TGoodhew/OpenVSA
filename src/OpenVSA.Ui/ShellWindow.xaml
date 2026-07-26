@@ -130,6 +130,8 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Centre" Margin="0,4,8,4"
@@ -171,7 +173,20 @@
                     <TextBlock Grid.Row="10" Grid.Column="1" x:Name="ResolutionBandwidthNote" FontSize="10"
                                Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
 
-                    <StackPanel Grid.Row="11" Grid.Column="1" Orientation="Vertical">
+                    <!--
+                        REQ-TRG-001: the styles offered are exactly the ones the connected front
+                        end declares. The rest stay in the list, greyed, with a tooltip saying why
+                        - a style that simply vanished would leave the user wondering whether the
+                        software has one at all.
+                    -->
+                    <TextBlock Grid.Row="11" Grid.Column="0" Text="Trigger" Margin="0,4,8,4"
+                               VerticalAlignment="Center" />
+                    <ComboBox Grid.Row="11" Grid.Column="1" x:Name="TriggerBox" Margin="0,4" AutomationProperties.AutomationId="Trigger"
+                              SelectionChanged="OnTriggerSelectionChanged" />
+                    <TextBlock Grid.Row="12" Grid.Column="1" x:Name="TriggerNote" FontSize="10"
+                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+                    <StackPanel Grid.Row="13" Grid.Column="1" Orientation="Vertical">
                         <Button x:Name="ApplyButton" AutomationProperties.AutomationId="Apply" Content="_Apply" Click="OnApplySettings"
                                 Padding="12,3" HorizontalAlignment="Left" />
                         <TextBlock x:Name="SettingsMessage" Margin="0,8,0,0" TextWrapping="Wrap"

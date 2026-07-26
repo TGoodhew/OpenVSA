@@ -960,6 +960,20 @@ namespace OpenVSA.Hal.Visa
             public bool SupportsExternalRef => true;
 
             /// <summary>
+            /// False: this transport fetches one record at a time over the bus.
+            /// </summary>
+            /// <remarks>
+            /// Whatever the instrument does internally, the analysis here sees a record, a gap
+            /// while it is transferred, and then another record — so the mask of
+            /// <c>REQ-TRG-001</c> cannot be tested against every transform, and the style is
+            /// declared unsupported rather than offered and silently missing transients.
+            /// </remarks>
+            public bool SupportsRealTimeAnalysis => false;
+
+            /// <summary>Zero: pre-trigger from capture memory is not exposed over this interface.</summary>
+            public long MaxPreTriggerSamples => 0L;
+
+            /// <summary>
             /// The sample rate this instrument would use for a bandwidth, estimated from the
             /// aperture measured at connect.
             /// </summary>
