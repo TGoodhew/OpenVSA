@@ -126,6 +126,46 @@ namespace OpenVSA.Ui
             return (seconds * 1e9).ToString("0.###", CultureInfo.CurrentCulture) + " ns";
         }
 
+        /// <summary>
+        /// Formats a readout value, rendering the non-finite ones as <c>REQ-UI-032</c> requires.
+        /// </summary>
+        /// <param name="value">The value.</param>
+        /// <param name="format">Numeric format for a finite value.</param>
+        /// <returns><c>NAN</c>, <c>INF</c>, <c>-INF</c>, or the formatted number.</returns>
+        /// <remarks>
+        /// <para>
+        /// The literals are the requirement's, not the framework's: .NET renders these as
+        /// <c>NaN</c> and <c>∞</c>, and under some cultures as <c>NeuN</c> — none of which is what
+        /// the reference product shows, and the last of which is not even recognisable. So the
+        /// three cases are written out rather than left to <see cref="double.ToString()"/>.
+        /// </para>
+        /// <para>
+        /// <strong>Negative overflow keeps its sign</strong>, where the specification writes only
+        /// <c>INF</c>. A level readout underflowing to minus infinity — an empty bin, or the
+        /// logarithm of zero — is a different and commoner situation than a positive overflow, and
+        /// rendering the two identically would lose the only part of the answer there is.
+        /// </para>
+        /// </remarks>
+        public static string Readout(double value, string format = "0.000")
+        {
+            if (double.IsNaN(value))
+            {
+                return "NAN";
+            }
+
+            if (double.IsPositiveInfinity(value))
+            {
+                return "INF";
+            }
+
+            if (double.IsNegativeInfinity(value))
+            {
+                return "-INF";
+            }
+
+            return value.ToString(format, CultureInfo.CurrentCulture);
+        }
+
         private static bool TryParseQuantity(string text, string unit, out double value)
         {
             value = 0.0;

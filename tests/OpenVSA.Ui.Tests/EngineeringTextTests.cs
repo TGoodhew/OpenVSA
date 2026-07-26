@@ -109,5 +109,27 @@ namespace OpenVSA.Ui.Tests
         {
             Assert.Equal(expected, EngineeringText.Time(seconds));
         }
+
+        [Fact]
+        public void InvalidAndOverflowingReadoutsRenderTheLiteralsTheSpecificationNames()
+        {
+            // REQ-UI-032, asserted as exact strings: the framework would render these as "NaN" and
+            // the infinity sign, and under some cultures as "NeuN", none of which is what a user of
+            // the reference product sees.
+            Assert.Equal("NAN", EngineeringText.Readout(double.NaN));
+            Assert.Equal("INF", EngineeringText.Readout(double.PositiveInfinity));
+
+            // Negative overflow keeps its sign, which the specification does not say and a level
+            // readout cannot do without: an empty bin underflows to minus infinity, and rendering
+            // that as "INF" would lose the whole of the answer.
+            Assert.Equal("-INF", EngineeringText.Readout(double.NegativeInfinity));
+        }
+
+        [Fact]
+        public void AFiniteReadoutIsJustTheNumber()
+        {
+            Assert.Equal("-42.500", EngineeringText.Readout(-42.5));
+            Assert.Equal("-42.5", EngineeringText.Readout(-42.5, "0.0"));
+        }
     }
 }
