@@ -45,6 +45,8 @@ namespace OpenVSA.Measurement
         private Task _pump;
         private long _framesComputed;
         private double _measuredUpdatesPerSecond;
+        private double _overlap;
+        private int _recordSamples;
         private bool _disposed;
 
         /// <summary>Creates an engine over a front end.</summary>
@@ -102,6 +104,66 @@ namespace OpenVSA.Measurement
         /// Upper bound on the frame rate, in updates per second. Zero or negative means unbounded.
         /// </summary>
         public double TargetUpdatesPerSecond { get; set; } = 60.0;
+
+        /// <summary>
+        /// Overlap between successive analysis frames cut from one acquired block
+        /// (<c>REQ-ACQ-003</c>), from 0 to <see cref="FrameExtraction.MaximumOverlap"/>.
+        /// </summary>
+        /// <remarks>
+        /// Zero — the default — analyses each block once, which is the only thing a block sized to
+        /// exactly one record can do. Overlap is worth setting when the front end returns more
+        /// samples than the analysis needs: the surplus is then time resolution that would
+        /// otherwise be thrown away at the window's tapered edges.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The value is outside the permitted range.</exception>
+        public double Overlap
+        {
+            get { return _overlap; }
+
+            set
+            {
+                // Validated through the extractor rather than here, so there is one statement of
+                // what a legal overlap is.
+                FrameExtraction.Advance(1, value);
+                _overlap = value;
+            }
+        }
+
+        /// <summary>
+        /// Analysed record length, in samples, or 0 to analyse each block whole.
+        /// </summary>
+        /// <remarks>
+        /// Separate from the block length because <c>REQ-ACQ-003</c> defines the frame advance on
+        /// the record, and a block long enough to overlap within is by definition longer than the
+        /// record it is cut into.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">The value is negative.</exception>
+        public int RecordSamples
+        {
+            get { return _recordSamples; }
+
+            set
+            {
+                if (value < 0)
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value), value, "A record length cannot be negative.");
+                }
+
+                _recordSamples = value;
+            }
+        }
+
+        /// <summary>
+        /// Averaging applied to every computed frame, or <c>null</c> for none
+        /// (<c>REQ-DSP-030</c>).
+        /// </summary>
+        /// <remarks>
+        /// Held here rather than downstream because the effective average count of
+        /// <c>REQ-DSP-031</c> depends on how the frames were cut, which is something only the pump
+        /// knows: it tells the averager the overlap and record length it used.
+        /// </remarks>
+        public TraceAverager Averager { get; set; }
 
         /// <summary>
         /// Connects, negotiates, configures, arms and starts pumping.
@@ -216,19 +278,9 @@ namespace OpenVSA.Measurement
                         return;
                     }
 
-                    SpectrumFrame frame;
                     using (block)
                     {
-                        frame = _computer.Compute(block);
-                    }
-
-                    Interlocked.Increment(ref _framesComputed);
-                    UpdateRate(clock, ref previousTicks);
-
-                    EventHandler<SpectrumFrame> handler = FrameComputed;
-                    if (handler != null)
-                    {
-                        handler(this, frame);
+                        AnalyseAndPublish(block, clock, ref previousTicks);
                     }
 
                     await PaceAsync(clock, ct).ConfigureAwait(false);
@@ -247,6 +299,58 @@ namespace OpenVSA.Measurement
                 }
 
                 handler(this, e);
+            }
+        }
+
+        /// <summary>
+        /// Turns one acquired block into one or more published frames.
+        /// </summary>
+        /// <remarks>
+        /// The unoverlapped whole-block case is kept distinct rather than expressed as a
+        /// degenerate extraction, because extracting would copy the block — at 2²⁰ points, 8 MB
+        /// per acquisition to produce the frame the block already was.
+        /// </remarks>
+        private void AnalyseAndPublish(IqBlock block, Stopwatch clock, ref long previousTicks)
+        {
+            int record = _recordSamples > 0 ? _recordSamples : block.SampleCount;
+
+            if (_overlap <= 0.0 && record >= block.SampleCount)
+            {
+                Publish(_computer.Compute(block), record, clock, ref previousTicks);
+                return;
+            }
+
+            foreach (IqBlock cut in FrameExtraction.Extract(block, record, _overlap))
+            {
+                using (cut)
+                {
+                    Publish(_computer.Compute(cut), record, clock, ref previousTicks);
+                }
+            }
+        }
+
+        private void Publish(
+            SpectrumFrame frame, int recordSamples, Stopwatch clock, ref long previousTicks)
+        {
+            TraceAverager averager = Averager;
+
+            if (averager != null)
+            {
+                // The averager cannot know how the frames were cut, and REQ-DSP-031's effective
+                // count depends on exactly that, so the pump tells it.
+                averager.Overlap = _overlap;
+                averager.RecordSamples = recordSamples;
+
+                frame = averager.Accumulate(frame);
+            }
+
+            Interlocked.Increment(ref _framesComputed);
+            UpdateRate(clock, ref previousTicks);
+
+            EventHandler<SpectrumFrame> handler = FrameComputed;
+            if (handler != null)
+            {
+                handler(this, frame);
             }
         }
 

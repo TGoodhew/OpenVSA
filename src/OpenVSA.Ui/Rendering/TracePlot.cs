@@ -445,6 +445,44 @@ namespace OpenVSA.Ui.Rendering
             }
         }
 
+        /// <summary>
+        /// The averaging part of the annotation: how many acquisitions, and what they are worth
+        /// (<c>REQ-DSP-031</c>).
+        /// </summary>
+        /// <remarks>
+        /// The effective figure is shown only when it differs from the count, which is exactly when
+        /// the frames were overlapped. Printing "12 (12 eff)" on every unoverlapped measurement
+        /// would train the reader to ignore the parenthesis, and the parenthesis is the whole
+        /// point: it is the number a confidence statement about the trace has to be made from.
+        /// </remarks>
+        /// <param name="frame">The frame being annotated.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
+        public static string AveragingNote(SpectrumFrame frame)
+        {
+            if (frame == null)
+            {
+                throw new ArgumentNullException(nameof(frame));
+            }
+
+            if (frame.AverageCount <= 1)
+            {
+                return string.Empty;
+            }
+
+            string note = "   Avg " + frame.AverageCount.ToString(CultureInfo.CurrentCulture);
+
+            // A tenth of an average is below what anyone reads off a display, so a difference
+            // smaller than that is rounding rather than correlation.
+            if (frame.AverageCount - frame.EffectiveAverageCount < 0.1)
+            {
+                return note;
+            }
+
+            return note + " (" +
+                frame.EffectiveAverageCount.ToString("0.0", CultureInfo.CurrentCulture) +
+                " eff)";
+        }
+
         private void UpdateAnnotation(SpectrumFrame frame)
         {
             _levelText.Text =
@@ -457,7 +495,7 @@ namespace OpenVSA.Ui.Rendering
                 WindowText.Describe(frame.Window) + "   " +
                 frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts" +
                 Environment.NewLine +
-                "RBW " + Frequency(frame.ResolutionBandwidthHz);
+                "RBW " + Frequency(frame.ResolutionBandwidthHz) + AveragingNote(frame);
 
             _spanText.Text =
                 "Center " + Frequency(frame.CenterFrequencyHz) +

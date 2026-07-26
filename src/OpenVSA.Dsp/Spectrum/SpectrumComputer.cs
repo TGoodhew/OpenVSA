@@ -216,6 +216,8 @@ namespace OpenVSA.Dsp.Spectrum
         /// </summary>
         /// <param name="transformLength">The transform length the block actually gave.</param>
         /// <param name="path">The acquisition path the block came from.</param>
+        /// <param name="usableBandwidthHz">The alias-free bandwidth the block declares, or 0.</param>
+        /// <param name="binWidthHz">The bin width, in hertz.</param>
         /// <remarks>
         /// A block too short for an available point count is shown whole. Trimming it to an
         /// unavailable count would put a point count on screen that no setting could have asked

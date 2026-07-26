@@ -56,26 +56,44 @@ namespace OpenVSA.Measurement.Tests
         {
             // REQ-NFR-010: the dispatcher performs no DSP. The pump must therefore not run inline
             // on its starter, which is exactly what would happen with a synchronous front end and
-            // no Task.Run.
+            // no Task.Run - the fake here completes every acquisition synchronously, so each await
+            // in the pump would continue on the caller.
+            //
+            // Stated by holding a frame rather than by comparing thread identifiers. The thread
+            // pool recycles threads, so once the test body has awaited and released its thread the
+            // pump may legitimately land on that very thread; an identity comparison therefore
+            // fails occasionally on correct code, which is worse than not testing it. Blocking
+            // inside the handler admits no such ambiguity: if the pump were running on the caller,
+            // StartAsync could not return while a handler was still inside it.
             using (var frontEnd = new FakeFrontEnd())
             using (var engine = new SpectrumEngine(frontEnd, null))
             {
-                int startingThread = Thread.CurrentThread.ManagedThreadId;
-                int pumpThread = startingThread;
-                var arrived = new ManualResetEventSlim();
+                var held = new ManualResetEventSlim();
+                var release = new ManualResetEventSlim();
 
                 engine.TargetUpdatesPerSecond = 0.0;
                 engine.FrameComputed += (sender, frame) =>
                 {
-                    pumpThread = Thread.CurrentThread.ManagedThreadId;
-                    arrived.Set();
+                    held.Set();
+                    release.Wait(Patience);
                 };
 
-                await engine.StartAsync(Request, CancellationToken.None);
-                Assert.True(arrived.Wait(Patience));
+                Task<AcquisitionPlan> start = engine.StartAsync(Request, CancellationToken.None);
+
+                Assert.True(held.Wait(Patience), "No frame was computed within " + Patience + ".");
+
+                // Timed rather than simply awaited, so that a pump running on the caller shows up
+                // as a failure with a reason rather than as a test run that never finishes.
+                Task first = await Task.WhenAny(start, Task.Delay(Patience));
+                release.Set();
+
+                await start;
                 await engine.StopAsync();
 
-                Assert.NotEqual(startingThread, pumpThread);
+                Assert.True(
+                    ReferenceEquals(first, start),
+                    "StartAsync had not returned while a frame handler was still running, so the " +
+                    "pump was executing on the calling thread.");
             }
         }
 
@@ -234,6 +252,125 @@ namespace OpenVSA.Measurement.Tests
         public void ItRefusesAFrontEndOfNull()
         {
             Assert.Throws<ArgumentNullException>(() => new SpectrumEngine(null, null));
+        }
+
+        [Fact]
+        public async Task OverlapCutsSeveralAnalysisFramesFromOneAcquiredBlock()
+        {
+            // REQ-ACQ-003 through the pump. A 4096-sample block cut into 1024-sample records at
+            // half overlap yields seven frames; without overlap it would yield one, because the
+            // engine analyses a block whole by default.
+            List<SpectrumFrame> frames = await Collect(engine =>
+            {
+                engine.RecordSamples = 1024;
+                engine.Overlap = 0.5;
+            });
+
+            Assert.Equal(7, frames.Count);
+        }
+
+        [Fact]
+        public async Task WithoutOverlapABlockIsOneFrame()
+        {
+            // The default path, unchanged: the block is the record and there is nothing to cut.
+            List<SpectrumFrame> frames = await Collect(engine => { });
+
+            Assert.Single(frames);
+        }
+
+        [Fact]
+        public async Task AnAverageOfOverlappedFramesIsWorthLessThanItsCount()
+        {
+            // REQ-DSP-031 through the pump. Seven overlapped frames are seven acquisitions but not
+            // seven independent ones, and the frame has to say so - a display that showed the raw
+            // count would overstate the confidence of the measurement.
+            List<SpectrumFrame> frames = await Collect(engine =>
+            {
+                engine.RecordSamples = 1024;
+                engine.Overlap = 0.75;
+                engine.Averager = new TraceAverager(AveragingType.RmsVideo, 100);
+            });
+
+            SpectrumFrame last = frames[frames.Count - 1];
+
+            Assert.Equal(frames.Count, last.AverageCount);
+            Assert.True(
+                last.EffectiveAverageCount < last.AverageCount,
+                last.AverageCount + " overlapped frames were reported as worth " +
+                last.EffectiveAverageCount.ToString("F2") + " independent averages.");
+        }
+
+        [Fact]
+        public async Task AnAverageOfIndependentAcquisitionsIsWorthItsCount()
+        {
+            // The other half of the same requirement, and what makes the test above meaningful:
+            // separate acquisitions share no samples, so the effective count is the plain one.
+            List<SpectrumFrame> frames = await Collect(
+                engine => engine.Averager = new TraceAverager(AveragingType.RmsVideo, 100),
+                blocks: 4);
+
+            SpectrumFrame last = frames[frames.Count - 1];
+
+            Assert.Equal(4, last.AverageCount);
+            Assert.Equal(4.0, last.EffectiveAverageCount, 10);
+        }
+
+        [Fact]
+        public void TheOverlapAndRecordLengthAreValidated()
+        {
+            using (var frontEnd = new FakeFrontEnd())
+            using (var engine = new SpectrumEngine(frontEnd, null))
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(() => engine.Overlap = 1.0);
+                Assert.Throws<ArgumentOutOfRangeException>(() => engine.Overlap = -0.1);
+                Assert.Throws<ArgumentOutOfRangeException>(() => engine.RecordSamples = -1);
+
+                engine.Overlap = 0.9999;
+                engine.RecordSamples = 0;
+            }
+        }
+
+        /// <summary>Runs the pump over a fixed number of blocks and returns every frame published.</summary>
+        private static async Task<List<SpectrumFrame>> Collect(
+            Action<SpectrumEngine> configure, int blocks = 1)
+        {
+            using (var frontEnd = new FakeFrontEnd { BlocksBeforeEnd = blocks })
+            using (var engine = new SpectrumEngine(frontEnd, null))
+            {
+                var frames = new List<SpectrumFrame>();
+                var completed = new ManualResetEventSlim();
+                Exception failure = null;
+
+                engine.TargetUpdatesPerSecond = 0.0;
+                configure(engine);
+
+                engine.FrameComputed += (sender, frame) =>
+                {
+                    lock (frames)
+                    {
+                        frames.Add(frame);
+                    }
+                };
+
+                engine.Faulted += (sender, e) =>
+                {
+                    failure = e;
+                    completed.Set();
+                };
+
+                engine.Completed += (sender, e) => completed.Set();
+
+                await engine.StartAsync(Request, CancellationToken.None);
+                Assert.True(completed.Wait(Patience), "The source never ended.");
+                await engine.StopAsync();
+
+                Assert.Null(failure);
+
+                lock (frames)
+                {
+                    return new List<SpectrumFrame>(frames);
+                }
+            }
         }
 
         /// <summary>

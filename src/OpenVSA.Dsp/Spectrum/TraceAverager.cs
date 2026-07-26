@@ -90,6 +90,26 @@ namespace OpenVSA.Dsp.Spectrum
         public int Completed { get; private set; }
 
         /// <summary>
+        /// Overlap fraction the accumulated frames were cut at, if they came from one record
+        /// (<c>REQ-ACQ-003</c>).
+        /// </summary>
+        /// <remarks>
+        /// Zero — the default — means the acquisitions were independent, which is the case for
+        /// frames that arrived as separate acquisitions.
+        /// </remarks>
+        public double Overlap { get; set; }
+
+        /// <summary>
+        /// Analysed record length, in samples, that <see cref="Overlap"/> refers to.
+        /// </summary>
+        /// <remarks>
+        /// Taken rather than derived. The transform length is recoverable from a frame but the
+        /// record length is not, and <c>REQ-ACQ-003</c> is explicit that the two are different
+        /// quantities and that overlap is defined on the record.
+        /// </remarks>
+        public int RecordSamples { get; set; }
+
+        /// <summary>
         /// Whether a linear (non-exponential) average has reached its count.
         /// </summary>
         /// <remarks>
@@ -284,7 +304,27 @@ namespace OpenVSA.Dsp.Spectrum
                 }
             }
 
-            return latest.WithComplex(complex, ProducesPhase, Completed);
+            return latest.WithComplex(
+                complex, ProducesPhase, Completed, EffectiveCountFor(latest));
+        }
+
+        /// <summary>
+        /// How many independent averages the accumulation is worth (<c>REQ-DSP-031</c>).
+        /// </summary>
+        /// <remarks>
+        /// The window comes from the frame rather than from a setting here, because the frame is
+        /// the record of what the computation actually used; a figure derived from a window the
+        /// averager merely believed was in force would be wrong in exactly the case where someone
+        /// changed it.
+        /// </remarks>
+        private double EffectiveCountFor(SpectrumFrame latest)
+        {
+            if (Overlap <= 0.0 || RecordSamples < 1)
+            {
+                return Completed;
+            }
+
+            return EffectiveAverages.Compute(Completed, RecordSamples, Overlap, latest.Window);
         }
     }
 }

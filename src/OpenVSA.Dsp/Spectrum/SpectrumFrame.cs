@@ -285,11 +285,24 @@ namespace OpenVSA.Dsp.Spectrum
         public int AverageCount { get; private set; } = 1;
 
         /// <summary>
+        /// Independent averages this frame is worth (<c>REQ-DSP-031</c>).
+        /// </summary>
+        /// <remarks>
+        /// Equal to <see cref="AverageCount"/> when the acquisitions were independent, and strictly
+        /// less when they were cut from one record with overlap — overlapping frames share samples,
+        /// so they are correlated and reduce variance by less than their number. This is the figure
+        /// a confidence statement about a noise measurement has to be made from; the raw count
+        /// would overstate it by exactly what the overlap bought in time resolution.
+        /// </remarks>
+        public double EffectiveAverageCount { get; private set; } = 1.0;
+
+        /// <summary>
         /// Returns a copy carrying different complex values, keeping this frame's axis.
         /// </summary>
         /// <param name="complex">Interleaved real, imaginary values in volts; ownership passes here.</param>
         /// <param name="hasPhase">Whether the new values carry phase.</param>
         /// <param name="averageCount">Acquisitions the new values represent.</param>
+        /// <param name="effectiveAverageCount">Independent averages they are worth.</param>
         /// <exception cref="ArgumentNullException"><paramref name="complex"/> is null.</exception>
         /// <exception cref="ArgumentException">The length does not match this frame's point count.</exception>
         /// <remarks>
@@ -297,7 +310,8 @@ namespace OpenVSA.Dsp.Spectrum
         /// because it takes ownership of the array, which cannot be enforced — the same reasoning
         /// as <see cref="Adopt"/>.
         /// </remarks>
-        internal SpectrumFrame WithComplex(float[] complex, bool hasPhase, int averageCount)
+        internal SpectrumFrame WithComplex(
+            float[] complex, bool hasPhase, int averageCount, double effectiveAverageCount)
         {
             if (complex == null)
             {
@@ -319,6 +333,7 @@ namespace OpenVSA.Dsp.Spectrum
             {
                 HasPhase = hasPhase,
                 AverageCount = averageCount,
+                EffectiveAverageCount = effectiveAverageCount,
             };
         }
 
