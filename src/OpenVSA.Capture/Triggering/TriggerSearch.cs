@@ -218,9 +218,26 @@ namespace OpenVSA.Capture.Triggering
         /// Level crossings, with hold-off applied.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A crossing, not a level: the signal must have been on the other side of the threshold at
         /// the previous sample. Firing on "above the level" instead would re-trigger on every sample
         /// of a burst, which is not a trigger but a sample counter.
+        /// </para>
+        /// <para>
+        /// <strong>A record that starts already above the level triggers at its first
+        /// sample.</strong> Found by exercising this against a real acquisition: a steady carrier
+        /// well above the trigger level never crosses anything, so a strict edge search returned no
+        /// triggers at all — an analyser that sat in "waiting for trigger" while plainly receiving
+        /// a signal that satisfies the condition. <c>REQ-TRG-001</c> calls this a <em>level</em>
+        /// trigger, and the level is met from the first sample; the acquisition was not armed
+        /// before that sample, so entering the record already above the level <em>is</em> the
+        /// transition.
+        /// </para>
+        /// <para>
+        /// The falling case has no mirror, and deliberately. "Has it fallen below the level?"
+        /// presupposes it was above: a record that never rises above the level has nothing to fall
+        /// from, and firing at sample 0 there would trigger on every quiet acquisition.
+        /// </para>
         /// </remarks>
         private static IReadOnlyList<int> Crossings(IqBlock block, TriggerSettings settings)
         {
@@ -232,6 +249,12 @@ namespace OpenVSA.Capture.Triggering
             int rearmAt = 0;
 
             bool wasAbove = Above(samples, 0, levelSquared);
+
+            if (settings.RisingEdge && wasAbove)
+            {
+                instants.Add(0);
+                rearmAt = RearmAfter(samples, 0, levelSquared, holdoff, settings, block.SampleCount);
+            }
 
             for (int n = 1; n < block.SampleCount; n++)
             {

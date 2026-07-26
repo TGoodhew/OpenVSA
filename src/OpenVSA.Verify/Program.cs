@@ -69,6 +69,11 @@ namespace OpenVSA.Verify
                 Console.WriteLine("  driving        " + stimulus.DisplayName);
                 Console.WriteLine();
 
+                if (options.Exercise)
+                {
+                    return await ExerciseAsync(frontEnd, stimulus, options).ConfigureAwait(false);
+                }
+
                 IReadOnlyList<VerificationScenario> scenarios =
                     VerificationScenario.Default(options.CenterFrequencyHz, options.LevelDbm);
 
@@ -95,6 +100,64 @@ namespace OpenVSA.Verify
 
                 return failed == 0 ? 0 : 1;
             }
+        }
+
+        /// <summary>
+        /// Drives every feature that can be driven against one real acquisition.
+        /// </summary>
+        /// <remarks>
+        /// Separate from the cross-validation because it answers a different question. That one
+        /// asks whether the numbers are right; this one asks whether the features work on data the
+        /// instrument actually produced rather than on signals a test made up to suit them.
+        /// </remarks>
+        private static async Task<int> ExerciseAsync(
+            IFrontEnd frontEnd, IStimulusSource stimulus, Options options)
+        {
+            var exercise = new FeatureExercise(frontEnd, stimulus);
+
+            IReadOnlyList<ExerciseResult> results = await exercise.RunAsync(
+                options.CenterFrequencyHz,
+                options.SpanHz,
+                options.LevelDbm,
+                CancellationToken.None).ConfigureAwait(false);
+
+            foreach (ExerciseResult result in results)
+            {
+                Console.WriteLine("  " + result);
+            }
+
+            int failed = results.Count(r => !r.Passed);
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "  " + (results.Count - failed) + " of " + results.Count + " features exercised " +
+                "successfully.");
+
+            if (!string.IsNullOrEmpty(options.ResultFile))
+            {
+                WriteExerciseFile(options.ResultFile, results);
+                Console.WriteLine("  results written to " + options.ResultFile);
+            }
+
+            return failed == 0 ? 0 : 1;
+        }
+
+        private static void WriteExerciseFile(string path, IReadOnlyList<ExerciseResult> results)
+        {
+            var text = new StringBuilder();
+            text.AppendLine("requirement\tfeature\tresult\tdetail");
+
+            foreach (ExerciseResult result in results)
+            {
+                text.AppendLine(string.Join(
+                    "\t",
+                    result.Requirement,
+                    result.Name,
+                    result.Passed ? "pass" : "fail",
+                    result.Detail.Replace('\t', ' ')));
+            }
+
+            File.WriteAllText(path, text.ToString());
         }
 
         private static IStimulusSource CreateStimulus(Options options) =>
@@ -144,6 +207,10 @@ namespace OpenVSA.Verify
 
             public double LevelDbm { get; private set; } = -20.0;
 
+            public double SpanHz { get; private set; } = 10e6;
+
+            public bool Exercise { get; private set; }
+
             public string ResultFile { get; private set; }
 
             public bool UseSimulatedStimulus { get; private set; }
@@ -184,6 +251,15 @@ namespace OpenVSA.Verify
                             options.ResultFile = Take(ref i, next);
                             break;
 
+                        case "--span":
+                            options.SpanHz = double.Parse(
+                                Take(ref i, next), CultureInfo.InvariantCulture);
+                            break;
+
+                        case "--exercise":
+                            options.Exercise = true;
+                            break;
+
                         case "--simulated-stimulus":
                             options.UseSimulatedStimulus = true;
                             break;
@@ -209,6 +285,9 @@ namespace OpenVSA.Verify
                 Console.WriteLine("  --generator <resource>  VISA resource of the stimulus source");
                 Console.WriteLine("  --centre <hz>           analysis centre frequency (default 1e9)");
                 Console.WriteLine("  --level <dbm>           generator level (default -20)");
+                Console.WriteLine("  --span <hz>             analysis span (default 10e6)");
+                Console.WriteLine("  --exercise              drive every feature against one real");
+                Console.WriteLine("                          acquisition instead of cross-validating");
                 Console.WriteLine("  --results <path>        write tab-separated results here");
                 Console.WriteLine("  --simulated-stimulus    exercise the harness with no generator");
                 Console.WriteLine();
