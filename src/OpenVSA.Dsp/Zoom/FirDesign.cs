@@ -66,8 +66,8 @@ namespace OpenVSA.Dsp.Zoom
                     nameof(stopbandDb), stopbandDb, "A stopband attenuation must be positive.");
             }
 
-            int length = LengthFor(transitionWidth, stopbandDb);
-            double beta = Beta(stopbandDb);
+            int length = TapCountFor(transitionWidth, stopbandDb);
+            double beta = Beta(stopbandDb + MarginDb);
             int half = (length - 1) / 2;
 
             var taps = new double[length];
@@ -92,16 +92,66 @@ namespace OpenVSA.Dsp.Zoom
         }
 
         /// <summary>
-        /// The tap count a transition width and attenuation need, always odd.
+        /// The margin, in dB, that a design is over-specified by so that it meets what was asked.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Measured, not chosen.</strong> Kaiser's <c>β</c> and length formulas are
+        /// empirical fits, and a filter designed straight from them lands about 0.9 dB short of
+        /// its stopband across the whole useful range of transition widths — with excursions to
+        /// 2.7 dB at short lengths, where forcing the tap count to an odd integer is itself worth
+        /// more than a decibel. Sweeping transition widths from 0.1 down to 0.00078 cycles per
+        /// sample and attenuations from 60 to 130 dB puts the worst case inside 3 dB, so designing
+        /// for <c>A + 3</c> is what makes <see cref="LowPass"/>'s promise of <c>A</c> true. Over
+        /// that same sweep the corrected design lands between 0.3 dB and 4.4 dB <em>past</em> what
+        /// was asked — a margin, not a comfortable one at the short end, and not one to spend.
+        /// </para>
+        /// <para>
+        /// The alternative — leaving the shortfall and widening every caller's target to cover it
+        /// — spreads one filter's calibration across every requirement that uses a filter.
+        /// <c>REQ-DSP-023a</c> asks for 100 dB of alias rejection; the downconverter should be
+        /// able to ask for 100 dB and get it.
+        /// </para>
+        /// </remarks>
+        public const double MarginDb = 3.0;
+
+        /// <summary>
+        /// The tap count <see cref="LowPass"/> uses, always odd, <see cref="MarginDb"/> included.
         /// </summary>
         /// <param name="transitionWidth">Transition width, in cycles per sample.</param>
         /// <param name="stopbandDb">Wanted stopband attenuation, in dB.</param>
         /// <returns>An odd tap count of at least 3.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">A value is out of range.</exception>
         /// <remarks>
-        /// Kaiser's estimate, <c>N ≈ (A − 8) / (2.285 · Δω)</c>, rounded up and forced odd. It is
-        /// an estimate that errs slightly short at very high attenuations, so one full period is
-        /// added: two taps cost nothing here and a filter that misses its stopband by 2 dB would
-        /// cost a re-verification of every zoomed measurement.
+        /// Public so that a caller can find out what a design will cost before paying for it: tap
+        /// count rises in proportion to the decimation factor, and a downconverter asked for an
+        /// impossible span should say so rather than try to allocate the answer.
+        /// </remarks>
+        public static int TapCountFor(double transitionWidth, double stopbandDb)
+        {
+            if (!(stopbandDb > 0.0) || double.IsInfinity(stopbandDb))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(stopbandDb), stopbandDb, "A stopband attenuation must be positive.");
+            }
+
+            return LengthFor(transitionWidth, stopbandDb + MarginDb);
+        }
+
+        /// <summary>
+        /// Kaiser's own length estimate, <c>N ≈ (A − 8) / (2.285 · Δω) + 1</c>, rounded up and
+        /// forced odd.
+        /// </summary>
+        /// <param name="transitionWidth">Transition width, in cycles per sample.</param>
+        /// <param name="stopbandDb">Stopband attenuation to estimate for, in dB.</param>
+        /// <returns>An odd tap count of at least 3.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">A value is out of range.</exception>
+        /// <remarks>
+        /// The published fit, with no margin applied — it is the estimate, not the answer. Kept
+        /// separate from <see cref="TapCountFor"/> so that <see cref="MarginDb"/> is visible as a
+        /// correction to a known formula rather than buried inside a constant that no longer
+        /// matches anything in the literature. The <c>+1</c> turns Kaiser's <em>order</em> into a
+        /// length; forcing the result odd is what gives the filter a whole-sample group delay.
         /// </remarks>
         public static int LengthFor(double transitionWidth, double stopbandDb)
         {
@@ -119,7 +169,16 @@ namespace OpenVSA.Dsp.Zoom
             }
 
             double order = (stopbandDb - 8.0) / (2.285 * 2.0 * Math.PI * transitionWidth);
-            int length = (int)Math.Ceiling(order) + 3;
+
+            // A transition width small enough to ask for more taps than an array can hold is a
+            // caller's units mistake, not a design. Saturating rather than wrapping keeps that
+            // mistake visible to whoever checks the count against a limit of their own.
+            if (order >= int.MaxValue - 2)
+            {
+                return int.MaxValue;
+            }
+
+            int length = (int)Math.Ceiling(order) + 1;
 
             if (length % 2 == 0)
             {

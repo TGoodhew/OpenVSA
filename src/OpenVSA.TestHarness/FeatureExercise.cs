@@ -9,6 +9,7 @@ using OpenVSA.Capture.Triggering;
 using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
+using OpenVSA.Dsp.Zoom;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
 using OpenVSA.Measurement.Limits;
@@ -144,6 +145,7 @@ namespace OpenVSA.TestHarness
                     int highest = frame.IndexOfPeak();
                     measuredPeakDbm = highest < 0 ? double.NaN : frame.LevelsDbm[highest];
 
+                    ExerciseZoom(block, frame, actualToneHz);
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
                     ExerciseFormats(frame);
@@ -200,6 +202,199 @@ namespace OpenVSA.TestHarness
                     Hz(found) + " (" + Signed(error) + " Hz from the carrier, bin " +
                     Hz(frame.BinWidthHz) + ")");
             });
+        }
+
+        /// <summary>
+        /// Zooms the acquired block onto the carrier and checks what came out (<c>REQ-DSP-023</c>,
+        /// <c>REQ-DSP-023a</c>).
+        /// </summary>
+        /// <remarks>
+        /// What this adds over the unit tests, which already measure ripple and alias rejection on
+        /// signals they built themselves: a record whose length and rate the instrument chose, a
+        /// carrier the generator placed rather than one synthesised at an exact bin, and the whole
+        /// amplitude chain either side of the downconverter. A zoom that changed the level of what
+        /// it zoomed into would be invisible to a test that only looks at the downconverter.
+        /// </remarks>
+        private void ExerciseZoom(IqBlock block, SpectrumFrame full, double toneHz)
+        {
+            double shiftHz = toneHz - block.CenterFrequencyHz;
+
+            // Capability-driven, not a chosen number: the zoom band has to fit inside what the
+            // block actually holds, so the shallowest usable decimation follows from this block's
+            // rate and this carrier's offset. Eight is a floor, so that the step is a real zoom
+            // even on a wide acquisition.
+            double headroomHz = block.SampleRateHz - 2.0 * Math.Abs(shiftHz);
+            int decimation = 8;
+
+            if (headroomHz > 0.0)
+            {
+                decimation = Math.Max(
+                    decimation,
+                    (int)Math.Ceiling(
+                        DdcDesignTargets.UsableBandwidthFraction * block.SampleRateHz / headroomHz));
+            }
+
+            IqBlock zoomed = Step("REQ-DSP-023", "Zoom onto the carrier", () =>
+            {
+                var ddc = DigitalDownconverter.ForDecimation(
+                    block.SampleRateHz, shiftHz, decimation);
+
+                if (ddc.OutputCountFor(block.SampleCount) <= 0)
+                {
+                    return Failed<IqBlock>(
+                        block.SampleCount + " samples is short of the " + ddc.MinimumInputSamples +
+                        " a " + ddc.TapCount + "-tap filter needs");
+                }
+
+                IqBlock narrow = ddc.Downconvert(block);
+
+                return new Outcome<IqBlock>(
+                    true, narrow,
+                    "decimated by " + decimation + " to " + narrow.SampleCount + " samples at " +
+                    Hz(narrow.SampleRateHz) + ", centred on " + Hz(narrow.CenterFrequencyHz) +
+                    " through " + ddc.TapCount + " taps");
+            });
+
+            if (zoomed == null)
+            {
+                return;
+            }
+
+            using (zoomed)
+            {
+                var computer = new SpectrumComputer(WindowType.FlatTop, null, null)
+                {
+                    TrimToAnalysisSpan = true,
+                };
+
+                SpectrumFrame narrow = Step("REQ-DSP-023", "The carrier lands at the zoom centre", () =>
+                {
+                    SpectrumFrame spectrum = computer.Compute(zoomed);
+                    int peak = spectrum.IndexOfPeak();
+
+                    if (peak < 0)
+                    {
+                        return Failed<SpectrumFrame>("the zoomed spectrum had no peak");
+                    }
+
+                    double found = spectrum.FrequencyAt(peak);
+                    double error = found - toneHz;
+                    bool ok = Math.Abs(error) <= 2.0 * spectrum.BinWidthHz;
+
+                    return new Outcome<SpectrumFrame>(
+                        ok, spectrum,
+                        "peak at " + Hz(found) + " (" + Signed(error) + " Hz from the carrier, " +
+                        Hz(spectrum.BinWidthHz) + " bins)");
+                });
+
+                if (narrow == null)
+                {
+                    return;
+                }
+
+                Step("REQ-DSP-023a", "Zoom does not change the carrier's level", () =>
+                {
+                    int wide = full.IndexOfPeak();
+                    int close = narrow.IndexOfPeak();
+
+                    if (wide < 0 || close < 0)
+                    {
+                        return Failed<double>("one of the two spectra had no peak");
+                    }
+
+                    double error = narrow.LevelsDbm[close] - full.LevelsDbm[wide];
+
+                    // A tenth of a decibel: twice REQ-DSP-023a's whole passband ripple budget, and
+                    // still tight enough that a missing normalisation - the downconverter's DC gain
+                    // left as the analytic sinc rather than normalised - would show as about 0.3 dB.
+                    bool ok = Math.Abs(error) <= 0.1;
+
+                    return new Outcome<double>(
+                        ok, error,
+                        Db(full.LevelsDbm[wide]) + " at full span, " + Db(narrow.LevelsDbm[close]) +
+                        " zoomed, " + Signed(error) + " dB apart");
+                });
+
+                Step("REQ-DSP-023", "The zoomed record's RBW follows its own rate", () =>
+                {
+                    // Zoom buys resolution by letting a transform of a given size cover more
+                    // wall-clock time - and only if the capture holds more time to cover. On a
+                    // block of a thousand samples it holds none: the source transform already
+                    // spans most of the record, the downconverter's transient takes a slice of
+                    // what is left, and the two analyses end up looking at the same number of
+                    // microseconds. Asserting that zoom always sharpens the RBW would be asserting
+                    // something about the instrument's record length, not about this feature.
+                    //
+                    // What must hold either way is REQ-DSP-020's relation, computed from the rate
+                    // the downconverter declared. Get that rate wrong - divide by the wrong factor,
+                    // or leave the parent's - and this is immediate.
+                    int points = SpectrumComputer.TransformLengthFor(zoomed.SampleCount);
+                    double recordSeconds = points / zoomed.SampleRateHz;
+                    double expected = ResolutionBandwidth.ForRecordLength(
+                        Window.Get(WindowType.FlatTop, points), recordSeconds);
+
+                    double sourceSeconds =
+                        SpectrumComputer.TransformLengthFor(block.SampleCount) /
+                        block.SampleRateHz;
+
+                    bool ok = Math.Abs(narrow.ResolutionBandwidthHz - expected) <=
+                              1e-6 * expected;
+
+                    return new Outcome<double>(
+                        ok, narrow.ResolutionBandwidthHz,
+                        "RBW " + Hz(narrow.ResolutionBandwidthHz) + " from " + points +
+                        " points at " + Hz(zoomed.SampleRateHz) + "; the zoomed transform spans " +
+                        (recordSeconds * 1e6).ToString("0.0", CultureInfo.CurrentCulture) +
+                        " us against the source's " +
+                        (sourceSeconds * 1e6).ToString("0.0", CultureInfo.CurrentCulture) +
+                        " us, so this record has no more resolution to give");
+                });
+
+                Step("REQ-DSP-023a", "The zoomed block declares its own alias-free bandwidth", () =>
+                {
+                    object declared;
+
+                    if (!zoomed.Extended.TryGetValue(
+                            IqBlockMetadata.UsableBandwidthKey, out declared) ||
+                        !(declared is double))
+                    {
+                        return Failed<double>("the zoomed block declared no usable bandwidth");
+                    }
+
+                    double usable = (double)declared;
+                    double expected =
+                        DdcDesignTargets.UsableBandwidthFraction * zoomed.SampleRateHz;
+                    double span = narrow.FrequencyAt(narrow.PointCount - 1) - narrow.FrequencyAt(0);
+
+                    // Inherited from the front end instead of rewritten, this would still read the
+                    // instrument's own figure - tens of megahertz - and the display would draw the
+                    // decimation filter's roll-off as though it were measurement data.
+                    bool ok = Math.Abs(usable - expected) <= 1.0 && span <= usable * 1.05;
+
+                    return new Outcome<double>(
+                        ok, usable,
+                        "declares " + Hz(usable) + " usable of " + Hz(zoomed.SampleRateHz) +
+                        " sampled; the trimmed spectrum spans " + Hz(span));
+                });
+
+                Step("REQ-ACQ-010", "The zoomed record agrees on when the trigger was", () =>
+                {
+                    DateTime before = BlockTimeline.TriggerInstant(
+                        block.AcquiredUtc, block.TriggerOffsetSeconds);
+                    DateTime after = BlockTimeline.TriggerInstant(
+                        zoomed.AcquiredUtc, zoomed.TriggerOffsetSeconds);
+
+                    long drift = Math.Abs((after - before).Ticks);
+                    bool ok = drift <= 1 && zoomed.AcquiredUtc > block.AcquiredUtc;
+
+                    return new Outcome<long>(
+                        ok, drift,
+                        "record starts " +
+                        (zoomed.AcquiredUtc - block.AcquiredUtc).TotalMilliseconds.ToString(
+                            "0.000", CultureInfo.CurrentCulture) +
+                        " ms later, trigger moved " + drift + " ticks");
+                });
+            }
         }
 
         private void ExerciseOverlap(IqBlock block, double toneHz)
