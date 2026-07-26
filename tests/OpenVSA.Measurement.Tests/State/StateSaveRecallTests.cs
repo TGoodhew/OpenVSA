@@ -89,6 +89,11 @@ namespace OpenVSA.Measurement.Tests.State
             // Input settings: range, coupling, digital, external mixer.
             AssertHas(measurement.Input, "RangeDbm", "Coupling", "IsDigital", "ExternalMixer");
 
+            // Analysis parameters, including REQ-DSP-023's Zoom If Span Change. That one changes
+            // what the *next* span the user types will mean, so a recalled state that lost it
+            // would behave correctly right up until someone changed the span.
+            AssertHas(measurement.Analysis, "Window", "Overlap", "SpanChange");
+
             // Trace display properties: format, X and Y scaling, spectrogram settings.
             TraceDisplayState trace = measurement.Traces[0];
             AssertHas(trace, "Format", "TopDbm", "DecibelsPerDivision", "XStart", "XStop");

@@ -146,6 +146,7 @@ namespace OpenVSA.TestHarness
                     measuredPeakDbm = highest < 0 ? double.NaN : frame.LevelsDbm[highest];
 
                     ExerciseZoom(block, frame, actualToneHz);
+                    ExerciseZoomControls(block, spanHz, actualToneHz);
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
                     ExerciseFormats(frame);
@@ -395,6 +396,155 @@ namespace OpenVSA.TestHarness
                         " ms later, trigger moved " + drift + " ticks");
                 });
             }
+        }
+
+        /// <summary>
+        /// Drives the zoom controls over the real capture (<c>REQ-DSP-023</c>, <c>REQ-REC-004</c>).
+        /// </summary>
+        /// <remarks>
+        /// The interesting question on a real instrument is not whether the policy bound arithmetic
+        /// works — the unit tests settle that — but which of the two limits binds first. On a
+        /// thousand-sample block the record runs out long before the 256:1 policy does, and a
+        /// harness that only tested the policy would report a feature working that no capture on
+        /// this bench can actually reach.
+        /// </remarks>
+        private void ExerciseZoomControls(IqBlock block, double sourceSpanHz, double toneHz)
+        {
+            var zoom = new ZoomControl(block.CenterFrequencyHz, sourceSpanHz);
+
+            // A drag a person could plausibly make: a region around the carrier an eighth of the
+            // span wide.
+            double half = sourceSpanHz / 16.0;
+
+            SpectrumFrame narrow = Step("REQ-DSP-023", "Select Area zooms to a dragged region", () =>
+            {
+                zoom.SelectArea(toneHz - half, toneHz + half);
+
+                DigitalDownconverter ddc;
+
+                if (!zoom.TryCreateDownconverter(block.SampleRateHz, out ddc))
+                {
+                    return Failed<SpectrumFrame>(
+                        "no downconverter was needed for a " + Hz(zoom.SpanHz) + " span");
+                }
+
+                if (ddc.OutputCountFor(block.SampleCount) <= 0)
+                {
+                    return Failed<SpectrumFrame>(
+                        "this record holds " + block.SampleCount + " samples; the zoom needs " +
+                        ddc.MinimumInputSamples);
+                }
+
+                using (IqBlock zoomed = ddc.Downconvert(block))
+                {
+                    var computer = new SpectrumComputer(WindowType.FlatTop, null, null)
+                    {
+                        TrimToAnalysisSpan = true,
+                    };
+
+                    SpectrumFrame spectrum = computer.Compute(zoomed);
+                    int peak = spectrum.IndexOfPeak();
+
+                    if (peak < 0)
+                    {
+                        return Failed<SpectrumFrame>("the selected area held no peak");
+                    }
+
+                    double error = spectrum.FrequencyAt(peak) - toneHz;
+                    bool ok = Math.Abs(error) <= 2.0 * spectrum.BinWidthHz &&
+                              Math.Abs(zoom.CenterFrequencyHz - toneHz) <= 1.0;
+
+                    return new Outcome<SpectrumFrame>(
+                        ok, spectrum,
+                        "dragged " + Hz(2.0 * half) + " about the carrier: " +
+                        zoom.Annotation() + ", decimated by " + ddc.Decimation +
+                        ", peak " + Signed(error) + " Hz from the carrier");
+                }
+            });
+
+            Step("REQ-REC-004", "A zoom past the bound is refused with the bound named", () =>
+            {
+                try
+                {
+                    zoom.SetSpan(zoom.NarrowestSpanHz / 2.0);
+
+                    return Failed<string>("a span past the bound was accepted");
+                }
+                catch (ArgumentOutOfRangeException refused)
+                {
+                    string reason = refused.Message.Split('\n')[0];
+
+                    bool ok = reason.IndexOf(
+                                  ZoomControl.MaximumZoomRatio.ToString(CultureInfo.CurrentCulture),
+                                  StringComparison.Ordinal) >= 0;
+
+                    return new Outcome<string>(ok, reason, reason);
+                }
+            });
+
+            Step("REQ-REC-004", "Which limit binds first: the bound or the record", () =>
+            {
+                // The bound is a product policy and says nothing about samples. Whether a capture
+                // can reach it is a separate question, and the honest answer for this block is no -
+                // so what matters is that asking is refused for the right reason rather than
+                // answered with a record built from a filter's transient.
+                zoom.SetSpan(zoom.NarrowestSpanHz);
+
+                DigitalDownconverter ddc;
+
+                if (!zoom.TryCreateDownconverter(block.SampleRateHz, out ddc))
+                {
+                    return Failed<int>("the deepest allowed zoom needed no downconverter");
+                }
+
+                int available = ddc.OutputCountFor(block.SampleCount);
+
+                if (available > 0)
+                {
+                    return new Outcome<int>(
+                        true, available,
+                        "the record reaches the " + ZoomControl.MaximumZoomRatio +
+                        ":1 bound: " + Hz(zoom.NarrowestSpanHz) + " from " + block.SampleCount +
+                        " samples, leaving " + available + " analysed");
+                }
+
+                string refusal;
+
+                try
+                {
+                    ddc.Downconvert(block).Dispose();
+                    refusal = null;
+                }
+                catch (ArgumentException expected)
+                {
+                    refusal = expected.Message.Split('\n')[0];
+                }
+
+                bool ok = refusal != null &&
+                          refusal.IndexOf(
+                              ddc.MinimumInputSamples.ToString(CultureInfo.CurrentCulture),
+                              StringComparison.Ordinal) >= 0;
+
+                return new Outcome<int>(
+                    ok, ddc.MinimumInputSamples,
+                    "the record binds before the bound does: " + Hz(zoom.NarrowestSpanHz) +
+                    " needs " + ddc.MinimumInputSamples + " samples through " + ddc.TapCount +
+                    " taps and this block holds " + block.SampleCount + ", refused saying so");
+            });
+
+            Step("REQ-DSP-023", "Full Span returns the whole capture", () =>
+            {
+                zoom.FullSpan();
+
+                bool ok = zoom.IsFullSpan &&
+                          Math.Abs(zoom.CenterFrequencyHz - block.CenterFrequencyHz) <= 1.0 &&
+                          Math.Abs(zoom.SpanHz - sourceSpanHz) <= 1.0 &&
+                          narrow != null;
+
+                return new Outcome<double>(
+                    ok, zoom.SpanHz,
+                    "back to " + zoom.Annotation() + " at " + Hz(zoom.CenterFrequencyHz));
+            });
         }
 
         private void ExerciseOverlap(IqBlock block, double toneHz)
