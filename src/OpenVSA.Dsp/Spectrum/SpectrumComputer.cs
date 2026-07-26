@@ -267,18 +267,24 @@ namespace OpenVSA.Dsp.Spectrum
             int points = trimmed > 0 ? trimmed : n;
             int m = (points - 1) / 2;
             int first = trimmed > 0 ? half - m : 0;
-            var levels = new float[points];
+            var levels = new float[points * 2];
+            double volts = scale.VoltsPerUnit;
 
             for (int i = 0; i < points; i++)
             {
                 // Display index i is raw bin (first + i + N/2) mod N: the negative half comes first.
                 int shifted = first + i;
                 int k = shifted < half ? shifted + half : shifted - half;
-                levels[i] = (float)scale.ToDbm(scratch[k * 2], scratch[k * 2 + 1]);
+
+                // Calibrated volts, not decibels: every format of REQ-DSP-041 is derived from
+                // these, so the chain is applied once here and nowhere else.
+                levels[i * 2] = (float)(scratch[k * 2] * volts);
+                levels[i * 2 + 1] = (float)(scratch[k * 2 + 1] * volts);
             }
 
             return SpectrumFrame.Adopt(
                 levels,
+                scale,
                 startFrequencyHz: block.CenterFrequencyHz + (first - half) * binWidth,
                 binWidthHz: binWidth,
                 centerFrequencyHz: block.CenterFrequencyHz,
@@ -309,17 +315,20 @@ namespace OpenVSA.Dsp.Spectrum
             int trimmed = DisplayPointsFor(n, AnalysisPath.RealBaseband, usableBandwidthHz, binWidth);
             int points = trimmed > 0 ? trimmed : n / 2 + 1;
 
-            var levels = new float[points];
-            AmplitudeScale doubled = scale.WithAdditionalOffset(AmplitudeChain.OneSidedBinGainDb);
+            var levels = new float[points * 2];
+            double single = scale.VoltsPerUnit;
+            double doubled = scale.WithLinearGain(2.0).VoltsPerUnit;
 
             for (int k = 0; k < points; k++)
             {
-                AmplitudeScale applied = k == 0 || k == n / 2 ? scale : doubled;
-                levels[k] = (float)applied.ToDbm(scratch[k * 2], scratch[k * 2 + 1]);
+                double volts = k == 0 || k == n / 2 ? single : doubled;
+                levels[k * 2] = (float)(scratch[k * 2] * volts);
+                levels[k * 2 + 1] = (float)(scratch[k * 2 + 1] * volts);
             }
 
             return SpectrumFrame.Adopt(
                 levels,
+                scale,
                 startFrequencyHz: 0.0,
                 binWidthHz: binWidth,
                 centerFrequencyHz: (points - 1) * binWidth / 2.0,

@@ -196,14 +196,18 @@ namespace OpenVSA.Dsp.Spectrum
 
             double fullScaleVolts = ResolveFullScaleVolts(declaredFullScaleVolts, referenceLevelDbm);
 
-            // K, exactly as the type-level remarks state it. The +30 converts watts to milliwatts.
-            double offsetDb =
-                20.0 * Math.Log10(fullScaleVolts / (transformLength * coherentGain))
-                - 10.0 * Math.Log10(2.0 * ReferenceImpedanceOhms)
+            // K, exactly as the type-level remarks state it, factored into its linear and
+            // logarithmic halves. The product of the two is unchanged - the expression is still
+            // stated once - but the linear half is what turns a raw bin into calibrated volts, and
+            // REQ-DSP-041's formats need volts rather than decibels to work from.
+            double voltsPerUnit = fullScaleVolts / (transformLength * coherentGain);
+
+            double powerOffsetDb =
+                -10.0 * Math.Log10(2.0 * ReferenceImpedanceOhms)
                 + 30.0
                 - ExternalGainDb;
 
-            return new AmplitudeScale(offsetDb);
+            return new AmplitudeScale(voltsPerUnit, powerOffsetDb);
         }
     }
 
@@ -229,14 +233,35 @@ namespace OpenVSA.Dsp.Spectrum
         public const double FloorDbm = -400.0;
 
         /// <summary>Creates a scale.</summary>
-        /// <param name="offsetDb">The offset <c>K</c> in dB, as derived by <see cref="AmplitudeChain"/>.</param>
-        public AmplitudeScale(double offsetDb)
+        /// <param name="voltsPerUnit">Linear factor from a raw transform bin to volts peak.</param>
+        /// <param name="powerOffsetDb">The remaining offset in dB, applied to <c>10·log10(|v|²)</c>.</param>
+        public AmplitudeScale(double voltsPerUnit, double powerOffsetDb)
         {
-            OffsetDb = offsetDb;
+            VoltsPerUnit = voltsPerUnit;
+            PowerOffsetDb = powerOffsetDb;
         }
 
-        /// <summary>The offset <c>K</c> in dB, added to <c>10·log10(|X[k]|²)</c>.</summary>
-        public double OffsetDb { get; }
+        /// <summary>
+        /// Linear factor turning a raw transform bin into volts peak, referred to the input.
+        /// </summary>
+        /// <remarks>
+        /// <c>V_fs / (N · CG)</c>. Applied once when a frame is built, so every format of
+        /// <c>REQ-DSP-041</c> works from calibrated volts and none of them re-derives the chain.
+        /// </remarks>
+        public double VoltsPerUnit { get; }
+
+        /// <summary>The offset in dB from a squared voltage to dBm: <c>−10·log10(2R) + 30 − G</c>.</summary>
+        public double PowerOffsetDb { get; }
+
+        /// <summary>
+        /// The offset <c>K</c> in dB, added to <c>10·log10(|X[k]|²)</c> of a raw bin.
+        /// </summary>
+        /// <remarks>
+        /// The whole of <c>REQ-AMP-001</c>'s <c>K</c>, for a caller working from raw transform
+        /// output rather than from calibrated volts. It is the two halves recombined, not a second
+        /// derivation.
+        /// </remarks>
+        public double OffsetDb => 20.0 * Math.Log10(VoltsPerUnit) + PowerOffsetDb;
 
         /// <summary>Converts one bin's squared magnitude to dBm.</summary>
         /// <param name="magnitudeSquared">|X[k]|², from the unnormalised forward transform.</param>
@@ -252,6 +277,22 @@ namespace OpenVSA.Dsp.Spectrum
             return level < FloorDbm ? FloorDbm : level;
         }
 
+        /// <summary>
+        /// Converts a squared magnitude that is already in volts to dBm.
+        /// </summary>
+        /// <param name="voltsSquared">|v|², where v is in volts peak referred to the input.</param>
+        /// <returns>The level in dBm, or <see cref="FloorDbm"/> for no power.</returns>
+        public double VoltsSquaredToDbm(double voltsSquared)
+        {
+            if (!(voltsSquared > 0.0))
+            {
+                return FloorDbm;
+            }
+
+            double level = 10.0 * Math.Log10(voltsSquared) + PowerOffsetDb;
+            return level < FloorDbm ? FloorDbm : level;
+        }
+
         /// <summary>Converts one bin's complex value to dBm.</summary>
         /// <param name="real">Real part of <c>X[k]</c>.</param>
         /// <param name="imaginary">Imaginary part of <c>X[k]</c>.</param>
@@ -259,9 +300,16 @@ namespace OpenVSA.Dsp.Spectrum
         public double ToDbm(double real, double imaginary) =>
             PowerToDbm(real * real + imaginary * imaginary);
 
-        /// <summary>Returns a copy with an additional offset, in dB.</summary>
-        /// <param name="additionalDb">Offset to add, such as <see cref="AmplitudeChain.OneSidedBinGainDb"/>.</param>
-        public AmplitudeScale WithAdditionalOffset(double additionalDb) =>
-            new AmplitudeScale(OffsetDb + additionalDb);
+        /// <summary>
+        /// Returns a copy with an additional linear gain.
+        /// </summary>
+        /// <param name="gain">Linear factor, such as the 2 of the one-sided real path.</param>
+        /// <remarks>
+        /// Applied to the linear half rather than the logarithmic one, so the volts a frame stores
+        /// carry the correction and every format inherits it. Adding it in decibels would correct
+        /// the log magnitude and leave real, imaginary and phase reading half amplitude.
+        /// </remarks>
+        public AmplitudeScale WithLinearGain(double gain) =>
+            new AmplitudeScale(VoltsPerUnit * gain, PowerOffsetDb);
     }
 }

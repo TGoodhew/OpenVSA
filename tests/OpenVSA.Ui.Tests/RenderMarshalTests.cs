@@ -50,8 +50,12 @@ namespace OpenVSA.Ui.Tests
             marshal.Offer(SpectrumFrame.FromLevels(levels, 1e9, 1e3, WindowType.FlatTop, 3.8194));
             TraceSnapshot snapshot = marshal.TakeForRender();
 
-            Assert.Equal(-3.0f, snapshot.MinMax[5 * 2 + 1]);
-            Assert.Equal(-100.0f, snapshot.MinMax[5 * 2]);
+            // To four decimals, not bit-exact: a frame stores calibrated volts as float, so a
+            // level put in as decibels comes back through a square root and a logarithm. The
+            // residue is around a hundred-thousandth of a dB, which is five orders of magnitude
+            // inside anything the amplitude requirements care about.
+            Assert.Equal(-3.0, snapshot.MinMax[5 * 2 + 1], 4);
+            Assert.Equal(-100.0, snapshot.MinMax[5 * 2], 4);
         }
 
         [Fact]

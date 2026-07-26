@@ -32,10 +32,15 @@ namespace OpenVSA.Dsp.Spectrum
     /// </remarks>
     public sealed class SpectrumFrame
     {
-        private readonly float[] _levelsDbm;
+        private readonly float[] _complex;
+        private readonly AmplitudeScale _scale;
+        private readonly object _gate = new object();
+
+        private float[] _levelsDbm;
 
         private SpectrumFrame(
-            float[] levelsDbm,
+            float[] complex,
+            AmplitudeScale scale,
             double startFrequencyHz,
             double binWidthHz,
             double centerFrequencyHz,
@@ -48,7 +53,8 @@ namespace OpenVSA.Dsp.Spectrum
             DateTime acquiredUtc,
             FrontEndId source)
         {
-            _levelsDbm = levelsDbm;
+            _complex = complex;
+            _scale = scale;
             StartFrequencyHz = startFrequencyHz;
             BinWidthHz = binWidthHz;
             CenterFrequencyHz = centerFrequencyHz;
@@ -71,7 +77,8 @@ namespace OpenVSA.Dsp.Spectrum
         /// <see cref="SpectrumComputer"/>, which fills a fresh array per frame and drops it here.
         /// </remarks>
         internal static SpectrumFrame Adopt(
-            float[] levelsDbm,
+            float[] complex,
+            AmplitudeScale scale,
             double startFrequencyHz,
             double binWidthHz,
             double centerFrequencyHz,
@@ -84,7 +91,7 @@ namespace OpenVSA.Dsp.Spectrum
             DateTime acquiredUtc,
             FrontEndId source) =>
             new SpectrumFrame(
-                levelsDbm, startFrequencyHz, binWidthHz, centerFrequencyHz, sampleRateHz,
+                complex, scale, startFrequencyHz, binWidthHz, centerFrequencyHz, sampleRateHz,
                 isBaseband, window, equivalentNoiseBandwidthBins, referenceLevelDbm,
                 sequenceNumber, acquiredUtc, source);
 
@@ -121,13 +128,32 @@ namespace OpenVSA.Dsp.Spectrum
                     nameof(binWidthHz), binWidthHz, "Bin width must be positive and finite.");
             }
 
-            var copy = new float[levelsDbm.Length];
-            levelsDbm.CopyTo(new Span<float>(copy));
+            // Levels in, complex out: a level of L dBm becomes a real bin of the voltage that
+            // produces it, so a frame built from stored levels behaves exactly like a measured one
+            // and every format works from the same place.
+            var scale = new AmplitudeScale(1.0, -10.0 * Math.Log10(2.0 * AmplitudeChain.DefaultReferenceImpedanceOhms) + 30.0);
+            var complex = new float[levelsDbm.Length * 2];
+
+            for (int i = 0; i < levelsDbm.Length; i++)
+            {
+                if (float.IsNaN(levelsDbm[i]))
+                {
+                    // Blanked in, blanked out. A gap is not a level of minus infinity.
+                    complex[i * 2] = float.NaN;
+                    complex[i * 2 + 1] = float.NaN;
+                    continue;
+                }
+
+                double watts = Math.Pow(10.0, (levelsDbm[i] - 30.0) / 10.0);
+                complex[i * 2] = (float)Math.Sqrt(2.0 * AmplitudeChain.DefaultReferenceImpedanceOhms * watts);
+                complex[i * 2 + 1] = 0.0f;
+            }
 
             double span = binWidthHz * (levelsDbm.Length - 1);
 
             return new SpectrumFrame(
-                copy,
+                complex,
+                scale,
                 startFrequencyHz,
                 binWidthHz,
                 startFrequencyHz + span / 2.0,
@@ -141,11 +167,60 @@ namespace OpenVSA.Dsp.Spectrum
                 source: default(FrontEndId));
         }
 
-        /// <summary>The levels in dBm, ascending in frequency, in a view that cannot be written through.</summary>
-        public ReadOnlySpan<float> LevelsDbm => new ReadOnlySpan<float>(_levelsDbm);
+        /// <summary>
+        /// The levels in dBm, ascending in frequency, in a view that cannot be written through.
+        /// </summary>
+        /// <remarks>
+        /// Computed from the complex spectrum on first use and kept, so the common format costs
+        /// nothing to ask for repeatedly and the others cost nothing when unused. The frame is
+        /// immutable to its consumers either way — this is a cache, not a mutation.
+        /// </remarks>
+        public ReadOnlySpan<float> LevelsDbm
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    if (_levelsDbm == null)
+                    {
+                        _levelsDbm = new float[PointCount];
+                        TraceFormatter.Format(
+                            new ReadOnlySpan<float>(_complex), TraceFormat.LogMagnitude,
+                            _scale, BinWidthHz, new Span<float>(_levelsDbm));
+                    }
+
+                    return new ReadOnlySpan<float>(_levelsDbm);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The calibrated complex spectrum: interleaved real and imaginary, in volts peak.
+        /// </summary>
+        /// <remarks>
+        /// What every format is derived from, and why changing format recomputes nothing
+        /// (<c>REQ-TRC-001</c>). Referred to the instrument input with the amplitude chain of
+        /// <c>REQ-AMP-001</c> already applied.
+        /// </remarks>
+        public ReadOnlySpan<float> Complex => new ReadOnlySpan<float>(_complex);
+
+        /// <summary>The amplitude scale these values were calibrated with.</summary>
+        public AmplitudeScale Scale => _scale;
 
         /// <summary>Number of displayed frequency points.</summary>
-        public int PointCount => _levelsDbm.Length;
+        public int PointCount => _complex.Length / 2;
+
+        /// <summary>
+        /// Renders this frame in a display format, without recomputing the transform.
+        /// </summary>
+        /// <param name="format">The format to produce.</param>
+        /// <param name="destination">
+        /// Receives <c>PointCount × <see cref="TraceFormatter.ValuesPerPoint"/></c> values.
+        /// </param>
+        /// <exception cref="ArgumentException">The destination is the wrong length.</exception>
+        public void Format(TraceFormat format, Span<float> destination) =>
+            TraceFormatter.Format(
+                new ReadOnlySpan<float>(_complex), format, _scale, BinWidthHz, destination);
 
         /// <summary>Frequency of point 0, in hertz.</summary>
         public double StartFrequencyHz { get; }
@@ -221,14 +296,15 @@ namespace OpenVSA.Dsp.Spectrum
         /// </remarks>
         public int IndexOfPeak()
         {
+            ReadOnlySpan<float> levels = LevelsDbm;
             int peak = -1;
             float highest = float.NegativeInfinity;
 
-            for (int i = 0; i < _levelsDbm.Length; i++)
+            for (int i = 0; i < levels.Length; i++)
             {
-                if (_levelsDbm[i] > highest)
+                if (levels[i] > highest)
                 {
-                    highest = _levelsDbm[i];
+                    highest = levels[i];
                     peak = i;
                 }
             }
