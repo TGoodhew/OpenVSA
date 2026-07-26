@@ -113,6 +113,7 @@ namespace OpenVSA.TestHarness
             _results.Clear();
 
             double toneHz = centerFrequencyHz + ToneOffsetHz;
+            double measuredPeakDbm = double.NaN;
 
             _stimulus.SetContinuousWave(toneHz, levelDbm);
             _stimulus.SetOutput(true);
@@ -140,6 +141,9 @@ namespace OpenVSA.TestHarness
 
                 if (frame != null)
                 {
+                    int highest = frame.IndexOfPeak();
+                    measuredPeakDbm = highest < 0 ? double.NaN : frame.LevelsDbm[highest];
+
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
                     ExerciseFormats(frame);
@@ -157,6 +161,9 @@ namespace OpenVSA.TestHarness
             }
 
             ExercisePlanning(spanHz);
+            await ExerciseAutoRangeAsync(
+                centerFrequencyHz, spanHz, toneHz, levelDbm, measuredPeakDbm, ct)
+                .ConfigureAwait(false);
             ExerciseState(centerFrequencyHz, spanHz);
             ExercisePresets(centerFrequencyHz);
 
@@ -1040,6 +1047,191 @@ namespace OpenVSA.TestHarness
 
                 return new Outcome<string>(ok, clamped.Reason, clamped.Reason);
             });
+        }
+
+        /// <summary>
+        /// Exercises auto-ranging against the connected instrument and a real 20 dB drop
+        /// (<c>REQ-ACQ-004</c>).
+        /// </summary>
+        /// <param name="centerFrequencyHz">Analysis centre frequency.</param>
+        /// <param name="spanHz">Analysis span.</param>
+        /// <param name="toneHz">Carrier frequency the generator is set to.</param>
+        /// <param name="levelDbm">Generator level the first acquisition was made at.</param>
+        /// <param name="peakDbm">Peak measured at that level, in dBm.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <remarks>
+        /// <para>
+        /// Two things are checked, and only the first of them is about this instrument. The E4406A
+        /// declares no input range control — in Basic mode it ranges its own converter and takes no
+        /// range command — so the requirement's last clause applies to it: the function must be
+        /// <em>unavailable</em>, and asking anyway must be refused rather than quietly ignored.
+        /// That is the strongest statement this bench can make about the real front end, and it is
+        /// made against the real front end.
+        /// </para>
+        /// <para>
+        /// The second step then drops the generator by 20 dB — the criterion's own number, on real
+        /// hardware — re-measures, and puts the two real peaks through the decision. Range control
+        /// has to be declared for that, so the capabilities are wrapped to say so; that wrapper is
+        /// the one synthetic element in this exercise and it changes nothing else. What is real is
+        /// what matters here: two peaks measured through the instrument, 20 dB apart, with the
+        /// noise and the awkward numbers a real measurement has.
+        /// </para>
+        /// </remarks>
+        private async Task ExerciseAutoRangeAsync(
+            double centerFrequencyHz,
+            double spanHz,
+            double toneHz,
+            double levelDbm,
+            double peakDbm,
+            CancellationToken ct)
+        {
+            IFrontEndCapabilities declared = _frontEnd.Capabilities;
+
+            Step("REQ-ACQ-004", "The instrument's own range control is declared and obeyed", () =>
+            {
+                AutoRangeAvailability availability = AutoRangeAvailability.For(declared);
+
+                if (!availability.IsAvailable)
+                {
+                    // Unavailable rather than inert: asking anyway must be refused.
+                    try
+                    {
+                        AutoRange.Adjust(declared, 0.0, -20.0);
+                        return Failed<bool>(
+                            "the source declares no range control, and auto-range acted anyway");
+                    }
+                    catch (InvalidOperationException refused)
+                    {
+                        return new Outcome<bool>(
+                            refused.Message.Length > 0,
+                            false,
+                            "unavailable, and refused when asked: " + refused.Message);
+                    }
+                }
+
+                AutoRangeResult acted = AutoRange.Adjust(declared, declared.ReferenceLevelRange.MaxDbm, -20.0);
+
+                return new Outcome<bool>(
+                    true, true, "available, and a peak 20 dB down moved the level to " +
+                    Db(acted.ReferenceLevelDbm));
+            });
+
+            if (double.IsNaN(peakDbm))
+            {
+                Record("REQ-ACQ-004", "A real 20 dB drop is ranged for, and then settles", false,
+                    "no peak was measured at the first level, so there is nothing to range against");
+                return;
+            }
+
+            double droppedLevelDbm = levelDbm - 20.0;
+            _stimulus.SetContinuousWave(toneHz, droppedLevelDbm);
+
+            IqBlock dropped = null;
+
+            try
+            {
+                dropped = await AcquireAsync(centerFrequencyHz, spanHz, ct).ConfigureAwait(false);
+
+                double quietPeakDbm = double.NaN;
+
+                if (dropped != null)
+                {
+                    var computer = new SpectrumComputer(WindowType.FlatTop, null, null)
+                    {
+                        TrimToAnalysisSpan = true,
+                    };
+
+                    SpectrumFrame quieter = computer.Compute(dropped);
+                    int highest = quieter.IndexOfPeak();
+                    quietPeakDbm = highest < 0 ? double.NaN : quieter.LevelsDbm[highest];
+                }
+
+                double measuredDrop = peakDbm - quietPeakDbm;
+
+                Step("REQ-ACQ-004", "A real 20 dB drop is ranged for, and then settles", () =>
+                {
+                    if (double.IsNaN(quietPeakDbm))
+                    {
+                        return Failed<double>("no peak was measured after the generator was dropped");
+                    }
+
+                    // Range control declared over this instrument's real limits; see the remarks.
+                    IFrontEndCapabilities ranging = new RangeableCapabilities(declared);
+
+                    AutoRangeResult atCarrier = AutoRange.Adjust(
+                        ranging, declared.ReferenceLevelRange.MaxDbm, peakDbm);
+                    AutoRangeResult afterDrop = AutoRange.Adjust(
+                        ranging, atCarrier.ReferenceLevelDbm, quietPeakDbm);
+                    AutoRangeResult repeated = AutoRange.Adjust(
+                        ranging, afterDrop.ReferenceLevelDbm, quietPeakDbm);
+
+                    double levelDrop = atCarrier.ReferenceLevelDbm - afterDrop.ReferenceLevelDbm;
+
+                    // The level must follow the signal down by what the signal actually dropped,
+                    // both must land in the band, and the third pass must do nothing at all.
+                    bool ok = atCarrier.Changed &&
+                              atCarrier.IsWithinBand &&
+                              afterDrop.Changed &&
+                              afterDrop.IsWithinBand &&
+                              !repeated.Changed &&
+                              Math.Abs(levelDrop - measuredDrop) <= HeadroomBand.Default.StepDb + 0.5;
+
+                    return new Outcome<double>(
+                        ok,
+                        levelDrop,
+                        "peak " + Db(peakDbm) + " → " + Db(quietPeakDbm) + " (" +
+                        Signed(measuredDrop) + " dB measured); reference " +
+                        Db(atCarrier.ReferenceLevelDbm) + " → " + Db(afterDrop.ReferenceLevelDbm) +
+                        ", headroom " +
+                        afterDrop.HeadroomDb.ToString("0.0", CultureInfo.CurrentCulture) +
+                        " dB, and a repeat invocation changed nothing");
+                });
+            }
+            finally
+            {
+                if (dropped != null)
+                {
+                    dropped.Dispose();
+                }
+
+                // The bench is put back as the rest of the run expects to find it.
+                _stimulus.SetContinuousWave(toneHz, levelDbm);
+            }
+        }
+
+        /// <summary>
+        /// A front end's real limits, with input range control declared over them.
+        /// </summary>
+        /// <remarks>
+        /// Used by one exercise step and nowhere else. The instrument to hand cannot be ranged, so
+        /// the arithmetic of <c>REQ-ACQ-004</c> could otherwise never meet a real measured peak —
+        /// and a decision rule that has only ever seen invented numbers is the thing this harness
+        /// exists to distrust. Every other limit is the instrument's own.
+        /// </remarks>
+        private sealed class RangeableCapabilities : IFrontEndCapabilities
+        {
+            private readonly IFrontEndCapabilities _inner;
+
+            public RangeableCapabilities(IFrontEndCapabilities inner)
+            {
+                _inner = inner;
+            }
+
+            public FrequencyRange CenterFrequencyRange => _inner.CenterFrequencyRange;
+            public double MaxSpanHz => _inner.MaxSpanHz;
+            public double MinSpanHz => _inner.MinSpanHz;
+            public double MaxSampleRateHz => _inner.MaxSampleRateHz;
+            public int MaxSamplesPerBlock => _inner.MaxSamplesPerBlock;
+            public long MaxCaptureSamples => _inner.MaxCaptureSamples;
+            public bool SupportsBasebandIq => _inner.SupportsBasebandIq;
+            public int ChannelCount => _inner.ChannelCount;
+            public bool SupportsPhaseCoherentChannels => _inner.SupportsPhaseCoherentChannels;
+            public IReadOnlyList<TriggerStyle> TriggerStyles => _inner.TriggerStyles;
+            public AmplitudeRange ReferenceLevelRange => _inner.ReferenceLevelRange;
+            public bool SupportsExternalRef => _inner.SupportsExternalRef;
+            public bool SupportsInputRangeControl => true;
+            public bool SupportsRealTimeAnalysis => _inner.SupportsRealTimeAnalysis;
+            public long MaxPreTriggerSamples => _inner.MaxPreTriggerSamples;
         }
 
         private static double Degrees(SpectrumFrame frame, int index) =>

@@ -277,9 +277,32 @@ namespace OpenVSA.Ui
 
             PopulatePointsChoices(capabilities);
             PopulateTriggerChoices(capabilities);
+            OfferAutoRange(capabilities);
 
             SettingsGrid.IsEnabled = true;
             SettingsMessage.Text = string.Empty;
+        }
+
+        /// <summary>
+        /// Enables the auto-range command only where the front end can be ranged
+        /// (<c>REQ-ACQ-004</c>).
+        /// </summary>
+        /// <param name="capabilities">The capabilities to read the answer from.</param>
+        /// <remarks>
+        /// The tooltip is set on the disabled button and told to show there, as the trigger list
+        /// does: an explanation nobody can read is not an explanation.
+        /// </remarks>
+        private void OfferAutoRange(IFrontEndCapabilities capabilities)
+        {
+            AutoRangeAvailability availability = AutoRangeAvailability.For(capabilities);
+
+            AutoRangeButton.IsEnabled = availability.IsAvailable;
+            AutoRangeButton.ToolTip = availability.IsAvailable
+                ? "Set the reference level from the measured peak, leaving " +
+                  HeadroomBand.Default + " of headroom."
+                : availability.Explanation;
+
+            ToolTipService.SetShowOnDisabled(AutoRangeButton, true);
         }
 
         /// <summary>
@@ -415,6 +438,96 @@ namespace OpenVSA.Ui
             }
 
             await StartMeasurementAsync().ConfigureAwait(true);
+        }
+
+        /// <summary>
+        /// Sets the reference level from the measured peak (<c>REQ-ACQ-004</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The decision is <see cref="AutoRange"/>'s; what the shell adds is the three things only
+        /// it can do — find the peak on the trace that is actually on screen, put the new level
+        /// through the same apply path a typed one takes, and raise the <c>RNG</c> indicator of
+        /// <c>REQ-UI-007</c> while it does.
+        /// </para>
+        /// <para>
+        /// The indicator is set before the restart and cleared by the first frame that arrives
+        /// after it, which is exactly the interval during which the range is being adjusted. A
+        /// flag that were cleared here instead would be raised and lowered within one dispatcher
+        /// turn and never drawn.
+        /// </para>
+        /// </remarks>
+        private async void OnAutoRange(object sender, RoutedEventArgs e)
+        {
+            if (_activeFrontEnd == null || _activeFrontEnd.Capabilities == null)
+            {
+                return;
+            }
+
+            SpectrumFrame frame = _frame;
+
+            if (frame == null)
+            {
+                // Auto-ranging is a decision about a signal, and there is no signal yet. Said
+                // plainly rather than by doing nothing, which would look like a broken button.
+                SettingsMessage.Text =
+                    "Auto-range needs a measurement to range against. Start the acquisition first.";
+                return;
+            }
+
+            double level;
+
+            if (!EngineeringText.TryParseDecibels(ReferenceLevelBox.Text, out level))
+            {
+                SettingsMessage.Text =
+                    "Reference level: '" + ReferenceLevelBox.Text + "' is not a level in dBm.";
+                return;
+            }
+
+            // The trace's own maximum, not a marker: auto-ranging is not a marker operation, and
+            // placing one to read a number would leave the user with a marker they did not ask for.
+            int highest = PeakSearch.Highest(frame);
+
+            if (highest < 0)
+            {
+                SettingsMessage.Text =
+                    "Auto-range found no peak on the trace to range against.";
+                return;
+            }
+
+            double peakDbm = frame.LevelsDbm[highest];
+            AutoRangeResult decision;
+
+            try
+            {
+                decision = AutoRange.Adjust(_activeFrontEnd.Capabilities, level, peakDbm);
+            }
+            catch (InvalidOperationException refused)
+            {
+                // The backstop for a source that cannot range. The button is disabled for one, so
+                // this is reachable only through a keyboard mnemonic on a stale enable state.
+                SettingsMessage.Text = refused.Message;
+                return;
+            }
+
+            SettingsMessage.Text = decision.Message;
+
+            if (!decision.Changed)
+            {
+                return;
+            }
+
+            _indicators.Set(TraceIndicator.Range);
+            Plot.SetIndicators(_indicators);
+
+            ReferenceLevelBox.Text =
+                decision.ReferenceLevelDbm.ToString("0.##", CultureInfo.CurrentCulture);
+
+            await StartMeasurementAsync().ConfigureAwait(true);
+
+            // Restated: the restart overwrites it with the res BW line, and what the user just did
+            // is the more interesting of the two.
+            SettingsMessage.Text = decision.Message;
         }
 
         private int SelectedPoints()
@@ -797,6 +910,11 @@ namespace OpenVSA.Ui
         private void UpdateIndicators(TraceSnapshot snapshot)
         {
             _indicators.Clear(TraceIndicator.NoData);
+
+            // "RNG": raised when auto-ranging moved the level, and cleared here because a frame
+            // measured on the new range is the moment the adjustment is over (REQ-ACQ-004,
+            // REQ-UI-007).
+            _indicators.Clear(TraceIndicator.Range);
 
             // "ALL POINTS": every acquired point has a column of its own, so nothing is being
             // enveloped away and what is on screen is the measurement rather than a reduction of it.

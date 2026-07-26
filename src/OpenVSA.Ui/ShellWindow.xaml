@@ -187,8 +187,18 @@
                                Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <StackPanel Grid.Row="13" Grid.Column="1" Orientation="Vertical">
-                        <Button x:Name="ApplyButton" AutomationProperties.AutomationId="Apply" Content="_Apply" Click="OnApplySettings"
-                                Padding="12,3" HorizontalAlignment="Left" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="ApplyButton" AutomationProperties.AutomationId="Apply" Content="_Apply" Click="OnApplySettings"
+                                    Padding="12,3" HorizontalAlignment="Left" />
+                            <!--
+                                REQ-ACQ-004. Disabled, with the reason as its tooltip, against a
+                                source that cannot be ranged - a button that is present, enabled and
+                                inert would leave the user believing the range had been set.
+                            -->
+                            <Button x:Name="AutoRangeButton" AutomationProperties.AutomationId="AutoRange"
+                                    Content="Auto _range" Click="OnAutoRange"
+                                    Padding="12,3" Margin="8,0,0,0" HorizontalAlignment="Left" />
+                        </StackPanel>
                         <TextBlock x:Name="SettingsMessage" Margin="0,8,0,0" TextWrapping="Wrap"
                                    FontSize="11" />
                     </StackPanel>
