@@ -24,7 +24,20 @@
     <DockPanel>
 
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_File" />
+            <!--
+                REQ-STA-001, REQ-STA-002 and REQ-STA-005. Saving names its exclusions in the dialog
+                rather than leaving the user to discover them, and the preset menu is built from the
+                library at open time so a preset saved this session is there without a restart.
+            -->
+            <MenuItem Header="_File">
+                <MenuItem x:Name="SaveStateItem" Header="_Save state…" Click="OnSaveState" />
+                <MenuItem x:Name="RecallStateItem" Header="_Recall state…" Click="OnRecallState" />
+                <Separator />
+                <MenuItem x:Name="PresetMenu" Header="_Preset" SubmenuOpened="OnPresetMenuOpened">
+                    <MenuItem x:Name="FactoryPresetItem" Header="_Factory preset" Click="OnFactoryPreset" />
+                </MenuItem>
+                <MenuItem x:Name="SavePresetItem" Header="Save as prese_t…" Click="OnSavePreset" />
+            </MenuItem>
             <MenuItem Header="_Edit" />
             <MenuItem x:Name="HardwareMenu" Header="_Hardware" />
             <MenuItem Header="_Acquisition">

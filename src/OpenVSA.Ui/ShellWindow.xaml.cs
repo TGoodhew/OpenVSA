@@ -13,7 +13,9 @@ using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
+using System.IO;
 using OpenVSA.Measurement.Markers;
+using OpenVSA.Measurement.State;
 using OpenVSA.Ui.HotSpots;
 using OpenVSA.Ui.Rendering;
 
@@ -77,6 +79,9 @@ namespace OpenVSA.Ui
         private readonly TraceIndicators _indicators = new TraceIndicators();
 
         private readonly DispatcherTimer _hotSpotSettle;
+
+        /// <summary>The user's saved presets (<c>REQ-STA-005</c>).</summary>
+        private readonly PresetLibrary _presets = new PresetLibrary(PresetLibrary.DefaultDirectory);
 
         private IFrontEnd _activeFrontEnd;
         private SpectrumEngine _engine;
@@ -740,6 +745,363 @@ namespace OpenVSA.Ui
 
             Plot.SetIndicators(_indicators);
         }
+
+        // ---- State, presets and their exclusions ------------------------------------------------
+
+        /// <summary>The context this shell's one measurement belongs to (<c>REQ-STA-004</c>).</summary>
+        private const string ContextName = "Measurement 1";
+
+        /// <summary>
+        /// The settings pane and plot, expressed as a saveable state (<c>REQ-STA-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// Read from the controls rather than from a parallel model, so what is saved is what is on
+        /// screen. A second copy of the settings kept alongside the pane would be one more thing to
+        /// keep in step, and the failure would be silent: a state that saved a frequency the user
+        /// had changed and not applied.
+        /// </remarks>
+        public ApplicationState CaptureState()
+        {
+            ApplicationState state = ApplicationState.Default(ContextName);
+            MeasurementState measurement = state.Measurements[0];
+
+            double parsed;
+
+            if (EngineeringText.TryParseFrequency(CentreBox.Text, out parsed))
+            {
+                measurement.CenterFrequencyHz = parsed;
+            }
+
+            if (EngineeringText.TryParseFrequency(SpanBox.Text, out parsed))
+            {
+                measurement.SpanHz = parsed;
+            }
+
+            if (EngineeringText.TryParseFrequency(ResolutionBandwidthBox.Text, out parsed))
+            {
+                measurement.ResolutionBandwidthHz = parsed;
+            }
+
+            if (EngineeringText.TryParseDecibels(ReferenceLevelBox.Text, out parsed))
+            {
+                measurement.Input.RangeDbm = parsed;
+            }
+
+            measurement.ResolutionBandwidthIsAutomatic = SelectedPoints() == 0;
+            measurement.Analysis.PointsAreAutomatic = SelectedPoints() == 0;
+            measurement.Analysis.FrequencyPoints =
+                SelectedPoints() == 0 ? AcquisitionPlanner.DefaultFrequencyPoints : SelectedPoints();
+            measurement.Analysis.Window = SelectedWindow();
+
+            measurement.Trigger.Channel = Plot.TriggerChannelHotSpot.Value.Text;
+
+            TraceDisplayState trace = measurement.Traces[0];
+            trace.TopDbm = Plot.TopDbm;
+            trace.DecibelsPerDivision = Plot.DecibelsPerDivision;
+
+            TraceFormat format;
+            if (TraceFormatText.TryParse(Plot.FormatHotSpot.Value.Text, out format))
+            {
+                trace.Format = format;
+            }
+
+            measurement.Markers.Clear();
+
+            foreach (Marker marker in _markers.Markers)
+            {
+                measurement.Markers.Add(new MarkerState
+                {
+                    Number = marker.Number,
+                    Trace = marker.TraceLetter.ToString(CultureInfo.InvariantCulture),
+                    Type = marker.Type.ToString(),
+                    XHz = marker.XHz,
+                    YDbm = marker.Type == MarkerType.Fixed ? marker.FixedYDbm : 0.0,
+                    DeltaReference = marker.Reference == null ? 0 : marker.Reference.Number,
+                    IsSelected = marker.IsSelected,
+                });
+            }
+
+            return state;
+        }
+
+        /// <summary>
+        /// Applies a recalled measurement to the settings pane and the plot.
+        /// </summary>
+        /// <param name="measurement">The recalled settings.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="measurement"/> is null.</exception>
+        public void ApplyState(MeasurementState measurement)
+        {
+            if (measurement == null)
+            {
+                throw new ArgumentNullException(nameof(measurement));
+            }
+
+            CentreBox.Text = EngineeringText.Frequency(measurement.CenterFrequencyHz, 6);
+            SpanBox.Text = EngineeringText.Frequency(measurement.SpanHz, 6);
+            ResolutionBandwidthBox.Text =
+                EngineeringText.Frequency(measurement.ResolutionBandwidthHz, 6);
+            ReferenceLevelBox.Text =
+                measurement.Input.RangeDbm.ToString("0.##", CultureInfo.CurrentCulture) + " dBm";
+
+            WindowBox.SelectedIndex = IndexOfWindow(measurement.Analysis.Window);
+
+            if (measurement.Analysis.PointsAreAutomatic)
+            {
+                SelectAutomaticPoints();
+            }
+            else
+            {
+                object choice = FindPointsChoice(measurement.Analysis.FrequencyPoints);
+
+                if (choice != null)
+                {
+                    PointsBox.SelectedItem = choice;
+                }
+            }
+
+            Plot.TriggerChannelHotSpot.Value.TrySet(measurement.Trigger.Channel);
+            Plot.TriggerChannelHotSpot.Refresh();
+
+            if (measurement.Traces.Count > 0)
+            {
+                Plot.FormatHotSpot.Value.TrySet(
+                    TraceFormatText.Describe(measurement.Traces[0].Format));
+                Plot.FormatHotSpot.Refresh();
+            }
+
+            foreach (Marker existing in _markers.Markers.ToList())
+            {
+                _markers.Remove(existing);
+            }
+
+            // Two passes: a delta marker needs its reference to exist before it can be made, and a
+            // state is free to list them in either order.
+            foreach (MarkerState marker in measurement.Markers)
+            {
+                if (!string.Equals(marker.Type, "Delta", StringComparison.Ordinal))
+                {
+                    RestoreMarker(marker, null);
+                }
+            }
+
+            foreach (MarkerState marker in measurement.Markers)
+            {
+                if (string.Equals(marker.Type, "Delta", StringComparison.Ordinal))
+                {
+                    RestoreMarker(
+                        marker,
+                        _markers.Markers.FirstOrDefault(m => m.Number == marker.DeltaReference));
+                }
+            }
+
+            RefreshMarkers();
+        }
+
+        private void RestoreMarker(MarkerState marker, Marker reference)
+        {
+            if (string.Equals(marker.Type, "Fixed", StringComparison.Ordinal))
+            {
+                _markers.AddFixed(marker.XHz, marker.YDbm);
+            }
+            else if (string.Equals(marker.Type, "Delta", StringComparison.Ordinal) &&
+                     reference != null)
+            {
+                _markers.AddDelta(marker.XHz, reference);
+            }
+            else
+            {
+                _markers.AddNormal(marker.XHz);
+            }
+        }
+
+        private void OnSaveState(object sender, RoutedEventArgs e)
+        {
+            var dialog = new StateSaveDialog(SuggestedStatePath()) { Owner = this };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            try
+            {
+                StateFile.Save(CaptureState(), dialog.Path);
+                StatusText.Content = "State saved";
+            }
+            catch (IOException failure)
+            {
+                StatusText.Content = "Could not save the state";
+                SettingsMessage.Text = failure.Message;
+            }
+            catch (UnauthorizedAccessException failure)
+            {
+                StatusText.Content = "Could not save the state";
+                SettingsMessage.Text = failure.Message;
+            }
+        }
+
+        private void OnRecallState(object sender, RoutedEventArgs e)
+        {
+            var picker = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "OpenVSA state (*" + StateFile.Extension + ")|*" + StateFile.Extension,
+                Title = "Recall state",
+            };
+
+            if (picker.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            try
+            {
+                Recall(StateFile.Load(picker.FileName));
+                StatusText.Content = "State recalled";
+            }
+            catch (StateFormatException failure)
+            {
+                StatusText.Content = "Could not recall the state";
+                SettingsMessage.Text = failure.Message;
+            }
+            catch (IOException failure)
+            {
+                StatusText.Content = "Could not recall the state";
+                SettingsMessage.Text = failure.Message;
+            }
+        }
+
+        /// <summary>
+        /// Applies a state, or refuses it as a whole (<c>REQ-STA-004</c>).
+        /// </summary>
+        /// <param name="state">The state to apply.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="state"/> is null.</exception>
+        public void Recall(ApplicationState state)
+        {
+            if (state == null)
+            {
+                throw new ArgumentNullException(nameof(state));
+            }
+
+            var contexts = new Dictionary<string, MeasurementState>(StringComparer.Ordinal)
+            {
+                { ContextName, CaptureState().Measurements[0] },
+            };
+
+            try
+            {
+                StateRecall.Apply(state, contexts);
+            }
+            catch (ContextMismatchException mismatch)
+            {
+                // Reported rather than partially applied: the settings pane is untouched, because
+                // nothing has been written to it yet.
+                StatusText.Content = "State not recalled";
+                SettingsMessage.Text = mismatch.Message;
+                return;
+            }
+
+            ApplyState(contexts[ContextName]);
+            SettingsMessage.Text = string.Empty;
+        }
+
+        private void OnFactoryPreset(object sender, RoutedEventArgs e)
+        {
+            // REQ-UI-061: the hardware setup is left alone, which is structural - a state carries
+            // no front end, so applying one cannot disturb the connection.
+            Recall(Presets.Factory(ContextName));
+            StatusText.Content = "Factory preset";
+        }
+
+        private void OnSavePreset(object sender, RoutedEventArgs e)
+        {
+            var dialog = new StateSaveDialog("My preset") { Owner = this, Title = "Save as preset" };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            try
+            {
+                _presets.Save(dialog.Path, CaptureState());
+                StatusText.Content = "Preset '" + dialog.Path + "' saved";
+            }
+            catch (ArgumentException failure)
+            {
+                StatusText.Content = "Could not save the preset";
+                SettingsMessage.Text = failure.Message;
+            }
+            catch (IOException failure)
+            {
+                StatusText.Content = "Could not save the preset";
+                SettingsMessage.Text = failure.Message;
+            }
+        }
+
+        /// <summary>
+        /// Rebuilds the preset menu when it opens.
+        /// </summary>
+        /// <remarks>
+        /// On open rather than at start-up, so a preset saved this session appears without a
+        /// restart — and so one deleted outside the application stops appearing.
+        /// </remarks>
+        private void OnPresetMenuOpened(object sender, RoutedEventArgs e)
+        {
+            while (PresetMenu.Items.Count > 1)
+            {
+                PresetMenu.Items.RemoveAt(1);
+            }
+
+            IReadOnlyList<string> names;
+
+            try
+            {
+                names = _presets.Names;
+            }
+            catch (IOException)
+            {
+                return;
+            }
+
+            if (names.Count == 0)
+            {
+                return;
+            }
+
+            PresetMenu.Items.Add(new Separator());
+
+            foreach (string name in names)
+            {
+                string captured = name;
+                var item = new MenuItem { Header = name };
+                item.Click += (s, args) => ApplyPreset(captured);
+                PresetMenu.Items.Add(item);
+            }
+        }
+
+        private void ApplyPreset(string name)
+        {
+            try
+            {
+                Recall(_presets.Load(name));
+                StatusText.Content = "Preset '" + name + "'";
+            }
+            catch (StateFormatException failure)
+            {
+                StatusText.Content = "Could not apply the preset";
+                SettingsMessage.Text = failure.Message;
+            }
+            catch (IOException failure)
+            {
+                StatusText.Content = "Could not apply the preset";
+                SettingsMessage.Text = failure.Message;
+            }
+        }
+
+        private static string SuggestedStatePath() =>
+            System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                "OpenVSA setup" + StateFile.Extension);
 
         // ---- Hot spots -------------------------------------------------------------------------
 
