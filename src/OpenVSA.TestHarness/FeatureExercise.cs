@@ -1047,6 +1047,55 @@ namespace OpenVSA.TestHarness
 
                 return new Outcome<string>(ok, clamped.Reason, clamped.Reason);
             });
+
+            Step("REQ-DSP-021", "RBW couples to span, uncouples, and refuses what it cannot reach", () =>
+            {
+                // Against this instrument's declared capture depth, so the reachable range is the
+                // one it would actually impose rather than a figure from the specification.
+                var control = new ResolutionBandwidthControl(
+                    _frontEnd.Capabilities, spanHz, WindowType.FlatTop);
+
+                ResolutionBandwidthRange range = control.Achievable;
+
+                control.SetCoupling(ResolutionBandwidthCoupling.Coupled);
+                control.SetSpanToRatio(137.0);
+
+                double coupled = control.SetSpan(spanHz / 2.0);
+                bool ratioHeld = Math.Abs(coupled - spanHz / 2.0 / 137.0) < 1e-6;
+
+                // REQ-DSP-020's relation, on the value the coupling produced.
+                double enbw = Window.Get(WindowType.FlatTop, 4096).Enbw;
+                bool relationExact =
+                    Math.Abs(ResolutionBandwidth.ForRecordLength(enbw, control.RecordSeconds) - coupled)
+                        < coupled * 1e-9;
+
+                control.SetCoupling(ResolutionBandwidthCoupling.Uncoupled);
+                bool held = Math.Abs(control.SetSpan(spanHz) - coupled) < 1e-9;
+
+                bool refused;
+
+                try
+                {
+                    control.SetResolutionBandwidth(range.MinHz / 10.0);
+                    refused = false;
+                }
+                catch (ArgumentOutOfRangeException rejection)
+                {
+                    refused = rejection.Message.IndexOf(
+                        "finest available", StringComparison.Ordinal) >= 0;
+                }
+
+                bool coarseEnough = range.MaxHz > 0.287 * _frontEnd.Capabilities.MaxSpanHz ||
+                                    range.MaxHz >= 0.287 * spanHz;
+
+                return new Outcome<double>(
+                    ratioHeld && relationExact && held && refused && coarseEnough,
+                    coupled,
+                    "reachable " + range + " at " + Hz(spanHz) + "; coupled at 137:1 gave " +
+                    Hz(coupled) + " over " + Hz(spanHz / 2.0) + " with T_rec " +
+                    (control.RecordSeconds * 1e6).ToString("0.0", CultureInfo.CurrentCulture) +
+                    " us; uncoupled it held; a tenth of the finest was refused");
+            });
         }
 
         /// <summary>
