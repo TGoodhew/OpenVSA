@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.TestHarness</RootNamespace>
+    <AssemblyTitle>OpenVSA.TestHarness</AssemblyTitle>
+    <Description>Cross-validation harness: drives a stimulus source to a known state, measures it with OpenVSA, and asserts the reading. Test infrastructure, not product code.</Description>
+  </PropertyGroup>
+
+  <!--
+    REQ-ARC-001: this is test infrastructure and must never become a dependency of L2-L5. It
+    references them; nothing references it. Issue #393 states the same constraint, along with the
+    one that matters most here: the stimulus generator must NOT be implemented behind IFrontEnd.
+    IFrontEnd is the measurement path - the thing under test - and putting the generator behind it
+    would let a harness signal reach the DSP layer without going through an instrument, which
+    defeats the entire purpose of the exercise.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal.Visa\OpenVSA.Hal.Visa.csproj" />
+    <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+    <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
+  </ItemGroup>
+
+</Project>

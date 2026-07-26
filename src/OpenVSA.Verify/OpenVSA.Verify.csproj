@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenVSA.Verify</RootNamespace>
+    <AssemblyName>OpenVSA.Verify</AssemblyName>
+    <AssemblyTitle>OpenVSA.Verify</AssemblyTitle>
+    <Description>Headless cross-validation host: drives a stimulus source, measures with OpenVSA, exits non-zero on failure so a build can gate on it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.TestHarness\OpenVSA.TestHarness.csproj" />
+    <ProjectReference Include="..\OpenVSA.Hal.Visa\OpenVSA.Hal.Visa.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -21,6 +21,8 @@
     <Project Path="src/OpenVSA.Personality/OpenVSA.Personality.csproj" />
     <Project Path="src/OpenVSA.Api/OpenVSA.Api.csproj" />
     <Project Path="src/OpenVSA.Ui/OpenVSA.Ui.csproj" />
+    <Project Path="src/OpenVSA.TestHarness/OpenVSA.TestHarness.csproj" />
+    <Project Path="src/OpenVSA.Verify/OpenVSA.Verify.csproj" />
   </Folder>
 
   <Folder Name="/tests/">
@@ -31,6 +33,7 @@
     <Project Path="tests/OpenVSA.Hal.Tests/OpenVSA.Hal.Tests.csproj" />
     <Project Path="tests/OpenVSA.Measurement.Tests/OpenVSA.Measurement.Tests.csproj" />
     <Project Path="tests/OpenVSA.Ui.Tests/OpenVSA.Ui.Tests.csproj" />
+    <Project Path="tests/OpenVSA.TestHarness.Tests/OpenVSA.TestHarness.Tests.csproj" />
     <Project Path="tests/OpenVSA.Benchmarks/OpenVSA.Benchmarks.csproj" />
   </Folder>
 
