@@ -433,6 +433,40 @@ namespace OpenVSA.Capture.Tests
         }
 
         [Fact]
+        public void ARecordThatStartsAboveTheLevelTriggersAtItsFirstSample()
+        {
+            // Found by exercising the trigger against a real acquisition rather than against a
+            // made-up signal: a steady carrier well above the level crosses nothing, so a strict
+            // edge search returned no triggers at all - an analyser waiting for a trigger while
+            // plainly receiving a signal that satisfies the condition. The acquisition was not
+            // armed before sample 0, so entering the record already above the level is the
+            // transition.
+            using (IqBlock carrier = Burst(4000, 0, 4000, 1.0))
+            {
+                IReadOnlyList<int> instants = TriggerSearch.Instants(
+                    carrier, new TriggerSettings(TriggerStyle.Level, levelVolts: 0.5));
+
+                Assert.Equal(new[] { 0 }, instants.ToArray());
+            }
+        }
+
+        [Fact]
+        public void AQuietRecordDoesNotTriggerOnAFallingEdgeItNeverFellFrom()
+        {
+            // The falling case has no mirror, deliberately: "has it fallen below the level?"
+            // presupposes it was above. Firing at sample 0 here would trigger on every quiet
+            // acquisition, which is not a trigger at all.
+            using (IqBlock quiet = Burst(4000, 0, 0, 1.0))
+            {
+                IReadOnlyList<int> instants = TriggerSearch.Instants(
+                    quiet,
+                    new TriggerSettings(TriggerStyle.Level, levelVolts: 0.5, risingEdge: false));
+
+                Assert.Empty(instants);
+            }
+        }
+
+        [Fact]
         public void TheTriggerFiresOnTheEnvelopeRatherThanOnTheInPhaseComponent()
         {
             // A carrier well above the level passes through zero twice a cycle, so a trigger on I
