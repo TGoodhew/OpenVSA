@@ -47,6 +47,48 @@ namespace OpenVSA.Hal.Visa
         /// <summary><c>appSettings</c> key naming the VISA resource to open.</summary>
         public const string ResourceSettingKey = "OpenVSA.Visa.E4406A.Resource";
 
+        /// <summary>
+        /// Most complex samples this front end will ask for in one block.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>A declared capture depth has to mean "can actually be delivered".</strong> The
+        /// instrument reports a maximum sweep time of 100 s, which at its sample rate is over a
+        /// billion samples — arithmetically true and useless as a block size. Declaring it let the
+        /// settings pane offer every point count on <c>REQ-DSP-022</c>'s ladder, and choosing one
+        /// near the top asked for a transfer that could not finish: the application appeared to
+        /// lock up while a multi-megabyte block crawled over GPIB behind a ten-second timeout.
+        /// </para>
+        /// <para>
+        /// A hard ceiling only. The real bound is <see cref="MaximumBlockSeconds"/>, measured
+        /// against the instrument at connect, because how fast a block arrives is a property of
+        /// the interface and the cabling rather than of the model — this bench manages about
+        /// 20 kB/s, where a direct GPIB card manages fifty times that.
+        /// </para>
+        /// </remarks>
+        public const int MaximumTransferSamples = 1 << 17;
+
+        /// <summary>
+        /// Longest a single block may take to transfer, in seconds, when sizing the capture.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Measured against this bench: 32 768 samples took 13.4 s and 65 536 timed out, both
+        /// offered by a settings list built from a capture depth that only counted what the
+        /// instrument could <em>digitise</em>. Ten seconds is already a long time to wait for one
+        /// frame; it is here as the point past which a measurement is no longer interactive, not as
+        /// a performance target.
+        /// </para>
+        /// <para>
+        /// Deeper captures belong to the recording path of <c>REQ-REC-001</c>, which streams rather
+        /// than returning one block.
+        /// </para>
+        /// </remarks>
+        public const double MaximumBlockSeconds = 10.0;
+
+        /// <summary>Samples used to measure the instrument's transfer rate at connect.</summary>
+        private const int ThroughputProbeSamples = 1024;
+
         private readonly Func<string, IInstrumentSession> _openSession;
         private readonly string _resourceName;
         private readonly List<string> _sent = new List<string>();
@@ -330,6 +372,11 @@ namespace OpenVSA.Hal.Visa
             Send(session, E4406ACommands.SetSweepTime(plan.SamplesPerBlock * aperture));
             ThrowOnInstrumentError(session, "configuring");
 
+            // The I/O timeout has to allow for the transfer this plan implies. A fixed timeout is
+            // fine until a block is large enough to exceed it, and then it fails partway through a
+            // read that was working — which is how a deep capture came to look like a fault.
+            session.TimeoutMilliseconds = TimeoutForBlock(plan.SamplesPerBlock);
+
             ReportCoercions(plan);
 
             _plan = plan;
@@ -368,9 +415,23 @@ namespace OpenVSA.Hal.Visa
             IInstrumentSession session = RequireSession();
             State = FrontEndState.Acquiring;
 
-            Record(E4406ACommands.ReadIqTrace);
-            session.Write(E4406ACommands.ReadIqTrace);
-            byte[] payload = session.ReadBinaryBlock();
+            byte[] payload;
+
+            try
+            {
+                Record(E4406ACommands.ReadIqTrace);
+                session.Write(E4406ACommands.ReadIqTrace);
+                payload = session.ReadBinaryBlock();
+            }
+            catch (Exception)
+            {
+                // One failed transfer must not take the session with it: a read that timed out
+                // leaves the response waiting and every command after it fails with -410, which
+                // presents as the application locking up rather than as one dropped frame.
+                Recover(session);
+                State = FrontEndState.Configured;
+                throw;
+            }
 
             int values = payload.Length / 4;
 
@@ -485,6 +546,8 @@ namespace OpenVSA.Hal.Visa
             Send(session, E4406ACommands.SetBandwidth(maxSpan));
             double apertureAtMaxSpan = QueryDouble(session, E4406ACommands.Aperture);
 
+            double samplesPerSecond = MeasureTransferRate(session, apertureAtMaxSpan);
+
             return new InstrumentLimits(
                 new FrequencyRange(minCentre, maxCentre),
                 minSpan,
@@ -496,7 +559,110 @@ namespace OpenVSA.Hal.Visa
                 // auto-ranges its attenuator in Basic mode, and its reference-level command is
                 // documented as belonging to the other modes. The upper bound is the instrument's
                 // own damage limit — "external attenuation required above 30 dBm".
-                new AmplitudeRange(-100.0, 30.0));
+                new AmplitudeRange(-100.0, 30.0),
+                samplesPerSecond);
+        }
+
+        /// <summary>
+        /// Times one small acquisition to learn how fast this instrument hands over samples.
+        /// </summary>
+        /// <param name="session">The open session.</param>
+        /// <param name="aperture">Sample period currently in force, in seconds.</param>
+        /// <returns>Samples per second of transfer, or 0 if it could not be measured.</returns>
+        /// <remarks>
+        /// <para>
+        /// The one measurement that cannot be looked up. Transfer speed belongs to the interface
+        /// and the cabling, not to the model: this bench manages about 2 400 samples a second over
+        /// an extender, where a direct card manages far more. Sizing the capture from a datasheet
+        /// figure is how a settings list comes to offer a block that takes a minute.
+        /// </para>
+        /// <para>
+        /// Costs one short acquisition at connect. That is the point at which the user is already
+        /// waiting for the instrument to answer, and it is paid once.
+        /// </para>
+        /// </remarks>
+        private double MeasureTransferRate(IInstrumentSession session, double aperture)
+        {
+            if (!(aperture > 0.0))
+            {
+                return 0.0;
+            }
+
+            try
+            {
+                Send(session, E4406ACommands.SetSweepTime(ThroughputProbeSamples * aperture));
+
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                Record(E4406ACommands.ReadIqTrace);
+                session.Write(E4406ACommands.ReadIqTrace);
+                byte[] payload = session.ReadBinaryBlock();
+                clock.Stop();
+
+                int samples = payload.Length / 8;
+                double seconds = clock.Elapsed.TotalSeconds;
+
+                return samples > 0 && seconds > 0.0 ? samples / seconds : 0.0;
+            }
+            catch (Exception)
+            {
+                // Not fatal: without a measurement the capture is bounded by the hard ceiling
+                // alone, which is the behaviour before this existed.
+                Recover(session);
+                return 0.0;
+            }
+        }
+
+        /// <summary>
+        /// I/O timeout for a block of a given size, in milliseconds.
+        /// </summary>
+        /// <param name="samples">Complex samples the block will carry.</param>
+        /// <remarks>
+        /// Three times the measured transfer time, floored at ten seconds. Generous because the
+        /// cost of being wrong is asymmetric: a timeout that is too long delays noticing a dead
+        /// instrument by seconds, while one that is too short aborts a transfer that was working
+        /// and leaves the session needing recovery.
+        /// </remarks>
+        private int TimeoutForBlock(int samples)
+        {
+            const int floorMilliseconds = 10000;
+
+            double rate = _capabilities == null ? 0.0 : _capabilities.SamplesPerSecond;
+
+            if (!(rate > 0.0))
+            {
+                return floorMilliseconds;
+            }
+
+            double milliseconds = samples / rate * 3000.0;
+
+            if (milliseconds < floorMilliseconds)
+            {
+                return floorMilliseconds;
+            }
+
+            return milliseconds > int.MaxValue ? int.MaxValue : (int)milliseconds;
+        }
+
+        /// <summary>
+        /// Puts the session back in a usable state after an I/O failure.
+        /// </summary>
+        /// <remarks>
+        /// A read that timed out leaves the instrument's response waiting, and every command after
+        /// it earns <c>-410 Query INTERRUPTED</c>. Measured on this bench: one over-long transfer
+        /// turned into a cascade of failures that looked like the application had locked up. A
+        /// device clear costs milliseconds and confines the damage to the operation that failed.
+        /// </remarks>
+        private void Recover(IInstrumentSession session)
+        {
+            try
+            {
+                session.Clear();
+                session.Write(E4406ACommands.ClearStatus);
+            }
+            catch (Exception)
+            {
+                // The session is beyond saving; the original failure is the one worth reporting.
+            }
         }
 
         private void ReportCoercions(AcquisitionPlan plan)
@@ -604,6 +770,7 @@ namespace OpenVSA.Hal.Visa
                 new List<TriggerStyle> { TriggerStyle.Immediate }.AsReadOnly();
 
             private readonly double _maxSweepSeconds;
+            private readonly double _samplesPerSecond;
 
             public InstrumentLimits(
                 FrequencyRange centre,
@@ -611,7 +778,8 @@ namespace OpenVSA.Hal.Visa
                 double maxSpanHz,
                 double maxSampleRateHz,
                 double maxSweepSeconds,
-                AmplitudeRange referenceLevel)
+                AmplitudeRange referenceLevel,
+                double samplesPerSecond)
             {
                 CenterFrequencyRange = centre;
                 MinSpanHz = minSpanHz;
@@ -619,7 +787,11 @@ namespace OpenVSA.Hal.Visa
                 MaxSampleRateHz = maxSampleRateHz;
                 _maxSweepSeconds = maxSweepSeconds;
                 ReferenceLevelRange = referenceLevel;
+                _samplesPerSecond = samplesPerSecond;
             }
+
+            /// <summary>Measured transfer rate in samples per second, or 0 if unknown.</summary>
+            public double SamplesPerSecond => _samplesPerSecond;
 
             public FrequencyRange CenterFrequencyRange { get; }
 
@@ -665,17 +837,38 @@ namespace OpenVSA.Hal.Visa
                 return scaled > MaxSampleRateHz ? MaxSampleRateHz : scaled;
             }
 
-            /// <summary>Samples the instrument can capture at a rate, from its maximum sweep time.</summary>
+            /// <summary>
+            /// Samples the instrument can deliver in one block at a rate.
+            /// </summary>
+            /// <remarks>
+            /// Bounded by <see cref="MaximumTransferSamples"/> as well as by the sweep time. The
+            /// sweep-time figure alone is what the instrument could <em>capture</em>; this is what
+            /// it can hand over in one block, and it is the second that a settings control must be
+            /// ranged against.
+            /// </remarks>
             public int MaxSamplesFor(double sampleRateHz)
             {
                 double samples = _maxSweepSeconds * sampleRateHz;
+
+                // What it will actually hand over inside the block budget, where that was
+                // measurable. This is the bound that stops the settings list offering a capture
+                // the instrument cannot deliver in an interactive time.
+                if (_samplesPerSecond > 0.0)
+                {
+                    double transferable = _samplesPerSecond * MaximumBlockSeconds;
+
+                    if (transferable < samples)
+                    {
+                        samples = transferable;
+                    }
+                }
 
                 if (samples < 2.0)
                 {
                     return 2;
                 }
 
-                return samples > int.MaxValue ? int.MaxValue : (int)samples;
+                return samples > MaximumTransferSamples ? MaximumTransferSamples : (int)samples;
             }
         }
     }
