@@ -316,6 +316,46 @@ namespace OpenVSA.Measurement.Tests
         }
 
         [Fact]
+        public async Task CyclingAHeldTraceThroughEveryFormatTouchesNothingBelowIt()
+        {
+            // REQ-TRC-001 and REQ-DSP-041, the half a counting FFT provider cannot see: with
+            // acquisition stopped on a held frame, cycling it through every format must make zero
+            // calls into L1/L2. The FFT counter proves nothing is recomputed; this proves nothing
+            // is reacquired, which is the other way a "format change" can turn out to be a
+            // remeasurement wearing a different name.
+            using (var frontEnd = new FakeFrontEnd { BlocksBeforeEnd = 1 })
+            using (var engine = new SpectrumEngine(frontEnd, null))
+            {
+                SpectrumFrame held = null;
+                var completed = new ManualResetEventSlim();
+
+                engine.TargetUpdatesPerSecond = 0.0;
+                engine.FrameComputed += (sender, frame) => held = frame;
+                engine.Completed += (sender, e) => completed.Set();
+
+                await engine.StartAsync(Request, CancellationToken.None);
+                Assert.True(completed.Wait(Patience), "The source never ended.");
+                await engine.StopAsync();
+
+                Assert.NotNull(held);
+
+                // Everything after this point is the user changing format on a stopped measurement.
+                int afterAcquisition = frontEnd.AcquireCalls;
+
+                foreach (TraceFormat format in Enum.GetValues(typeof(TraceFormat)))
+                {
+                    var destination =
+                        new float[held.PointCount * TraceFormatter.ValuesPerPoint(format)];
+
+                    held.Format(format, destination);
+                }
+
+                Assert.Equal(afterAcquisition, frontEnd.AcquireCalls);
+                Assert.Equal(FrontEndState.Configured, frontEnd.State);
+            }
+        }
+
+        [Fact]
         public void TheOverlapAndRecordLengthAreValidated()
         {
             using (var frontEnd = new FakeFrontEnd())
@@ -392,6 +432,16 @@ namespace OpenVSA.Measurement.Tests
             /// <summary>Bin the synthesised tone sits on.</summary>
             public int ToneBin { get; set; } = 100;
 
+            /// <summary>
+            /// Acquisitions asked for, however many were delivered.
+            /// </summary>
+            /// <remarks>
+            /// <c>REQ-TRC-001</c>'s other half: cycling a held trace through its formats must make
+            /// zero calls into L1/L2. Counted rather than inferred from <see cref="Calls"/>, which
+            /// stops recording after the first few entries.
+            /// </remarks>
+            public int AcquireCalls { get; private set; }
+
             /// <summary>Calls made, in order, for asserting the lifecycle.</summary>
             public List<string> Calls
             {
@@ -458,6 +508,7 @@ namespace OpenVSA.Measurement.Tests
             public Task<IqBlock> AcquireNextAsync(CancellationToken ct)
             {
                 Record("Acquire");
+                AcquireCalls++;
                 ct.ThrowIfCancellationRequested();
                 State = FrontEndState.Acquiring;
 
