@@ -125,6 +125,65 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>
+        /// The peak nearest a position, for a marker that tracks a signal (<c>REQ-MKR-005</c>).
+        /// </summary>
+        /// <param name="frame">The spectrum to search.</param>
+        /// <param name="fromIndex">The position to search out from.</param>
+        /// <returns>The index of the nearest local maximum, or −1 if the trace has none.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// Nearest in bins, not highest. A tracking marker must stay on the tone it was put on: a
+        /// search for the highest peak would abandon it for a larger neighbour the moment one
+        /// appeared, which is the opposite of tracking.
+        /// </para>
+        /// <para>
+        /// A tie — a peak the same distance either side — resolves to the higher of the two, and to
+        /// the lower index if those are equal as well. Something has to break it, and taking the
+        /// stronger signal is the choice that keeps a marker on a carrier rather than on a spur
+        /// that happened to be equidistant.
+        /// </para>
+        /// </remarks>
+        public static int Nearest(SpectrumFrame frame, int fromIndex)
+        {
+            IReadOnlyList<int> peaks = Peaks(frame);
+
+            if (peaks.Count == 0)
+            {
+                return -1;
+            }
+
+            if (fromIndex < 0)
+            {
+                return Highest(frame);
+            }
+
+            ReadOnlySpan<float> levels = frame.LevelsDbm;
+            int nearest = -1;
+            int bestDistance = int.MaxValue;
+            float bestLevel = float.NegativeInfinity;
+
+            foreach (int peak in peaks)
+            {
+                int distance = Math.Abs(peak - fromIndex);
+
+                if (distance > bestDistance)
+                {
+                    continue;
+                }
+
+                if (distance < bestDistance || levels[peak] > bestLevel)
+                {
+                    nearest = peak;
+                    bestDistance = distance;
+                    bestLevel = levels[peak];
+                }
+            }
+
+            return nearest;
+        }
+
+        /// <summary>
         /// The lowest point of the trace, or −1 if it is empty.
         /// </summary>
         /// <param name="frame">The spectrum to search.</param>

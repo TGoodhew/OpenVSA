@@ -107,6 +107,24 @@ namespace OpenVSA.Measurement.Markers
         public bool IsSelected { get; internal set; }
 
         /// <summary>
+        /// Whether this marker re-finds its peak on every acquisition (<c>REQ-MKR-005</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Off by default, because a tracking marker moves without being asked and a reader who did
+        /// not switch it on would have no reason to expect it. On, it follows a drifting tone —
+        /// which is the only way to watch a drift at all, since a fixed marker slides off the
+        /// signal and reads the skirt.
+        /// </para>
+        /// <para>
+        /// It tracks the nearest peak to where it already sits, not the highest in the trace. A
+        /// marker that jumped to whichever peak happened to be tallest would abandon the tone it
+        /// was put on the moment a larger one appeared, which is the opposite of tracking.
+        /// </para>
+        /// </remarks>
+        public bool TracksPeak { get; set; }
+
+        /// <summary>
         /// The marker's label (<c>REQ-UI-031</c>).
         /// </summary>
         /// <remarks>
