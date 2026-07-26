@@ -98,6 +98,8 @@ namespace OpenVSA.Hal.Visa
         private AcquisitionPlan _plan;
         private double _sampleRateHz;
         private double _actualBandwidthHz;
+        private string _priorMode;
+        private double _priorCenterFrequencyHz;
         private long _sequenceNumber;
         private float[] _scratch;
         private bool _disposed;
@@ -155,6 +157,19 @@ namespace OpenVSA.Hal.Visa
         /// <summary>The sample rate the instrument reported, in hertz.</summary>
         public double SampleRateHz => _sampleRateHz;
 
+        /// <summary>
+        /// The option codes the instrument reports, which are its installed personalities
+        /// (<c>REQ-E44-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// Read but not acted on. They say which measurement personalities the instrument carries —
+        /// GSM, EDGE, cdmaOne, W-CDMA, baseband I/Q — and OpenVSA uses none of them: it takes raw
+        /// I/Q from Basic mode and does its own analysis. They are surfaced because knowing what a
+        /// borrowed instrument has is worth a query, and because a personality-specific capability
+        /// would have to come from here rather than from a model name.
+        /// </remarks>
+        public IReadOnlyList<string> InstalledOptions { get; private set; } = new string[0];
+
         /// <inheritdoc />
         public Task ConnectAsync(CancellationToken ct)
         {
@@ -172,7 +187,18 @@ namespace OpenVSA.Hal.Visa
                 session.Clear();
                 Send(session, E4406ACommands.ClearStatus);
 
-                DisplayName = Send(session, E4406ACommands.Identify, query: true);
+                string identity = Send(session, E4406ACommands.Identify, query: true);
+                DisplayName = identity;
+                RequireModel(identity);
+
+                InstalledOptions = ParseOptions(
+                    Send(session, E4406ACommands.Options, query: true));
+
+                // Recorded before anything is changed, so the instrument can be handed back as it
+                // was found. It is somebody's bench, and a driver that leaves it in a mode nobody
+                // chose is a driver people stop running.
+                _priorMode = Send(session, E4406ACommands.SelectedMode, query: true);
+                _priorCenterFrequencyHz = QueryDouble(session, ":SENSe:FREQuency:CENTer?");
 
                 Send(session, E4406ACommands.SelectBasicMode);
                 Send(session, E4406ACommands.ConfigureWaveform);
@@ -222,8 +248,19 @@ namespace OpenVSA.Hal.Visa
             {
                 try
                 {
-                    // Left usable by hand rather than with a blank screen.
+                    // Handed back as it was found: the display on, and the mode and centre
+                    // frequency somebody had set before OpenVSA took the instrument over.
                     Send(session, E4406ACommands.EnableDisplay);
+
+                    if (!string.IsNullOrEmpty(_priorMode))
+                    {
+                        Send(session, E4406ACommands.SelectMode(_priorMode));
+                    }
+
+                    if (_priorCenterFrequencyHz > 0.0)
+                    {
+                        Send(session, E4406ACommands.SetCenterFrequency(_priorCenterFrequencyHz));
+                    }
                 }
                 catch (Exception)
                 {
@@ -416,12 +453,21 @@ namespace OpenVSA.Hal.Visa
             State = FrontEndState.Acquiring;
 
             byte[] payload;
+            double[] scalars;
 
             try
             {
                 Record(E4406ACommands.ReadIqTrace);
                 session.Write(E4406ACommands.ReadIqTrace);
                 payload = session.ReadBinaryBlock();
+
+                // The scalars of the acquisition just taken. FETCh, not READ, so they describe
+                // this capture rather than a fresh one - and scalar 1 is where REQ-E44-002b
+                // requires the sample interval to come from, because the instrument quantises it
+                // to a multiple of 1/15 MHz and a requested rate is not generally the one
+                // honoured. Inside the same try: a failure here leaves the session needing
+                // recovery just as much as a failed trace read does.
+                scalars = QueryScalars(session, E4406ACommands.FetchScalars);
             }
             catch (Exception)
             {
@@ -431,6 +477,16 @@ namespace OpenVSA.Hal.Visa
                 Recover(session);
                 State = FrontEndState.Configured;
                 throw;
+            }
+
+            if (scalars.Length > E4406ACommands.SampleIntervalScalar)
+            {
+                double interval = scalars[E4406ACommands.SampleIntervalScalar];
+
+                if (interval > 0.0)
+                {
+                    _sampleRateHz = 1.0 / interval;
+                }
             }
 
             int values = payload.Length / 4;
@@ -703,6 +759,92 @@ namespace OpenVSA.Hal.Visa
 
             session.Write(command);
             return null;
+        }
+
+        /// <summary>
+        /// Reads a numeric result block from a query.
+        /// </summary>
+        /// <param name="session">The open session.</param>
+        /// <param name="command">The query to send.</param>
+        /// <returns>The values.</returns>
+        /// <remarks>
+        /// <strong>Binary, because <c>:FORMat:DATA</c> is global.</strong> Selecting <c>REAL,32</c>
+        /// for the I/Q trace also applies to the scalar block, so a scalar query answers with an
+        /// IEEE 488.2 block and not with text. Parsing it as text fails on the first byte that is
+        /// not a printable character, which is how this presented: a decoder complaining about
+        /// byte 0x5F rather than anything recognisable as a protocol error.
+        /// </remarks>
+        private double[] QueryScalars(IInstrumentSession session, string command)
+        {
+            Record(command);
+            session.Write(command);
+
+            byte[] payload = session.ReadBinaryBlock();
+            int count = payload.Length / 4;
+
+            if (count == 0)
+            {
+                return new double[0];
+            }
+
+            var singles = new float[count];
+            BinaryBlock.ToSingles(payload, singles);
+
+            var values = new double[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                values[i] = singles[i];
+            }
+
+            return values;
+        }
+
+        /// <summary>
+        /// Refuses an instrument that is not the model this driver knows (<c>REQ-E44-001</c>).
+        /// </summary>
+        /// <param name="identity">The <c>*IDN?</c> reply.</param>
+        /// <exception cref="InvalidOperationException">The reply does not name this model.</exception>
+        /// <remarks>
+        /// The configured address may be anything — this bench has a source-measure unit that
+        /// answers perfectly well on the same bus. Sending Basic-mode SCPI to it would produce
+        /// errors that describe the commands rather than the mistake.
+        /// </remarks>
+        private static void RequireModel(string identity)
+        {
+            if (identity != null && identity.IndexOf("E4406A", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                "The instrument at this address identifies itself as '" + identity +
+                "', which is not an E4406A. Check the configured VISA resource.");
+        }
+
+        /// <summary>Parses the quoted, comma-separated option list of <c>*OPT?</c>.</summary>
+        /// <param name="reply">The reply, such as <c>"BAH","202","BAC"</c>.</param>
+        private static IReadOnlyList<string> ParseOptions(string reply)
+        {
+            if (string.IsNullOrEmpty(reply))
+            {
+                return new string[0];
+            }
+
+            string[] parts = reply.Split(',');
+            var options = new List<string>(parts.Length);
+
+            foreach (string part in parts)
+            {
+                string option = part.Trim().Trim('"').Trim();
+
+                if (option.Length > 0)
+                {
+                    options.Add(option);
+                }
+            }
+
+            return options;
         }
 
         private double QueryDouble(IInstrumentSession session, string command)

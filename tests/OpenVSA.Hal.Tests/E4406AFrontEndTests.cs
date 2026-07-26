@@ -310,6 +310,7 @@ namespace OpenVSA.Hal.Tests
             private readonly List<string> _received = new List<string>();
             private string _pending;
             private double _bandwidth = 1e6;
+            private bool _lastWasScalarFetch;
 
             public double MinCentreHz { get; set; } = 7e6;
             public double MaxCentreHz { get; set; } = 4e9;
@@ -337,6 +338,8 @@ namespace OpenVSA.Hal.Tests
             {
                 _received.Add(command);
 
+                _lastWasScalarFetch = command.StartsWith(":FETCh:WAVeform1", StringComparison.Ordinal);
+
                 if (command.StartsWith(":SENSe:WAVeform:BANDwidth:RESolution ", StringComparison.Ordinal))
                 {
                     _bandwidth = ParseTrailingNumber(command);
@@ -362,15 +365,37 @@ namespace OpenVSA.Hal.Tests
 
             public byte[] ReadBinaryBlock()
             {
-                float[] trace = Trace ?? DefaultTrace();
-                var payload = new byte[trace.Length * 4];
+                // :FORMat:DATA REAL,32 is global, so the scalar block comes back binary too - the
+                // fake has to answer both queries in the same form the instrument does.
+                float[] values = _lastWasScalarFetch
+                    ? Scalars()
+                    : (Trace ?? DefaultTrace());
 
-                for (int i = 0; i < trace.Length; i++)
+                var payload = new byte[values.Length * 4];
+
+                for (int i = 0; i < values.Length; i++)
                 {
-                    Buffer.BlockCopy(BitConverter.GetBytes(trace[i]), 0, payload, i * 4, 4);
+                    Buffer.BlockCopy(BitConverter.GetBytes(values[i]), 0, payload, i * 4, 4);
                 }
 
                 return payload;
+            }
+
+            /// <summary>The seven scalars, in the order REQ-E44-002 documents.</summary>
+            private float[] Scalars()
+            {
+                float[] trace = Trace ?? DefaultTrace();
+
+                return new[]
+                {
+                    (float)ApertureFor(ActualBandwidthFor(_bandwidth)),
+                    -20.0f,
+                    -20.0f,
+                    trace.Length / 2.0f,
+                    3.0f,
+                    -17.0f,
+                    -40.0f,
+                };
             }
 
             public void Clear()

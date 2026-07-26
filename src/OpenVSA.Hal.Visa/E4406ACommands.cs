@@ -30,8 +30,36 @@ namespace OpenVSA.Hal.Visa
         /// </remarks>
         public const string ClearStatus = "*CLS";
 
+        /// <summary>Installed-option query, for the personalities of <c>REQ-E44-001</c>.</summary>
+        public const string Options = "*OPT?";
+
+        /// <summary>Queries the measurement mode currently selected.</summary>
+        public const string SelectedMode = ":INSTrument:SELect?";
+
+        /// <summary>Selects a measurement mode by name, for restoring the one found.</summary>
+        /// <param name="mode">Mode name as <see cref="SelectedMode"/> reported it.</param>
+        public static string SelectMode(string mode) => ":INSTrument:SELect " + mode;
+
         /// <summary>Selects Basic mode, in which the waveform (time-domain) measurement lives.</summary>
         public const string SelectBasicMode = ":INSTrument:SELect BASIC";
+
+        /// <summary>
+        /// Returns the seven scalars of the acquisition just taken.
+        /// </summary>
+        /// <remarks>
+        /// <c>FETCh</c> rather than <c>READ</c>: it returns the results of the acquisition already
+        /// in hand instead of arming a new one, so the scalars describe the very I/Q that was just
+        /// read rather than a later capture that may differ. In order, per <c>REQ-E44-002</c>:
+        /// sample interval, mean power, gated mean power, sample count, peak-to-mean ratio,
+        /// maximum, minimum.
+        /// </remarks>
+        public const string FetchScalars = ":FETCh:WAVeform1?";
+
+        /// <summary>Index of the sample interval within the scalar block, zero-based.</summary>
+        public const int SampleIntervalScalar = 0;
+
+        /// <summary>Index of the sample count within the scalar block, zero-based.</summary>
+        public const int SampleCountScalar = 3;
 
         /// <summary>Selects the waveform measurement, whose <c>n=0</c> result is raw I/Q.</summary>
         public const string ConfigureWaveform = ":CONFigure:WAVeform";

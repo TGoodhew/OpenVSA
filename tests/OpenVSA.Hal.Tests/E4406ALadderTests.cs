@@ -184,6 +184,7 @@ namespace OpenVSA.Hal.Tests
             private double _bandwidth = 1e6;
             private double _sweepSeconds = 1e-3;
             private string _pending;
+            private bool _lastWasScalarFetch;
 
             public string ResourceName => "FAKE";
 
@@ -191,6 +192,8 @@ namespace OpenVSA.Hal.Tests
 
             public void Write(string command)
             {
+                _lastWasScalarFetch = command.StartsWith(":FETCh:WAVeform1", StringComparison.Ordinal);
+
                 if (command.StartsWith(":SENSe:WAVeform:BANDwidth:RESolution ", StringComparison.Ordinal))
                 {
                     _bandwidth = Trailing(command);
@@ -219,7 +222,23 @@ namespace OpenVSA.Hal.Tests
             public byte[] ReadBinaryBlock()
             {
                 var samples = (int)Math.Round(_sweepSeconds / Aperture());
-                return new byte[Math.Max(2, samples) * 8];
+                samples = Math.Max(2, samples);
+
+                if (!_lastWasScalarFetch)
+                {
+                    return new byte[samples * 8];
+                }
+
+                // The seven scalars, binary like everything else under REAL,32.
+                float[] scalars = { (float)Aperture(), -20f, -20f, samples, 3f, -17f, -40f };
+                var payload = new byte[scalars.Length * 4];
+
+                for (int i = 0; i < scalars.Length; i++)
+                {
+                    Buffer.BlockCopy(BitConverter.GetBytes(scalars[i]), 0, payload, i * 4, 4);
+                }
+
+                return payload;
             }
 
             public void Clear()
