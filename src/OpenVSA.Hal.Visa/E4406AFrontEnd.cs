@@ -965,6 +965,23 @@ namespace OpenVSA.Hal.Visa
             public bool SupportsExternalRef => true;
 
             /// <summary>
+            /// False: in Basic mode this instrument ranges itself and takes no range command
+            /// (<c>REQ-ACQ-004</c>).
+            /// </summary>
+            /// <remarks>
+            /// Established on the instrument, not read from the guide, because the guide is wrong
+            /// about it: <c>[:SENSe]:POWer[:RF]:RANGe[:UPPer]</c> does not answer in Basic mode, and
+            /// <c>[:SENSe]:POWer[:RF]:ATTenuation:AUTO</c> is rejected outright by firmware A.08.10
+            /// with error −113. What Basic mode does have is <c>:SENSe:WAVeform:ADC:RANGe AUTO</c>,
+            /// which this driver turns on at connect — the instrument ranges its own converter and
+            /// there is nothing for auto-ranging to command. The reference level carried on a plan
+            /// is therefore the top of the graticule and nothing more, so declaring range control
+            /// here would promise an adjustment that never reaches the hardware, which is the
+            /// silent no-op <c>REQ-ACQ-004</c> exists to prevent.
+            /// </remarks>
+            public bool SupportsInputRangeControl => false;
+
+            /// <summary>
             /// False: this transport fetches one record at a time over the bus.
             /// </summary>
             /// <remarks>

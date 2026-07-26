@@ -151,6 +151,31 @@ namespace OpenVSA.Hal
         bool SupportsExternalRef { get; }
 
         /// <summary>
+        /// Whether the input range can actually be set on this front end (<c>REQ-ACQ-004</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Not the same question as whether <see cref="ReferenceLevelRange"/> is non-empty. A front
+        /// end may know the levels it can measure and still have no way to change the range it is
+        /// measuring on — a recording has a range fixed when it was made, and an instrument may
+        /// leave its input attenuator under its own automatic control with no command to override
+        /// it. Auto-ranging must be <em>unavailable</em> in those cases rather than appearing to
+        /// work and doing nothing, which is why this is asked separately and declared rather than
+        /// inferred.
+        /// </para>
+        /// <para>
+        /// Declaring it true is a promise about two things. First, that a plan carrying a different
+        /// <c>ReferenceLevelDbm</c> reaches the hardware. Second, that the levels measured through
+        /// it are absolute — that the front end declares a real <c>FullScaleVolts</c> rather than
+        /// leaving <c>AmplitudeChain</c> to derive one from the reference level. Auto-ranging reads
+        /// a peak off the trace and moves the level to suit it, so against a front end whose
+        /// displayed levels shift with the reference level it would chase its own tail up to the
+        /// top of the range.
+        /// </para>
+        /// </remarks>
+        bool SupportsInputRangeControl { get; }
+
+        /// <summary>
         /// Whether the front end analyses gap-free in real time (<c>REQ-TRG-001</c>).
         /// </summary>
         /// <remarks>

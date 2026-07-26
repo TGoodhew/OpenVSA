@@ -215,6 +215,45 @@ namespace OpenVSA.Hal.Tests
         }
 
         [Fact]
+        public void Capabilities_RangeControlIsAPromiseTheFrontEndKeeps()
+        {
+            // REQ-ACQ-004. Declaring range control says a plan carrying a different reference level
+            // is honoured; a front end that declares it and then coerces every level back to one
+            // value would make auto-ranging a silent no-op, which is the failure the requirement
+            // names. A front end that declares no range control is exempt - it is expected to
+            // ignore the level, and saying so is the honest answer.
+            using (IFrontEnd frontEnd = CreateFrontEnd())
+            {
+                IFrontEndCapabilities caps = frontEnd.Capabilities;
+
+                if (!caps.SupportsInputRangeControl)
+                {
+                    return;
+                }
+
+                Assert.True(
+                    caps.ReferenceLevelRange.MaxDbm > caps.ReferenceLevelRange.MinDbm,
+                    "A front end that can be ranged must have more than one level to range to.");
+
+                AcquisitionRequest request = CreateHonourableRequest();
+
+                // Two levels inside the declared range, a quarter in from each end, so neither is
+                // the boundary an implementation might special-case.
+                double width = caps.ReferenceLevelRange.MaxDbm - caps.ReferenceLevelRange.MinDbm;
+                double low = caps.ReferenceLevelRange.MinDbm + width * 0.25;
+                double high = caps.ReferenceLevelRange.MinDbm + width * 0.75;
+
+                AcquisitionPlan atLow = frontEnd.Negotiate(new AcquisitionRequest(
+                    request.CenterFrequencyHz, request.SpanHz, request.SamplesPerBlock, low));
+                AcquisitionPlan atHigh = frontEnd.Negotiate(new AcquisitionRequest(
+                    request.CenterFrequencyHz, request.SpanHz, request.SamplesPerBlock, high));
+
+                Assert.Equal(low, atLow.ReferenceLevelDbm, 6);
+                Assert.Equal(high, atHigh.ReferenceLevelDbm, 6);
+            }
+        }
+
+        [Fact]
         public void Negotiate_RejectsNull()
         {
             using (IFrontEnd frontEnd = CreateFrontEnd())

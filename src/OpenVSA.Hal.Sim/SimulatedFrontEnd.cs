@@ -422,6 +422,12 @@ namespace OpenVSA.Hal.Sim
             public bool SupportsExternalRef => false;
 
             /// <summary>
+            /// True: a requested reference level is honoured and carried on every block it
+            /// produces, so auto-ranging (<c>REQ-ACQ-004</c>) has something to act on in CI.
+            /// </summary>
+            public bool SupportsInputRangeControl => true;
+
+            /// <summary>
             /// True: a synthetic source has no gap, because it makes the samples.
             /// </summary>
             /// <remarks>

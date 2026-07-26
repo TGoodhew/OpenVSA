@@ -144,6 +144,7 @@ namespace OpenVSA.Measurement.Tests
             public IReadOnlyList<TriggerStyle> TriggerStyles => new[] { TriggerStyle.Immediate };
             public AmplitudeRange ReferenceLevelRange => new AmplitudeRange(-100.0, 30.0);
             public bool SupportsExternalRef => false;
+            public bool SupportsInputRangeControl => true;
             public bool SupportsRealTimeAnalysis => false;
             public long MaxPreTriggerSamples => 0L;
         }
