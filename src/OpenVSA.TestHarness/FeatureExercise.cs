@@ -12,6 +12,7 @@ using OpenVSA.Dsp.Windowing;
 using OpenVSA.Dsp.Zoom;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
+using OpenVSA.Measurement.Channels;
 using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
@@ -149,6 +150,8 @@ namespace OpenVSA.TestHarness
                     ExerciseZoomControls(block, spanHz, actualToneHz);
                     ExerciseTransformCeiling(block, frame);
                     ExerciseNoiseCorrection(block, frame, actualToneHz);
+                    ExerciseChannelMeasurements(frame, actualToneHz);
+                    ExerciseCrossChannelAvailability();
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
                     ExerciseFormats(frame);
@@ -704,6 +707,254 @@ namespace OpenVSA.TestHarness
                     "the carrier stands " + headroom.ToString("0.0", CultureInfo.CurrentCulture) +
                     " dB above a floor taken at " + Db(floorLevel) + " and moved " +
                     moved.ToString("0.000", CultureInfo.CurrentCulture) + " dB");
+            });
+        }
+
+        /// <summary>
+        /// Adjacent-channel power and an emission mask over the real carrier
+        /// (<c>REQ-CHM-001</c>, <c>REQ-CHM-003</c>).
+        /// </summary>
+        /// <remarks>
+        /// The unit tests measure these against flat synthetic densities, where every answer is a
+        /// closed form. What the bench adds is a carrier with real skirts, a real noise floor and a
+        /// real window — so an ACP reading that agreed with a band-power marker only because both
+        /// were reading the same idealised rectangle would come apart here.
+        /// </remarks>
+        private void ExerciseChannelMeasurements(SpectrumFrame frame, double toneHz)
+        {
+            // Sized from the trace, not chosen. Every channel and every mask segment has to fall
+            // inside the span that was actually measured: a channel placed past the end of the
+            // trace integrates no bins at all and reports the amplitude floor, which reads as a
+            // superb adjacent-channel ratio and is a measurement of nothing. The steps below
+            // assert a bin count for the same reason.
+            double headroomHz = Math.Min(
+                toneHz - frame.FrequencyAt(0),
+                frame.FrequencyAt(frame.PointCount - 1) - toneHz);
+
+            double channelHz = headroomHz / 3.0;
+            double offsetHz = 2.0 * channelHz;
+
+            AcpResult acp = Step("REQ-CHM-001", "Adjacent channel power, per offset and per side", () =>
+            {
+                var measurement = new AcpMeasurement(
+                        ChannelDefinition.Rectangular("Carrier", 0.0, channelHz))
+                    .Add(ChannelDefinition.Rectangular("Adjacent", offsetHz, channelHz));
+
+                AcpResult measured = measurement.Measure(frame, toneHz);
+
+                ChannelPower lower = measured.Find("Adjacent", ChannelSide.Lower);
+                ChannelPower upper = measured.Find("Adjacent", ChannelSide.Upper);
+
+                if (lower == null || upper == null)
+                {
+                    return Failed<AcpResult>("an offset channel was not reported on both sides");
+                }
+
+                // A real carrier's adjacent channels sit on the analyser's noise floor, so both
+                // ratios must be well down and neither may come out positive. And every channel
+                // must have integrated something: a bin count of zero is how "off the end of the
+                // trace" disguises itself as a very good result.
+                bool ok = measured.Carrier.Power.BinCount > 0 &&
+                          lower.Power.BinCount > 0 &&
+                          upper.Power.BinCount > 0 &&
+                          lower.RelativeDb < -20.0 &&
+                          upper.RelativeDb < -20.0 &&
+                          Math.Abs(lower.CentreHz - (toneHz - offsetHz)) < 1.0 &&
+                          Math.Abs(upper.CentreHz - (toneHz + offsetHz)) < 1.0 &&
+                          Math.Abs(measured.Carrier.RelativeDb) < 1e-9;
+
+                return new Outcome<AcpResult>(
+                    ok, measured,
+                    "carrier " + Db(measured.Carrier.AbsoluteDbm) + " over " + Hz(channelHz) +
+                    " (" + measured.Carrier.Power.BinCount + " bins); at ±" + Hz(offsetHz) +
+                    " lower " + lower.RelativeDb.ToString("0.0", CultureInfo.CurrentCulture) +
+                    " dBc, upper " + upper.RelativeDb.ToString("0.0", CultureInfo.CurrentCulture) +
+                    " dBc");
+            });
+
+            if (acp == null)
+            {
+                return;
+            }
+
+            Step("REQ-CHM-001", "Absolute channel power agrees with the band power", () =>
+            {
+                // The criterion, to 0.1 dB. It holds because both run through the same integration
+                // in the DSP layer; a second loop here would drift at the band edges, where which
+                // bins are inside is a judgement call.
+                BandPower band = BandMeasurements.Power(
+                    frame, toneHz - channelHz / 2.0, toneHz + channelHz / 2.0);
+
+                double difference = acp.Carrier.AbsoluteDbm - band.TotalDbm;
+                bool ok = Math.Abs(difference) <= 0.1;
+
+                return new Outcome<double>(
+                    ok, difference,
+                    Db(acp.Carrier.AbsoluteDbm) + " against a band power of " + Db(band.TotalDbm) +
+                    " over the same " + Hz(band.BandwidthHz) + ", " +
+                    difference.ToString("0.000", CultureInfo.CurrentCulture) + " dB apart");
+            });
+
+            Step("REQ-CHM-001", "A root-raised-cosine channel reads below a rectangular one", () =>
+            {
+                // What is asserted here is the invariant, not the flat-noise prediction. |H(f)|² is
+                // at most 1 everywhere, so a shaped channel can never read above a rectangular one
+                // over the same span whatever the input - that holds on any signal and is worth
+                // pinning on a real one.
+                //
+                // The exact figure, 10·log10(1+α) below, needs a flat input, and the E4406A's own
+                // floor runs 26 dB across the span. Reported for comparison rather than asserted,
+                // because asserting it here would be asserting that the instrument's noise floor is
+                // flat, which it is not and was never claimed to be. The unit suite tests the
+                // prediction against a floor that is.
+                const double rollOff = 0.22;
+
+                double symbolRate = channelHz / (1.0 + rollOff);
+                double predicted = -10.0 * Math.Log10(1.0 + rollOff);
+
+                // Away from the carrier, so this weighs the shape against noise rather than against
+                // a tone's main lobe - and inside the trace, which is the point of sizing from it.
+                double noiseCentre = toneHz + offsetHz;
+
+                BandPower shaped = new AcpMeasurement(
+                        ChannelDefinition.RootRaisedCosine("N", 0.0, symbolRate, rollOff))
+                    .Measure(frame, noiseCentre).Carrier.Power;
+
+                BandPower flat = new AcpMeasurement(
+                        ChannelDefinition.Rectangular("N", 0.0, channelHz))
+                    .Measure(frame, noiseCentre).Carrier.Power;
+
+                double measured = shaped.TotalDbm - flat.TotalDbm;
+
+                bool ok = shaped.BinCount > 0 &&
+                          flat.BinCount > 0 &&
+                          measured < 0.0 &&
+                          measured > -6.0;
+
+                return new Outcome<double>(
+                    ok, measured,
+                    "RRC α=" + rollOff.ToString("0.##", CultureInfo.CurrentCulture) + " at " +
+                    Hz(symbolRate) + " reads " +
+                    measured.ToString("0.000", CultureInfo.CurrentCulture) +
+                    " dB below a " + Hz(channelHz) + " rectangle over " + flat.BinCount +
+                    " bins; a flat input would predict " +
+                    predicted.ToString("0.000", CultureInfo.CurrentCulture) + " dB");
+            });
+
+            Step("REQ-CHM-003", "An emission mask names the segment the carrier breaches", () =>
+            {
+                // Segments in bins, so the mask is the same shape whatever span the instrument was
+                // set to. The near one covers the carrier's own main lobe at -40 dBc, which it
+                // cannot pass; the far one sits out on the noise floor at -20 dBc, which it passes
+                // by tens of dB. Deliberately not a realistic mask - a clean CW carrier through a
+                // flat-top window has skirts far below any real mask, so there would be nothing to
+                // fail against. What is being exercised is that each segment is judged against its
+                // own limit and the failure names the right one.
+                double bin = frame.BinWidthHz;
+
+                var mask = new EmissionMask("Exercise mask")
+                    .Add(new EmissionMaskSegment("Carrier lobe", 0.0, 2.0 * bin, -40.0))
+                    .Add(new EmissionMaskSegment("Floor", 6.0 * bin, 50.0 * bin, -20.0));
+
+                EmissionMaskResult result = mask.Evaluate(
+                    frame, ChannelDefinition.Rectangular("Carrier", 0.0, channelHz), toneHz);
+
+                LimitLineResult floor = null;
+
+                foreach (LimitLineResult line in result.LimitResult.Lines)
+                {
+                    if (line.Line.Name == "Floor upper")
+                    {
+                        floor = line;
+                    }
+                }
+
+                bool ok = !result.Passed &&
+                          result.OffendingSegment != null &&
+                          result.OffendingSegment.StartsWith(
+                              "Carrier lobe", StringComparison.Ordinal) &&
+                          result.LimitResult.Lines.Count == 4 &&
+                          floor != null && floor.Passed && floor.TestedPoints > 0;
+
+                return new Outcome<string>(
+                    ok, result.OffendingSegment,
+                    result.ToString() + "; 'Floor upper' passed with " +
+                    (floor == null
+                        ? "no result"
+                        : floor.WorstMarginDb.ToString("0.0", CultureInfo.CurrentCulture) +
+                          " dB over " + floor.TestedPoints + " points") +
+                    ", referenced to a carrier of " + Db(result.CarrierPowerDbm));
+            });
+
+            Step("REQ-CHM-003", "The mask runs through the limit engine, not around it", () =>
+            {
+                // REQ-CHM-003 asks for the shared code path to be asserted, because a second
+                // implementation of "above or below" is where an upper/lower inversion comes back.
+                double bin = frame.BinWidthHz;
+
+                var mask = new EmissionMask("Exercise mask")
+                    .Add(new EmissionMaskSegment("Carrier lobe", 0.0, 2.0 * bin, -40.0))
+                    .Add(new EmissionMaskSegment("Floor", 6.0 * bin, 50.0 * bin, -20.0));
+
+                EmissionMaskResult viaMask = mask.Evaluate(frame, toneHz, acp.Carrier.AbsoluteDbm);
+                LimitTestResult viaEngine =
+                    mask.ToLimitTest(toneHz, acp.Carrier.AbsoluteDbm).Evaluate(frame);
+
+                bool ok = viaEngine.Passed == viaMask.LimitResult.Passed &&
+                          viaEngine.Lines.Count == viaMask.LimitResult.Lines.Count;
+
+                for (int i = 0; ok && i < viaEngine.Lines.Count; i++)
+                {
+                    double a = viaEngine.Lines[i].WorstMarginDb;
+                    double b = viaMask.LimitResult.Lines[i].WorstMarginDb;
+
+                    // Both NaN means both lines tested nothing, which is agreement rather than
+                    // disagreement - and NaN compares unequal to itself, so it has to be said.
+                    bool marginsAgree = double.IsNaN(a) && double.IsNaN(b)
+                        ? true
+                        : Math.Abs(a - b) < 1e-9;
+
+                    ok = viaEngine.Lines[i].Line.Name == viaMask.LimitResult.Lines[i].Line.Name &&
+                         viaEngine.Lines[i].TestedPoints ==
+                             viaMask.LimitResult.Lines[i].TestedPoints &&
+                         marginsAgree;
+                }
+
+                return new Outcome<int>(
+                    ok, viaEngine.Lines.Count,
+                    viaEngine.Lines.Count + " limit lines, identical names, points and margins " +
+                    "either way in: the mask builds a LimitTest and hands it the trace");
+            });
+        }
+
+        /// <summary>
+        /// The cross-channel types are offered only where the front end can supply them
+        /// (<c>REQ-DSP-040a</c>).
+        /// </summary>
+        private void ExerciseCrossChannelAvailability()
+        {
+            Step("REQ-DSP-040a", "Cross-channel types are absent, not broken, on one channel", () =>
+            {
+                IFrontEndCapabilities declared = _frontEnd.Capabilities;
+
+                IReadOnlyList<CrossChannelDataType> offered =
+                    CrossChannelDataTypes.AvailableFor(declared);
+
+                bool coherent = CrossChannelDataTypes.IsSupportedBy(declared);
+                string why = CrossChannelDataTypes.ExplainUnavailability(declared);
+
+                // Whatever this instrument declares, the list and the explanation have to agree
+                // with it - and with each other.
+                bool ok = coherent
+                    ? offered.Count == CrossChannelDataTypes.All.Count && why.Length == 0
+                    : offered.Count == 0 && why.Length > 0;
+
+                return new Outcome<int>(
+                    ok, offered.Count,
+                    declared.ChannelCount + " channel(s), phase coherent: " +
+                    declared.SupportsPhaseCoherentChannels + "; " + offered.Count + " of " +
+                    CrossChannelDataTypes.All.Count + " cross-channel types offered" +
+                    (why.Length == 0 ? string.Empty : " — " + why));
             });
         }
 

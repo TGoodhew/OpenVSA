@@ -91,7 +91,37 @@ namespace OpenVSA.Dsp.Spectrum
         /// <returns>Total power and density; zero bins give <see cref="AmplitudeScale.FloorDbm"/>.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
         /// <exception cref="ArgumentException">The band is inverted.</exception>
-        public static BandPower Power(SpectrumFrame frame, double startHz, double stopHz)
+        public static BandPower Power(SpectrumFrame frame, double startHz, double stopHz) =>
+            WeightedPower(frame, startHz, stopHz, null);
+
+        /// <summary>
+        /// Integrates power across a band through a channel filter (<c>REQ-CHM-001</c>).
+        /// </summary>
+        /// <param name="frame">The spectrum.</param>
+        /// <param name="startHz">Lower edge of the band, in hertz.</param>
+        /// <param name="stopHz">Upper edge, in hertz.</param>
+        /// <param name="powerWeight">
+        /// The filter's power response <c>|H(f)|²</c> at a frequency, or <c>null</c> for a
+        /// rectangular channel.
+        /// </param>
+        /// <returns>Total power and density; zero bins give <see cref="AmplitudeScale.FloorDbm"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
+        /// <exception cref="ArgumentException">The band is inverted.</exception>
+        /// <remarks>
+        /// <para>
+        /// The weight is in <em>power</em>, not amplitude, because that is what multiplies a bin's
+        /// <c>|X|²</c> — and because the property that makes a root-raised-cosine channel testable
+        /// is a statement about <c>∫|H(f)|² df</c>. Taking an amplitude response here would be
+        /// wrong by a square root that looks like a plausible half-a-decibel calibration error.
+        /// </para>
+        /// <para>
+        /// <see cref="BandPower.BandwidthHz"/> stays the width actually integrated, not the
+        /// filter's noise bandwidth. The two differ for any shaped filter, and a density derived
+        /// from the wrong one would be out by exactly the figure the shape was chosen for.
+        /// </para>
+        /// </remarks>
+        public static BandPower WeightedPower(
+            SpectrumFrame frame, double startHz, double stopHz, Func<double, double> powerWeight)
         {
             if (frame == null)
             {
@@ -126,7 +156,9 @@ namespace OpenVSA.Dsp.Spectrum
                     continue;
                 }
 
-                sum += re * re + im * im;
+                double bin = re * re + im * im;
+
+                sum += powerWeight == null ? bin : bin * powerWeight(frame.FrequencyAt(i));
             }
 
             // The ENBW correction, applied once. Without it a flat-top-windowed tone reads nearly
