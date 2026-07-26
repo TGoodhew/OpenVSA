@@ -301,6 +301,31 @@ namespace OpenVSA.Dsp.Spectrum
             PowerToDbm(real * real + imaginary * imaginary);
 
         /// <summary>
+        /// Converts a level in dBm back to the squared magnitude in volts a frame stores.
+        /// </summary>
+        /// <param name="dbm">The level, in dBm.</param>
+        /// <returns>
+        /// <c>|v|²</c>, where <c>v</c> is in volts peak referred to the input; zero at or below
+        /// <see cref="FloorDbm"/>.
+        /// </returns>
+        /// <remarks>
+        /// The inverse of <see cref="VoltsSquaredToDbm"/>, and needed by anything that has to do
+        /// arithmetic on powers a caller expressed in decibels — <see cref="NoiseCorrection"/>
+        /// subtracts an incoherent noise power, which only adds and subtracts correctly in linear
+        /// power. Deriving the reverse conversion at each such call site would be one more chance
+        /// to get <c>10 log</c> and <c>20 log</c> the wrong way round.
+        /// </remarks>
+        public double DbmToVoltsSquared(double dbm)
+        {
+            if (double.IsNaN(dbm) || dbm <= FloorDbm)
+            {
+                return 0.0;
+            }
+
+            return Math.Pow(10.0, (dbm - PowerOffsetDb) / 10.0);
+        }
+
+        /// <summary>
         /// Returns a copy with an additional linear gain.
         /// </summary>
         /// <param name="gain">Linear factor, such as the 2 of the one-sided real path.</param>

@@ -93,6 +93,7 @@ namespace OpenVSA.Measurement.Tests.State
             // what the *next* span the user types will mean, so a recalled state that lost it
             // would behave correctly right up until someone changed the span.
             AssertHas(measurement.Analysis, "Window", "Overlap", "SpanChange");
+            AssertHas(measurement.Analysis, "MaxTransformLength", "NoiseCorrection");
 
             // Trace display properties: format, X and Y scaling, spectrogram settings.
             TraceDisplayState trace = measurement.Traces[0];

@@ -116,6 +116,23 @@ namespace OpenVSA.Measurement.State
         /// </remarks>
         public SpanChangeBehaviour SpanChange { get; set; } = SpanChangeBehaviour.Zoom;
 
+        /// <summary>
+        /// Ceiling on transform size, in complex points (<c>REQ-DSP-024</c>'s
+        /// <em>Max FFT Size</em>).
+        /// </summary>
+        public int MaxTransformLength { get; set; } = SpectrumComputer.DefaultMaxTransformLength;
+
+        /// <summary>
+        /// Whether a characterised instrument noise floor is subtracted (<c>REQ-DSP-024</c>'s
+        /// <em>Noise Correction</em>).
+        /// </summary>
+        /// <remarks>
+        /// The switch, not the characterisation. A measured noise floor is a calibration of the
+        /// instrument rather than a setting of the measurement, and putting a whole trace in every
+        /// saved state would make a state file that is mostly someone else's noise.
+        /// </remarks>
+        public bool NoiseCorrection { get; set; }
+
         /// <summary>Averaging type (<c>REQ-DSP-030</c>).</summary>
         public AveragingType Averaging { get; set; } = AveragingType.Off;
 

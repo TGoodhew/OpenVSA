@@ -55,6 +55,11 @@ namespace OpenVSA.Dsp.Spectrum
         {
             _complex = complex;
             _scale = scale;
+
+            // The point count, until a producer that knows better says otherwise. A frame assembled
+            // from stored levels has no transform behind it, and reporting zero there would make
+            // TransformLength a value every consumer had to test before using.
+            TransformLength = complex.Length / 2;
             StartFrequencyHz = startFrequencyHz;
             BinWidthHz = binWidthHz;
             CenterFrequencyHz = centerFrequencyHz;
@@ -89,11 +94,17 @@ namespace OpenVSA.Dsp.Spectrum
             double referenceLevelDbm,
             long sequenceNumber,
             DateTime acquiredUtc,
-            FrontEndId source) =>
+            FrontEndId source,
+            int transformLength,
+            bool transformWasCapped) =>
             new SpectrumFrame(
                 complex, scale, startFrequencyHz, binWidthHz, centerFrequencyHz, sampleRateHz,
                 isBaseband, window, equivalentNoiseBandwidthBins, referenceLevelDbm,
-                sequenceNumber, acquiredUtc, source);
+                sequenceNumber, acquiredUtc, source)
+            {
+                TransformLength = transformLength,
+                TransformWasCapped = transformWasCapped,
+            };
 
         /// <summary>
         /// Creates a frame from levels, copying them.
@@ -285,6 +296,33 @@ namespace OpenVSA.Dsp.Spectrum
         public int AverageCount { get; private set; } = 1;
 
         /// <summary>
+        /// The transform length this frame came from, in complex points.
+        /// </summary>
+        /// <remarks>
+        /// Not the same as <see cref="PointCount"/>, which is what survived trimming to the
+        /// analysis span. This is the number the resolution was actually bought with.
+        /// </remarks>
+        public int TransformLength { get; private set; }
+
+        /// <summary>
+        /// Whether the transform was bounded by <em>Max FFT Size</em> rather than by the record
+        /// (<c>REQ-DSP-024</c>).
+        /// </summary>
+        /// <remarks>
+        /// The requirement asks for the bound to be visible in the annotation, and the reason is
+        /// that a capped measurement is not wrong — it is coarser than the samples could have made
+        /// it. Nothing on the trace shows that: a spectrum measured at half the resolution it could
+        /// have had looks entirely normal, which is the same reason <c>REQ-DSP-021</c> refuses an
+        /// unreachable RBW instead of quietly clamping it.
+        /// </remarks>
+        public bool TransformWasCapped { get; private set; }
+
+        /// <summary>
+        /// Whether a characterised noise floor has been subtracted (<c>REQ-DSP-024</c>).
+        /// </summary>
+        public bool NoiseCorrected { get; private set; }
+
+        /// <summary>
         /// Independent averages this frame is worth (<c>REQ-DSP-031</c>).
         /// </summary>
         /// <remarks>
@@ -334,7 +372,34 @@ namespace OpenVSA.Dsp.Spectrum
                 HasPhase = hasPhase,
                 AverageCount = averageCount,
                 EffectiveAverageCount = effectiveAverageCount,
+
+                // Provenance, not values: how the trace was computed does not change because its
+                // numbers did. A derived trace that forgot it had been capped would present the
+                // resolution it inherited as the resolution it was entitled to.
+                TransformLength = TransformLength,
+                TransformWasCapped = TransformWasCapped,
+                NoiseCorrected = NoiseCorrected,
             };
+        }
+
+        /// <summary>
+        /// Returns a copy carrying different complex values and a noise-correction mark.
+        /// </summary>
+        /// <param name="complex">Interleaved real, imaginary values in volts; ownership passes here.</param>
+        /// <param name="noiseCorrected">Whether a characterised noise floor has been subtracted.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="complex"/> is null.</exception>
+        /// <exception cref="ArgumentException">The length does not match this frame's point count.</exception>
+        internal SpectrumFrame WithNoiseCorrection(float[] complex, bool noiseCorrected)
+        {
+            // Subtracting an incoherent power leaves a magnitude, not a phasor: there is no phase
+            // left to keep, and saying so is what stops the phase formats offering a zero as though
+            // it had been measured.
+            SpectrumFrame corrected = WithComplex(
+                complex, false, AverageCount, EffectiveAverageCount);
+
+            corrected.NoiseCorrected = noiseCorrected;
+
+            return corrected;
         }
 
         /// <summary>Number of displayed frequency points.</summary>
