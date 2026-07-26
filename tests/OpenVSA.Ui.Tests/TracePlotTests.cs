@@ -121,7 +121,83 @@ namespace OpenVSA.Ui.Tests
             OnStaThread(() => Assert.Throws<ArgumentNullException>(() => new TracePlot().Palette = null));
         }
 
+        [Fact]
+        public void AnUnaveragedTraceCarriesNoAveragingNote()
+        {
+            Assert.Equal(string.Empty, TracePlot.AveragingNote(Tone(64, 0.0)));
+        }
+
+        [Fact]
+        public void IndependentAveragesAreAnnotatedAsACountAlone()
+        {
+            // Nothing to qualify: separate acquisitions are worth what they number, so a
+            // parenthesis here would be noise that trains the reader to skip the one that matters.
+            SpectrumFrame averaged = Average(6, overlap: 0.0, window: WindowType.Uniform);
+
+            Assert.Equal("   Avg 6", TracePlot.AveragingNote(averaged));
+        }
+
+        [Fact]
+        public void OverlappedAveragesAreAnnotatedWithWhatTheyAreWorth()
+        {
+            // REQ-DSP-031: the effective count is displayed, not merely computed. Six uniformly
+            // windowed frames cut from one record at three-quarter overlap are six acquisitions
+            // and appreciably fewer independent ones.
+            SpectrumFrame averaged = Average(6, overlap: 0.75, window: WindowType.Uniform);
+
+            string note = TracePlot.AveragingNote(averaged);
+
+            Assert.StartsWith("   Avg 6 (", note);
+            Assert.EndsWith(" eff)", note);
+            Assert.True(averaged.EffectiveAverageCount < 6.0);
+        }
+
+        [Fact]
+        public void ATaperedWindowLosesTooLittleToOverlapToBeWorthAnnotating()
+        {
+            // The same overlap under Flat Top costs less than a tenth of an average, because the
+            // window has already weighted the shared samples to nearly nothing. Annotating that
+            // would be reporting a difference smaller than anyone can read - and it is the reason
+            // the note is conditional rather than always printed.
+            SpectrumFrame averaged = Average(6, overlap: 0.75, window: WindowType.FlatTop);
+
+            Assert.Equal("   Avg 6", TracePlot.AveragingNote(averaged));
+            Assert.True(averaged.EffectiveAverageCount > 5.9);
+        }
+
+        [Fact]
+        public void ItRefusesAFrameOfNullToAnnotate()
+        {
+            Assert.Throws<ArgumentNullException>(() => TracePlot.AveragingNote(null));
+        }
+
         // ---- Helpers ---------------------------------------------------------------------------
+
+        /// <summary>Accumulates a number of frames, as though cut at the given overlap.</summary>
+        private static SpectrumFrame Average(int frames, double overlap, WindowType window)
+        {
+            var averager = new TraceAverager(AveragingType.RmsVideo, frames)
+            {
+                Overlap = overlap,
+                RecordSamples = 1024,
+            };
+
+            var levels = new float[64];
+            SpectrumFrame result = null;
+
+            for (int i = 0; i < frames; i++)
+            {
+                for (int p = 0; p < levels.Length; p++)
+                {
+                    levels[p] = -60.0f + i;
+                }
+
+                result = averager.Accumulate(
+                    SpectrumFrame.FromLevels(levels, 1e9, 1e3, window, 1.0));
+            }
+
+            return result;
+        }
 
         private static TracePlot Laid(out int width, out int height)
         {
