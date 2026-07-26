@@ -43,8 +43,34 @@ namespace OpenVSA.Dsp.Spectrum
             TraceFormat format,
             AmplitudeScale scale,
             double binWidthHz,
-            Span<float> destination)
+            Span<float> destination) =>
+            Format(complex, format, scale, binWidthHz, destination, null);
+
+        /// <summary>
+        /// Formats a complex spectrum with explicit phase and group-delay settings.
+        /// </summary>
+        /// <param name="complex">Interleaved real, imaginary values in volts; two per point.</param>
+        /// <param name="format">The format to produce.</param>
+        /// <param name="scale">The amplitude scale, for the decibel formats.</param>
+        /// <param name="binWidthHz">Spacing between points, for <see cref="TraceFormat.GroupDelay"/>.</param>
+        /// <param name="destination">
+        /// Receives <c>points × <see cref="ValuesPerPoint"/></c> values.
+        /// </param>
+        /// <param name="options">
+        /// Aperture and jump tolerance, or <c>null</c> for <see cref="TraceFormatOptions.Default"/>.
+        /// </param>
+        /// <exception cref="ArgumentException">The spans are not consistent with each other.</exception>
+        /// <exception cref="ArgumentOutOfRangeException">The format is not a known one.</exception>
+        public static void Format(
+            ReadOnlySpan<float> complex,
+            TraceFormat format,
+            AmplitudeScale scale,
+            double binWidthHz,
+            Span<float> destination,
+            TraceFormatOptions options)
         {
+            TraceFormatOptions settings = options ?? TraceFormatOptions.Default;
+
             if (complex.Length % 2 != 0)
             {
                 throw new ArgumentException(
@@ -110,11 +136,11 @@ namespace OpenVSA.Dsp.Spectrum
                     break;
 
                 case TraceFormat.UnwrappedPhase:
-                    Unwrap(complex, points, destination);
+                    Unwrap(complex, points, destination, settings.JumpToleranceDegrees);
                     break;
 
                 case TraceFormat.GroupDelay:
-                    GroupDelay(complex, points, binWidthHz, destination);
+                    GroupDelay(complex, points, binWidthHz, destination, settings);
                     break;
 
                 case TraceFormat.IQ:
@@ -127,16 +153,29 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>
-        /// Phase in degrees, unwrapped across ±180° boundaries (<c>REQ-DSP-044</c>).
+        /// Phase in degrees, unwrapped across the jump tolerance (<c>REQ-DSP-044</c>).
         /// </summary>
+        /// <param name="complex">The spectrum.</param>
+        /// <param name="points">Points in it.</param>
+        /// <param name="destination">Receives the unwrapped phase, in degrees.</param>
+        /// <param name="jumpToleranceDegrees">
+        /// Step above which a wrap is assumed rather than a real excursion; 180° is the standard
+        /// ±π threshold.
+        /// </param>
         /// <remarks>
-        /// The reference point is the first point of the trace, which is stated here because a
-        /// phase trace is only reproducible if the point it is measured from is fixed. A standard
-        /// ±180° threshold unwrap: any step larger than half a turn is taken to be a wrap rather
-        /// than a real excursion.
+        /// <strong>The reference point is the first point of the trace</strong>, which
+        /// <c>REQ-DSP-044</c> requires be documented and <see cref="TraceFormatOptions"/> states
+        /// again where a reader of the annotation will find it. Any reference that moved with the
+        /// signal — the peak, say — would make a phase trace unreproducible between two runs of the
+        /// same measurement.
         /// </remarks>
-        private static void Unwrap(ReadOnlySpan<float> complex, int points, Span<float> destination)
+        private static void Unwrap(
+            ReadOnlySpan<float> complex,
+            int points,
+            Span<float> destination,
+            double jumpToleranceDegrees)
         {
+            double tolerance = jumpToleranceDegrees * Math.PI / 180.0;
             double turns = 0.0;
             double previous = 0.0;
 
@@ -144,15 +183,15 @@ namespace OpenVSA.Dsp.Spectrum
             {
                 double phase = Math.Atan2(complex[i * 2 + 1], complex[i * 2]);
 
-                if (i > 0)
+                if (i > TraceFormatOptions.ReferencePointIndex)
                 {
                     double step = phase - previous;
 
-                    if (step > Math.PI)
+                    if (step > tolerance)
                     {
                         turns -= 2.0 * Math.PI;
                     }
-                    else if (step < -Math.PI)
+                    else if (step < -tolerance)
                     {
                         turns += 2.0 * Math.PI;
                     }
@@ -164,16 +203,33 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>
-        /// Group delay in seconds: <c>−dφ/dω</c>, from the unwrapped phase.
+        /// Group delay in seconds: <c>−dφ/dω</c> over the configured aperture
+        /// (<c>REQ-DSP-045</c>).
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Computed from unwrapped phase, because a wrap in the middle of the difference produces a
-        /// delay spike of a full turn's worth that looks like a real feature. The first point takes
-        /// the second's value, since a derivative needs two points and blanking one end of the
-        /// trace is worse than repeating a value at it.
+        /// delay spike of a full turn's worth that looks like a real feature.
+        /// </para>
+        /// <para>
+        /// <strong>The aperture is a span, and a wider one is a real trade.</strong> The difference
+        /// is taken across <c>aperture</c> bins and divided by that width, which averages the
+        /// derivative: a noisy trace comes out smoother and a narrow feature comes out broader.
+        /// That is why <c>REQ-DSP-045</c> puts the figure in the annotation — the trace cannot be
+        /// read without it.
+        /// </para>
+        /// <para>
+        /// The aperture is centred where it can be and one-sided at the ends, so a delay is
+        /// produced for every point. Blanking half an aperture at each end of the trace would lose
+        /// exactly the band edges a group-delay measurement is usually made to look at.
+        /// </para>
         /// </remarks>
         private static void GroupDelay(
-            ReadOnlySpan<float> complex, int points, double binWidthHz, Span<float> destination)
+            ReadOnlySpan<float> complex,
+            int points,
+            double binWidthHz,
+            Span<float> destination,
+            TraceFormatOptions options)
         {
             if (points < 2 || !(binWidthHz > 0.0))
             {
@@ -186,16 +242,28 @@ namespace OpenVSA.Dsp.Spectrum
             }
 
             var phase = new float[points];
-            Unwrap(complex, points, new Span<float>(phase));
+            Unwrap(complex, points, new Span<float>(phase), options.JumpToleranceDegrees);
 
+            int aperture = Math.Min(options.ApertureBins, points - 1);
             double radiansPerHz = Math.PI / 180.0 / (2.0 * Math.PI * binWidthHz);
 
-            for (int i = 1; i < points; i++)
+            for (int i = 0; i < points; i++)
             {
-                destination[i] = (float)(-(phase[i] - phase[i - 1]) * radiansPerHz);
-            }
+                int first = i - aperture / 2;
 
-            destination[0] = destination[1];
+                if (first < 0)
+                {
+                    first = 0;
+                }
+
+                if (first + aperture > points - 1)
+                {
+                    first = points - 1 - aperture;
+                }
+
+                destination[i] =
+                    (float)(-(phase[first + aperture] - phase[first]) * radiansPerHz / aperture);
+            }
         }
 
         private static double MagnitudeSquared(ReadOnlySpan<float> complex, int index)
