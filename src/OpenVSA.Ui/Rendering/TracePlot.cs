@@ -892,6 +892,58 @@ namespace OpenVSA.Ui.Rendering
         }
 
         /// <summary>
+        /// The annotation for a transform bounded by <em>Max FFT Size</em> (<c>REQ-DSP-024</c>).
+        /// </summary>
+        /// <param name="frame">The frame to describe.</param>
+        /// <returns>Empty when the record, not the ceiling, chose the transform length.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// Shown only when the ceiling actually bound. Annotating every trace with its transform
+        /// length would spend the band's width on a number that is almost always implied by the
+        /// point count, and would leave the one case that matters looking like all the others.
+        /// </para>
+        /// <para>
+        /// The word is "capped" rather than "limited" because the measurement is not limited in the
+        /// sense of being wrong — it is coarser than the samples could have made it, and that is
+        /// something the reader can act on by raising the ceiling.
+        /// </para>
+        /// </remarks>
+        public static string TransformNote(SpectrumFrame frame)
+        {
+            if (frame == null)
+            {
+                throw new ArgumentNullException(nameof(frame));
+            }
+
+            return frame.TransformWasCapped
+                ? "   FFT " + frame.TransformLength.ToString(CultureInfo.CurrentCulture) +
+                  " (capped)"
+                : string.Empty;
+        }
+
+        /// <summary>
+        /// The annotation for a noise-corrected trace (<c>REQ-DSP-024</c>).
+        /// </summary>
+        /// <param name="frame">The frame to describe.</param>
+        /// <returns>Empty when no correction was applied.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
+        /// <remarks>
+        /// A corrected trace and an uncorrected one of the same signal differ most where the signal
+        /// is weakest, which is where someone is most likely to be reading a number off the screen
+        /// and least likely to remember which setting was in force.
+        /// </remarks>
+        public static string NoiseCorrectionNote(SpectrumFrame frame)
+        {
+            if (frame == null)
+            {
+                throw new ArgumentNullException(nameof(frame));
+            }
+
+            return frame.NoiseCorrected ? "   Noise corr" : string.Empty;
+        }
+
+        /// <summary>
         /// Refreshes the annotation from a frame, leaving alone anything the user is editing.
         /// </summary>
         /// <remarks>
@@ -926,6 +978,7 @@ namespace OpenVSA.Ui.Rendering
                 WindowText.Describe(frame.Window) + "   " +
                 frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts" +
                 AveragingNote(frame) + "   Span " + Frequency(frame.SpanHz) +
+                TransformNote(frame) + NoiseCorrectionNote(frame) +
                 (formatNote.Length == 0 ? string.Empty : "   " + formatNote);
 
             if (_markers.Count == 0)

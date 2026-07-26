@@ -35,6 +35,7 @@ namespace OpenVSA.Dsp.Spectrum
 
         private double[] _scratch;
         private Window _window;
+        private int _maxTransformLength = DefaultMaxTransformLength;
 
         /// <summary>Creates a computer with the default window, the configured FFT provider and a 50 Ω chain.</summary>
         public SpectrumComputer()
@@ -122,6 +123,76 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>
+        /// The transform length used for a block, bounded by a ceiling (<c>REQ-DSP-024</c>).
+        /// </summary>
+        /// <param name="sampleCount">Complex samples available; must be positive.</param>
+        /// <param name="maxLength">Ceiling; must be a power of two and at least 2.</param>
+        /// <returns>The natural length, or <paramref name="maxLength"/> where that is smaller.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">A value is out of range.</exception>
+        /// <remarks>
+        /// Bounded, not refused. A block long enough to want a bigger transform than the ceiling
+        /// allows is a measurement that can still be made, just at a coarser resolution than the
+        /// samples could have given — and a measurement returned coarser is far more useful than
+        /// one that failed. What must not happen is the coarsening going unmentioned, which is why
+        /// the frame carries <see cref="SpectrumFrame.TransformWasCapped"/> and the annotation
+        /// shows it.
+        /// </remarks>
+        public static int TransformLengthFor(int sampleCount, int maxLength)
+        {
+            RequireTransformCeiling(maxLength, nameof(maxLength));
+
+            int natural = TransformLengthFor(sampleCount);
+
+            return natural > maxLength ? maxLength : natural;
+        }
+
+        /// <summary>
+        /// The default ceiling on transform size: 2²⁰ points.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-DSP-024</c> is marked unverified — the reference product's own numeric ceiling
+        /// was not obtained — so this figure is OpenVSA's, stated rather than copied. At 2²⁰ points
+        /// one transform's scratch is 16 MB of doubles and its result 8 MB of floats, which is the
+        /// scale at which a per-frame allocation starts to be the measurement's dominant cost
+        /// (<see cref="SpectrumFrame"/> puts the same corner at 40 MB/s of gen-2 traffic).
+        /// </remarks>
+        public const int DefaultMaxTransformLength = 1 << 20;
+
+        /// <summary>
+        /// The ceiling on transform size, in complex points (<c>REQ-DSP-024</c>'s
+        /// <em>Max FFT Size</em>).
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The value is not a power of two of at least 2.
+        /// </exception>
+        /// <remarks>
+        /// A power of two because every transform length here is one; refusing anything else here
+        /// means a ceiling of 1 000 000 is reported as the mistake it is, rather than silently
+        /// behaving as 524 288 and leaving a user to wonder why their setting did nothing.
+        /// </remarks>
+        public int MaxTransformLength
+        {
+            get { return _maxTransformLength; }
+
+            set
+            {
+                RequireTransformCeiling(value, nameof(value));
+                _maxTransformLength = value;
+            }
+        }
+
+        private static void RequireTransformCeiling(int length, string name)
+        {
+            if (length < 2 || (length & (length - 1)) != 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    name, length,
+                    "A maximum transform size must be a power of two of at least 2; " + length +
+                    " is not.");
+            }
+        }
+
+        /// <summary>
         /// Computes the spectrum of a block.
         /// </summary>
         /// <param name="block">The block; not retained, and not modified.</param>
@@ -138,7 +209,11 @@ namespace OpenVSA.Dsp.Spectrum
             // REQ-NFR-010: the UI thread never performs DSP. Active in Debug builds only.
             ThreadAffinity.AssertNotOnUiThread("spectrum computation");
 
-            int n = TransformLengthFor(block.SampleCount);
+            // REQ-DSP-024: bounded rather than refused, and the frame is told so that the
+            // annotation can say the resolution was capped.
+            int natural = TransformLengthFor(block.SampleCount);
+            int n = natural > _maxTransformLength ? _maxTransformLength : natural;
+            bool capped = n < natural;
 
             if (!_fft.SupportsLength(n))
             {
@@ -179,8 +254,8 @@ namespace OpenVSA.Dsp.Spectrum
             double usableBandwidth = UsableBandwidthOf(block);
 
             return block.IsBaseband
-                ? OneSided(block, scratch, n, scale, binWidth, usableBandwidth)
-                : TwoSided(block, scratch, n, scale, binWidth, usableBandwidth);
+                ? OneSided(block, scratch, n, scale, binWidth, usableBandwidth, capped)
+                : TwoSided(block, scratch, n, scale, binWidth, usableBandwidth, capped);
         }
 
         /// <summary>
@@ -259,7 +334,7 @@ namespace OpenVSA.Dsp.Spectrum
         /// </summary>
         private SpectrumFrame TwoSided(
             IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth,
-            double usableBandwidthHz)
+            double usableBandwidthHz, bool capped)
         {
             int half = n / 2;
             int trimmed = DisplayPointsFor(n, AnalysisPath.ComplexZoom, usableBandwidthHz, binWidth);
@@ -297,7 +372,9 @@ namespace OpenVSA.Dsp.Spectrum
                 referenceLevelDbm: block.ReferenceLevelDbm,
                 sequenceNumber: block.SequenceNumber,
                 acquiredUtc: block.AcquiredUtc,
-                source: block.Source);
+                source: block.Source,
+                transformLength: n,
+                transformWasCapped: capped);
         }
 
         /// <summary>
@@ -310,7 +387,7 @@ namespace OpenVSA.Dsp.Spectrum
         /// </remarks>
         private SpectrumFrame OneSided(
             IqBlock block, double[] scratch, int n, AmplitudeScale scale, double binWidth,
-            double usableBandwidthHz)
+            double usableBandwidthHz, bool capped)
         {
             // From 0 Hz rather than about a centre, so there is no symmetry to preserve: the
             // displayed points are simply the first of them.
@@ -341,7 +418,9 @@ namespace OpenVSA.Dsp.Spectrum
                 referenceLevelDbm: block.ReferenceLevelDbm,
                 sequenceNumber: block.SequenceNumber,
                 acquiredUtc: block.AcquiredUtc,
-                source: block.Source);
+                source: block.Source,
+                transformLength: n,
+                transformWasCapped: capped);
         }
     }
 }

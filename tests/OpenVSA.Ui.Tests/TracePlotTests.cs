@@ -3,6 +3,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
 using OpenVSA.Ui.Rendering;
@@ -168,9 +169,86 @@ namespace OpenVSA.Ui.Tests
         }
 
         [Fact]
+        public void ATraceWhoseTransformWasNotCappedSaysNothingAboutIt()
+        {
+            // REQ-DSP-024. Annotating every trace with its transform length would spend the band's
+            // width on a number the point count already implies, and would leave the one case that
+            // matters looking like all the others.
+            Assert.Equal(string.Empty, TracePlot.TransformNote(Tone(64, 0.0)));
+        }
+
+        [Fact]
+        public void ACappedTransformIsAnnotatedWithTheSizeItWasCappedTo()
+        {
+            // The criterion: "the bound is visible in the trace annotation so the user knows the
+            // resolution was capped". Nothing about the trace itself shows it - a spectrum measured
+            // at half the resolution it could have had looks entirely normal.
+            SpectrumFrame capped = Capped(4099, 512);
+
+            Assert.True(capped.TransformWasCapped);
+            Assert.Equal("   FFT 512 (capped)", TracePlot.TransformNote(capped));
+        }
+
+        [Fact]
+        public void ANoiseCorrectedTraceIsAnnotatedAndAnUncorrectedOneIsNot()
+        {
+            // A corrected trace and an uncorrected one differ most where the signal is weakest,
+            // which is where someone is most likely to be reading a number off the screen and
+            // least likely to remember which setting was in force.
+            SpectrumFrame measured = Tone(64, 0.0);
+
+            Assert.Equal(string.Empty, TracePlot.NoiseCorrectionNote(measured));
+
+            SpectrumFrame corrected = NoiseCorrection.Apply(
+                measured, NoiseFloor.Flat(-200.0, measured.ResolutionBandwidthHz));
+
+            Assert.Equal("   Noise corr", TracePlot.NoiseCorrectionNote(corrected));
+        }
+
+        [Fact]
         public void ItRefusesAFrameOfNullToAnnotate()
         {
             Assert.Throws<ArgumentNullException>(() => TracePlot.AveragingNote(null));
+            Assert.Throws<ArgumentNullException>(() => TracePlot.TransformNote(null));
+            Assert.Throws<ArgumentNullException>(() => TracePlot.NoiseCorrectionNote(null));
+        }
+
+        /// <summary>A spectrum of a block long enough that the ceiling, not the record, chose N.</summary>
+        private static SpectrumFrame Capped(int samples, int ceiling)
+        {
+            var computer = new SpectrumComputer(WindowType.FlatTop, null, null)
+            {
+                MaxTransformLength = ceiling,
+            };
+
+            IqBlock block = IqBlock.Rent(new IqBlockMetadata(
+                sampleCount: samples,
+                sampleRateHz: 15e6,
+                centerFrequencyHz: 1e9,
+                isBaseband: false,
+                fullScaleVolts: 1.0,
+                referenceLevelDbm: 0.0,
+                sequenceNumber: 1,
+                acquiredUtc: new DateTime(2026, 7, 26, 0, 0, 0, DateTimeKind.Utc),
+                triggerOffsetSeconds: 0.0,
+                triggerCorrectionsApplied: false,
+                source: new FrontEndId("test"),
+                extended: null));
+
+            using (block)
+            {
+                Span<float> data = block.GetSamples();
+
+                for (int n = 0; n < samples; n++)
+                {
+                    double angle = 2.0 * Math.PI * 0.1543 * n;
+
+                    data[n * 2] = (float)Math.Cos(angle);
+                    data[n * 2 + 1] = (float)Math.Sin(angle);
+                }
+
+                return computer.Compute(block);
+            }
         }
 
         // ---- Helpers ---------------------------------------------------------------------------

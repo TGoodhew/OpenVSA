@@ -147,6 +147,8 @@ namespace OpenVSA.TestHarness
 
                     ExerciseZoom(block, frame, actualToneHz);
                     ExerciseZoomControls(block, spanHz, actualToneHz);
+                    ExerciseTransformCeiling(block, frame);
+                    ExerciseNoiseCorrection(block, frame, actualToneHz);
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
                     ExerciseFormats(frame);
@@ -544,6 +546,162 @@ namespace OpenVSA.TestHarness
                 return new Outcome<double>(
                     ok, zoom.SpanHz,
                     "back to " + zoom.Annotation() + " at " + Hz(zoom.CenterFrequencyHz));
+            });
+        }
+
+        /// <summary>
+        /// Bounds the transform below what the record could give (<c>REQ-DSP-024</c>).
+        /// </summary>
+        private void ExerciseTransformCeiling(IqBlock block, SpectrumFrame full)
+        {
+            Step("REQ-DSP-024", "A transform past Max FFT Size is bounded, not failed", () =>
+            {
+                // Half of what this record would naturally take, so the ceiling certainly binds
+                // whatever length the instrument handed us.
+                int ceiling = Math.Max(2, SpectrumComputer.TransformLengthFor(block.SampleCount) / 2);
+
+                var computer = new SpectrumComputer(WindowType.FlatTop, null, null)
+                {
+                    TrimToAnalysisSpan = true,
+                    MaxTransformLength = ceiling,
+                };
+
+                SpectrumFrame capped = computer.Compute(block);
+
+                if (!capped.TransformWasCapped)
+                {
+                    return Failed<double>(
+                        "a ceiling of " + ceiling + " did not bind on a " + block.SampleCount +
+                        "-sample block");
+                }
+
+                double ratio = capped.ResolutionBandwidthHz / full.ResolutionBandwidthHz;
+                int peak = capped.IndexOfPeak();
+
+                // Bounded means the measurement still happened. Half the transform is twice the
+                // RBW, and the annotation has to say which of the two is on screen.
+                bool ok = peak >= 0 &&
+                          Math.Abs(ratio - 2.0) < 0.01 &&
+                          capped.TransformLength == ceiling &&
+                          !full.TransformWasCapped;
+
+                return new Outcome<double>(
+                    ok, ratio,
+                    "capped at " + ceiling + " of " + full.TransformLength + " points: RBW " +
+                    Hz(full.ResolutionBandwidthHz) + " to " + Hz(capped.ResolutionBandwidthHz) +
+                    ", still measuring, and the frame says it was capped");
+            });
+        }
+
+        /// <summary>
+        /// Characterises the analyser's own noise floor and corrects against it
+        /// (<c>REQ-DSP-024</c>).
+        /// </summary>
+        /// <remarks>
+        /// The floor here is the E4406A's real one, measured from the same acquisition away from
+        /// the carrier rather than modelled. What the bench adds over the unit tests is that the
+        /// floor has the instrument's shape and the instrument's spurs, and neither is flat.
+        /// </remarks>
+        private void ExerciseNoiseCorrection(IqBlock block, SpectrumFrame full, double toneHz)
+        {
+            NoiseFloor floor = Step("REQ-DSP-024", "Characterise the analyser's own noise floor", () =>
+            {
+                NoiseFloor characterised = NoiseFloor.FromTrace(full);
+
+                double lowest = double.PositiveInfinity;
+                double highest = double.NegativeInfinity;
+
+                for (int i = 0; i < full.PointCount; i++)
+                {
+                    // Away from the carrier, so the figures describe the floor rather than the tone.
+                    if (Math.Abs(full.FrequencyAt(i) - toneHz) < 20.0 * full.BinWidthHz)
+                    {
+                        continue;
+                    }
+
+                    lowest = Math.Min(lowest, full.LevelsDbm[i]);
+                    highest = Math.Max(highest, full.LevelsDbm[i]);
+                }
+
+                bool ok = characterised.PointCount == full.PointCount &&
+                          Math.Abs(characterised.ResolutionBandwidthHz -
+                                   full.ResolutionBandwidthHz) < 1e-6 &&
+                          highest > lowest;
+
+                return new Outcome<NoiseFloor>(
+                    ok, characterised,
+                    characterised.PointCount + " points at " +
+                    Hz(characterised.ResolutionBandwidthHz) + " RBW; the floor runs " +
+                    Db(lowest) + " to " + Db(highest) + " away from the carrier, a spread of " +
+                    (highest - lowest).ToString("0.0", CultureInfo.CurrentCulture) + " dB");
+            });
+
+            if (floor == null)
+            {
+                return;
+            }
+
+            Step("REQ-DSP-024", "Correcting a trace against its own floor bottoms it out", () =>
+            {
+                // The trace is its own characterisation, so every bin subtracts exactly itself.
+                // Nothing may come back negative, and nothing may come back NaN - which is the half
+                // of the criterion that is easy to get wrong, because half the bins of any real
+                // noise trace sit below the mean of the floor they were measured from.
+                SpectrumFrame corrected = NoiseCorrection.Apply(full, floor);
+
+                double worst = double.PositiveInfinity;
+                int bad = 0;
+
+                for (int i = 0; i < corrected.PointCount; i++)
+                {
+                    double level = corrected.LevelsDbm[i];
+
+                    if (double.IsNaN(level) || level < AmplitudeScale.FloorDbm)
+                    {
+                        bad++;
+                    }
+
+                    worst = Math.Min(worst, level);
+                }
+
+                bool ok = bad == 0 &&
+                          corrected.NoiseCorrected &&
+                          !corrected.HasPhase &&
+                          worst <= AmplitudeScale.FloorDbm;
+
+                return new Outcome<int>(
+                    ok, bad,
+                    corrected.PointCount + " points, none negative and none NaN; the lowest reads " +
+                    Db(worst) + ", the reported measurement limit");
+            });
+
+            Step("REQ-DSP-024", "The carrier survives a correction the noise does not", () =>
+            {
+                // Correction is a large change to a bin at the floor and almost none to the
+                // carrier, which stands tens of dB above it. If the carrier moves measurably, the
+                // subtraction is not a power subtraction.
+                double floorLevel = full.LevelsDbm[0];
+                NoiseFloor flat = NoiseFloor.Flat(floorLevel, full.ResolutionBandwidthHz);
+
+                SpectrumFrame corrected = NoiseCorrection.Apply(full, flat);
+
+                int peak = full.IndexOfPeak();
+
+                if (peak < 0)
+                {
+                    return Failed<double>("the trace had no peak to check");
+                }
+
+                double moved = corrected.LevelsDbm[peak] - full.LevelsDbm[peak];
+                double headroom = full.LevelsDbm[peak] - floorLevel;
+
+                bool ok = headroom > 20.0 && Math.Abs(moved) < 0.1;
+
+                return new Outcome<double>(
+                    ok, moved,
+                    "the carrier stands " + headroom.ToString("0.0", CultureInfo.CurrentCulture) +
+                    " dB above a floor taken at " + Db(floorLevel) + " and moved " +
+                    moved.ToString("0.000", CultureInfo.CurrentCulture) + " dB");
             });
         }
 
