@@ -52,6 +52,15 @@ namespace OpenVSA.Hal.Sim
         private readonly SimulatedSignalSettings _settings;
         private DeterministicRandom _random;
         private AcquisitionPlan _plan;
+        /// <summary>
+        /// Places each block's first sample in time (<c>REQ-ACQ-010</c>).
+        /// </summary>
+        /// <remarks>
+        /// Restarted at each arm, because arming is a break in the stream and carrying on across
+        /// it would claim a continuity the acquisition did not have.
+        /// </remarks>
+        private readonly BlockTimeline _timeline = new BlockTimeline();
+
         private long _sequenceNumber;
         private double _phaseAccumulator;
         private bool _disposed;
@@ -248,6 +257,8 @@ namespace OpenVSA.Hal.Sim
                 throw new InvalidOperationException("Configure before arming.");
             }
 
+            _timeline.Restart();
+
             State = FrontEndState.Armed;
             return Task.FromResult(true);
         }
@@ -277,7 +288,9 @@ namespace OpenVSA.Hal.Sim
                 fullScaleVolts: 1.0,
                 referenceLevelDbm: plan.ReferenceLevelDbm,
                 sequenceNumber: _sequenceNumber++,
-                acquiredUtc: DateTime.UtcNow,
+                // REQ-ACQ-010: a monotonic clock, and successive blocks placed by their own
+                // sample count rather than by when the pump got round to them.
+                acquiredUtc: _timeline.Next(plan.SamplesPerBlock, plan.SampleRateHz),
                 triggerOffsetSeconds: 0.0,
 
                 // The simulator applies no trigger delay, so there is nothing to correct for and

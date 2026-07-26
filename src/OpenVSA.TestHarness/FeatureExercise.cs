@@ -148,11 +148,15 @@ namespace OpenVSA.TestHarness
                     ExerciseBandMeasurements(frame, actualToneHz);
                     ExerciseMarkers(frame, actualToneHz);
                     ExerciseLimits(frame);
+                    ExerciseUnits(frame);
+                    ExerciseCorrections(frame);
                 }
 
                 ExerciseTriggering(block);
+                ExerciseTimestamps(block);
             }
 
+            ExercisePlanning(spanHz);
             ExerciseState(centerFrequencyHz, spanHz);
             ExercisePresets(centerFrequencyHz);
 
@@ -785,6 +789,261 @@ namespace OpenVSA.TestHarness
                     conventional + ", below-level " + below + ", above-level " + above);
             });
         }
+
+        private void ExerciseUnits(SpectrumFrame frame)
+        {
+            Step("REQ-AMP-002", "The carrier reads the same power in every unit", () =>
+            {
+                int peak = frame.IndexOfPeak();
+                double dbm = frame.LevelsDbm[peak];
+
+                double voltsPeak = AmplitudeUnits.ToVoltsPeak(dbm, AmplitudeUnit.Dbm, 50.0);
+                double back = AmplitudeUnits.FromVoltsPeak(voltsPeak, AmplitudeUnit.Dbm, 50.0);
+
+                double watts = AmplitudeUnits.Convert(
+                    dbm, AmplitudeUnit.Dbm, AmplitudeUnit.Watts, 50.0);
+                double dbmv = AmplitudeUnits.Convert(
+                    dbm, AmplitudeUnit.Dbm, AmplitudeUnit.DbMillivolts, 50.0);
+
+                bool ok = Math.Abs(back - dbm) < 1e-9;
+
+                return new Outcome<double>(
+                    ok, voltsPeak,
+                    Db(dbm) + " is " + (voltsPeak * 1e3).ToString("0.000", CultureInfo.CurrentCulture) +
+                    " mV peak, " + (watts * 1e6).ToString("0.000", CultureInfo.CurrentCulture) +
+                    " uW, " + dbmv.ToString("0.00", CultureInfo.CurrentCulture) + " dBmV");
+            });
+
+            Step("REQ-AMP-002", "Moving to 75 ohms drops the reading by 1.76 dB", () =>
+            {
+                // REQ-AMP-002's criterion, on a level the instrument actually measured. The sign
+                // matters as much as the figure: the same voltage across a larger resistance
+                // dissipates less power, so the reading falls.
+                int peak = frame.IndexOfPeak();
+                double voltsPeak = AmplitudeUnits.ToVoltsPeak(
+                    frame.LevelsDbm[peak], AmplitudeUnit.Dbm, 50.0);
+
+                double at50 = AmplitudeUnits.FromVoltsPeak(voltsPeak, AmplitudeUnit.Dbm, 50.0);
+                double at75 = AmplitudeUnits.FromVoltsPeak(voltsPeak, AmplitudeUnit.Dbm, 75.0);
+
+                double change = at75 - at50;
+                bool ok = Math.Abs(change - (-1.7609)) < 1e-3;
+
+                return new Outcome<double>(
+                    ok, change,
+                    Db(at50) + " into 50 ohms is " + Db(at75) + " into 75, a change of " +
+                    change.ToString("+0.0000;-0.0000", CultureInfo.CurrentCulture) + " dB");
+            });
+        }
+
+        private void ExerciseCorrections(SpectrumFrame frame)
+        {
+            Step("REQ-AMP-003", "A correction of known shape lands exactly on the real trace", () =>
+            {
+                var table = new CorrectionTable("exercise slope", new[]
+                {
+                    new CorrectionPoint(frame.StartFrequencyHz, 0.0),
+                    new CorrectionPoint(frame.StopFrequencyHz, 10.0),
+                });
+
+                SpectrumFrame corrected = Corrections.Apply(frame, table);
+                double worst = 0.0;
+
+                for (int i = 0; i < frame.PointCount; i++)
+                {
+                    // Bins near the noise floor are the ones a float would round badly, so the
+                    // comparison is made where there is signal to compare.
+                    if (frame.LevelsDbm[i] < AmplitudeScale.FloorDbm + 1.0)
+                    {
+                        continue;
+                    }
+
+                    double expected = table.At(frame.FrequencyAt(i)).MagnitudeDb;
+                    double measured = corrected.LevelsDbm[i] - frame.LevelsDbm[i];
+
+                    worst = Math.Max(worst, Math.Abs(measured - expected));
+                }
+
+                return new Outcome<double>(
+                    worst < 0.01, worst,
+                    "0 to 10 dB across the span, applied to the measured trace within " +
+                    worst.ToString("G3") + " dB");
+            });
+
+            Step("REQ-AMP-004", "A fixture is de-embedded off the real trace", () =>
+            {
+                // REQ-AMP-004's criterion - 0.05 dB and 0.5 degrees - on a measured spectrum
+                // rather than a synthesised one, so the noise and the dynamic range are real.
+                CorrectionTable fixture = new CorrectionTable("exercise fixture", new[]
+                {
+                    new CorrectionPoint(frame.StartFrequencyHz, -0.5, 0.0),
+                    new CorrectionPoint(frame.CenterFrequencyHz, -2.5, 45.0),
+                    new CorrectionPoint(frame.StopFrequencyHz, -6.0, 130.0),
+                });
+
+                SpectrumFrame measured = Corrections.Apply(frame, fixture);
+                SpectrumFrame recovered = Corrections.Remove(measured, fixture);
+
+                double worstDb = 0.0;
+                double worstDegrees = 0.0;
+
+                for (int i = 0; i < frame.PointCount; i++)
+                {
+                    if (frame.LevelsDbm[i] < AmplitudeScale.FloorDbm + 1.0)
+                    {
+                        continue;
+                    }
+
+                    worstDb = Math.Max(
+                        worstDb, Math.Abs(recovered.LevelsDbm[i] - frame.LevelsDbm[i]));
+
+                    worstDegrees = Math.Max(
+                        worstDegrees, Math.Abs(Degrees(recovered, i) - Degrees(frame, i)));
+                }
+
+                bool ok = worstDb <= 0.05 && worstDegrees <= 0.5;
+
+                return new Outcome<double>(
+                    ok, worstDb,
+                    "recovered within " + worstDb.ToString("G3") + " dB and " +
+                    worstDegrees.ToString("G3") + " degrees across " + frame.PointCount + " points");
+            });
+
+            Step("REQ-AMP-004", "De-embedding is complex, not magnitude-only", () =>
+            {
+                // A fixture flat in magnitude and not in phase. A magnitude-only implementation
+                // would leave the whole phase error behind, which for a modulated signal is the
+                // part that shows up as error rather than as level.
+                var phaseOnly = new CorrectionTable("phase-only", new[]
+                {
+                    new CorrectionPoint(frame.StartFrequencyHz, 0.0, 0.0),
+                    new CorrectionPoint(frame.StopFrequencyHz, 0.0, 120.0),
+                });
+
+                var magnitudeOnly = new CorrectionTable(
+                    "its magnitude",
+                    phaseOnly.Points.Select(
+                        p => new CorrectionPoint(p.FrequencyHz, p.MagnitudeDb)));
+
+                SpectrumFrame measured = Corrections.Apply(frame, phaseOnly);
+                SpectrumFrame partial = Corrections.Remove(measured, magnitudeOnly);
+                SpectrumFrame full = Corrections.Remove(measured, phaseOnly);
+
+                double worstPartial = 0.0;
+                double worstFull = 0.0;
+
+                for (int i = 0; i < frame.PointCount; i++)
+                {
+                    if (frame.LevelsDbm[i] < AmplitudeScale.FloorDbm + 1.0)
+                    {
+                        continue;
+                    }
+
+                    worstPartial = Math.Max(
+                        worstPartial, Math.Abs(Degrees(partial, i) - Degrees(frame, i)));
+
+                    worstFull = Math.Max(worstFull, Math.Abs(Degrees(full, i) - Degrees(frame, i)));
+                }
+
+                bool ok = worstPartial > 10.0 && worstFull <= 0.5;
+
+                return new Outcome<double>(
+                    ok, worstFull,
+                    "magnitude-only leaves " + worstPartial.ToString("F1") +
+                    " degrees; complex leaves " + worstFull.ToString("G3"));
+            });
+        }
+
+        private void ExerciseTimestamps(IqBlock block)
+        {
+            Step("REQ-ACQ-010", "Timestamps come from a monotonic high-resolution clock", () =>
+            {
+                // The block this run analysed carries one, and the clock behind it resolves far
+                // finer than a system timer tick - which is the whole reason for not using
+                // DateTime.UtcNow, whose granularity is longer than a block lasts.
+                double blockSeconds = block.SampleCount / block.SampleRateHz;
+
+                bool ok = AcquisitionClock.IsHighResolution &&
+                          AcquisitionClock.ResolutionSeconds < blockSeconds &&
+                          block.AcquiredUtc.Kind == DateTimeKind.Utc;
+
+                // The relationship REQ-ACQ-010 defines: the timestamp is the first sample, and the
+                // trigger lies TriggerOffsetSeconds after it.
+                DateTime trigger = BlockTimeline.TriggerInstant(
+                    block.AcquiredUtc, block.TriggerOffsetSeconds);
+
+                return new Outcome<double>(
+                    ok,
+                    AcquisitionClock.ResolutionSeconds,
+                    "clock resolves to " +
+                    (AcquisitionClock.ResolutionSeconds * 1e9).ToString("F1") +
+                    " ns against a block of " +
+                    (blockSeconds * 1e6).ToString("F1") + " us; trigger at " +
+                    trigger.ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture));
+            });
+
+            Step("REQ-ACQ-010", "A gap-free timeline advances by exactly the block duration", () =>
+            {
+                // Asserted on a timeline seeded from the real block's rate and length. This
+                // transport arms and reads over the bus for every block, so its own timestamps
+                // have real gaps between them and cannot show this - saying so is more honest than
+                // asserting a continuity the instrument does not have.
+                var timeline = new BlockTimeline(block.AcquiredUtc);
+                DateTime first = timeline.Next(block.SampleCount, block.SampleRateHz);
+
+                double expected = block.SampleCount / block.SampleRateHz;
+                double worst = 0.0;
+
+                for (int i = 1; i <= 100; i++)
+                {
+                    double elapsed =
+                        (timeline.Next(block.SampleCount, block.SampleRateHz) - first).TotalSeconds;
+
+                    worst = Math.Max(worst, Math.Abs(elapsed - i * expected));
+                }
+
+                // One clock tick: two timestamps, each rounded independently. A bound, not a
+                // budget - it does not grow with the number of blocks, which is exactly what the
+                // accumulating version this replaced did.
+                const double oneTickSeconds = 100e-9;
+
+                return new Outcome<double>(
+                    worst <= oneTickSeconds, worst,
+                    "100 blocks of " + (expected * 1e6).ToString("F2") +
+                    " us stay within " + (worst * 1e9).ToString("F1") + " ns in total");
+            });
+        }
+
+        private void ExercisePlanning(double spanHz)
+        {
+            Step("REQ-ACQ-002", "An impossible main time is clamped with both remedies named", () =>
+            {
+                // Against the connected instrument's own capabilities, so the numbers in the
+                // message are the ones this front end would actually impose.
+                const double wanted = 1.0;
+
+                PlannedAcquisition plan = AcquisitionPlanner.PlanForMainTime(
+                    _frontEnd.Capabilities, 1e9, spanHz, wanted, 0.0, AnalysisPath.ComplexZoom);
+
+                ParameterCoercion clamped = plan.Coercions
+                    .FirstOrDefault(c => c.Parameter == "MainTimeLength");
+
+                if (clamped == null)
+                {
+                    return Failed<string>(
+                        "a one-second record was accepted, so nothing was clamped to explain");
+                }
+
+                bool ok = clamped.Reason.IndexOf("reduce the span", StringComparison.Ordinal) >= 0 &&
+                          clamped.Reason.IndexOf("frequency points", StringComparison.Ordinal) >= 0 &&
+                          clamped.Honoured < wanted;
+
+                return new Outcome<string>(ok, clamped.Reason, clamped.Reason);
+            });
+        }
+
+        private static double Degrees(SpectrumFrame frame, int index) =>
+            Math.Atan2(frame.Complex[index * 2 + 1], frame.Complex[index * 2]) * 180.0 / Math.PI;
 
         private void ExerciseState(double centerFrequencyHz, double spanHz)
         {
