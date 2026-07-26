@@ -142,6 +142,7 @@ namespace OpenVSA.TestHarness
                 {
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
+                    ExerciseFormats(frame);
                     ExerciseTraceMath(frame);
                     ExerciseRegisters(frame);
                     ExerciseBandMeasurements(frame, actualToneHz);
@@ -401,6 +402,86 @@ namespace OpenVSA.TestHarness
                     return new Outcome<string>(true, refused.Message, refused.Message);
                 }
             });
+        }
+
+        private void ExerciseFormats(SpectrumFrame frame)
+        {
+            Step("REQ-DSP-044", "Wrapped and unwrapped phase agree modulo a turn", () =>
+            {
+                var wrapped = new float[frame.PointCount];
+                var unwrapped = new float[frame.PointCount];
+
+                frame.Format(TraceFormat.WrappedPhase, wrapped);
+                frame.Format(TraceFormat.UnwrappedPhase, unwrapped);
+
+                double worst = 0.0;
+
+                for (int i = 0; i < wrapped.Length; i++)
+                {
+                    double turns = (unwrapped[i] - wrapped[i]) / 360.0;
+                    worst = Math.Max(worst, Math.Abs(turns - Math.Round(turns)));
+                }
+
+                // The reference point is the first point of the trace, and its unwrapped value is
+                // its wrapped one - which is what makes a phase trace reproducible between runs.
+                bool anchored = Math.Abs(
+                    unwrapped[TraceFormatOptions.ReferencePointIndex] -
+                    wrapped[TraceFormatOptions.ReferencePointIndex]) < 1e-3;
+
+                return new Outcome<double>(
+                    worst < 1e-3 && anchored,
+                    worst,
+                    "worst departure from a whole turn " + worst.ToString("G3") +
+                    ", anchored at point 0: " + anchored);
+            });
+
+            Step("REQ-DSP-045", "A wider aperture smooths the real group-delay trace", () =>
+            {
+                double narrow = Roughness(frame, 1);
+                double wide = Roughness(frame, 32);
+
+                // Averaging the derivative over more bins trades resolution for quiet. On the
+                // noisy phase of a real acquisition the effect is large and in one direction.
+                bool ok = wide < narrow;
+
+                return new Outcome<double>(
+                    ok, wide,
+                    "roughness " + narrow.ToString("G3") + " s at 1 bin against " +
+                    wide.ToString("G3") + " s at 32 bins");
+            });
+
+            Step("REQ-DSP-040", "The base data types offer only formats their data supports", () =>
+            {
+                IReadOnlyList<TraceFormat> spectrum =
+                    TraceDataTypes.FormatsFor(TraceDataType.Spectrum);
+
+                IReadOnlyList<TraceFormat> ccdf = TraceDataTypes.FormatsFor(TraceDataType.Ccdf);
+
+                bool ok = TraceDataTypes.All.Count == 11 &&
+                          spectrum.Contains(TraceFormat.UnwrappedPhase) &&
+                          !ccdf.Contains(TraceFormat.UnwrappedPhase) &&
+                          ccdf.Contains(TraceFormat.LogMagnitude);
+
+                return new Outcome<int>(
+                    ok, TraceDataTypes.All.Count,
+                    TraceDataTypes.All.Count + " types; Spectrum offers " + spectrum.Count +
+                    " formats, CCDF " + ccdf.Count + " with no phase among them");
+            });
+        }
+
+        private static double Roughness(SpectrumFrame frame, int aperture)
+        {
+            var delay = new float[frame.PointCount];
+            frame.Format(TraceFormat.GroupDelay, delay, new TraceFormatOptions(aperture));
+
+            double sum = 0.0;
+
+            for (int i = 1; i < delay.Length; i++)
+            {
+                sum += Math.Abs(delay[i] - delay[i - 1]);
+            }
+
+            return delay.Length > 1 ? sum / (delay.Length - 1) : 0.0;
         }
 
         private void ExerciseRegisters(SpectrumFrame frame)
