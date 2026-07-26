@@ -227,6 +227,94 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>
+        /// The bandwidth between the points a stated number of decibels below the peak
+        /// (<c>REQ-CHM-002</c>).
+        /// </summary>
+        /// <param name="frame">The spectrum.</param>
+        /// <param name="decibelsDown">How far below the peak the edges are, such as 3.</param>
+        /// <returns>The width and the two edges.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="frame"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="decibelsDown"/> is not positive.</exception>
+        /// <remarks>
+        /// <para>
+        /// A different criterion from <see cref="Occupied"/>, not a restatement of it: this
+        /// measures where the shape falls to a level, while the percentage criterion measures where
+        /// the energy is. For the same signal they give different answers, and the requirement asks
+        /// for both precisely so that one cannot quietly be aliased onto the other.
+        /// </para>
+        /// <para>
+        /// The crossings are interpolated between bins, so the answer is not quantised to the bin
+        /// spacing — which matters because the criterion is stated to within one bin and a
+        /// nearest-bin answer would use the whole allowance before the measurement started.
+        /// </para>
+        /// </remarks>
+        public static OccupiedBandwidth XDecibelsDown(SpectrumFrame frame, double decibelsDown = 3.0)
+        {
+            if (frame == null)
+            {
+                throw new ArgumentNullException(nameof(frame));
+            }
+
+            if (!(decibelsDown > 0.0))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(decibelsDown), decibelsDown, "The drop must be positive.");
+            }
+
+            int peak = frame.IndexOfPeak();
+
+            if (peak < 0)
+            {
+                return new OccupiedBandwidth(0.0, frame.StartFrequencyHz, frame.StartFrequencyHz);
+            }
+
+            ReadOnlySpan<float> levels = frame.LevelsDbm;
+            double threshold = levels[peak] - decibelsDown;
+
+            double lower = Crossing(frame, levels, peak, threshold, downwards: true);
+            double upper = Crossing(frame, levels, peak, threshold, downwards: false);
+
+            return new OccupiedBandwidth(upper - lower, lower, upper);
+        }
+
+        /// <summary>Walks out from the peak to where the trace crosses a level, interpolating.</summary>
+        private static double Crossing(
+            SpectrumFrame frame,
+            ReadOnlySpan<float> levels,
+            int peak,
+            double threshold,
+            bool downwards)
+        {
+            int step = downwards ? -1 : 1;
+            int i = peak;
+
+            while (true)
+            {
+                int next = i + step;
+
+                if (next < 0 || next >= levels.Length)
+                {
+                    // The shape never falls that far inside the span: the edge of the trace is the
+                    // best answer available, and it is the honest one.
+                    return frame.FrequencyAt(i);
+                }
+
+                if (levels[next] <= threshold)
+                {
+                    double above = levels[i];
+                    double below = levels[next];
+                    double fraction = Math.Abs(above - below) < 1e-12
+                        ? 0.0
+                        : (above - threshold) / (above - below);
+
+                    return frame.FrequencyAt(i) + step * fraction * frame.BinWidthHz;
+                }
+
+                i = next;
+            }
+        }
+
+        /// <summary>
         /// Adjacent-channel power relative to a carrier channel (<c>REQ-MKR-003</c>).
         /// </summary>
         /// <param name="frame">The spectrum.</param>

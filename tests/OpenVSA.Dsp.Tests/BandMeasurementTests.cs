@@ -186,6 +186,63 @@ namespace OpenVSA.Dsp.Tests
                 "The two sidebands differ by 20 dB and must not be reported as the same.");
         }
 
+        [Theory]
+        [InlineData(3.0)]
+        [InlineData(6.0)]
+        [InlineData(20.0)]
+        public void TheXDecibelsDownWidthOfAGaussianMatchesItsClosedForm(double decibelsDown)
+        {
+            // REQ-CHM-002: a shape whose width at that level is known analytically. For a Gaussian
+            // power spectrum exp(-f^2/2s^2), the level falls x dB at f = s*sqrt(2*ln(10^(x/10))),
+            // so the width is twice that.
+            const double sigmaHz = 50e3;
+
+            SpectrumFrame frame = GaussianSpectrum(sigmaHz);
+            OccupiedBandwidth measured = BandMeasurements.XDecibelsDown(frame, decibelsDown);
+
+            double expected = 2.0 * sigmaHz *
+                Math.Sqrt(2.0 * Math.Log(Math.Pow(10.0, decibelsDown / 10.0)));
+
+            _output.WriteLine(
+                decibelsDown + " dB down: " + measured.BandwidthHz.ToString("G6") +
+                " Hz against " + expected.ToString("G6") + " Hz");
+
+            Assert.True(
+                Math.Abs(measured.BandwidthHz - expected) <= frame.BinWidthHz,
+                decibelsDown + " dB width came to " + measured.BandwidthHz.ToString("G6") +
+                " Hz against " + expected.ToString("G6") + " Hz, more than one bin out.");
+        }
+
+        [Fact]
+        public void ThePercentageAndXDecibelCriteriaGiveDifferentAnswers()
+        {
+            // The check that both are genuinely implemented rather than one aliased onto the
+            // other. For a Gaussian the 99 % width is about 5.15 sigma and the 3 dB width about
+            // 2.35 sigma, so they are nowhere near each other.
+            const double sigmaHz = 50e3;
+            SpectrumFrame frame = GaussianSpectrum(sigmaHz);
+
+            double percentage = BandMeasurements.Occupied(frame, 0.99).BandwidthHz;
+            double threeDb = BandMeasurements.XDecibelsDown(frame, 3.0).BandwidthHz;
+
+            _output.WriteLine(
+                "99% = " + (percentage / sigmaHz).ToString("F3") + " sigma, 3 dB = " +
+                (threeDb / sigmaHz).ToString("F3") + " sigma");
+
+            Assert.True(percentage > threeDb * 1.5);
+        }
+
+        [Fact]
+        public void TheDefaultPercentageIsNinetyNine()
+        {
+            SpectrumFrame frame = RaisedCosineSpectrum(0.35, 1.0e6);
+
+            Assert.Equal(
+                BandMeasurements.Occupied(frame, 0.99).BandwidthHz,
+                BandMeasurements.Occupied(frame).BandwidthHz,
+                6);
+        }
+
         [Fact]
         public void AnEmptyBandReportsTheFloorRatherThanThrowing()
         {
@@ -248,6 +305,27 @@ namespace OpenVSA.Dsp.Tests
 
                 // The stored value is a voltage, so the square root of the power shape.
                 complex[i * 2] = (float)Math.Sqrt(powerShape);
+                complex[i * 2 + 1] = 0.0f;
+            }
+
+            return SpectrumFrame.FromComplex(
+                complex, -(points / 2) * binWidth, binWidth, WindowType.Uniform, 1.0);
+        }
+
+        /// <summary>A Gaussian power spectrum, whose width at any level is known in closed form.</summary>
+        private static SpectrumFrame GaussianSpectrum(double sigmaHz)
+        {
+            const int points = 2001;
+            double binWidth = sigmaHz * 12.0 / points;
+
+            var complex = new float[points * 2];
+
+            for (int i = 0; i < points; i++)
+            {
+                double f = (i - points / 2) * binWidth;
+                double power = Math.Exp(-(f * f) / (2.0 * sigmaHz * sigmaHz));
+
+                complex[i * 2] = (float)Math.Sqrt(power);
                 complex[i * 2 + 1] = 0.0f;
             }
 
