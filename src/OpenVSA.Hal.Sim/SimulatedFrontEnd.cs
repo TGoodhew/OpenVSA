@@ -407,6 +407,18 @@ namespace OpenVSA.Hal.Sim
             public IReadOnlyList<TriggerStyle> TriggerStyles => Styles;
             public AmplitudeRange ReferenceLevelRange => new AmplitudeRange(-100.0, 30.0);
             public bool SupportsExternalRef => false;
+
+            /// <summary>
+            /// True: a synthetic source has no gap, because it makes the samples.
+            /// </summary>
+            /// <remarks>
+            /// Which is what lets the frequency-mask trigger of <c>REQ-TRG-001</c> be exercised at
+            /// all in CI — the one real instrument to hand cannot do it.
+            /// </remarks>
+            public bool SupportsRealTimeAnalysis => true;
+
+            /// <summary>Unlimited: samples before a trigger are simply generated.</summary>
+            public long MaxPreTriggerSamples => long.MaxValue;
         }
     }
 }

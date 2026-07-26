@@ -14,6 +14,7 @@ using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
 using System.IO;
+using OpenVSA.Capture.Triggering;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.HotSpots;
@@ -275,6 +276,7 @@ namespace OpenVSA.Ui
             ResolutionBandwidthBox.Text = EngineeringText.Frequency(span / 100.0);
 
             PopulatePointsChoices(capabilities);
+            PopulateTriggerChoices(capabilities);
 
             SettingsGrid.IsEnabled = true;
             SettingsMessage.Text = string.Empty;
@@ -327,6 +329,64 @@ namespace OpenVSA.Ui
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Fills the trigger list from what the front end declares (<c>REQ-TRG-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// Every style appears; the ones this source cannot do are disabled and carry the
+        /// explanation as their tooltip. Omitting them instead would leave a user hunting for a
+        /// frequency-mask trigger the software does have and this instrument cannot serve.
+        /// </remarks>
+        private void PopulateTriggerChoices(IFrontEndCapabilities capabilities)
+        {
+            TriggerBox.Items.Clear();
+
+            foreach (TriggerOption option in TriggerAvailability.For(capabilities))
+            {
+                var item = new ComboBoxItem
+                {
+                    Content = option.DisplayName,
+                    Tag = option,
+                    IsEnabled = option.IsAvailable,
+                    ToolTip = option.IsAvailable ? null : option.Explanation,
+                };
+
+                // A disabled item does not raise its own tooltip in a closed combo box, so the
+                // service is told to show it anyway - otherwise the explanation the requirement
+                // asks for is written down and never seen.
+                ToolTipService.SetShowOnDisabled(item, true);
+
+                TriggerBox.Items.Add(item);
+
+                if (option.IsAvailable && TriggerBox.SelectedItem == null)
+                {
+                    TriggerBox.SelectedItem = item;
+                }
+            }
+        }
+
+        /// <summary>The trigger style selected, or Free Run if none is.</summary>
+        public TriggerStyle SelectedTriggerStyle()
+        {
+            var item = TriggerBox.SelectedItem as ComboBoxItem;
+            var option = item == null ? null : item.Tag as TriggerOption;
+
+            return option == null ? TriggerStyle.Immediate : option.Style;
+        }
+
+        private void OnTriggerSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            TriggerStyle style = SelectedTriggerStyle();
+
+            TriggerNote.Text = style == TriggerStyle.Immediate
+                ? "Acquisition starts as soon as it is armed."
+                : TriggerAvailability.NameOf(style) + " trigger.";
+
+            Plot.TriggerChannelHotSpot.Value.TrySet(
+                style == TriggerStyle.Immediate ? "Free Run" : "Ch 1");
+            Plot.TriggerChannelHotSpot.Refresh();
         }
 
         private void OnPointsSelectionChanged(object sender, SelectionChangedEventArgs e)

@@ -42,6 +42,17 @@ namespace OpenVSA.Hal
 
         /// <summary>Trigger on a periodic internal timebase.</summary>
         Periodic,
+
+        /// <summary>
+        /// Trigger when the spectrum crosses a frequency mask (<c>REQ-TRG-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// Needs real-time analysis in the front end: the mask has to be tested against every
+        /// transform, gap-free, and an instrument that cannot do that would miss precisely the
+        /// transient the mask was drawn to catch. <c>REQ-TRG-001</c> therefore requires this style
+        /// to be declared unsupported unless the front end reports the capability.
+        /// </remarks>
+        FrequencyMask,
     }
 
     /// <summary>Kinds of out-of-band condition a front end can report.</summary>
@@ -138,6 +149,28 @@ namespace OpenVSA.Hal
 
         /// <summary>Whether an external frequency reference can be used.</summary>
         bool SupportsExternalRef { get; }
+
+        /// <summary>
+        /// Whether the front end analyses gap-free in real time (<c>REQ-TRG-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// The condition <c>REQ-TRG-001</c> attaches to the frequency-mask trigger. Stated here
+        /// rather than inferred from a model name, because <c>REQ-HAL-002</c> forbids the UI
+        /// knowing which instrument it is talking to — a capability that cannot be expressed on
+        /// this interface is a gap in the interface, not a licence to special-case.
+        /// </remarks>
+        bool SupportsRealTimeAnalysis { get; }
+
+        /// <summary>
+        /// How far before a trigger this front end can deliver samples, in complex samples; 0 if
+        /// it cannot (<c>REQ-TRG-002</c>).
+        /// </summary>
+        /// <remarks>
+        /// Pre-trigger is served from capture memory, so the limit is how much of it the front end
+        /// keeps. An instrument with none can still be given a negative delay for a recording or a
+        /// simulated source, where the samples before the trigger are simply already in hand.
+        /// </remarks>
+        long MaxPreTriggerSamples { get; }
     }
 
     /// <summary>

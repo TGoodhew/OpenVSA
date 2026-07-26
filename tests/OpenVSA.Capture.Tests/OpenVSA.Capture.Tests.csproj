@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Capture.Tests</RootNamespace>
+    <AssemblyTitle>OpenVSA.Capture.Tests</AssemblyTitle>
+    <Description>Tests for the L2 capture session: triggering, block assembly and playback.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Capture\OpenVSA.Capture.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+  </ItemGroup>
+
+</Project>
