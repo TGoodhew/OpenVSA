@@ -86,6 +86,23 @@ namespace OpenVSA.Measurement.State
     }
 
     /// <summary>
+    /// One element's colour, changed from its default (<c>REQ-UI-014</c>).
+    /// </summary>
+    /// <remarks>
+    /// Keyed by the <c>REQ-UI-022</c> resource key — <c>OpenVSA.Group12.C</c>, not an ordinal — for
+    /// the reason <see cref="ToolWindowPlacement"/> is keyed by name: the file says what it means
+    /// when read, and adding an element cannot silently reassign a saved colour to a different one.
+    /// </remarks>
+    public sealed class ElementColourState
+    {
+        /// <summary>The element's resource key.</summary>
+        public string Element { get; set; } = string.Empty;
+
+        /// <summary>The colour, as packed ARGB.</summary>
+        public uint Argb { get; set; } = 0xFF000000;
+    }
+
+    /// <summary>
     /// Display preferences, saved apart from the state (<c>REQ-STA-002</c>).
     /// </summary>
     public sealed class DisplayPreferencesState
@@ -125,6 +142,29 @@ namespace OpenVSA.Measurement.State
         /// outlives a session.
         /// </remarks>
         public List<ToolWindowPlacement> ToolWindows { get; set; } = new List<ToolWindowPlacement>();
+
+        /// <summary>
+        /// Colours the user has changed from their defaults (<c>REQ-UI-014</c>).
+        /// </summary>
+        /// <remarks>
+        /// Only the changes. An element absent from this list follows the default theme, so a
+        /// preferences file written today does not freeze today's defaults into a display for ever.
+        /// </remarks>
+        public List<ElementColourState> Colours { get; set; } = new List<ElementColourState>();
+
+        /// <summary>
+        /// The spectrogram colour map, by name (<c>REQ-UI-024</c>).
+        /// </summary>
+        /// <remarks>
+        /// The reference product's own spelling — <c>Color Normal</c> — because a user searching
+        /// their preferences file for what they picked in the dialog should find the same words.
+        /// </remarks>
+        public string SpectrogramColourMap { get; set; } = "Color Normal";
+
+        /// <summary>
+        /// The colours of a user-defined spectrogram map, index 0 the minimum (<c>REQ-UI-024</c>).
+        /// </summary>
+        public List<uint> SpectrogramUserMap { get; set; } = new List<uint>();
     }
 
     /// <summary>

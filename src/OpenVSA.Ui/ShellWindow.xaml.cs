@@ -104,6 +104,12 @@ namespace OpenVSA.Ui
         /// <summary>The eight tool windows of <c>REQ-UI-002</c>.</summary>
         private ToolWindowHost _toolWindows;
 
+        /// <summary>Every colour a user can change, and the ones they have (<c>REQ-UI-014</c>).</summary>
+        private readonly ColourPreferences _colours = new ColourPreferences();
+
+        /// <summary>The spectrogram colour map in force (<c>REQ-UI-024</c>).</summary>
+        private SpectrogramColourMap _spectrogramMap = SpectrogramColourMap.Default;
+
         /// <summary>The conditions annotated inside the grid (<c>REQ-UI-041</c>).</summary>
         private readonly TraceIndicators _indicators = new TraceIndicators();
 
@@ -165,6 +171,11 @@ namespace OpenVSA.Ui
 
             BuildToolWindows();
             BuildDocumentArea();
+
+            // After the document area, so the colours reach the plots that exist. BuildToolWindows
+            // is what read them out of the sidecar; applying them there would paint nothing.
+            BuildSpectrogramMapMenu();
+            ApplyColours();
 
             Closed += (sender, e) => ShutDown();
         }
@@ -520,6 +531,12 @@ namespace OpenVSA.Ui
         /// <summary>The eight tool windows of <c>REQ-UI-002</c>.</summary>
         public ToolWindowHost ToolWindows => _toolWindows;
 
+        /// <summary>Every colour a user can change (<c>REQ-UI-014</c>).</summary>
+        public ColourPreferences Colours => _colours;
+
+        /// <summary>The spectrogram colour map in force (<c>REQ-UI-024</c>).</summary>
+        public SpectrogramColourMap SpectrogramMap => _spectrogramMap;
+
         /// <summary>
         /// Creates the eight tool windows, restores where they were, and attaches their sources.
         /// </summary>
@@ -599,6 +616,8 @@ namespace OpenVSA.Ui
                 {
                     var saved = SidecarFile.Load<DisplayPreferencesState>(ToolWindowLayoutPath);
 
+                    LoadColours(saved);
+
                     return ToolWindowLayout.FromState(saved.ToolWindows);
                 }
             }
@@ -627,7 +646,10 @@ namespace OpenVSA.Ui
                 var preferences = new DisplayPreferencesState
                 {
                     ToolWindows = _toolWindows.Layout.ToState(),
+                    SpectrogramColourMap = SpectrogramColourMap.NameOf(_spectrogramMap.Kind),
                 };
+
+                _colours.SaveInto(preferences);
 
                 Directory.CreateDirectory(Path.GetDirectoryName(ToolWindowLayoutPath));
                 SidecarFile.Save(preferences, ToolWindowLayoutPath);
@@ -637,6 +659,210 @@ namespace OpenVSA.Ui
                 // A layout that could not be saved is a layout that starts at defaults next time.
                 // Failing to close over it would be the worse outcome by a wide margin.
             }
+        }
+
+        /// <summary>
+        /// Reads the saved colours and spectrogram map back out of the display sidecar
+        /// (<c>REQ-UI-014</c>, <c>REQ-UI-024</c>).
+        /// </summary>
+        /// <remarks>
+        /// Elements the file names but this build does not know are logged rather than thrown on: a
+        /// preferences file written by a later version should cost the user the colours it mentions,
+        /// not all of them.
+        /// </remarks>
+        private void LoadColours(DisplayPreferencesState saved)
+        {
+            IReadOnlyList<string> unknown = _colours.LoadFrom(saved);
+
+            if (unknown.Count > 0)
+            {
+                _eventLog.Append(
+                    "Display preferences name " + unknown.Count +
+                    " colour(s) this build does not have; the rest were applied.");
+            }
+
+            SpectrogramColourMapKind kind;
+
+            if (!SpectrogramColourMap.TryParseName(saved.SpectrogramColourMap, out kind))
+            {
+                _eventLog.Append(
+                    "Display preferences name an unknown spectrogram map '" +
+                    saved.SpectrogramColourMap + "'; using " +
+                    SpectrogramColourMap.NameOf(SpectrogramColourMapKind.ColorNormal) + ".");
+                kind = SpectrogramColourMapKind.ColorNormal;
+            }
+
+            _spectrogramMap = kind == SpectrogramColourMapKind.UserDefined
+                ? UserMapFrom(saved)
+                : SpectrogramColourMap.Of(kind);
+        }
+
+        /// <summary>Rebuilds a user-defined spectrogram map from the sidecar, or falls back.</summary>
+        private SpectrogramColourMap UserMapFrom(DisplayPreferencesState saved)
+        {
+            if (saved.SpectrogramUserMap == null || saved.SpectrogramUserMap.Count < 2)
+            {
+                _eventLog.Append(
+                    "Display preferences select a user spectrogram map but carry no colours for " +
+                    "it; using " + SpectrogramColourMap.NameOf(SpectrogramColourMapKind.ColorNormal) +
+                    ".");
+
+                return SpectrogramColourMap.Default;
+            }
+
+            var colours = new List<PlotColor>(saved.SpectrogramUserMap.Count);
+
+            foreach (uint argb in saved.SpectrogramUserMap)
+            {
+                colours.Add(ColourPreferences.Unpack(argb));
+            }
+
+            return SpectrogramColourMap.User(colours);
+        }
+
+        /// <summary>Builds the spectrogram-map menu from the enumeration (<c>REQ-UI-024</c>).</summary>
+        /// <remarks>
+        /// From the enumeration, so the menu cannot list a map that does not exist or miss one that
+        /// does. <em>User Defined</em> is listed but disabled until a user map has been loaded —
+        /// present, so its absence is visible, rather than quietly omitted.
+        /// </remarks>
+        private void BuildSpectrogramMapMenu()
+        {
+            SpectrogramMapMenu.Items.Clear();
+
+            foreach (SpectrogramColourMapKind kind in
+                (SpectrogramColourMapKind[])Enum.GetValues(typeof(SpectrogramColourMapKind)))
+            {
+                bool user = kind == SpectrogramColourMapKind.UserDefined;
+
+                var item = new MenuItem
+                {
+                    Header = SpectrogramColourMap.NameOf(kind),
+                    IsCheckable = true,
+                    IsChecked = _spectrogramMap.Kind == kind,
+                    Tag = kind,
+                    IsEnabled = !user || _spectrogramMap.Kind == SpectrogramColourMapKind.UserDefined,
+                    ToolTip = kind == SpectrogramColourMapKind.GreyNormal ||
+                              kind == SpectrogramColourMapKind.GreyReverse
+                        ? SpectrogramColourMap.GreyScaleTooltip
+                        : null,
+                };
+
+                item.Click += OnSpectrogramMapChosen;
+                SpectrogramMapMenu.Items.Add(item);
+            }
+        }
+
+        private void OnSpectrogramMapChosen(object sender, RoutedEventArgs e)
+        {
+            var item = sender as MenuItem;
+
+            if (item == null)
+            {
+                return;
+            }
+
+            var kind = (SpectrogramColourMapKind)item.Tag;
+
+            if (kind != SpectrogramColourMapKind.UserDefined)
+            {
+                _spectrogramMap = SpectrogramColourMap.Of(kind);
+            }
+
+            BuildSpectrogramMapMenu();
+
+            _eventLog.Append(
+                "Spectrogram colour map set to " + SpectrogramColourMap.NameOf(_spectrogramMap.Kind) +
+                " (" + _spectrogramMap.Count + " entries).");
+        }
+
+        /// <summary>Opens the colour picker (<c>REQ-UI-014</c>).</summary>
+        private void OnColours(object sender, RoutedEventArgs e)
+        {
+            var dialog = new ColourPickerDialog(_colours) { Owner = this };
+
+            dialog.ColoursChanged += (s, args) => ApplyColours();
+            dialog.ShowDialog();
+
+            ApplyColours();
+            SaveToolWindowLayout();
+
+            _eventLog.Append(
+                "Colour picker closed; " + _colours.ChangedCount +
+                " colour(s) differ from their defaults.");
+        }
+
+        /// <summary>
+        /// Pushes the chosen colours onto every plot.
+        /// </summary>
+        /// <remarks>
+        /// The palette carries the handful of colours the rasteriser draws with; the limit colours
+        /// carry the four of <c>REQ-UI-023</c>. Both come from the same preference set, so a colour
+        /// changed in the picker cannot reach one and not the other.
+        /// </remarks>
+        private void ApplyColours()
+        {
+            var limits = new LimitColours
+            {
+                Limit = _colours.ColourOf("Limit"),
+                Margin = _colours.ColourOf("Margin"),
+                FailLimit = _colours.ColourOf("Fail Limit"),
+                FailMargin = _colours.ColourOf("Fail Margin"),
+                IndicateFailures = IndicateLimitFailuresItem.IsChecked,
+                IndicateMargin = IndicateMarginItem.IsChecked,
+            };
+
+            // Per trace, because Trace is a per-trace element in REQ-UI-022 and the rest are not.
+            // Building one palette for every plot would give trace B trace A's colour, which is the
+            // one thing REQ-UI-021 exists to prevent.
+            foreach (char trace in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(trace);
+
+                if (plot == null)
+                {
+                    continue;
+                }
+
+                plot.Palette = new PlotPalette(
+                    _colours.ColourOf("Trace Background"),
+                    _colours.ColourOf("Grid"),
+                    _colours.ColourOf("Annotation"),
+                    _colours.ColourOf("Annotation Background"),
+                    TraceColourOf(trace),
+                    _colours.ColourOf("Selected Marker"),
+                    _colours.ColourOf("Not Selected Marker"),
+                    _colours.ColourOf("Indicator"));
+
+                plot.LimitColours = limits;
+            }
+        }
+
+        /// <summary>
+        /// One trace's colour: the user's choice for it, or the trace table's.
+        /// </summary>
+        /// <remarks>
+        /// The picker covers the trace table's twenty entries. A twenty-first trace re-uses a
+        /// colour by the table's own design (<c>REQ-UI-021</c>), so it has no picker entry of its
+        /// own and falls through to the table rather than throwing.
+        /// </remarks>
+        private PlotColor TraceColourOf(char trace)
+        {
+            string key = "OpenVSA.Trace." + trace;
+
+            return _colours.Find(key) != null
+                ? _colours.Colour(key)
+                : TraceColours.ForTrace(trace);
+        }
+
+        private void OnLimitIndicationChanged(object sender, RoutedEventArgs e)
+        {
+            ApplyColours();
+
+            _eventLog.Append(
+                "Limit indication: failures " +
+                (IndicateLimitFailuresItem.IsChecked ? "shown" : "hidden") + ", margin warnings " +
+                (IndicateMarginItem.IsChecked ? "shown" : "hidden") + ".");
         }
 
         /// <summary>Where the display sidecar carrying the tool-window layout lives.</summary>

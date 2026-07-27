@@ -59,6 +59,22 @@
             <MenuItem Header="Ana_lysis" />
 
             <!--
+                REQ-UI-014's colour configuration, REQ-UI-023's limit colouring and REQ-UI-024's
+                spectrogram maps. The map entries are built in code from the enumeration so the
+                menu cannot list a map that does not exist, or miss one that does.
+            -->
+            <MenuItem Header="_Display">
+                <MenuItem x:Name="ColoursItem" Header="_Colours…" Click="OnColours" />
+                <MenuItem x:Name="SpectrogramMapMenu" Header="_Spectrogram colour map" />
+                <Separator />
+                <MenuItem x:Name="IndicateLimitFailuresItem" Header="Indicate limit _failures"
+                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
+                <MenuItem x:Name="IndicateMarginItem" Header="Indicate _margin warnings"
+                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
+            </MenuItem>
+
+
+            <!--
                 REQ-UI-005's six layout entries and REQ-UI-004's Resize Traces. The layout items
                 are built in code from TraceLayoutPreset.Menu, so the menu shows the parameterised
                 entries at whatever N and N×M are currently set to rather than a generic label.

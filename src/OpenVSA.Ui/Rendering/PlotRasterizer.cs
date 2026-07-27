@@ -47,7 +47,30 @@ namespace OpenVSA.Ui.Rendering
             PixelSurface surface,
             PlotLayout layout,
             PlotPalette palette,
-            ReadOnlySpan<float> minMax)
+            ReadOnlySpan<float> minMax) =>
+            Render(surface, layout, palette, minMax, ReadOnlySpan<PlotColor>.Empty);
+
+        /// <summary>
+        /// Renders a full frame, colouring each trace column separately (<c>REQ-UI-023</c>).
+        /// </summary>
+        /// <param name="surface">Target surface; must match <paramref name="layout"/>'s dimensions.</param>
+        /// <param name="layout">Plot geometry.</param>
+        /// <param name="palette">Colours to draw with.</param>
+        /// <param name="minMax">Decimated trace, as (minimum, maximum) pairs.</param>
+        /// <param name="columnColours">
+        /// One colour per graticule column, or empty to draw the whole trace in
+        /// <see cref="PlotPalette.Trace"/>. This is where limit failures recolour the trace: the
+        /// colours arrive per column, so a failing stretch is drawn in the fail colour and the rest
+        /// of the same trace is not.
+        /// </param>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentException">The surface does not match the layout, or a span is the wrong length.</exception>
+        public static void Render(
+            PixelSurface surface,
+            PlotLayout layout,
+            PlotPalette palette,
+            ReadOnlySpan<float> minMax,
+            ReadOnlySpan<PlotColor> columnColours)
         {
             if (surface == null)
             {
@@ -80,6 +103,14 @@ namespace OpenVSA.Ui.Rendering
                     nameof(minMax));
             }
 
+            if (columnColours.Length != 0 && columnColours.Length != layout.Graticule.Width)
+            {
+                throw new ArgumentException(
+                    "Expected " + layout.Graticule.Width + " column colours for a graticule " +
+                    layout.Graticule.Width + " columns wide, got " + columnColours.Length + ".",
+                    nameof(columnColours));
+            }
+
             // Zone order matters: the annotation background is laid down across the whole surface
             // and the trace background then covers the graticule. Painting only the band would
             // leave the two zones sharing whatever was there before, which is exactly the
@@ -91,7 +122,7 @@ namespace OpenVSA.Ui.Rendering
 
             if (minMax.Length != 0)
             {
-                DrawTrace(surface, layout, palette.Trace, minMax);
+                DrawTrace(surface, layout, palette.Trace, minMax, columnColours);
             }
         }
 
@@ -113,7 +144,11 @@ namespace OpenVSA.Ui.Rendering
         }
 
         private static void DrawTrace(
-            PixelSurface surface, PlotLayout layout, PlotColor color, ReadOnlySpan<float> minMax)
+            PixelSurface surface,
+            PlotLayout layout,
+            PlotColor color,
+            ReadOnlySpan<float> minMax,
+            ReadOnlySpan<PlotColor> columnColours)
         {
             PixelRect graticule = layout.Graticule;
             int previousTop = -1;
@@ -150,7 +185,14 @@ namespace OpenVSA.Ui.Rendering
                     }
                 }
 
-                surface.DrawVertical(graticule.X + column, top, bottom, color);
+                // Per column, so a limit failure recolours the stretch of trace that failed and
+                // nothing else. A bridging span between two columns takes the later column's
+                // colour, which is the one whose points caused the jump.
+                surface.DrawVertical(
+                    graticule.X + column,
+                    top,
+                    bottom,
+                    columnColours.Length == 0 ? color : columnColours[column]);
 
                 previousTop = layout.ValueToY(maximum);
                 previousBottom = layout.ValueToY(minimum);
