@@ -155,6 +155,29 @@ namespace OpenVSA.Ui.Tests
         }
 
         [Fact]
+        public void AGroupThatDoesNotHoldTheActiveTraceBoldsNothing()
+        {
+            // The active trace is one trace, not one per group. Every group has a tab on top, so
+            // bolding each group's own makes four tiled traces look active at once - which is what
+            // it did, and it reads as though the application had lost track of the selection.
+            OnStaThread(() =>
+            {
+                TraceTabStrip strip = Arranged("CD", 'C');
+
+                Assert.True(strip.IsBold('C'));
+
+                strip.HighlightsActive = false;
+
+                Assert.False(strip.IsBold('C'));
+                Assert.False(strip.IsBold('D'));
+
+                strip.HighlightsActive = true;
+
+                Assert.True(strip.IsBold('C'));
+            });
+        }
+
+        [Fact]
         public void ATraceNotInTheGroupIsRefused()
         {
             OnStaThread(() =>

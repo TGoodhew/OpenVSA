@@ -18,6 +18,7 @@ using OpenVSA.Capture.Triggering;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.HotSpots;
+using OpenVSA.Ui.Layout;
 using OpenVSA.Ui.Rendering;
 using OpenVSA.Ui.ToolWindows;
 
@@ -162,9 +163,102 @@ namespace OpenVSA.Ui
             _statusTimer.Tick += (sender, e) => ShowRunningStatistics();
 
             BuildToolWindows();
+            BuildDocumentArea();
 
             Closed += (sender, e) => ShutDown();
         }
+
+        /// <summary>The trace windows and their arrangement (<c>REQ-UI-005</c>).</summary>
+        public TraceDocumentArea DocumentArea => Documents;
+
+        /// <summary>
+        /// Hands the shell's plot to the document area as trace A and builds the layout menu.
+        /// </summary>
+        /// <remarks>
+        /// The plot is adopted rather than replaced: the measurement pipeline, the hot spots, the
+        /// markers and the frame handler are all wired to that one instance, and rebuilding that
+        /// wiring for the sake of symmetry would be a large change with nothing to show for it.
+        /// </remarks>
+        private void BuildDocumentArea()
+        {
+            Documents.AdoptPrimaryPlot(Plot);
+            Documents.AddTrace('A');
+
+            Documents.LayoutChanged += (sender, preset) =>
+                StatusText.Content = "Layout: " + preset.Name;
+
+            Documents.ActiveTraceChanged += (sender, trace) =>
+                StatusText.Content = "Trace " + trace + " selected";
+
+            BuildLayoutMenu();
+        }
+
+        /// <summary>
+        /// Builds <c>REQ-UI-005</c>'s six layout entries from the preset list.
+        /// </summary>
+        /// <remarks>
+        /// From <see cref="TraceLayoutPreset.Menu"/> rather than written out in XAML, so the
+        /// parameterised entries show the N and N×M currently in force and a change to the preset
+        /// list cannot leave the menu behind.
+        /// </remarks>
+        private void BuildLayoutMenu()
+        {
+            LayoutMenu.Items.Clear();
+
+            foreach (TraceLayoutPreset preset in
+                TraceLayoutPreset.Menu(_stackRows, _gridRows, _gridColumns))
+            {
+                TraceLayoutPreset captured = preset;
+
+                var item = new MenuItem { Header = preset.Name };
+                item.Click += (sender, e) => Documents.ApplyLayout(captured);
+
+                LayoutMenu.Items.Add(item);
+            }
+        }
+
+        private void OnAddTrace(object sender, RoutedEventArgs e)
+        {
+            // Letters, per REQ-UI-020. The next unused one, so closing B and adding again reuses B
+            // rather than walking up the alphabet for the life of the session.
+            for (char letter = 'A'; letter <= 'Z'; letter++)
+            {
+                if (Documents.PlotOf(letter) == null)
+                {
+                    Documents.AddTrace(letter);
+                    Documents.ActiveTrace = letter;
+
+                    // More traces than the layout has cells is a layout that needs re-choosing;
+                    // Tile Visible is the entry that always fits them all.
+                    Documents.ApplyLayout(TraceLayoutPreset.TileVisible());
+                    return;
+                }
+            }
+
+            StatusText.Content = "Trace letters A to Z are all in use.";
+        }
+
+        private void OnRemoveTrace(object sender, RoutedEventArgs e)
+        {
+            if (!Documents.RemoveTrace(Documents.ActiveTrace))
+            {
+                StatusText.Content = "The last trace cannot be closed.";
+                return;
+            }
+
+            Documents.ApplyLayout(TraceLayoutPreset.TileVisible());
+        }
+
+        private void OnResizeTraces(object sender, RoutedEventArgs e) => Documents.ResizeTraces();
+
+        /// <summary>The <c>N</c> the Stack menu entry offers.</summary>
+        private int _stackRows = 2;
+
+        /// <summary>The <c>N</c> the Grid menu entry offers.</summary>
+        private int _gridRows = 2;
+
+        /// <summary>The <c>M</c> the Grid menu entry offers.</summary>
+        private int _gridColumns = 2;
 
         /// <summary>The eight tool windows of <c>REQ-UI-002</c>.</summary>
         public ToolWindowHost ToolWindows => _toolWindows;
@@ -898,7 +992,10 @@ namespace OpenVSA.Ui
 
             _engine = engine;
 
-            DocumentPlaceholder.Visibility = Visibility.Collapsed;
+            // The panel, not just its text: the panel carries the background that keeps the
+            // guidance legible over a trace, so hiding only the text would leave a dark rectangle
+            // floating over the arrangement.
+            DocumentPlaceholderPanel.Visibility = Visibility.Collapsed;
             StartItem.IsEnabled = false;
             StopItem.IsEnabled = true;
             StatusText.Content = "Measuring";
