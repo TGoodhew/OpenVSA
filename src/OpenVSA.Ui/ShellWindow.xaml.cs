@@ -225,7 +225,24 @@ namespace OpenVSA.Ui
             {
                 if (Documents.PlotOf(letter) == null)
                 {
-                    Documents.AddTrace(letter);
+                    TracePlot plot = Documents.AddTrace(letter);
+
+                    // A new trace opens in the next format round the list rather than as a second
+                    // copy of the one beside it. Four windows all showing log magnitude of the same
+                    // acquisition would be four identical pictures; REQ-TRC-001's separation of
+                    // data from format is what makes them worth having open at once.
+                    plot.SetFormat(NextFormat());
+
+                    // The marshal renders to the width of whichever plot asked, so a new plot needs
+                    // the current column count before it can draw anything.
+                    plot.GraticuleColumnsChanged +=
+                        (s, args) => _marshal.Columns = Math.Max(_marshal.Columns, plot.GraticuleColumns);
+
+                    if (_frame != null)
+                    {
+                        plot.SetIndicators(_indicators);
+                    }
+
                     Documents.ActiveTrace = letter;
 
                     // More traces than the layout has cells is a layout that needs re-choosing;
@@ -250,6 +267,34 @@ namespace OpenVSA.Ui
         }
 
         private void OnResizeTraces(object sender, RoutedEventArgs e) => Documents.ResizeTraces();
+
+        /// <summary>
+        /// The format a newly opened trace starts in, stepping round the ones that always apply.
+        /// </summary>
+        /// <remarks>
+        /// Only the formats a spectrum always carries. Group delay and the phase formats need
+        /// phase, which <c>REQ-TRC-002</c> makes unavailable after power averaging — a new trace
+        /// that opened into a format the current averaging forbids would be blank for a reason
+        /// nobody could see.
+        /// </remarks>
+        private TraceFormat NextFormat()
+        {
+            TraceFormat[] cycle =
+            {
+                TraceFormat.LogMagnitude,
+                TraceFormat.LinearMagnitude,
+                TraceFormat.Real,
+                TraceFormat.Imaginary,
+            };
+
+            TraceFormat next = cycle[_nextFormat % cycle.Length];
+            _nextFormat++;
+
+            return next;
+        }
+
+        /// <summary>How far round <see cref="NextFormat"/> has stepped.</summary>
+        private int _nextFormat = 1;
 
         /// <summary>The <c>N</c> the Stack menu entry offers.</summary>
         private int _stackRows = 2;
@@ -1148,6 +1193,19 @@ namespace OpenVSA.Ui
             if (Plot.Show(snapshot))
             {
                 RefreshMarkers();
+            }
+
+            // Every open trace gets the same snapshot, and each draws it in its own format.
+            // REQ-TRC-001's rule made visible: one computation, several views, nothing recomputed
+            // — the four trace windows of a Grid 2×2 are four renderings of a single acquisition.
+            foreach (char letter in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(letter);
+
+                if (plot != null && !ReferenceEquals(plot, Plot))
+                {
+                    plot.Show(snapshot);
+                }
             }
 
             UpdateIndicators(snapshot);
