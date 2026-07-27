@@ -47,8 +47,11 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>Vertical scale a plot starts at, in dB per graticule division.</summary>
         public const double DefaultDecibelsPerDivision = 10.0;
 
-        /// <summary>Graticule divisions down the screen.</summary>
-        public const int VerticalDivisions = 10;
+        /// <summary>Graticule divisions down the screen unless configured otherwise.</summary>
+        public const int DefaultVerticalDivisions = PlotLayout.DefaultDivisions;
+
+        /// <summary>Graticule divisions across the screen unless configured otherwise.</summary>
+        public const int DefaultHorizontalDivisions = PlotLayout.DefaultDivisions;
 
         private readonly Image _image;
         private readonly HotSpot _topScale;
@@ -79,6 +82,12 @@ namespace OpenVSA.Ui.Rendering
         private double _decibelsPerDivision = DefaultDecibelsPerDivision;
         private TraceFormatOptions _formatOptions = TraceFormatOptions.Default;
         private int _marginPixels = 48;
+        private int _horizontalDivisions = DefaultHorizontalDivisions;
+        private int _verticalDivisions = DefaultVerticalDivisions;
+        private int _yReferencePercent = ReferencePosition.TopPercent;
+        private int _xReferencePercent = ReferencePosition.DefaultXPercent;
+        private bool _showAnnotation = true;
+        private bool _showGridLines = true;
         private Size _builtFor = Size.Empty;
         private bool _suppressParameterEvents;
         private LimitTest _limitTest;
@@ -266,7 +275,169 @@ namespace OpenVSA.Ui.Rendering
         public double TopDbm => _topDbm;
 
         /// <summary>Level at the bottom of the graticule, in dBm.</summary>
-        public double BottomDbm => _topDbm - _decibelsPerDivision * VerticalDivisions;
+        public double BottomDbm => _topDbm - FullScaleDb;
+
+        /// <summary>The whole vertical range of the graticule, in dB.</summary>
+        public double FullScaleDb => _decibelsPerDivision * _verticalDivisions;
+
+        /// <summary>Graticule divisions down the screen (<c>REQ-UI-012</c>).</summary>
+        public int VerticalDivisions => _verticalDivisions;
+
+        /// <summary>Graticule divisions across the screen (<c>REQ-UI-012</c>).</summary>
+        public int HorizontalDivisions => _horizontalDivisions;
+
+        /// <summary>
+        /// Where the reference line sits, 0 at the bottom of the grid through 100 at the top
+        /// (<c>REQ-UI-013</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Setting it moves the axis, not the trace: the reference level stays where it is and the
+        /// top and bottom of the graticule move around it. At 100 % the reference level is the top
+        /// of the grid, which is what puts the reference-level annotation at top left; at 50 % it is
+        /// the middle, which is what a signed or IQ display needs.
+        /// </para>
+        /// <para>
+        /// <see cref="SetFormat"/> resets this to the format's own default, because that is what the
+        /// requirement means by "defaulting to 100 % for Log Mag ... and 50 % for all other
+        /// formats" — the default belongs to the format, not to the plot's first format.
+        /// </para>
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Outside 0 to 100.</exception>
+        public int YReferencePercent
+        {
+            get { return _yReferencePercent; }
+
+            set
+            {
+                ReferencePosition.Validate(value, nameof(value));
+
+                if (_yReferencePercent == value)
+                {
+                    return;
+                }
+
+                _yReferencePercent = value;
+                _topDbm = TopForReference(_referenceLevelDbm);
+
+                RefreshScaleText();
+                BuildLayout();
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// Whether trace annotation is drawn and, with it, whether the band is reserved
+        /// (<c>REQ-UI-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// Turning it off reclaims the annotation band: the graticule rectangle grows, which is the
+        /// requirement's criterion and the reason the setting exists. The trace indicator goes with
+        /// it — <c>REQ-UI-040</c> counts it as trace annotation even though it is drawn inside the
+        /// graticule. When <c>REQ-UI-007</c>'s fault and lock indicators arrive they will need to be
+        /// exempted from this, because a warning that can be switched off by a display preference is
+        /// not a warning.
+        /// </remarks>
+        public bool ShowAnnotation
+        {
+            get { return _showAnnotation; }
+
+            set
+            {
+                if (_showAnnotation == value)
+                {
+                    return;
+                }
+
+                _showAnnotation = value;
+                ApplyAnnotationVisibility();
+                Rebuild(_builtFor);
+            }
+        }
+
+        /// <summary>Whether the graticule lines are drawn (<c>REQ-UI-011</c>).</summary>
+        /// <remarks>
+        /// <para>
+        /// Independent of <see cref="ShowAnnotation"/>: the rectangle keeps its size and its
+        /// background colour, and only the lines go.
+        /// </para>
+        /// <para>
+        /// Named for the graticule rather than for the requirement's menu entry, because this
+        /// control derives from <see cref="System.Windows.Controls.Grid"/> and that already has a
+        /// <c>ShowGridLines</c> — a design-time aid that draws dashed lines between layout cells.
+        /// Two properties one letter apart, one of which silently draws something else, is worth
+        /// avoiding even at the cost of the menu entry and the property no longer matching.
+        /// </para>
+        /// </remarks>
+        public bool ShowGraticuleLines
+        {
+            get { return _showGridLines; }
+
+            set
+            {
+                if (_showGridLines == value)
+                {
+                    return;
+                }
+
+                _showGridLines = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// Applies the shared display options to this plot (<c>REQ-UI-011</c>, <c>REQ-UI-012</c>,
+        /// <c>REQ-UI-013</c>).
+        /// </summary>
+        /// <param name="options">The options in force.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+        /// <remarks>
+        /// Applied in one call rather than through five property setters so that a change of two
+        /// settings costs one rebuild. The plot follows the options; it does not hold them.
+        /// </remarks>
+        public void ApplyDisplayOptions(TraceDisplayOptions options)
+        {
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            bool reflow = _showAnnotation != options.ShowAnnotation;
+
+            _showAnnotation = options.ShowAnnotation;
+            _showGridLines = options.ShowGridLines;
+            _horizontalDivisions = options.HorizontalDivisions;
+            _verticalDivisions = options.VerticalDivisions;
+            _xReferencePercent = options.XReferencePercent;
+
+            // The bottom of the axis is the top less the full scale, and the full scale just
+            // changed with the division count - so the top has to be recomputed from the reference
+            // rather than left where it was.
+            _topDbm = TopForReference(_referenceLevelDbm);
+
+            ApplyAnnotationVisibility();
+            RefreshScaleText();
+
+            if (reflow)
+            {
+                Rebuild(_builtFor);
+            }
+            else
+            {
+                BuildLayout();
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// The top of the graticule that puts a reference level at the reference position.
+        /// </summary>
+        /// <remarks>
+        /// At 100 % the top <em>is</em> the reference level; at 50 % the reference is half a full
+        /// scale below the top. The arithmetic is the whole of <c>REQ-UI-013</c>'s scaling half.
+        /// </remarks>
+        private double TopForReference(double referenceDbm) =>
+            ReferencePosition.TopFor(referenceDbm, FullScaleDb, _yReferencePercent);
 
         /// <summary>Vertical scale, in dB per graticule division.</summary>
         public double DecibelsPerDivision => _decibelsPerDivision;
@@ -390,6 +561,12 @@ namespace OpenVSA.Ui.Rendering
             choice.SelectedIndex = index;
             _format.Refresh();
 
+            // REQ-UI-013: the Y reference default belongs to the format, so changing format takes
+            // the format's default. Log Mag hangs from the top of the grid; Real, Phase and IQ are
+            // signed and want zero in the middle, and leaving a spectrum's 100 % in force would put
+            // half of every constellation off the screen.
+            ApplyReferenceDefaultFor(format);
+
             if (_snapshot != null)
             {
                 Redraw(_snapshot);
@@ -398,6 +575,52 @@ namespace OpenVSA.Ui.Rendering
             UpdateAnnotationIfPossible();
 
             return true;
+        }
+
+        /// <summary>
+        /// Moves the reference line to the default position for a format (<c>REQ-UI-013</c>).
+        /// </summary>
+        /// <param name="format">The format now in force.</param>
+        private void ApplyReferenceDefaultFor(TraceFormat format)
+        {
+            int wanted = ReferencePosition.DefaultYPercentFor(format);
+
+            if (_yReferencePercent == wanted)
+            {
+                return;
+            }
+
+            _yReferencePercent = wanted;
+            _topDbm = TopForReference(_referenceLevelDbm);
+
+            RefreshScaleText();
+            BuildLayout();
+        }
+
+        /// <summary>
+        /// Shows or hides every piece of trace annotation (<c>REQ-UI-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// Collapsed rather than hidden, and the band rows are taken to zero height as well. Merely
+        /// making the text invisible would leave the band reserved and the graticule the size it
+        /// always was, which is exactly the failure the requirement's criterion names.
+        /// </remarks>
+        private void ApplyAnnotationVisibility()
+        {
+            Visibility visibility = _showAnnotation ? Visibility.Visible : Visibility.Collapsed;
+
+            foreach (FrameworkElement element in _annotation)
+            {
+                element.Visibility = visibility;
+            }
+
+            _markerText.Visibility = visibility;
+            _indicatorText.Visibility = visibility;
+
+            var band = new GridLength(_showAnnotation ? AnnotationBandDip : 0.0);
+
+            RowDefinitions[0].Height = band;
+            RowDefinitions[2].Height = band;
         }
 
         /// <summary>Refreshes the annotation when there is a frame behind it to describe.</summary>
@@ -446,12 +669,23 @@ namespace OpenVSA.Ui.Rendering
         public bool SelectAreaEnabled { get; set; }
 
         /// <summary>The graticule's rectangle within this control, in device-independent pixels.</summary>
-        public Rect GraticuleBounds =>
-            new Rect(
-                AnnotationBandDip,
-                AnnotationBandDip,
-                Math.Max(0.0, ActualWidth - 2.0 * AnnotationBandDip),
-                Math.Max(0.0, ActualHeight - 2.0 * AnnotationBandDip));
+        /// <remarks>
+        /// Zero band when the annotation is hidden, so a Select Area drag reaches the whole surface
+        /// once the graticule has expanded into it (<c>REQ-UI-011</c>).
+        /// </remarks>
+        public Rect GraticuleBounds
+        {
+            get
+            {
+                double band = _showAnnotation ? AnnotationBandDip : 0.0;
+
+                return new Rect(
+                    band,
+                    band,
+                    Math.Max(0.0, ActualWidth - 2.0 * band),
+                    Math.Max(0.0, ActualHeight - 2.0 * band));
+            }
+        }
 
         /// <summary>
         /// Where an element sits within this control, in device-independent pixels.
@@ -540,7 +774,7 @@ namespace OpenVSA.Ui.Rendering
             if (Math.Abs(snapshot.Spectrum.ReferenceLevelDbm - _referenceLevelDbm) > 1e-9)
             {
                 _referenceLevelDbm = snapshot.Spectrum.ReferenceLevelDbm;
-                _topDbm = _referenceLevelDbm;
+                _topDbm = TopForReference(_referenceLevelDbm);
                 BuildLayout();
             }
 
@@ -1014,8 +1248,7 @@ namespace OpenVSA.Ui.Rendering
             {
                 // The bottom follows the top and the scale, so setting it moves the top rather than
                 // stretching the axis - which is what keeps the per-division reading true.
-                _topDbm = ((NumericHotSpotValue)_bottomScale.Value).Value +
-                    _decibelsPerDivision * VerticalDivisions;
+                _topDbm = ((NumericHotSpotValue)_bottomScale.Value).Value + FullScaleDb;
             }
             else if (ReferenceEquals(spot, _perDivision))
             {
@@ -1132,7 +1365,10 @@ namespace OpenVSA.Ui.Rendering
             DpiScale dpi = VisualTreeHelper.GetDpi(this);
             int width = (int)Math.Round(size.Width * dpi.DpiScaleX);
             int height = (int)Math.Round(size.Height * dpi.DpiScaleY);
-            int margin = (int)Math.Round(AnnotationBandDip * dpi.DpiScaleX);
+            // Zero when the annotation is hidden, which is what makes REQ-UI-011 a change of
+            // geometry rather than of visibility: the band is not reserved, so the graticule
+            // rectangle grows into it.
+            int margin = _showAnnotation ? (int)Math.Round(AnnotationBandDip * dpi.DpiScaleX) : 0;
 
             // Below this the annotation band leaves no graticule and PlotLayout refuses to be
             // built - a legitimate transient while a docked pane is being dragged.
@@ -1177,7 +1413,11 @@ namespace OpenVSA.Ui.Rendering
                 _surface.Height,
                 _marginPixels,
                 _topDbm,
-                BottomDbm);
+                BottomDbm,
+                _horizontalDivisions,
+                _verticalDivisions,
+                _yReferencePercent,
+                _xReferencePercent);
         }
 
         private void Redraw(TraceSnapshot snapshot)
@@ -1192,7 +1432,8 @@ namespace OpenVSA.Ui.Rendering
                 _layout,
                 _palette,
                 snapshot == null ? ReadOnlySpan<float>.Empty : snapshot.MinMax,
-                ColumnColours(snapshot));
+                ColumnColours(snapshot),
+                _showGridLines);
 
             if (snapshot != null)
             {

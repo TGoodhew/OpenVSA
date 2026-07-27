@@ -259,6 +259,21 @@ namespace OpenVSA.Measurement.State
 
         /// <summary>Whether a trace within the margin is recoloured (<c>REQ-UI-023</c>).</summary>
         public bool IndicateMarginWarnings { get; set; } = true;
+
+        /// <summary>Whether trace annotation is drawn (<c>REQ-UI-011</c>).</summary>
+        public bool ShowAnnotation { get; set; } = true;
+
+        /// <summary>Whether the graticule lines are drawn (<c>REQ-UI-011</c>).</summary>
+        public bool ShowGridLines { get; set; } = true;
+
+        /// <summary>Graticule columns (<c>REQ-UI-012</c>).</summary>
+        public int HorizontalDivisions { get; set; } = 10;
+
+        /// <summary>Graticule rows (<c>REQ-UI-012</c>).</summary>
+        public int VerticalDivisions { get; set; } = 10;
+
+        /// <summary>Where the reference column sits, 0 to 100 per cent (<c>REQ-UI-013</c>).</summary>
+        public int XReferencePercent { get; set; } = 50;
     }
 
     /// <summary>

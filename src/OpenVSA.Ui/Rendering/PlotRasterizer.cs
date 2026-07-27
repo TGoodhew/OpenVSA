@@ -70,7 +70,32 @@ namespace OpenVSA.Ui.Rendering
             PlotLayout layout,
             PlotPalette palette,
             ReadOnlySpan<float> minMax,
-            ReadOnlySpan<PlotColor> columnColours)
+            ReadOnlySpan<PlotColor> columnColours) =>
+            Render(surface, layout, palette, minMax, columnColours, drawGridLines: true);
+
+        /// <summary>
+        /// Renders a full frame, optionally without the graticule lines (<c>REQ-UI-011</c>).
+        /// </summary>
+        /// <param name="surface">Target surface; must match <paramref name="layout"/>'s dimensions.</param>
+        /// <param name="layout">Plot geometry.</param>
+        /// <param name="palette">Colours to draw with.</param>
+        /// <param name="minMax">Decimated trace, as (minimum, maximum) pairs.</param>
+        /// <param name="columnColours">One colour per graticule column, or empty for one colour.</param>
+        /// <param name="drawGridLines">
+        /// Whether the graticule lines are drawn. <em>Show Grid Lines</em> off removes the lines and
+        /// nothing else: the graticule rectangle keeps its size and its own background colour, so
+        /// the plot area is still visible as an area — which is what makes this independent of
+        /// <em>Show Annotation</em> rather than a second way of spelling it.
+        /// </param>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentException">The surface does not match the layout, or a span is the wrong length.</exception>
+        public static void Render(
+            PixelSurface surface,
+            PlotLayout layout,
+            PlotPalette palette,
+            ReadOnlySpan<float> minMax,
+            ReadOnlySpan<PlotColor> columnColours,
+            bool drawGridLines)
         {
             if (surface == null)
             {
@@ -118,7 +143,10 @@ namespace OpenVSA.Ui.Rendering
             surface.Fill(surface.Bounds, palette.AnnotationBackground);
             surface.Fill(layout.Graticule, palette.TraceBackground);
 
-            DrawGraticule(surface, layout, palette.Grid);
+            if (drawGridLines)
+            {
+                DrawGraticule(surface, layout, palette.Grid);
+            }
 
             if (minMax.Length != 0)
             {

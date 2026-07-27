@@ -224,6 +224,7 @@ namespace OpenVSA.Ui
 
             WireSelectArea(first);
             ColourTrace(first, 'A');
+            first.ApplyDisplayOptions(_traceDisplay);
 
             Documents.LayoutChanged += (sender, preset) =>
                 StatusText.Content = "Layout: " + preset.Name;
@@ -270,6 +271,7 @@ namespace OpenVSA.Ui
 
                     WireSelectArea(plot);
                     ColourTrace(plot, letter);
+                    plot.ApplyDisplayOptions(_traceDisplay);
 
                     // A new trace opens in the next format round the list rather than as a second
                     // copy of the one beside it. Four windows all showing log magnitude of the same
@@ -1011,7 +1013,13 @@ namespace OpenVSA.Ui
         /// reflects a change made from the other", which is only true if neither surface is the
         /// state.
         /// </remarks>
-        private void OnLimitIndicationChanged(object sender, RoutedEventArgs e)
+        private void OnLimitIndicationChanged(object sender, RoutedEventArgs e) =>
+            OnTraceDisplayItemChanged(sender, e);
+
+        /// <summary>
+        /// The Display menu's trace items, writing the same state the Trace tab does.
+        /// </summary>
+        private void OnTraceDisplayItemChanged(object sender, RoutedEventArgs e)
         {
             if (_menuFollowing)
             {
@@ -1021,6 +1029,8 @@ namespace OpenVSA.Ui
             _traceDisplay.IndicateLimitFailures = IndicateLimitFailuresItem.IsChecked;
             _traceDisplay.IndicateMarginWarnings = IndicateMarginItem.IsChecked;
             _traceDisplay.ForceWhiteBackgroundOnPrint = ForceWhiteBackgroundItem.IsChecked;
+            _traceDisplay.ShowAnnotation = ShowAnnotationItem.IsChecked;
+            _traceDisplay.ShowGridLines = ShowGridLinesItem.IsChecked;
         }
 
         /// <summary>Whether the Display menu is being updated from the options, not by the user.</summary>
@@ -1042,6 +1052,8 @@ namespace OpenVSA.Ui
                 IndicateLimitFailuresItem.IsChecked = _traceDisplay.IndicateLimitFailures;
                 IndicateMarginItem.IsChecked = _traceDisplay.IndicateMarginWarnings;
                 ForceWhiteBackgroundItem.IsChecked = _traceDisplay.ForceWhiteBackgroundOnPrint;
+                ShowAnnotationItem.IsChecked = _traceDisplay.ShowAnnotation;
+                ShowGridLinesItem.IsChecked = _traceDisplay.ShowGridLines;
             }
             finally
             {
@@ -1049,11 +1061,32 @@ namespace OpenVSA.Ui
             }
 
             ApplyColours();
+            ApplyTraceDisplay();
 
             _eventLog.Append(
-                "Limit indication: failures " +
-                (_traceDisplay.IndicateLimitFailures ? "shown" : "hidden") + ", margin warnings " +
-                (_traceDisplay.IndicateMarginWarnings ? "shown" : "hidden") + ".");
+                "Trace display: " + _traceDisplay + ".");
+        }
+
+        /// <summary>
+        /// Pushes the annotation, graticule and reference settings onto every plot
+        /// (<c>REQ-UI-011</c>, <c>REQ-UI-012</c>, <c>REQ-UI-013</c>).
+        /// </summary>
+        /// <remarks>
+        /// Every open trace, not just the active one. These are display preferences, not per-trace
+        /// settings, and a graticule that changed its division count on one window out of four would
+        /// make two traces of one acquisition incomparable by eye.
+        /// </remarks>
+        private void ApplyTraceDisplay()
+        {
+            foreach (char trace in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(trace);
+
+                if (plot != null)
+                {
+                    plot.ApplyDisplayOptions(_traceDisplay);
+                }
+            }
         }
 
         /// <summary>Where the display sidecar carrying the tool-window layout lives.</summary>

@@ -244,7 +244,7 @@ namespace OpenVSA.Ui.Tests
 
                 Assert.True(plot.TopScaleHotSpot.Adjust(5));
                 Assert.Equal(top + 5.0, plot.TopDbm, 6);
-                Assert.Equal(plot.TopDbm - plot.DecibelsPerDivision * TracePlot.VerticalDivisions,
+                Assert.Equal(plot.TopDbm - plot.DecibelsPerDivision * plot.VerticalDivisions,
                     plot.BottomDbm, 6);
 
                 // Per-division steps the 1-2-5 ladder; moving it re-scales without moving the top.
@@ -266,7 +266,7 @@ namespace OpenVSA.Ui.Tests
                 Assert.True(plot.BottomScaleHotSpot.Adjust(-10));
 
                 Assert.Equal(
-                    plot.DecibelsPerDivision * TracePlot.VerticalDivisions,
+                    plot.DecibelsPerDivision * plot.VerticalDivisions,
                     plot.TopDbm - plot.BottomDbm,
                     6);
             });
