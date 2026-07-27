@@ -67,6 +67,17 @@
                 <MenuItem x:Name="PreferencesItem" Header="_Preferences…" Click="OnDisplayPreferences" />
                 <MenuItem x:Name="SpectrogramMapMenu" Header="_Spectrogram colour map" />
                 <Separator />
+                <!--
+                    REQ-UI-011. Both are checkable items over the same TraceDisplayOptions the
+                    Trace tab edits, so neither surface holds the setting and each follows the
+                    other. Show Annotation reclaims the annotation band rather than merely hiding
+                    the text, which is what the requirement's criterion is about.
+                -->
+                <MenuItem x:Name="ShowAnnotationItem" Header="Show _annotation"
+                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
+                <MenuItem x:Name="ShowGridLinesItem" Header="Show _grid lines"
+                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
+                <Separator />
                 <MenuItem x:Name="IndicateLimitFailuresItem" Header="Indicate limit _failures"
                           IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
                 <MenuItem x:Name="IndicateMarginItem" Header="Indicate _margin warnings"

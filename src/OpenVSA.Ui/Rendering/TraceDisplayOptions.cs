@@ -25,9 +25,28 @@ namespace OpenVSA.Ui.Rendering
     /// </remarks>
     public sealed class TraceDisplayOptions
     {
+        /// <summary>Fewest divisions a graticule may be set to.</summary>
+        /// <remarks>
+        /// Two: one division is a rectangle with no interior line, which is a graticule in name
+        /// only. Below that the count stops meaning anything.
+        /// </remarks>
+        public const int MinimumDivisions = 2;
+
+        /// <summary>Most divisions a graticule may be set to.</summary>
+        /// <remarks>
+        /// Twenty. Beyond it the lines are closer together than the annotation that labels them at
+        /// any usable size, and the grid reads as a wash rather than as a scale.
+        /// </remarks>
+        public const int MaximumDivisions = 20;
+
         private bool _forceWhiteBackgroundOnPrint = true;
         private bool _indicateLimitFailures = true;
         private bool _indicateMarginWarnings = true;
+        private bool _showAnnotation = true;
+        private bool _showGridLines = true;
+        private int _horizontalDivisions = PlotLayout.DefaultDivisions;
+        private int _verticalDivisions = PlotLayout.DefaultDivisions;
+        private int _xReferencePercent = ReferencePosition.DefaultXPercent;
 
         /// <summary>
         /// Whether printing forces a white background (<c>REQ-UI-015</c>).
@@ -87,6 +106,100 @@ namespace OpenVSA.Ui.Rendering
             }
         }
 
+        /// <summary>
+        /// Whether trace annotation is drawn, and so whether the graticule has room reserved for it
+        /// (<c>REQ-UI-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// Turning it off is not a visibility change: the annotation band is reclaimed and the
+        /// graticule expands into it. That is the requirement's criterion - "toggling Show
+        /// Annotation changes the plot rectangle's size, not merely text visibility" - and it is
+        /// what makes the setting worth having, because the reason to turn annotation off is to see
+        /// more trace.
+        /// </remarks>
+        public bool ShowAnnotation
+        {
+            get { return _showAnnotation; }
+
+            set
+            {
+                if (_showAnnotation == value)
+                {
+                    return;
+                }
+
+                _showAnnotation = value;
+                RaiseChanged();
+            }
+        }
+
+        /// <summary>
+        /// Whether the graticule lines are drawn (<c>REQ-UI-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// Independent of <see cref="ShowAnnotation"/>, which the requirement states explicitly.
+        /// The graticule rectangle keeps its size and its background either way; only the lines go.
+        /// </remarks>
+        public bool ShowGridLines
+        {
+            get { return _showGridLines; }
+
+            set
+            {
+                if (_showGridLines == value)
+                {
+                    return;
+                }
+
+                _showGridLines = value;
+                RaiseChanged();
+            }
+        }
+
+        /// <summary>Graticule columns (<c>REQ-UI-012</c>).</summary>
+        /// <exception cref="ArgumentOutOfRangeException">Outside the settable range.</exception>
+        public int HorizontalDivisions
+        {
+            get { return _horizontalDivisions; }
+            set { Set(ref _horizontalDivisions, value, nameof(value)); }
+        }
+
+        /// <summary>Graticule rows (<c>REQ-UI-012</c>).</summary>
+        /// <exception cref="ArgumentOutOfRangeException">Outside the settable range.</exception>
+        public int VerticalDivisions
+        {
+            get { return _verticalDivisions; }
+            set { Set(ref _verticalDivisions, value, nameof(value)); }
+        }
+
+        /// <summary>
+        /// Where the reference column sits, 0 at the left edge through 100 at the right
+        /// (<c>REQ-UI-013</c>).
+        /// </summary>
+        /// <remarks>
+        /// X only. The Y reference position is per format and defaults differently for each, so it
+        /// belongs to the trace rather than to the display as a whole - see
+        /// <see cref="ReferencePosition.DefaultYPercentFor"/>.
+        /// </remarks>
+        /// <exception cref="ArgumentOutOfRangeException">Outside 0 to 100.</exception>
+        public int XReferencePercent
+        {
+            get { return _xReferencePercent; }
+
+            set
+            {
+                ReferencePosition.Validate(value, nameof(value));
+
+                if (_xReferencePercent == value)
+                {
+                    return;
+                }
+
+                _xReferencePercent = value;
+                RaiseChanged();
+            }
+        }
+
         /// <summary>Raised whenever any of them changes, so every surface can follow.</summary>
         public event EventHandler Changed;
 
@@ -103,6 +216,11 @@ namespace OpenVSA.Ui.Rendering
             state.ForceWhiteBackgroundOnPrint = _forceWhiteBackgroundOnPrint;
             state.IndicateLimitFailures = _indicateLimitFailures;
             state.IndicateMarginWarnings = _indicateMarginWarnings;
+            state.ShowAnnotation = _showAnnotation;
+            state.ShowGridLines = _showGridLines;
+            state.HorizontalDivisions = _horizontalDivisions;
+            state.VerticalDivisions = _verticalDivisions;
+            state.XReferencePercent = _xReferencePercent;
         }
 
         /// <summary>Reads the options back from a display-preferences sidecar.</summary>
@@ -119,19 +237,74 @@ namespace OpenVSA.Ui.Rendering
                 throw new ArgumentNullException(nameof(state));
             }
 
+            int horizontal = Clamp(state.HorizontalDivisions);
+            int vertical = Clamp(state.VerticalDivisions);
+            int reference = state.XReferencePercent < ReferencePosition.MinimumPercent ||
+                            state.XReferencePercent > ReferencePosition.MaximumPercent
+                ? ReferencePosition.DefaultXPercent
+                : state.XReferencePercent;
+
             bool moved =
                 _forceWhiteBackgroundOnPrint != state.ForceWhiteBackgroundOnPrint ||
                 _indicateLimitFailures != state.IndicateLimitFailures ||
-                _indicateMarginWarnings != state.IndicateMarginWarnings;
+                _indicateMarginWarnings != state.IndicateMarginWarnings ||
+                _showAnnotation != state.ShowAnnotation ||
+                _showGridLines != state.ShowGridLines ||
+                _horizontalDivisions != horizontal ||
+                _verticalDivisions != vertical ||
+                _xReferencePercent != reference;
 
             _forceWhiteBackgroundOnPrint = state.ForceWhiteBackgroundOnPrint;
             _indicateLimitFailures = state.IndicateLimitFailures;
             _indicateMarginWarnings = state.IndicateMarginWarnings;
+            _showAnnotation = state.ShowAnnotation;
+            _showGridLines = state.ShowGridLines;
+            _horizontalDivisions = horizontal;
+            _verticalDivisions = vertical;
+            _xReferencePercent = reference;
 
             if (moved)
             {
                 RaiseChanged();
             }
+        }
+
+        /// <summary>
+        /// Brings a division count from a file into range.
+        /// </summary>
+        /// <remarks>
+        /// Clamped rather than thrown on. A preferences file is a thing a user can edit, and a
+        /// nonsense division count should cost them a graticule they recognise, not a shell that
+        /// will not start.
+        /// </remarks>
+        private static int Clamp(int divisions)
+        {
+            if (divisions < MinimumDivisions)
+            {
+                return MinimumDivisions;
+            }
+
+            return divisions > MaximumDivisions ? MaximumDivisions : divisions;
+        }
+
+        private void Set(ref int field, int value, string name)
+        {
+            if (value < MinimumDivisions || value > MaximumDivisions)
+            {
+                throw new ArgumentOutOfRangeException(
+                    name,
+                    value,
+                    "A graticule has between " + MinimumDivisions + " and " + MaximumDivisions +
+                    " divisions on an axis.");
+            }
+
+            if (field == value)
+            {
+                return;
+            }
+
+            field = value;
+            RaiseChanged();
         }
 
         private void RaiseChanged()
@@ -146,7 +319,10 @@ namespace OpenVSA.Ui.Rendering
 
         /// <inheritdoc />
         public override string ToString() =>
-            "failures " + (_indicateLimitFailures ? "shown" : "hidden") +
+            _horizontalDivisions + "x" + _verticalDivisions + " divisions" +
+            (_showAnnotation ? ", annotated" : ", no annotation") +
+            (_showGridLines ? ", grid lines" : ", no grid lines") +
+            ", failures " + (_indicateLimitFailures ? "shown" : "hidden") +
             ", margins " + (_indicateMarginWarnings ? "shown" : "hidden") +
             ", printing " + (_forceWhiteBackgroundOnPrint ? "on white" : "as displayed");
     }
