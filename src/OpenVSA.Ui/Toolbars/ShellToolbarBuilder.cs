@@ -43,7 +43,7 @@ namespace OpenVSA.Ui.Toolbars
     public static class ShellToolbarBuilder
     {
         /// <summary>
-        /// Fills a tray with the six toolbars.
+        /// Fills a tray with the toolbars <c>REQ-UI-063</c> declares.
         /// </summary>
         /// <param name="tray">The tray to fill; emptied first.</param>
         /// <param name="binding">What the shell supplies for each control.</param>
@@ -51,7 +51,27 @@ namespace OpenVSA.Ui.Toolbars
         /// <exception cref="InvalidOperationException">
         /// A control has neither an action nor a reason, or has both.
         /// </exception>
-        public static void Build(ToolBarTray tray, IShellToolbarBinding binding)
+        public static void Build(ToolBarTray tray, IShellToolbarBinding binding) =>
+            Build(tray, binding, new ToolbarLayout());
+
+        /// <summary>
+        /// Fills a tray with the toolbars as the user has arranged them.
+        /// </summary>
+        /// <param name="tray">The tray to fill; emptied first.</param>
+        /// <param name="binding">What the shell supplies for each control.</param>
+        /// <param name="layout">The arrangement (<c>REQ-UI-064</c>).</param>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="InvalidOperationException">
+        /// A control has neither an action nor a reason, or has both.
+        /// </exception>
+        /// <remarks>
+        /// <strong>The layout says where a control is; <see cref="ShellToolbars"/> still says what
+        /// it is.</strong> A control keeps the path the requirement declares it under whatever
+        /// toolbar it has been moved to, so the shell's binding switch never sees that
+        /// customisation happened, and the bound-or-reasoned rule is enforced on a customised
+        /// arrangement exactly as on the default one.
+        /// </remarks>
+        public static void Build(ToolBarTray tray, IShellToolbarBinding binding, ToolbarLayout layout)
         {
             if (tray == null)
             {
@@ -63,13 +83,23 @@ namespace OpenVSA.Ui.Toolbars
                 throw new ArgumentNullException(nameof(binding));
             }
 
+            if (layout == null)
+            {
+                throw new ArgumentNullException(nameof(layout));
+            }
+
             tray.ToolBars.Clear();
 
             int band = 0;
             int index = 0;
 
-            foreach (ShellToolbar declared in ShellToolbars.All)
+            foreach (ToolbarBar arranged in layout.Bars)
             {
+                if (!arranged.IsVisible)
+                {
+                    continue;
+                }
+
                 var bar = new ToolBar
                 {
                     Band = band,
@@ -77,22 +107,27 @@ namespace OpenVSA.Ui.Toolbars
 
                     // So a test — and a user reading the customiser — can tell which is which.
                     // The tray gives a toolbar no name of its own.
-                    Name = "Toolbar" + declared.Name.Replace(" ", string.Empty).Replace("/", string.Empty),
-                    Tag = declared.Name,
-                    ToolTip = declared.Name,
+                    Name = Identifier(arranged.Name),
+                    Tag = arranged.Name,
+                    ToolTip = arranged.Name,
                 };
 
                 var grouped = new Dictionary<string, List<ToggleButton>>(StringComparer.Ordinal);
 
-                foreach (ToolbarControl control in declared.Controls)
+                foreach (string path in arranged.Controls)
                 {
-                    if (control.Kind == ToolbarControlKind.Separator)
+                    ToolbarControl control = ShellToolbars.ControlAt(path);
+
+                    if (control == null || control.Kind == ToolbarControlKind.Separator)
                     {
+                        // Either the layout's own separator or a path this build has no control
+                        // for — ToolbarLayout reports the second when it reads the file, so a rule
+                        // is the better of the two things to draw.
                         bar.Items.Add(new Separator());
                         continue;
                     }
 
-                    bar.Items.Add(Make(declared, control, binding, grouped));
+                    bar.Items.Add(Make(path, control, binding, grouped));
                 }
 
                 Couple(grouped);
@@ -111,13 +146,35 @@ namespace OpenVSA.Ui.Toolbars
             }
         }
 
+        /// <summary>
+        /// A toolbar's name as a XAML identifier.
+        /// </summary>
+        /// <remarks>
+        /// A custom toolbar's name is whatever the user typed, and <see cref="FrameworkElement.Name"/>
+        /// throws on anything that is not an identifier — so the punctuation goes and the prefix
+        /// guarantees a leading letter whatever is left.
+        /// </remarks>
+        private static string Identifier(string name)
+        {
+            var text = new System.Text.StringBuilder("Toolbar");
+
+            foreach (char letter in name ?? string.Empty)
+            {
+                if (char.IsLetterOrDigit(letter) || letter == '_')
+                {
+                    text.Append(letter);
+                }
+            }
+
+            return text.ToString();
+        }
+
         private static FrameworkElement Make(
-            ShellToolbar declared,
+            string path,
             ToolbarControl control,
             IShellToolbarBinding binding,
             Dictionary<string, List<ToggleButton>> grouped)
         {
-            string path = ShellToolbars.PathOf(declared.Name, control.Name);
             FrameworkElement made = Create(control);
 
             // Tagged with the name the requirement gives it, so that a test - and the customiser

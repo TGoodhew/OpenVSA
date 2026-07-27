@@ -143,6 +143,8 @@ namespace OpenVSA.Ui
         /// </remarks>
         private DisplayPreferencesDialog _preferences;
 
+        private ToolbarCustomiserDialog _customiser;
+
         /// <summary>The spectrogram colour map in force (<c>REQ-UI-024</c>).</summary>
         private SpectrogramColourMap _spectrogramMap = SpectrogramColourMap.Default;
 
@@ -769,6 +771,7 @@ namespace OpenVSA.Ui
                     ToolWindows = _toolWindows.Layout.ToState(),
                     SpectrogramColourMap = SpectrogramColourMap.NameOf(_spectrogramMap.Kind),
                     SpectrogramUserMap = UserMapEntries(),
+                    Toolbars = ToolbarArrangement.ToState(),
                 };
 
                 _colours.SaveInto(preferences);
@@ -827,6 +830,21 @@ namespace OpenVSA.Ui
             }
 
             _traceDisplay.LoadFrom(saved);
+
+            // REQ-UI-064: a custom toolbar survives a restart. Read before the tray is built, so
+            // that the first thing on screen is the arrangement the user left rather than the
+            // default one replaced a moment later.
+            if (saved.Toolbars != null && saved.Toolbars.Count > 0)
+            {
+                IReadOnlyList<string> unknownControls = ToolbarArrangement.LoadFrom(saved.Toolbars);
+
+                if (unknownControls.Count > 0)
+                {
+                    _eventLog.Append(
+                        "The saved toolbars name " + unknownControls.Count +
+                        " control(s) this build does not have; the rest were restored.");
+                }
+            }
 
             SpectrogramColourMapKind kind;
 
@@ -1495,6 +1513,40 @@ namespace OpenVSA.Ui
             };
 
             _preferences = dialog;
+            dialog.ShowModeless(this);
+        }
+
+        /// <summary>
+        /// Opens the toolbar customiser of <c>REQ-UI-064</c> (Utilities ▸ Toolbars…).
+        /// </summary>
+        /// <remarks>
+        /// One at a time, and modeless like every other settings dialog: a second window over the
+        /// same arrangement would be two lists that disagree about what is on a toolbar the moment
+        /// either is used.
+        /// </remarks>
+        private void OnToolbarCustomiser(object sender, RoutedEventArgs e)
+        {
+            if (_customiser != null)
+            {
+                _customiser.Activate();
+                return;
+            }
+
+            var dialog = new ToolbarCustomiserDialog(_dialogOptions, ToolbarArrangement);
+
+            dialog.Closed += (s, args) =>
+            {
+                _customiser = null;
+                SaveToolWindowLayout();
+
+                _eventLog.Append(
+                    "Toolbars closed; the arrangement is " +
+                    (ToolbarArrangement.IsDefault
+                        ? "REQ-UI-063's default."
+                        : "customised (" + ToolbarArrangement.Bars.Count + " toolbars)."));
+            };
+
+            _customiser = dialog;
             dialog.ShowModeless(this);
         }
 

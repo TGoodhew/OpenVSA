@@ -34,6 +34,8 @@ namespace OpenVSA.Ui
     {
         private readonly SweepControl _sweep = new SweepControl();
 
+        private readonly ToolbarLayout _toolbarLayout = new ToolbarLayout();
+
         private readonly Dictionary<MouseMode, ToggleButton> _mouseModeButtons =
             new Dictionary<MouseMode, ToggleButton>();
 
@@ -63,6 +65,16 @@ namespace OpenVSA.Ui
         /// application shows, and a test that walked a description of it would prove nothing.
         /// </remarks>
         public ToolBarTray ToolbarTray => Toolbars;
+
+        /// <summary>
+        /// The toolbars as the user has arranged them (<c>REQ-UI-064</c>).
+        /// </summary>
+        /// <remarks>
+        /// The live arrangement, not a copy: the customiser edits this and the tray follows, which
+        /// is <c>REQ-UI-070</c>'s live-settings rule applied to a dialog whose subject is the
+        /// toolbars themselves.
+        /// </remarks>
+        public ToolbarLayout ToolbarArrangement => _toolbarLayout;
 
         /// <summary>Whether an instrument is open.</summary>
         public bool IsConnected => _activeFrontEnd != null;
@@ -105,10 +117,67 @@ namespace OpenVSA.Ui
         /// <summary>Builds the toolbars from <c>REQ-UI-063</c>'s table.</summary>
         private void BuildToolbars()
         {
-            ShellToolbarBuilder.Build(Toolbars, this);
+            RebuildToolbars();
 
             _sweep.Changed += (sender, e) => FollowSweep();
+            _toolbarLayout.Changed += (sender, e) => RebuildToolbars();
+
             FollowSweep();
+        }
+
+        /// <summary>
+        /// Rebuilds the tray after the customiser has changed something (<c>REQ-UI-064</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The caches are emptied first, and that is not tidiness.</strong> Every control
+        /// the shell has to keep in step with a setting is remembered by reference — the Pause
+        /// caption, the five mouse modes, the three accumulators, the two dropdowns. A rebuild
+        /// makes new ones; keeping the old ones would leave the shell updating buttons that are no
+        /// longer on any toolbar, and the visible ones showing whatever they were built with.
+        /// </para>
+        /// <para>
+        /// Nothing is subscribed to here. <see cref="BuildToolbars"/> subscribes once; a rebuild
+        /// that subscribed again would give every later change one more handler than the last.
+        /// </para>
+        /// </remarks>
+        private void RebuildToolbars()
+        {
+            _mouseModeButtons.Clear();
+            _accumulatorButtons.Clear();
+
+            _pauseButton = null;
+            _singleSweepToggle = null;
+            _autoRangeSplit = null;
+            _activeTraceReadout = null;
+            _layoutBox = null;
+            _mapBox = null;
+            _blockDiagramToggle = null;
+
+            ShellToolbarBuilder.Build(Toolbars, this, _toolbarLayout);
+
+            FollowSweep();
+            FollowAccumulator();
+            FollowSpectrogramMap();
+            ShowActiveTrace();
+        }
+
+        /// <summary>
+        /// Returns the toolbars to <c>REQ-UI-063</c>'s arrangement (File &gt; Preset &gt; Toolbars).
+        /// </summary>
+        /// <remarks>
+        /// The five preconfigured toolbars get their declared contents back and every custom one
+        /// goes, which is <c>REQ-UI-064</c>'s criterion in one call — and the same call Factory
+        /// Defaults makes, because that variant's scope includes the toolbars.
+        /// </remarks>
+        private void ResetToolbars()
+        {
+            _toolbarLayout.Reset();
+
+            if (_customiser != null)
+            {
+                _customiser.Refresh();
+            }
         }
 
         /// <inheritdoc />
@@ -171,6 +240,12 @@ namespace OpenVSA.Ui
 
                 case "Trace / Block Diagram > Block Diagram":
                     _blockDiagramToggle = (ToggleButton)created;
+
+                    // Set from the window rather than left unchecked, so that a toolbar rebuilt by
+                    // the customiser does not report a pane closed while it is open.
+                    _blockDiagramToggle.IsChecked =
+                        _toolWindows != null && _toolWindows.Layout.IsOpen(ToolWindow.BlockDiagram);
+
                     _blockDiagramToggle.Click += (sender, e) => _toolWindows.SetOpen(
                         ToolWindow.BlockDiagram, _blockDiagramToggle.IsChecked == true);
                     return true;

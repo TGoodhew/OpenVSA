@@ -228,9 +228,7 @@ namespace OpenVSA.Ui.Menus
                 Item("Traces"),
                 Item("Application and Traces"),
                 Item("Display Preferences"),
-                Off("Toolbars",
-                    "The toolbars of REQ-UI-063 are not built yet, so there is no arrangement to " +
-                    "return to. Factory Defaults will reset them once there is."),
+                Item("Toolbars"),
                 Item("Factory Defaults")),
 
             Rule(),
@@ -498,9 +496,7 @@ namespace OpenVSA.Ui.Menus
                 "Settings for the SCPI server of REQ-API-020, which is Phase 2. The SCPI Log " +
                 "window on the Window menu shows the traffic OpenVSA sends to instruments."),
             Item("Display Preferences…"),
-            Off("Toolbars…",
-                "Choosing which toolbars are shown and what is on them. The toolbars themselves " +
-                "are REQ-UI-063, which is not built yet."),
+            Item("Toolbars…"),
             Off("Manage Registers…",
                 "Data registers — measured traces held in memory for maths and comparison — are " +
                 "Phase 2, with REQ-TRC-030."),

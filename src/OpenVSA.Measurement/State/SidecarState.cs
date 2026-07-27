@@ -169,6 +169,30 @@ namespace OpenVSA.Measurement.State
     }
 
     /// <summary>
+    /// One toolbar as the user arranged it (<c>REQ-UI-064</c>).
+    /// </summary>
+    /// <remarks>
+    /// The controls are named by the path <c>REQ-UI-063</c> gives them — <c>Control &gt; Pause</c> —
+    /// rather than by an ordinal, for the reason <see cref="ToolWindowPlacement"/> is keyed by name:
+    /// the file says what it means when read, and reordering a table in the source cannot silently
+    /// turn one user's Pause button into their Restart button.
+    /// </remarks>
+    public sealed class ToolbarBarState
+    {
+        /// <summary>The toolbar's name.</summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>Whether the user created it, rather than <c>REQ-UI-063</c> declaring it.</summary>
+        public bool IsCustom { get; set; }
+
+        /// <summary>Whether the tray shows it.</summary>
+        public bool IsVisible { get; set; } = true;
+
+        /// <summary>What is on it, in order, each by its path; <c>|</c> is a separator.</summary>
+        public List<string> Controls { get; set; } = new List<string>();
+    }
+
+    /// <summary>
     /// Display preferences, saved apart from the state (<c>REQ-STA-002</c>).
     /// </summary>
     public sealed class DisplayPreferencesState
@@ -250,6 +274,18 @@ namespace OpenVSA.Measurement.State
         /// recommended typeface into a display for ever.
         /// </remarks>
         public List<FontSlotState> Fonts { get; set; } = new List<FontSlotState>();
+
+        /// <summary>
+        /// The toolbars, where the user has rearranged them (<c>REQ-UI-064</c>).
+        /// </summary>
+        /// <remarks>
+        /// Empty when the arrangement is still <c>REQ-UI-063</c>'s, as <see cref="Colours"/> is
+        /// empty when no colour has been changed: a user who has never opened the customiser should
+        /// not have today's default toolbars frozen into their preferences file. Present, it is the
+        /// whole arrangement rather than the changes — a toolbar's contents are an ordered list, and
+        /// a diff of one is longer than the list.
+        /// </remarks>
+        public List<ToolbarBarState> Toolbars { get; set; } = new List<ToolbarBarState>();
 
         /// <summary>Whether printing forces a white background (<c>REQ-UI-015</c>).</summary>
         public bool ForceWhiteBackgroundOnPrint { get; set; } = true;
