@@ -279,6 +279,73 @@ namespace OpenVSA.Ui.Rendering
         }
 
         /// <summary>
+        /// Draws the trace in a different format (<c>REQ-DSP-041</c>, <c>REQ-TRC-001</c>).
+        /// </summary>
+        /// <param name="format">The format to draw in.</param>
+        /// <returns><c>true</c> if the format changed.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Not a format this plot offers.</exception>
+        /// <remarks>
+        /// <para>
+        /// Goes through the format hot spot rather than round it, so the annotation and the drawing
+        /// cannot disagree about which format is on screen — the same reason
+        /// <c>REQ-UI-042</c>'s edits go through the settings pane.
+        /// </para>
+        /// <para>
+        /// Nothing is recomputed. <c>REQ-TRC-001</c>'s rule is that a format change is a different
+        /// view of one computation, so the held frame is simply re-rendered; that is what lets four
+        /// trace windows show four formats of a single acquisition.
+        /// </para>
+        /// </remarks>
+        public bool SetFormat(TraceFormat format)
+        {
+            string wanted = TraceFormatText.Describe(format);
+            int index = -1;
+
+            for (int i = 0; i < TraceFormatText.Names.Count; i++)
+            {
+                if (string.Equals(TraceFormatText.Names[i], wanted, StringComparison.Ordinal))
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(format), format, "This plot does not offer that format.");
+            }
+
+            var choice = _format.Value as ChoiceHotSpotValue;
+
+            if (choice == null || choice.SelectedIndex == index)
+            {
+                return false;
+            }
+
+            choice.SelectedIndex = index;
+            _format.Refresh();
+
+            if (_snapshot != null)
+            {
+                Redraw(_snapshot);
+            }
+
+            UpdateAnnotationIfPossible();
+
+            return true;
+        }
+
+        /// <summary>Refreshes the annotation when there is a frame behind it to describe.</summary>
+        private void UpdateAnnotationIfPossible()
+        {
+            if (_snapshot != null)
+            {
+                UpdateAnnotation(_snapshot.Spectrum);
+            }
+        }
+
+        /// <summary>
         /// Trace annotation other than the indicator strings.
         /// </summary>
         /// <remarks>
