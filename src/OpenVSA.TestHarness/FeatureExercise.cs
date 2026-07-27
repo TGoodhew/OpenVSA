@@ -78,6 +78,9 @@ namespace OpenVSA.TestHarness
         private readonly IStimulusSource _stimulus;
         private readonly List<ExerciseResult> _results = new List<ExerciseResult>();
 
+        /// <summary>The spectrum computed from the instrument's own block.</summary>
+        private SpectrumFrame _measured;
+
         /// <summary>Creates an exercise over a front end and a stimulus source.</summary>
         /// <param name="frontEnd">The instrument to acquire from.</param>
         /// <param name="stimulus">The generator to drive.</param>
@@ -141,6 +144,9 @@ namespace OpenVSA.TestHarness
 
                 SpectrumFrame frame = Spectrum(block, actualToneHz);
 
+                // Kept for the steps that run after this block goes out of scope.
+                _measured = frame;
+
                 if (frame != null)
                 {
                     int highest = frame.IndexOfPeak();
@@ -179,7 +185,7 @@ namespace OpenVSA.TestHarness
                 centerFrequencyHz, spanHz, toneHz, levelDbm, measuredPeakDbm, ct)
                 .ConfigureAwait(false);
             ExerciseState(centerFrequencyHz, spanHz);
-            ExercisePresets(centerFrequencyHz);
+            ExercisePresets(centerFrequencyHz, _measured);
 
             return _results;
         }
@@ -2889,7 +2895,7 @@ namespace OpenVSA.TestHarness
             });
         }
 
-        private void ExercisePresets(double centerFrequencyHz)
+        private void ExercisePresets(double centerFrequencyHz, SpectrumFrame measured)
         {
             Step("REQ-STA-005", "A user preset is saved, applied and deleted", () =>
             {
@@ -2927,6 +2933,57 @@ namespace OpenVSA.TestHarness
                         Directory.Delete(directory, recursive: true);
                     }
                 }
+            });
+
+            Step("REQ-UI-063", "Restart discards the averaging of a real measurement", () =>
+            {
+                // The criterion, over frames the instrument produced: "all current measurement data
+                // including averaging is discarded", asserted by a non-zero average count returning
+                // to zero. Against the averager the shell's engine holds, not a stand-in for it.
+                var averager = new TraceAverager(AveragingType.RmsVideo, 64);
+
+                SpectrumFrame frame = measured;
+
+                if (frame == null)
+                {
+                    return Failed<int>("no spectrum was computed to average");
+                }
+
+                for (int sweep = 0; sweep < 5; sweep++)
+                {
+                    averager.Accumulate(frame);
+                }
+
+                int accumulated = averager.Completed;
+
+                averager.Reset();
+
+                return new Outcome<int>(
+                    accumulated > 0 && averager.Completed == 0,
+                    averager.Completed,
+                    accumulated + " sweeps accumulated over " + frame.PointCount +
+                    " points, then Restart left " + averager.Completed);
+            });
+
+            Step("REQ-UI-063", "The sweep control means two things by a second press", () =>
+            {
+                // Both branches, on the state machine the Control toolbar and the space bar share.
+                // The requirement asks for both because collapsing them is the likely shortcut.
+                var single = new SweepControl { IsRunning = true, Mode = SweepMode.Single };
+                var continuous = new SweepControl { IsRunning = true, Mode = SweepMode.Continuous };
+
+                single.Press();
+                continuous.Press();
+
+                SweepAction stepped = single.Press();
+                SweepAction continued = continuous.Press();
+
+                return new Outcome<string>(
+                    stepped == SweepAction.Step && continued == SweepAction.Continue &&
+                    single.IsPaused && !continuous.IsPaused,
+                    stepped + " / " + continued,
+                    "Single: " + stepped + ", still held: " + single.IsPaused +
+                    "; Continuous: " + continued + ", still held: " + continuous.IsPaused);
             });
 
             Step("REQ-UI-061", "No preset variant disturbs the reference or the source", () =>

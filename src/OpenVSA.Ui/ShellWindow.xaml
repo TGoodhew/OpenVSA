@@ -45,9 +45,13 @@
         -->
         <Menu x:Name="MainMenu" DockPanel.Dock="Top" />
 
-        <ToolBarTray DockPanel.Dock="Top">
-            <ToolBar Band="0" BandIndex="0" />
-        </ToolBarTray>
+        <!--
+            REQ-UI-063's six toolbars, built in code from ShellToolbars for the reason the menus
+            are: the contents are the requirement, and a second hand-kept copy here would be a
+            second thing to drift. A control that is neither bound nor given a reason throws while
+            the window is being built.
+        -->
+        <ToolBarTray x:Name="Toolbars" DockPanel.Dock="Top" />
 
         <!--
             REQ-UI-006: measurement status messages sit specifically at the bottom left.

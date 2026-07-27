@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -198,6 +199,7 @@ namespace OpenVSA.Ui.Rendering
 
         private readonly System.Windows.Shapes.Rectangle _band;
         private double _dragFromX = double.NaN;
+        private double _dragFromY = double.NaN;
 
         /// <summary>Raised when the graticule changes width, and so the column count to decimate to.</summary>
         public event EventHandler GraticuleColumnsChanged;
@@ -696,6 +698,58 @@ namespace OpenVSA.Ui.Rendering
         /// the user pressed the key to see.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// Scales the vertical axis to hold a range of levels (<c>REQ-UI-063</c>'s Scale Y).
+        /// </summary>
+        /// <param name="topDbm">The level the top of the graticule should hold.</param>
+        /// <param name="bottomDbm">The level the bottom should hold.</param>
+        /// <returns><c>true</c> if the axis moved.</returns>
+        /// <remarks>
+        /// <para>
+        /// The per-division step is rounded <em>up</em> to the 1-2-5 ladder, so the region asked
+        /// for always fits and the graticule stays readable. An axis of 3.7 dB per division holds
+        /// exactly what was dragged and is a scale nobody can read a level off — which is the point
+        /// of a graticule.
+        /// </para>
+        /// <para>
+        /// The measurement is not touched. This is a display operation, and the whole reason it is
+        /// separate from setting the centre frequency and span is that the two must not be
+        /// confusable.
+        /// </para>
+        /// </remarks>
+        public bool ScaleTo(double topDbm, double bottomDbm)
+        {
+            ThreadAffinity.AssertOnUiThread("Scaling a trace");
+
+            if (double.IsNaN(topDbm) || double.IsNaN(bottomDbm) || bottomDbm >= topDbm)
+            {
+                return false;
+            }
+
+            double perDivision = TraceAxis.NiceStep(
+                (topDbm - bottomDbm) / Math.Max(1, _verticalDivisions));
+
+            if (!(perDivision > 0.0))
+            {
+                return false;
+            }
+
+            _decibelsPerDivision = perDivision;
+            _topDbm = Math.Ceiling(topDbm / perDivision) * perDivision;
+
+            BuildPerDivisionChoices();
+            _perDivisionIsDecibels = true;
+            RefreshScaleText();
+            BuildLayout();
+
+            if (_snapshot != null)
+            {
+                Redraw(_snapshot);
+            }
+
+            return true;
+        }
+
         public bool AutoScale()
         {
             ThreadAffinity.AssertOnUiThread("Auto-scaling");
@@ -949,7 +1003,9 @@ namespace OpenVSA.Ui.Rendering
             }
 
             _dragFromX = position.X;
-            ShowBand(position.X, position.X);
+            _dragFromY = position.Y;
+
+            ShowBand(position.X, position.X, position.Y, position.Y);
 
             return true;
         }
@@ -963,7 +1019,7 @@ namespace OpenVSA.Ui.Rendering
                 return;
             }
 
-            ShowBand(_dragFromX, position.X);
+            ShowBand(_dragFromX, position.X, _dragFromY, position.Y);
         }
 
         /// <summary>
@@ -984,8 +1040,10 @@ namespace OpenVSA.Ui.Rendering
             }
 
             double fromX = _dragFromX;
+            double fromY = _dragFromY;
 
             _dragFromX = double.NaN;
+            _dragFromY = double.NaN;
             _band.Visibility = Visibility.Collapsed;
 
             if (Math.Abs(position.X - fromX) < MinimumSelectionDip)
@@ -1005,9 +1063,17 @@ namespace OpenVSA.Ui.Rendering
 
             if (handler != null)
             {
+                // The rectangle's height goes with it. A drag that stayed on one row reports NaN
+                // levels rather than a zero-height region, and Scale Y refuses it: scaling the
+                // axis to nothing would leave the trace off the top of the screen with no obvious
+                // way back.
+                double top = LevelAt(new Point(position.X, fromY));
+                double bottom = LevelAt(position);
+
                 handler(
                     this,
-                    new AreaSelectedEventArgs(Math.Min(first, second), Math.Max(first, second)));
+                    new AreaSelectedEventArgs(
+                        Math.Min(first, second), Math.Max(first, second), top, bottom));
             }
 
             return true;
@@ -1026,17 +1092,50 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>The shortest drag that counts as a selection, in device-independent pixels.</summary>
         public const double MinimumSelectionDip = 6.0;
 
-        private void ShowBand(double fromX, double toX)
+        private void ShowBand(double fromX, double toX, double fromY, double toY)
         {
             Rect graticule = GraticuleBounds;
 
             double left = Math.Max(graticule.Left, Math.Min(fromX, toX));
             double right = Math.Min(graticule.Right, Math.Max(fromX, toX));
 
-            _band.Margin = new Thickness(left, graticule.Top, 0.0, 0.0);
+            double top = Math.Max(graticule.Top, Math.Min(fromY, toY));
+            double bottom = Math.Min(graticule.Bottom, Math.Max(fromY, toY));
+
+            // A drag of a few pixels vertically is a horizontal drag that wandered. Below that the
+            // band is drawn full height, so the gesture still reads as "this frequency range".
+            bool tall = bottom - top >= MinimumSelectionDip;
+
+            _band.Margin = new Thickness(left, tall ? top : graticule.Top, 0.0, 0.0);
             _band.Width = Math.Max(0.0, right - left);
-            _band.Height = graticule.Height;
+            _band.Height = tall ? bottom - top : graticule.Height;
             _band.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// The level at a pixel position, or <see cref="double.NaN"/> outside the graticule.
+        /// </summary>
+        /// <param name="position">Position within this control, in device-independent pixels.</param>
+        /// <remarks>
+        /// The inverse of the mapping the rasteriser draws with: the top of the graticule holds
+        /// <see cref="TopDbm"/> and it falls by <see cref="FullScaleDb"/> to the bottom. Written
+        /// here rather than in the caller so that the reading and the drawing cannot disagree
+        /// about where a level sits.
+        /// </remarks>
+        public double LevelAt(Point position)
+        {
+            Rect graticule = GraticuleBounds;
+
+            if (graticule.Height <= 0.0)
+            {
+                return double.NaN;
+            }
+
+            double fraction = (position.Y - graticule.Top) / graticule.Height;
+
+            fraction = Math.Max(0.0, Math.Min(1.0, fraction));
+
+            return _topDbm - (fraction * FullScaleDb);
         }
 
         /// <summary>
@@ -1460,20 +1559,33 @@ namespace OpenVSA.Ui.Rendering
         /// </remarks>
         private void BuildPerDivisionChoices()
         {
-            string[] steps = { "1 dB/div", "2 dB/div", "5 dB/div", "10 dB/div", "20 dB/div" };
-            int index = 3;
+            var steps = new List<double> { 1.0, 2.0, 5.0, 10.0, 20.0 };
 
-            for (int i = 0; i < steps.Length; i++)
+            // Whatever the axis is actually set to, even when it is not on the ladder. Scale Y
+            // (REQ-UI-063) takes its step from the region dragged, and a ladder that did not carry
+            // it would leave the readout naming a division width the graticule does not have -
+            // the same lie the per-division annotation told before REQ-TRC-001's formats were
+            // wired up.
+            if (!steps.Any(s => Math.Abs(s - _decibelsPerDivision) < 1e-9))
             {
-                if (steps[i] ==
-                    _decibelsPerDivision.ToString("0.##", CultureInfo.InvariantCulture) + " dB/div")
+                steps.Add(_decibelsPerDivision);
+                steps.Sort();
+            }
+
+            var text = new string[steps.Count];
+            int index = 0;
+
+            for (int i = 0; i < steps.Count; i++)
+            {
+                text[i] = steps[i].ToString("0.##", CultureInfo.InvariantCulture) + " dB/div";
+
+                if (Math.Abs(steps[i] - _decibelsPerDivision) < 1e-9)
                 {
                     index = i;
-                    break;
                 }
             }
 
-            _perDivision.Value = new ChoiceHotSpotValue(steps, index);
+            _perDivision.Value = new ChoiceHotSpotValue(text, index);
         }
 
         private void RefreshPerDivision(TraceAxis axis)
