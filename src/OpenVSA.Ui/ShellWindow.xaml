@@ -56,7 +56,13 @@
                 <MenuItem x:Name="StartItem" Header="_Start" Click="OnStart" IsEnabled="False" />
                 <MenuItem x:Name="StopItem" Header="Sto_p" Click="OnStop" IsEnabled="False" />
             </MenuItem>
-            <MenuItem Header="Ana_lysis" />
+            <!--
+                REQ-UI-072's seven tabs, listed individually as REQ-UI-061's menu does. Built in
+                code from AnalysisDialog.TabNames so the menu cannot name a tab the dialog does
+                not have; each entry opens the one dialog on its own tab, because seven windows
+                editing one measurement is what a tab set exists to avoid.
+            -->
+            <MenuItem x:Name="AnalysisMenu" Header="Ana_lysis" />
 
             <!--
                 REQ-UI-014's colour configuration, REQ-UI-023's limit colouring and REQ-UI-024's

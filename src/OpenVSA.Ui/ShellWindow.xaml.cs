@@ -117,6 +117,21 @@ namespace OpenVSA.Ui
         /// <summary>The dialog framework's global options (<c>REQ-UI-071</c>).</summary>
         private readonly DialogFrameworkOptions _dialogOptions = new DialogFrameworkOptions();
 
+        /// <summary>
+        /// The analysis settings the seven tabs of <c>REQ-UI-072</c> edit (<c>REQ-UI-070</c>).
+        /// </summary>
+        /// <remarks>
+        /// The measurement's definition, and the one place it lives. The settings pane writes into
+        /// this and reads back out of it, and so does the Analysis dialog; neither is the state.
+        /// </remarks>
+        private readonly AnalysisSettings _analysis = new AnalysisSettings();
+
+        /// <summary>The Analysis dialog while it is open, or null (<c>REQ-UI-072</c>).</summary>
+        private AnalysisDialog _analysisDialog;
+
+        /// <summary>Whether the settings pane is the one writing, so the change is not echoed.</summary>
+        private bool _applyingFromPane;
+
         /// <summary>The Display Preferences dialog while it is open, or null (<c>REQ-UI-073</c>).</summary>
         /// <remarks>
         /// Held so that asking for it twice raises the one that is open rather than stacking a
@@ -201,6 +216,20 @@ namespace OpenVSA.Ui
             // Display menu are two views of one setting (REQ-UI-070).
             _traceDisplay.Changed += (sender, e) => FollowTraceDisplayOptions();
             FollowTraceDisplayOptions();
+
+            // The analysis settings are shared between the pane and the Analysis dialog, and a
+            // change from either has to reach the measurement. Coalesced, for the reason the hot
+            // spots are: a wheel turned through a dozen notches would otherwise re-plan and re-arm
+            // the instrument a dozen times.
+            _analysisSettle = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(400.0),
+            };
+
+            _analysisSettle.Tick += OnAnalysisSettled;
+            _analysis.Changed += OnAnalysisChanged;
+
+            BuildAnalysisMenu();
 
             Closed += (sender, e) => ShutDown();
         }
@@ -863,6 +892,202 @@ namespace OpenVSA.Ui
                 " (" + _spectrogramMap.Count + " entries).");
         }
 
+        /// <summary>Coalesces analysis changes into one re-plan.</summary>
+        private readonly DispatcherTimer _analysisSettle;
+
+        /// <summary>
+        /// Builds the Analysis menu from the dialog's own tab list (<c>REQ-UI-072</c>).
+        /// </summary>
+        /// <remarks>
+        /// From <see cref="AnalysisDialog.TabNames"/> rather than written out in XAML, so the menu
+        /// cannot offer a tab the dialog does not have or miss one it does.
+        /// </remarks>
+        private void BuildAnalysisMenu()
+        {
+            AnalysisMenu.Items.Clear();
+
+            foreach (string tab in AnalysisDialog.TabNames)
+            {
+                string captured = tab;
+
+                var item = new MenuItem { Header = tab + "…" };
+                item.Click += (sender, e) => OpenAnalysis(captured);
+
+                AnalysisMenu.Items.Add(item);
+            }
+        }
+
+        /// <summary>
+        /// Opens the Analysis dialog on a tab (<c>REQ-UI-072</c>).
+        /// </summary>
+        /// <param name="tab">The tab to show, as <c>REQ-UI-072</c> names it.</param>
+        /// <remarks>
+        /// Modeless and live, per <c>REQ-UI-070</c>: the measurement keeps running behind it and
+        /// every change is applied as it is made. One dialog, raised again rather than duplicated —
+        /// two of them editing one measurement would each show the other's changes arriving from
+        /// nowhere.
+        /// </remarks>
+        private void OpenAnalysis(string tab)
+        {
+            if (_analysisDialog == null)
+            {
+                var dialog = new AnalysisDialog(_dialogOptions, _analysis);
+
+                dialog.Closed += (sender, e) =>
+                {
+                    _analysisDialog = null;
+                    SaveToolWindowLayout();
+                };
+
+                _analysisDialog = dialog;
+                dialog.ShowModeless(this);
+            }
+            else
+            {
+                _analysisDialog.Activate();
+            }
+
+            _analysisDialog.ShowTab(tab);
+        }
+
+        /// <summary>
+        /// Follows a change to the analysis settings, from whichever surface made it.
+        /// </summary>
+        /// <remarks>
+        /// The detector reaches the render marshal at once, because it costs a redraw and not a
+        /// re-acquisition. Everything else waits for the settle timer: a re-plan re-arms the
+        /// instrument, and doing that on every keystroke of a frequency would be seconds of GPIB
+        /// traffic for a number the user is still typing.
+        /// </remarks>
+        private void OnAnalysisChanged(object sender, EventArgs e)
+        {
+            _marshal.Detector = _analysis.Detector;
+
+            if (_applyingFromPane)
+            {
+                return;
+            }
+
+            ShowAnalysisInPane();
+
+            if (_engine != null)
+            {
+                _analysisSettle.Stop();
+                _analysisSettle.Start();
+            }
+        }
+
+        private async void OnAnalysisSettled(object sender, EventArgs e)
+        {
+            _analysisSettle.Stop();
+
+            if (_activeFrontEnd != null && _engine != null)
+            {
+                await StartMeasurementAsync().ConfigureAwait(true);
+            }
+        }
+
+        /// <summary>
+        /// Writes the analysis settings into the settings pane's controls.
+        /// </summary>
+        /// <remarks>
+        /// Guarded, because setting a text box raises its changed handler and an unguarded round
+        /// trip would write the value straight back into the settings it just read.
+        /// </remarks>
+        private void ShowAnalysisInPane()
+        {
+            _applyingFromPane = true;
+
+            try
+            {
+                CentreBox.Text = EngineeringText.Frequency(_analysis.CenterFrequencyHz);
+                SpanBox.Text = EngineeringText.Frequency(_analysis.SpanHz);
+                ResolutionBandwidthBox.Text =
+                    EngineeringText.Frequency(_analysis.ResolutionBandwidthHz);
+
+                PointsBox.SelectedItem = _analysis.PointsAreAutomatic
+                    ? PointsBox.Items[0]
+                    : FindPointsChoice(_analysis.FrequencyPoints) ?? PointsBox.SelectedItem;
+
+                WindowBox.SelectedIndex = IndexOfWindow(_analysis.Window);
+            }
+            finally
+            {
+                _applyingFromPane = false;
+            }
+        }
+
+        /// <summary>
+        /// Reads the settings pane's controls into the analysis settings.
+        /// </summary>
+        /// <returns>Whether every control held something the settings would accept.</returns>
+        /// <remarks>
+        /// One batch, so a pane holding five changed values costs one change notification and one
+        /// re-plan rather than five of each.
+        /// </remarks>
+        private bool ReadPaneIntoAnalysis()
+        {
+            double centre;
+            double span;
+            double resolutionBandwidth;
+
+            if (!EngineeringText.TryParseFrequency(CentreBox.Text, out centre))
+            {
+                SettingsMessage.Text = "Centre frequency: '" + CentreBox.Text + "' is not a frequency.";
+                return false;
+            }
+
+            if (!EngineeringText.TryParseFrequency(SpanBox.Text, out span))
+            {
+                SettingsMessage.Text = "Span: '" + SpanBox.Text + "' is not a frequency.";
+                return false;
+            }
+
+            if (!EngineeringText.TryParseFrequency(
+                    ResolutionBandwidthBox.Text, out resolutionBandwidth))
+            {
+                resolutionBandwidth = _analysis.ResolutionBandwidthHz;
+            }
+
+            _applyingFromPane = true;
+
+            try
+            {
+                using (_analysis.Batch())
+                {
+                    _analysis.CenterFrequencyHz = centre;
+                    _analysis.SpanHz = span;
+
+                    if (resolutionBandwidth > 0.0)
+                    {
+                        _analysis.ResolutionBandwidthHz = resolutionBandwidth;
+                    }
+
+                    int points = SelectedPoints();
+
+                    _analysis.PointsAreAutomatic = points == 0;
+
+                    if (points > 0 && AnalysisSettings.FrequencyPointsAreSupported(points))
+                    {
+                        _analysis.FrequencyPoints = points;
+                    }
+
+                    _analysis.Window = SelectedWindow();
+                }
+            }
+            catch (ArgumentOutOfRangeException refused)
+            {
+                SettingsMessage.Text = refused.Message.Split('\n')[0];
+                return false;
+            }
+            finally
+            {
+                _applyingFromPane = false;
+            }
+
+            return true;
+        }
+
         /// <summary>
         /// Opens Display Preferences: modeless, live, five tabs (<c>REQ-UI-070</c>,
         /// <c>REQ-UI-073</c>).
@@ -1390,7 +1615,7 @@ namespace OpenVSA.Ui
 
         private async void OnApplySettings(object sender, RoutedEventArgs e)
         {
-            if (_activeFrontEnd == null)
+            if (_activeFrontEnd == null || !ReadPaneIntoAnalysis())
             {
                 return;
             }
@@ -1738,11 +1963,10 @@ namespace OpenVSA.Ui
                     "ranged. Re-select it under Hardware to connect again.");
             }
 
-            double centre;
-            if (!EngineeringText.TryParseFrequency(CentreBox.Text, out centre))
-            {
-                return Reject("Centre frequency: '" + CentreBox.Text + "' is not a frequency.");
-            }
+            // From the analysis settings, not from the entry boxes. Those are one surface over
+            // this state and the Analysis dialog is another; planning from either surface directly
+            // would mean the measurement followed whichever one had been touched last.
+            double centre = _analysis.CenterFrequencyHz;
 
             if (!capabilities.CenterFrequencyRange.Contains(centre))
             {
@@ -1752,11 +1976,7 @@ namespace OpenVSA.Ui
                     EngineeringText.Frequency(capabilities.CenterFrequencyRange.MaxHz) + ".");
             }
 
-            double span;
-            if (!EngineeringText.TryParseFrequency(SpanBox.Text, out span))
-            {
-                return Reject("Span: '" + SpanBox.Text + "' is not a frequency.");
-            }
+            double span = _analysis.SpanHz;
 
             if (span < capabilities.MinSpanHz || span > capabilities.MaxSpanHz)
             {
@@ -1782,28 +2002,20 @@ namespace OpenVSA.Ui
                     " dBm.");
             }
 
-            int points = SelectedPoints();
-            WindowType window = SelectedWindow();
+            WindowType window = _analysis.Window;
+            AnalysisPath path = _analysis.Path;
 
             try
             {
-                if (points == 0)
+                if (_analysis.PointsAreAutomatic)
                 {
-                    double resolutionBandwidth;
-                    if (!EngineeringText.TryParseFrequency(ResolutionBandwidthBox.Text, out resolutionBandwidth) ||
-                        resolutionBandwidth <= 0.0)
-                    {
-                        return Reject(
-                            "Res BW: '" + ResolutionBandwidthBox.Text + "' is not a positive bandwidth.");
-                    }
-
                     return AcquisitionPlanner.PlanForResolutionBandwidth(
-                        capabilities, centre, span, resolutionBandwidth, level,
-                        AnalysisPath.ComplexZoom, window);
+                        capabilities, centre, span, _analysis.ResolutionBandwidthHz, level,
+                        path, window);
                 }
 
                 return AcquisitionPlanner.Plan(
-                    capabilities, centre, span, points, level, AnalysisPath.ComplexZoom, window);
+                    capabilities, centre, span, _analysis.FrequencyPoints, level, path, window);
             }
             catch (ArgumentException failure)
             {

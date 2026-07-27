@@ -143,6 +143,20 @@ namespace OpenVSA.Measurement.State
         /// <summary>Whether a completed average restarts.</summary>
         public bool RepeatAverage { get; set; }
 
+        /// <summary>
+        /// How points sharing a pixel column are reduced (<c>REQ-UI-072</c>'s Detectors tab).
+        /// </summary>
+        /// <remarks>
+        /// Part of the measurement rather than of the display preferences, because it changes what
+        /// the trace on screen asserts about the signal: a Peak detector and an Average detector
+        /// over the same acquisition are two different claims, and a colleague recalling the state
+        /// needs the one that was being made.
+        /// </remarks>
+        public TraceDetector Detector { get; set; } = TraceDetector.Normal;
+
+        /// <summary>Whether the detector follows the averaging type (<c>REQ-UI-072</c>).</summary>
+        public bool DetectorIsAutomatic { get; set; } = true;
+
         /// <summary>Whether time gating is in force (<c>REQ-DSP-050</c>).</summary>
         public bool GateEnabled { get; set; }
 

@@ -1,4 +1,5 @@
 using System;
+using OpenVSA.Dsp.Spectrum;
 
 namespace OpenVSA.Ui.Rendering
 {
@@ -32,7 +33,31 @@ namespace OpenVSA.Ui.Rendering
         /// <param name="minMax">Receives <c>columns × 2</c> values as (minimum, maximum) pairs.</param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="columns"/> is not positive.</exception>
         /// <exception cref="ArgumentException"><paramref name="minMax"/> is not exactly <c>columns × 2</c> long.</exception>
-        public static void Build(ReadOnlySpan<float> values, int columns, Span<float> minMax)
+        public static void Build(ReadOnlySpan<float> values, int columns, Span<float> minMax) =>
+            Build(values, columns, minMax, TraceDetector.Normal, valuesAreDecibels: true);
+
+        /// <summary>
+        /// Builds the per-column envelope with a chosen detector (<c>REQ-UI-072</c>).
+        /// </summary>
+        /// <param name="values">Trace values; <see cref="float.NaN"/> marks a blanked point.</param>
+        /// <param name="columns">Pixel columns; must be positive.</param>
+        /// <param name="minMax">Receives <c>columns × 2</c> values as (minimum, maximum) pairs.</param>
+        /// <param name="detector">How the points of a column are reduced.</param>
+        /// <param name="valuesAreDecibels">Whether the values are logarithmic, for the average.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="columns"/> is not positive.</exception>
+        /// <exception cref="ArgumentException"><paramref name="minMax"/> is not exactly <c>columns × 2</c> long.</exception>
+        /// <remarks>
+        /// The detector applies only when there are more points than columns. Interpolating a trace
+        /// that has fewer points than pixels is not a reduction, so there is nothing for a detector
+        /// to choose between — and pretending otherwise would make the setting appear to do
+        /// something at 401 points that it cannot.
+        /// </remarks>
+        public static void Build(
+            ReadOnlySpan<float> values,
+            int columns,
+            Span<float> minMax,
+            TraceDetector detector,
+            bool valuesAreDecibels)
         {
             if (columns <= 0)
             {
@@ -50,7 +75,7 @@ namespace OpenVSA.Ui.Rendering
 
             if (TraceDecimator.IsRequired(values.Length, columns))
             {
-                TraceDecimator.Decimate(values, columns, minMax);
+                TraceDecimator.Decimate(values, columns, minMax, detector, valuesAreDecibels);
                 return;
             }
 
@@ -73,7 +98,7 @@ namespace OpenVSA.Ui.Rendering
         /// <param name="columns">Pixel columns.</param>
         /// <returns>A column within the graticule, clamped to it.</returns>
         /// <remarks>
-        /// Must use the same mapping <see cref="Build"/> did, or a marker glyph lands beside the
+        /// Must use the same mapping <see cref="Build(System.ReadOnlySpan{float}, int, System.Span{float})"/> did, or a marker glyph lands beside the
         /// feature it marks rather than on it — by a pixel at 800 points and by rather more at 51.
         /// The two directions differ because the mappings do: decimation partitions the points
         /// across columns, interpolation stretches them between the first and last.

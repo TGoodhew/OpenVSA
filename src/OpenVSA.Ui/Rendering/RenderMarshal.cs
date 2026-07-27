@@ -86,6 +86,16 @@ namespace OpenVSA.Ui.Rendering
         public int Columns { get; set; }
 
         /// <summary>
+        /// How points sharing a pixel column are reduced (<c>REQ-UI-072</c>).
+        /// </summary>
+        /// <remarks>
+        /// Read once per frame on the pump thread, as <see cref="Columns"/> is, and written from
+        /// the UI thread when the Detectors tab changes it. A detector changed mid-frame produces
+        /// one frame drawn with the previous one, which is a frame, not a fault.
+        /// </remarks>
+        public TraceDetector Detector { get; set; } = TraceDetector.Normal;
+
+        /// <summary>
         /// Decimates a frame and makes it the pending one, on the pump thread.
         /// </summary>
         /// <param name="frame">The frame to publish.</param>
@@ -115,7 +125,11 @@ namespace OpenVSA.Ui.Rendering
             // gives: it is published to another thread and must never be written again. At two
             // floats per pixel column it is a few kilobytes, not a frame buffer.
             var envelope = new float[columns * 2];
-            TraceEnvelope.Build(frame.LevelsDbm, columns, new Span<float>(envelope));
+
+            // Decibels, because that is what LevelsDbm holds - which is what makes the average
+            // detector's power conversion correct rather than a guess about the format.
+            TraceEnvelope.Build(
+                frame.LevelsDbm, columns, new Span<float>(envelope), Detector, valuesAreDecibels: true);
 
             lock (_slot)
             {
