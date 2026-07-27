@@ -2929,6 +2929,69 @@ namespace OpenVSA.TestHarness
                 }
             });
 
+            Step("REQ-UI-061", "No preset variant disturbs the reference or the source", () =>
+            {
+                // Over the settings the instrument is actually running, not a synthetic state: the
+                // separation REQ-UI-061 calls out is between the measurement a user is making and
+                // the hardware they spent ten minutes getting to talk, and this is that measurement.
+                ApplicationState bench = ApplicationState.Default("Bench");
+                MeasurementState settings = bench.Measurements[0];
+
+                settings.CenterFrequencyHz = centerFrequencyHz;
+                settings.Input.ExternalReference = true;
+                settings.Source.IsEnabled = true;
+                settings.Source.FrequencyHz = centerFrequencyHz;
+
+                var disturbed = new List<string>();
+
+                foreach (PresetVariant variant in Presets.Variants)
+                {
+                    MeasurementState after = Presets.Apply(variant, bench).Measurements[0];
+
+                    if (!after.Input.ExternalReference ||
+                        !after.Source.IsEnabled ||
+                        Math.Abs(after.Source.FrequencyHz - centerFrequencyHz) > 1.0)
+                    {
+                        disturbed.Add(Presets.NameOf(variant));
+                    }
+                }
+
+                return new Outcome<int>(
+                    disturbed.Count == 0,
+                    disturbed.Count,
+                    disturbed.Count == 0
+                        ? Presets.Variants.Count +
+                          " variants applied at " + Hz(centerFrequencyHz) +
+                          "; the external reference and the source survived every one"
+                        : "disturbed by " + string.Join(", ", disturbed));
+            });
+
+            Step("REQ-UI-061", "Preset Measurement returns the settings it names", () =>
+            {
+                ApplicationState bench = ApplicationState.Default("Bench");
+                bench.Measurements[0].CenterFrequencyHz = centerFrequencyHz;
+                bench.Measurements[0].SpanHz = 1.234e6;
+
+                MeasurementState after =
+                    Presets.Apply(PresetVariant.Measurement, bench).Measurements[0];
+
+                var defaults = new MeasurementState();
+
+                bool reset =
+                    Math.Abs(after.CenterFrequencyHz - defaults.CenterFrequencyHz) < 1.0 &&
+                    Math.Abs(after.SpanHz - defaults.SpanHz) < 1.0;
+
+                return new Outcome<string>(
+                    reset,
+                    Hz(after.CenterFrequencyHz) + " / " + Hz(after.SpanHz),
+                    reset
+                        ? "centre and span went from " + Hz(centerFrequencyHz) + " / " +
+                          Hz(1.234e6) + " back to " + Hz(defaults.CenterFrequencyHz) + " / " +
+                          Hz(defaults.SpanHz)
+                        : "centre and span came back as " + Hz(after.CenterFrequencyHz) + " / " +
+                          Hz(after.SpanHz));
+            });
+
             Step("REQ-STA-005", "The factory preset leaves the hardware setup alone", () =>
             {
                 string json = StateFile.Write(Presets.Factory("Bench"));

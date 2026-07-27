@@ -23,6 +23,7 @@ using OpenVSA.Ui.Dialogs;
 using OpenVSA.Ui.HotSpots;
 using OpenVSA.Dsp.Zoom;
 using OpenVSA.Ui.Layout;
+using OpenVSA.Ui.Menus;
 using OpenVSA.Ui.Rendering;
 using OpenVSA.Ui.ToolWindows;
 
@@ -68,7 +69,7 @@ namespace OpenVSA.Ui
         /// <summary>Reference level the shell starts at, in dBm.</summary>
         private const double DefaultReferenceLevelDbm = 20.0;
 
-        private readonly FrontEndRegistry _registry;
+        private FrontEndRegistry _registry;
         private readonly RenderMarshal _marshal = new RenderMarshal();
         private readonly DispatcherTimer _statusTimer;
 
@@ -163,7 +164,6 @@ namespace OpenVSA.Ui
             InitializeComponent();
 
             _registry = FrontEndRegistry.CreateDefault();
-            PopulateSourcesMenu();
             ShowDiscoveryResults();
 
             Plot.GraticuleColumnsChanged += (sender, e) => _marshal.Columns = Plot.GraticuleColumns;
@@ -205,6 +205,12 @@ namespace OpenVSA.Ui
             _statusTimer.Tick += (sender, e) => ShowRunningStatistics();
 
             BuildToolWindows();
+
+            // Before the document area, because building the bar is what creates the layout,
+            // format and trace-list submenus the document area then fills. REQ-UI-061's contents
+            // come from ShellMenuTable; see ShellMenuBinding.cs for what sits behind each item.
+            BuildMenuBar();
+
             BuildDocumentArea();
 
             // After the document area, so the colours and fonts reach the plots that exist.
@@ -230,8 +236,6 @@ namespace OpenVSA.Ui
 
             _analysisSettle.Tick += OnAnalysisSettled;
             _analysis.Changed += OnAnalysisChanged;
-
-            BuildAnalysisMenu();
 
             // REQ-UI-065. Installed on the window so the gestures reach from anywhere in it, with
             // the unmodified ones routed through a focus check - see ShellShortcuts.
@@ -290,7 +294,12 @@ namespace OpenVSA.Ui
         /// </remarks>
         private void BuildLayoutMenu()
         {
-            LayoutMenu.Items.Clear();
+            if (_layoutMenu == null)
+            {
+                return;
+            }
+
+            _layoutMenu.Items.Clear();
 
             foreach (TraceLayoutPreset preset in
                 TraceLayoutPreset.Menu(_stackRows, _gridRows, _gridColumns))
@@ -300,7 +309,7 @@ namespace OpenVSA.Ui
                 var item = new MenuItem { Header = preset.Name };
                 item.Click += (sender, e) => Documents.ApplyLayout(captured);
 
-                LayoutMenu.Items.Add(item);
+                _layoutMenu.Items.Add(item);
             }
         }
 
@@ -368,7 +377,7 @@ namespace OpenVSA.Ui
         /// </summary>
         private void OnToggleSelectArea(object sender, RoutedEventArgs e)
         {
-            bool on = SelectAreaItem.IsChecked;
+            bool on = _selectAreaButton != null && _selectAreaButton.IsChecked == true;
 
             foreach (char letter in Documents.Traces)
             {
@@ -435,7 +444,7 @@ namespace OpenVSA.Ui
             }
 
             engine.Zoom = downconverter;
-            FullSpanItem.IsEnabled = true;
+            SetFullSpanEnabled(true);
 
             StatusText.Content =
                 _zoom.Annotation() + " — " + downconverter.Decimation + ":1 downconversion, " +
@@ -457,7 +466,7 @@ namespace OpenVSA.Ui
                 engine.Zoom = null;
             }
 
-            FullSpanItem.IsEnabled = false;
+            SetFullSpanEnabled(false);
             StatusText.Content = "Full span.";
         }
 
@@ -487,6 +496,14 @@ namespace OpenVSA.Ui
         /// </remarks>
         private void OnPrintTrace(object sender, RoutedEventArgs e)
         {
+            if (!Interactive)
+            {
+                // The picker belongs to the user, not to a test run. See ShellWindow.Interactive:
+                // what is skipped is the dialog, never the routing.
+                StatusText.Content = "Print trace";
+                return;
+            }
+
             TracePlot plot = Documents.ActivePlot;
 
             if (plot == null)
@@ -531,7 +548,8 @@ namespace OpenVSA.Ui
         /// </remarks>
         private void WireSelectArea(TracePlot plot)
         {
-            plot.SelectAreaEnabled = SelectAreaItem.IsChecked;
+            plot.SelectAreaEnabled =
+                _selectAreaButton != null && _selectAreaButton.IsChecked == true;
             plot.AreaSelected += OnAreaSelected;
 
             plot.PreviewMouseLeftButtonDown += (sender, e) =>
@@ -641,7 +659,6 @@ namespace OpenVSA.Ui
         private void BuildToolWindows()
         {
             _toolWindows = new ToolWindowHost(Docking, LoadToolWindowLayout());
-            _toolWindows.PopulateMenus(WindowMenu, MarkerWindowMenu);
 
             _markerReadouts.Update('A', SpectrumFrame.FromLevels(
                 new float[] { -100.0f, -100.0f }, 0.0, 1.0, DspWindow.Default, 1.0));
@@ -875,7 +892,12 @@ namespace OpenVSA.Ui
         /// </remarks>
         private void BuildSpectrogramMapMenu()
         {
-            SpectrogramMapMenu.Items.Clear();
+            if (_spectrogramMenu == null)
+            {
+                return;
+            }
+
+            _spectrogramMenu.Items.Clear();
 
             foreach (SpectrogramColourMapKind kind in
                 (SpectrogramColourMapKind[])Enum.GetValues(typeof(SpectrogramColourMapKind)))
@@ -896,7 +918,7 @@ namespace OpenVSA.Ui
                 };
 
                 item.Click += OnSpectrogramMapChosen;
-                SpectrogramMapMenu.Items.Add(item);
+                _spectrogramMenu.Items.Add(item);
             }
         }
 
@@ -1138,6 +1160,14 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            if (!Interactive)
+            {
+                // The picker belongs to the user, not to a test run. See ShellWindow.Interactive:
+                // what is skipped is the dialog, never the routing.
+                StatusText.Content = "Save trace bitmap";
+                return;
+            }
+
             var picker = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "PNG image (*.png)|*.png",
@@ -1227,28 +1257,6 @@ namespace OpenVSA.Ui
 
             StatusText.Content = "Content scale " +
                 (_contentScale * 100.0).ToString("0", CultureInfo.CurrentCulture) + " %";
-        }
-
-        /// <summary>
-        /// Builds the Analysis menu from the dialog's own tab list (<c>REQ-UI-072</c>).
-        /// </summary>
-        /// <remarks>
-        /// From <see cref="AnalysisDialog.TabNames"/> rather than written out in XAML, so the menu
-        /// cannot offer a tab the dialog does not have or miss one it does.
-        /// </remarks>
-        private void BuildAnalysisMenu()
-        {
-            AnalysisMenu.Items.Clear();
-
-            foreach (string tab in AnalysisDialog.TabNames)
-            {
-                string captured = tab;
-
-                var item = new MenuItem { Header = tab + "…" };
-                item.Click += (sender, e) => OpenAnalysis(captured);
-
-                AnalysisMenu.Items.Add(item);
-            }
         }
 
         /// <summary>
@@ -1585,11 +1593,12 @@ namespace OpenVSA.Ui
                 return;
             }
 
-            _traceDisplay.IndicateLimitFailures = IndicateLimitFailuresItem.IsChecked;
-            _traceDisplay.IndicateMarginWarnings = IndicateMarginItem.IsChecked;
-            _traceDisplay.ForceWhiteBackgroundOnPrint = ForceWhiteBackgroundItem.IsChecked;
-            _traceDisplay.ShowAnnotation = ShowAnnotationItem.IsChecked;
-            _traceDisplay.ShowGridLines = ShowGridLinesItem.IsChecked;
+            // Show annotation and Show grid lines are not here: REQ-UI-061's Trace menu does not
+            // list them, so they live on the Trace tab of Display Preferences alone. Both surfaces
+            // wrote this same object, and the tab still does.
+            _traceDisplay.IndicateLimitFailures = _indicateFailuresItem.IsChecked;
+            _traceDisplay.IndicateMarginWarnings = _indicateMarginItem.IsChecked;
+            _traceDisplay.ForceWhiteBackgroundOnPrint = _forceWhiteBackgroundItem.IsChecked;
         }
 
         /// <summary>Whether the Display menu is being updated from the options, not by the user.</summary>
@@ -1608,11 +1617,9 @@ namespace OpenVSA.Ui
 
             try
             {
-                IndicateLimitFailuresItem.IsChecked = _traceDisplay.IndicateLimitFailures;
-                IndicateMarginItem.IsChecked = _traceDisplay.IndicateMarginWarnings;
-                ForceWhiteBackgroundItem.IsChecked = _traceDisplay.ForceWhiteBackgroundOnPrint;
-                ShowAnnotationItem.IsChecked = _traceDisplay.ShowAnnotation;
-                ShowGridLinesItem.IsChecked = _traceDisplay.ShowGridLines;
+                _indicateFailuresItem.IsChecked = _traceDisplay.IndicateLimitFailures;
+                _indicateMarginItem.IsChecked = _traceDisplay.IndicateMarginWarnings;
+                _forceWhiteBackgroundItem.IsChecked = _traceDisplay.ForceWhiteBackgroundOnPrint;
             }
             finally
             {
@@ -1661,28 +1668,6 @@ namespace OpenVSA.Ui
         /// <summary>The running measurement, or null if none is running.</summary>
         public SpectrumEngine Engine => _engine;
 
-        private void PopulateSourcesMenu()
-        {
-            var sources = new MenuItem { Header = "_Signal source" };
-
-            if (_registry.Providers.Count == 0)
-            {
-                sources.Items.Add(new MenuItem { Header = "None discovered", IsEnabled = false });
-            }
-            else
-            {
-                foreach (FrontEndDescriptor descriptor in _registry.Providers)
-                {
-                    FrontEndDescriptor captured = descriptor;
-                    var item = new MenuItem { Header = descriptor.DisplayName, IsCheckable = true };
-                    item.Click += (sender, e) => SelectFrontEnd(captured, (MenuItem)sender);
-                    sources.Items.Add(item);
-                }
-            }
-
-            HardwareMenu.Items.Add(sources);
-        }
-
         private async void SelectFrontEnd(FrontEndDescriptor descriptor, MenuItem clicked)
         {
             IFrontEnd created;
@@ -1709,7 +1694,7 @@ namespace OpenVSA.Ui
             }
 
             _activeFrontEnd = null;
-            StartItem.IsEnabled = false;
+            SetStartEnabled(false);
             SettingsGrid.IsEnabled = false;
 
             foreach (MenuItem sibling in SourceMenuItems())
@@ -1748,7 +1733,7 @@ namespace OpenVSA.Ui
 
             StatusText.Content = created.DisplayName + " connected";
             CapabilitiesText.Text = DescribeCapabilities(created);
-            StartItem.IsEnabled = true;
+            SetStartEnabled(true);
 
             RangeSettingsFor(created.Capabilities);
         }
@@ -2112,9 +2097,11 @@ namespace OpenVSA.Ui
             public override string ToString() => WindowText.Describe(Type);
         }
 
+        /// <summary>The instrument items, so that choosing one unticks the rest.</summary>
         private IEnumerable<MenuItem> SourceMenuItems() =>
-            HardwareMenu.Items.OfType<MenuItem>()
-                .SelectMany(m => m.Items.OfType<MenuItem>());
+            _instrumentsMenu == null
+                ? Enumerable.Empty<MenuItem>()
+                : _instrumentsMenu.Items.OfType<MenuItem>();
 
         /// <summary>
         /// Renders a front end's declared capabilities.
@@ -2183,7 +2170,8 @@ namespace OpenVSA.Ui
             DocumentPlaceholder.Text = _registry.Providers.Count == 0
                 ? "No signal source was discovered, so there is nothing to measure. " +
                   SyncfusionLicense.StatusMessage
-                : "Choose a source under Hardware, then Acquisition → Start.\n\n" +
+                : "Choose an instrument under Hardware ▸ Instruments…, " +
+                  "then Acquisition ▸ Control ▸ Start.\n\n" +
                   SyncfusionLicense.StatusMessage;
 
             StatusText.Content = _registry.Providers.Count == 0
@@ -2262,8 +2250,8 @@ namespace OpenVSA.Ui
             // guidance legible over a trace, so hiding only the text would leave a dark rectangle
             // floating over the arrangement.
             DocumentPlaceholderPanel.Visibility = Visibility.Collapsed;
-            StartItem.IsEnabled = false;
-            StopItem.IsEnabled = true;
+            SetStartEnabled(false);
+            SetStopEnabled(true);
             StatusText.Content = "Measuring";
 
             SettingsMessage.Text = planned.Coerced || plan.Coerced
@@ -2294,7 +2282,7 @@ namespace OpenVSA.Ui
                 // limits for it is exactly what REQ-HAL-002 forbids.
                 return Reject(
                     "This source has not declared its capabilities, so its settings cannot be " +
-                    "ranged. Re-select it under Hardware to connect again.");
+                    "ranged. Re-select it under Hardware ▸ Instruments… to connect again.");
             }
 
             // From the analysis settings, not from the entry boxes. Those are one surface over
@@ -2614,6 +2602,14 @@ namespace OpenVSA.Ui
 
         private void OnSaveState(object sender, RoutedEventArgs e)
         {
+            if (!Interactive)
+            {
+                // The picker belongs to the user, not to a test run. See ShellWindow.Interactive:
+                // what is skipped is the dialog, never the routing.
+                StatusText.Content = "Save setup";
+                return;
+            }
+
             var dialog = new StateSaveDialog(SuggestedStatePath()) { Owner = this };
 
             if (dialog.ShowDialog() != true)
@@ -2640,6 +2636,14 @@ namespace OpenVSA.Ui
 
         private void OnRecallState(object sender, RoutedEventArgs e)
         {
+            if (!Interactive)
+            {
+                // The picker belongs to the user, not to a test run. See ShellWindow.Interactive:
+                // what is skipped is the dialog, never the routing.
+                StatusText.Content = "Recall setup";
+                return;
+            }
+
             var picker = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "OpenVSA state (*" + StateFile.Extension + ")|*" + StateFile.Extension,
@@ -2712,6 +2716,14 @@ namespace OpenVSA.Ui
 
         private void OnSavePreset(object sender, RoutedEventArgs e)
         {
+            if (!Interactive)
+            {
+                // The picker belongs to the user, not to a test run. See ShellWindow.Interactive:
+                // what is skipped is the dialog, never the routing.
+                StatusText.Content = "Save as preset";
+                return;
+            }
+
             var dialog = new StateSaveDialog("My preset") { Owner = this, Title = "Save as preset" };
 
             if (dialog.ShowDialog() != true)
@@ -2745,9 +2757,14 @@ namespace OpenVSA.Ui
         /// </remarks>
         private void OnPresetMenuOpened(object sender, RoutedEventArgs e)
         {
-            while (PresetMenu.Items.Count > 1)
+            // Back to the variants REQ-UI-061 lists, then the user's own below a rule. Counted
+            // from the table rather than from a literal, because a variant added there and not
+            // here would be quietly deleted every time the menu was opened.
+            int listed = ShellMenuTable.At("File > Preset").Children.Count;
+
+            while (_presetMenu.Items.Count > listed)
             {
-                PresetMenu.Items.RemoveAt(1);
+                _presetMenu.Items.RemoveAt(listed);
             }
 
             IReadOnlyList<string> names;
@@ -2766,14 +2783,14 @@ namespace OpenVSA.Ui
                 return;
             }
 
-            PresetMenu.Items.Add(new Separator());
+            _presetMenu.Items.Add(new Separator());
 
             foreach (string name in names)
             {
                 string captured = name;
                 var item = new MenuItem { Header = name };
                 item.Click += (s, args) => ApplyPreset(captured);
-                PresetMenu.Items.Add(item);
+                _presetMenu.Items.Add(item);
             }
         }
 
@@ -3124,8 +3141,8 @@ namespace OpenVSA.Ui
             _marshal.Reset();
             ShowRunningStatistics();
 
-            StartItem.IsEnabled = _activeFrontEnd != null;
-            StopItem.IsEnabled = false;
+            SetStartEnabled(_activeFrontEnd != null);
+            SetStopEnabled(false);
         }
 
         private void ShowRunningStatistics()

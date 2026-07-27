@@ -43,6 +43,13 @@ namespace OpenVSA.Ui.ToolWindows
     }
 
     /// <summary>Which menu a tool window is opened from (<c>REQ-UI-061</c>).</summary>
+    /// <remarks>
+    /// <strong>Three menus, not two.</strong> <c>REQ-UI-002</c> says the eight are opened "from the
+    /// Window or Marker menu per <c>REQ-UI-061</c>", and <c>REQ-UI-061</c>'s own lists put six of
+    /// them on Window, the Markers window on Marker and the Player window on Acquisition — where a
+    /// transport belongs, beside Recording/Playback. The cross-reference is the authority over the
+    /// summary, and the Window menu's list is exact: it does not name Player.
+    /// </remarks>
     public enum ToolWindowMenu
     {
         /// <summary>The Window menu.</summary>
@@ -50,6 +57,9 @@ namespace OpenVSA.Ui.ToolWindows
 
         /// <summary>The Marker menu, where the requirement puts the Markers window.</summary>
         Marker,
+
+        /// <summary>The Acquisition menu, where the requirement puts the Player window.</summary>
+        Acquisition,
     }
 
     /// <summary>Which edge of the document area a tool window docks to by default.</summary>
@@ -115,7 +125,12 @@ namespace OpenVSA.Ui.ToolWindows
             // silently filed under Window.
             NameOf(window);
 
-            return window == ToolWindow.Markers ? ToolWindowMenu.Marker : ToolWindowMenu.Window;
+            if (window == ToolWindow.Markers)
+            {
+                return ToolWindowMenu.Marker;
+            }
+
+            return window == ToolWindow.Player ? ToolWindowMenu.Acquisition : ToolWindowMenu.Window;
         }
 
         /// <summary>
@@ -159,9 +174,9 @@ namespace OpenVSA.Ui.ToolWindows
         /// would see. Eight would leave no trace at all.
         /// </para>
         /// <para>
-        /// They are one menu item away, the Window menu lists seven of them and the Marker menu the
-        /// eighth, and from the first time one is opened its state persists. Nothing is hidden;
-        /// nothing is in the way either.
+        /// They are one menu item away — six on the Window menu, one on Marker and one on
+        /// Acquisition — and from the first time one is opened its state persists. Nothing is
+        /// hidden; nothing is in the way either.
         /// </para>
         /// </remarks>
         public static bool IsOpenByDefault(ToolWindow window)

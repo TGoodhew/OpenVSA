@@ -154,47 +154,6 @@ namespace OpenVSA.Ui.ToolWindows
             }
         }
 
-        /// <summary>
-        /// Adds the menu items to the Window and Marker menus.
-        /// </summary>
-        /// <param name="windowMenu">The Window menu.</param>
-        /// <param name="markerMenu">The item on the Marker menu that carries the Markers window.</param>
-        /// <exception cref="ArgumentNullException">An argument is null.</exception>
-        public void PopulateMenus(MenuItem windowMenu, MenuItem markerMenu)
-        {
-            if (windowMenu == null)
-            {
-                throw new ArgumentNullException(nameof(windowMenu));
-            }
-
-            if (markerMenu == null)
-            {
-                throw new ArgumentNullException(nameof(markerMenu));
-            }
-
-            markerMenu.Header = "_" + ToolWindows.NameOf(ToolWindow.Markers) + " window";
-
-            foreach (ToolWindow window in ToolWindows.All)
-            {
-                MenuItem item = _items[window];
-
-                if (ToolWindows.MenuOf(window) == ToolWindowMenu.Marker)
-                {
-                    // The Marker menu carries one entry, which is the item itself rather than a
-                    // submenu holding it - REQ-UI-002 says the window is opened from that menu, not
-                    // that the menu gains a Windows submenu.
-                    markerMenu.IsCheckable = true;
-                    markerMenu.IsChecked = item.IsChecked;
-                    markerMenu.Click += (sender, e) => Toggle(window);
-                    continue;
-                }
-
-                windowMenu.Items.Add(item);
-            }
-
-            _markerMenu = markerMenu;
-        }
-
         /// <summary>Opens or closes a window and records the change.</summary>
         /// <param name="window">The window.</param>
         public void Toggle(ToolWindow window) => SetOpen(window, !Layout.IsOpen(window));
@@ -231,11 +190,6 @@ namespace OpenVSA.Ui.ToolWindows
 
             _items[window].IsChecked = open;
 
-            if (_markerMenu != null && ToolWindows.MenuOf(window) == ToolWindowMenu.Marker)
-            {
-                _markerMenu.IsChecked = open;
-            }
-
             if (open)
             {
                 Refresh(window);
@@ -268,7 +222,6 @@ namespace OpenVSA.Ui.ToolWindows
             }
         }
 
-        private MenuItem _markerMenu;
 
         /// <summary>
         /// Applies the Marker font slot to the Markers window (<c>REQ-UI-033</c>,
