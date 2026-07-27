@@ -139,6 +139,15 @@ namespace OpenVSA.Ui.Layout
         /// <summary>The plot drawing the active trace.</summary>
         public TracePlot ActivePlot => PlotOf(_active);
 
+        /// <summary>Every open plot, so a display-wide setting can reach all of them.</summary>
+        /// <remarks>
+        /// A colour applies to the display, not to whichever plot happens to be in front
+        /// (<c>REQ-UI-014</c>). A caller that reached only <see cref="ActivePlot"/> would leave the
+        /// other plots on the old palette until each was next touched.
+        /// </remarks>
+        public IReadOnlyList<TracePlot> Plots =>
+            new ReadOnlyCollection<TracePlot>(new List<TracePlot>(_plots.Values));
+
         /// <summary>
         /// Hands an existing plot to the area, to be used for the first trace.
         /// </summary>

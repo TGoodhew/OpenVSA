@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenVSA.Core.Threading;
 using OpenVSA.Dsp.Spectrum;
+using OpenVSA.Measurement.Limits;
 using OpenVSA.Ui.HotSpots;
 
 namespace OpenVSA.Ui.Rendering
@@ -80,6 +81,8 @@ namespace OpenVSA.Ui.Rendering
         private int _marginPixels = 48;
         private Size _builtFor = Size.Empty;
         private bool _suppressParameterEvents;
+        private LimitTest _limitTest;
+        private LimitColours _limitColours = new LimitColours();
 
         /// <summary>Creates an empty plot.</summary>
         public TracePlot()
@@ -223,6 +226,39 @@ namespace OpenVSA.Ui.Rendering
                 _palette = value;
                 ApplyPalette();
                 Redraw(null);
+            }
+        }
+
+        /// <summary>
+        /// The limit test whose failures recolour the trace, or <c>null</c> for none
+        /// (<c>REQ-UI-023</c>).
+        /// </summary>
+        public LimitTest LimitTest
+        {
+            get { return _limitTest; }
+
+            set
+            {
+                _limitTest = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>The four limit colours (<c>REQ-UI-023</c>).</summary>
+        /// <exception cref="ArgumentNullException">The value is null.</exception>
+        public LimitColours LimitColours
+        {
+            get { return _limitColours; }
+
+            set
+            {
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value));
+                }
+
+                _limitColours = value;
+                Redraw(_snapshot);
             }
         }
 
@@ -1117,7 +1153,8 @@ namespace OpenVSA.Ui.Rendering
                 _surface,
                 _layout,
                 _palette,
-                snapshot == null ? ReadOnlySpan<float>.Empty : snapshot.MinMax);
+                snapshot == null ? ReadOnlySpan<float>.Empty : snapshot.MinMax,
+                ColumnColours(snapshot));
 
             if (snapshot != null)
             {
@@ -1135,6 +1172,29 @@ namespace OpenVSA.Ui.Rendering
             {
                 UpdateAnnotation(snapshot.Spectrum);
             }
+        }
+
+        /// <summary>
+        /// The per-column trace colours a limit test calls for, or empty if none applies.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-UI-023</c>: the failing points of <em>the trace</em> are recoloured. The limit
+        /// line, wherever it is drawn, keeps <see cref="LimitColours.Limit"/> — this method has no
+        /// way to change it, which is deliberate.
+        /// </remarks>
+        private ReadOnlySpan<PlotColor> ColumnColours(TraceSnapshot snapshot)
+        {
+            LimitTest test = _limitTest;
+
+            if (snapshot == null || test == null || _layout == null)
+            {
+                return ReadOnlySpan<PlotColor>.Empty;
+            }
+
+            LimitStanding[] standings = LimitShading.ToColumns(
+                LimitShading.Classify(snapshot.Spectrum, test), _layout.Graticule.Width);
+
+            return LimitShading.ShadeTrace(standings, _limitColours, _palette.Trace);
         }
 
         /// <summary>
