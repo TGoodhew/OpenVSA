@@ -409,12 +409,6 @@ namespace OpenVSA.Ui
                     found.Value.IsChecked = found.Key == mode;
                 }
 
-                if (_selectAreaButton != null)
-                {
-                    // The embedded trace toolbar's Select Area is a view of this same setting, not
-                    // a second one. Two controls holding one mode is how they end up disagreeing.
-                    _selectAreaButton.IsChecked = mode == MouseMode.AreaSelect;
-                }
             }
             finally
             {

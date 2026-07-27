@@ -125,6 +125,23 @@ namespace OpenVSA.Measurement.Markers
         public bool TracksPeak { get; set; }
 
         /// <summary>
+        /// Whether the marker is drawn (<c>REQ-UI-062</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A hidden marker still exists, still holds its number and still reads a value: what it
+        /// has lost is its glyph. That is the distinction the markers toolbar's <em>hide</em> is
+        /// for — a set of markers laid across a busy trace can be got out of the way without
+        /// losing where they were, which deleting and replacing them does not achieve.
+        /// </para>
+        /// <para>
+        /// Display only. Nothing in the measurement, the readouts or the state's marker list
+        /// depends on it, so hiding a marker cannot change a number a user is reading.
+        /// </para>
+        /// </remarks>
+        public bool IsVisible { get; set; } = true;
+
+        /// <summary>
         /// The marker's label (<c>REQ-UI-031</c>).
         /// </summary>
         /// <remarks>

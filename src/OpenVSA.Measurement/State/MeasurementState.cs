@@ -267,6 +267,9 @@ namespace OpenVSA.Measurement.State
 
         /// <summary>Whether this is the selected marker.</summary>
         public bool IsSelected { get; set; }
+
+        /// <summary>Whether the marker is drawn (<c>REQ-UI-062</c>).</summary>
+        public bool IsVisible { get; set; } = true;
     }
 
     /// <summary>
