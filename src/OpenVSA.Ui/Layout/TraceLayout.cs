@@ -430,6 +430,94 @@ namespace OpenVSA.Ui.Layout
             return maxWidth - minWidth <= 1 && maxHeight - minHeight <= 1;
         }
 
+        /// <summary>The smallest a trace window may be dragged to, in pixels.</summary>
+        /// <remarks>
+        /// Below this a trace is a sliver with no graticule and no annotation, and getting it back
+        /// means finding a boundary a few pixels wide. A floor is kinder than the freedom to make
+        /// a window unusable, and it is the only thing here that stops a drag from doing so.
+        /// </remarks>
+        public const int MinimumSlotSize = 48;
+
+        /// <summary>
+        /// Moves the boundary between two stacked slots, resizing those two and nothing else
+        /// (<c>REQ-UI-004</c>).
+        /// </summary>
+        /// <param name="slots">The current arrangement.</param>
+        /// <param name="aboveIndex">Index of the slot above the boundary.</param>
+        /// <param name="deltaPixels">How far to move it; positive grows the upper slot.</param>
+        /// <returns>A new arrangement; every other slot is unchanged.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="slots"/> is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="aboveIndex"/> is out of range.</exception>
+        /// <exception cref="ArgumentException">The two slots do not share a boundary.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>Only the two adjacent windows move</strong> — the requirement's criterion, and
+        /// the behaviour anyone expects of a splitter. The alternative, redistributing the change
+        /// across every row, moves windows the user was not touching and is how a careful
+        /// arrangement comes apart under one drag.
+        /// </para>
+        /// <para>
+        /// The drag is clamped so neither slot falls below <see cref="MinimumSlotSize"/>, and the
+        /// clamp is silent: a splitter that stopped moving is self-explanatory, where a refusal
+        /// mid-drag would not be.
+        /// </para>
+        /// </remarks>
+        public static IReadOnlyList<TraceSlot> DragBoundary(
+            IReadOnlyList<TraceSlot> slots, int aboveIndex, int deltaPixels)
+        {
+            if (slots == null)
+            {
+                throw new ArgumentNullException(nameof(slots));
+            }
+
+            if (aboveIndex < 0 || aboveIndex >= slots.Count - 1)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(aboveIndex), aboveIndex,
+                    "A boundary lies between two slots; this arrangement has " + slots.Count + ".");
+            }
+
+            TraceSlot above = slots[aboveIndex];
+            TraceSlot below = slots[aboveIndex + 1];
+
+            if (above.Bottom != below.Top || above.Left != below.Left || above.Width != below.Width)
+            {
+                throw new ArgumentException(
+                    "Slots " + aboveIndex + " and " + (aboveIndex + 1) +
+                    " do not share a horizontal boundary, so there is nothing between them to drag.",
+                    nameof(aboveIndex));
+            }
+
+            // Clamped so neither end falls below the floor. Both bounds, because a large negative
+            // delta must not shrink the upper slot past it either.
+            int lowest = MinimumSlotSize - above.Height;
+            int highest = below.Height - MinimumSlotSize;
+            int moved = Math.Max(lowest, Math.Min(highest, deltaPixels));
+
+            var adjusted = new List<TraceSlot>(slots.Count);
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (i == aboveIndex)
+                {
+                    adjusted.Add(new TraceSlot(
+                        above.Left, above.Top, above.Width, above.Height + moved, above.Traces));
+                }
+                else if (i == aboveIndex + 1)
+                {
+                    adjusted.Add(new TraceSlot(
+                        below.Left, below.Top + moved, below.Width, below.Height - moved,
+                        below.Traces));
+                }
+                else
+                {
+                    adjusted.Add(slots[i]);
+                }
+            }
+
+            return new ReadOnlyCollection<TraceSlot>(adjusted);
+        }
+
         private static IReadOnlyList<TraceSlot> Tile(
             IReadOnlyList<char> traces, int width, int height, int rows, int columns)
         {
