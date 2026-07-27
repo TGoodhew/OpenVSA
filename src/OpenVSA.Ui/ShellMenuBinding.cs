@@ -53,7 +53,10 @@ namespace OpenVSA.Ui
         private MenuItem _indicateMarginItem;
         private MenuItem _spectrumTypeItem;
 
-        private ToggleButton _selectAreaButton;
+        private ComboBox _traceChooser;
+        private ComboBox _markerChooser;
+        private ToggleButton _hideTraceButton;
+        private ToggleButton _hideMarkerButton;
         private Button _fullSpanButton;
 
         private MeasurementKind _measurementKind = MeasurementKind.Spectrum;
@@ -79,6 +82,16 @@ namespace OpenVSA.Ui
 
         /// <summary>The path of the last menu item run, for a test to read back.</summary>
         public string LastCommand { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// The markers on the primary trace (<c>REQ-MKR-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// Exposed for the same reason <see cref="MenuBar"/> and <see cref="DocumentArea"/> are:
+        /// the embedded markers toolbar of <c>REQ-UI-062</c> is specified in terms of what it does
+        /// to the markers, and a test of it has to be able to look at them.
+        /// </remarks>
+        public OpenVSA.Measurement.Markers.MarkerSet Markers => _markers;
 
         /// <summary>Builds the menu bar from <c>REQ-UI-061</c>'s table.</summary>
         private void BuildMenuBar() => ShellMenuBuilder.Build(MainMenu, this);
@@ -594,24 +607,62 @@ namespace OpenVSA.Ui
         // ---- The embedded toolbars -------------------------------------------------------------
 
         /// <summary>
-        /// The trace tools <c>REQ-UI-061</c> embeds in the Trace menu.
+        /// The trace toolbar embedded at the top of the Trace menu (<c>REQ-UI-062</c>).
         /// </summary>
         /// <remarks>
-        /// <c>REQ-DSP-023</c>'s Select Area and Full Span live here. Select Area is a mode rather
-        /// than an always-on gesture, so an imprecise click cannot change the measurement, and a
-        /// mode wants a control that stays pressed while it is on — which is what it now has.
+        /// <para>
+        /// <strong>Select, add, remove, hide</strong> — the four the requirement names, plus
+        /// <c>REQ-DSP-023</c>'s Full Span, which is a trace-level control with nowhere else to
+        /// live: <c>REQ-UI-063</c>'s toolbars have exact contents and it is not among them.
+        /// </para>
+        /// <para>
+        /// <strong>Hiding is not removing.</strong> A hidden trace is still open, still fed and
+        /// still in the trace list; what it has lost is its window. That is what makes the pair
+        /// worth having — a trace kept for comparison can be got out of the way without being
+        /// closed and rebuilt.
+        /// </para>
+        /// <para>
+        /// Nothing here is a <see cref="MenuItem"/>, which is what keeps the menu open while it is
+        /// used: <c>REQ-UI-062</c>'s last criterion is that acting on the toolbar takes effect
+        /// "without first dismissing the menu", and that is the whole point of embedding one.
+        /// </para>
         /// </remarks>
         private ToolBar TraceToolbar()
         {
             var bar = new ToolBar { Focusable = false };
 
-            _selectAreaButton = new ToggleButton
+            _traceChooser = new ComboBox
             {
-                Content = "Select Area",
-                ToolTip = "Drag across a trace to analyse just that band, without re-acquiring.",
+                MinWidth = 74.0,
+                Focusable = false,
+                ToolTip = "The trace the trace commands act on.",
             };
 
-            _selectAreaButton.Click += OnToggleSelectArea;
+            _traceChooser.SelectionChanged += OnTraceChosenFromToolbar;
+
+            var add = new Button
+            {
+                Content = "New",
+                ToolTip = "Open another trace, in the next format round the list.",
+            };
+
+            add.Click += OnAddTrace;
+
+            var remove = new Button
+            {
+                Content = "Close",
+                ToolTip = "Close the active trace. The last one cannot be closed.",
+            };
+
+            remove.Click += OnRemoveTrace;
+
+            _hideTraceButton = new ToggleButton
+            {
+                Content = "Hide",
+                ToolTip = "Take the active trace's window off the arrangement, keeping the trace.",
+            };
+
+            _hideTraceButton.Click += (sender, e) => HideActiveTrace();
 
             _fullSpanButton = new Button
             {
@@ -622,42 +673,254 @@ namespace OpenVSA.Ui
 
             _fullSpanButton.Click += OnFullSpan;
 
-            var close = new Button { Content = "Close Trace" };
-            close.Click += OnRemoveTrace;
-
-            bar.Items.Add(_selectAreaButton);
-            bar.Items.Add(_fullSpanButton);
+            bar.Items.Add(_traceChooser);
+            bar.Items.Add(add);
+            bar.Items.Add(remove);
+            bar.Items.Add(_hideTraceButton);
             bar.Items.Add(new Separator());
-            bar.Items.Add(close);
+            bar.Items.Add(_fullSpanButton);
+
+            FillTraceChooser();
 
             return bar;
         }
 
-        /// <summary>The marker tools <c>REQ-UI-061</c> embeds in the Marker menu.</summary>
+        /// <summary>
+        /// The markers toolbar embedded at the top of the Marker menu (<c>REQ-UI-062</c>).
+        /// </summary>
+        /// <remarks>
+        /// The same four operations for markers: which one is selected, add, remove, hide. A
+        /// hidden marker keeps its number, its position and its readout, and loses its glyph.
+        /// </remarks>
         private ToolBar MarkerToolbar()
         {
             var bar = new ToolBar { Focusable = false };
 
-            var delete = new Button
+            _markerChooser = new ComboBox
             {
-                Content = "Delete Selected",
+                MinWidth = 74.0,
+                Focusable = false,
+                ToolTip = "The selected marker.",
+            };
+
+            _markerChooser.SelectionChanged += OnMarkerChosenFromToolbar;
+
+            var add = new Button
+            {
+                Content = "New",
+                ToolTip = "Place a marker at the highest point of the trace.",
+            };
+
+            add.Click += OnAddMarker;
+
+            var remove = new Button
+            {
+                Content = "Delete",
                 ToolTip = "Remove the selected marker. All Markers Off removes every one.",
             };
 
-            delete.Click += OnDeleteMarker;
+            remove.Click += OnDeleteMarker;
 
-            var select = new Button
+            _hideMarkerButton = new ToggleButton
             {
-                Content = "Select Next",
-                ToolTip = "Move the selection to the next marker on this trace.",
+                Content = "Hide",
+                ToolTip = "Stop drawing the selected marker, keeping its number and position.",
             };
 
-            select.Click += (sender, e) => SelectNextMarker();
+            _hideMarkerButton.Click += (sender, e) => HideSelectedMarker();
 
-            bar.Items.Add(delete);
-            bar.Items.Add(select);
+            bar.Items.Add(_markerChooser);
+            bar.Items.Add(add);
+            bar.Items.Add(remove);
+            bar.Items.Add(_hideMarkerButton);
+
+            FillMarkerChooser();
 
             return bar;
+        }
+
+        /// <summary>Fills the embedded trace toolbar's chooser with the open traces.</summary>
+        private void FillTraceChooser()
+        {
+            if (_traceChooser == null)
+            {
+                return;
+            }
+
+            _followingToolbar = true;
+
+            try
+            {
+                _traceChooser.Items.Clear();
+
+                foreach (char letter in Documents.Traces)
+                {
+                    // Hidden traces are listed too, marked as such: they are still open, and the
+                    // chooser is how a user gets back to one in order to show it again.
+                    _traceChooser.Items.Add(
+                        Documents.IsVisible(letter)
+                            ? "Trace " + letter
+                            : "Trace " + letter + " (hidden)");
+                }
+
+                _traceChooser.SelectedIndex = IndexOfTrace(Documents.ActiveTrace);
+            }
+            finally
+            {
+                _followingToolbar = false;
+            }
+
+            if (_hideTraceButton != null)
+            {
+                _hideTraceButton.IsChecked = !Documents.IsVisible(Documents.ActiveTrace);
+            }
+        }
+
+        private int IndexOfTrace(char trace)
+        {
+            IReadOnlyList<char> traces = Documents.Traces;
+
+            for (int index = 0; index < traces.Count; index++)
+            {
+                if (traces[index] == trace)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private void OnTraceChosenFromToolbar(object sender, SelectionChangedEventArgs e)
+        {
+            if (_followingToolbar || _traceChooser.SelectedIndex < 0 ||
+                _traceChooser.SelectedIndex >= Documents.Traces.Count)
+            {
+                return;
+            }
+
+            Documents.ActiveTrace = Documents.Traces[_traceChooser.SelectedIndex];
+        }
+
+        /// <summary>Takes the active trace's window off the arrangement, or puts it back.</summary>
+        private void HideActiveTrace()
+        {
+            char trace = Documents.ActiveTrace;
+            bool wanted = _hideTraceButton.IsChecked != true;
+
+            if (!Documents.SetVisible(trace, wanted))
+            {
+                // The last visible trace cannot be hidden: an empty document area is a state with
+                // no way out of it from the document area itself.
+                _hideTraceButton.IsChecked = !Documents.IsVisible(trace);
+
+                StatusText.Content = wanted
+                    ? "Trace " + trace + " is already shown."
+                    : "The last visible trace cannot be hidden.";
+
+                return;
+            }
+
+            FillTraceChooser();
+
+            StatusText.Content = wanted
+                ? "Trace " + trace + " shown"
+                : "Trace " + trace + " hidden — it is still open and still measuring.";
+        }
+
+        /// <summary>Fills the embedded markers toolbar's chooser.</summary>
+        private void FillMarkerChooser()
+        {
+            if (_markerChooser == null)
+            {
+                return;
+            }
+
+            _followingToolbar = true;
+
+            try
+            {
+                _markerChooser.Items.Clear();
+
+                foreach (Marker marker in _markers.Markers)
+                {
+                    _markerChooser.Items.Add(
+                        marker.IsVisible ? marker.WindowLabel : marker.WindowLabel + " (hidden)");
+                }
+
+                if (_markers.Markers.Count == 0)
+                {
+                    _markerChooser.Items.Add("No markers");
+                    _markerChooser.SelectedIndex = 0;
+                }
+                else
+                {
+                    _markerChooser.SelectedIndex = IndexOfSelectedMarker();
+                }
+            }
+            finally
+            {
+                _followingToolbar = false;
+            }
+
+            Marker selected = _markers.Selected;
+
+            if (_hideMarkerButton != null)
+            {
+                _hideMarkerButton.IsChecked = selected != null && !selected.IsVisible;
+                _hideMarkerButton.IsEnabled = selected != null;
+            }
+        }
+
+        private int IndexOfSelectedMarker()
+        {
+            IReadOnlyList<Marker> markers = _markers.Markers;
+
+            for (int index = 0; index < markers.Count; index++)
+            {
+                if (markers[index].IsSelected)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private void OnMarkerChosenFromToolbar(object sender, SelectionChangedEventArgs e)
+        {
+            if (_followingToolbar || _markerChooser.SelectedIndex < 0 ||
+                _markerChooser.SelectedIndex >= _markers.Markers.Count)
+            {
+                return;
+            }
+
+            _markers.Select(_markers.Markers[_markerChooser.SelectedIndex]);
+
+            RefreshMarkers();
+            FillMarkerChooser();
+        }
+
+        /// <summary>Stops drawing the selected marker, or draws it again.</summary>
+        private void HideSelectedMarker()
+        {
+            Marker selected = _markers.Selected;
+
+            if (selected == null)
+            {
+                StatusText.Content = "No marker is selected to hide.";
+                return;
+            }
+
+            selected.IsVisible = _hideMarkerButton.IsChecked != true;
+
+            RefreshMarkers();
+            FillMarkerChooser();
+
+            StatusText.Content = selected.IsVisible
+                ? selected.WindowLabel + " shown"
+                : selected.WindowLabel + " hidden — it still reads " +
+                  EngineeringText.Frequency(selected.XHz, 6) + ".";
         }
 
         // ---- What the new items do --------------------------------------------------------------

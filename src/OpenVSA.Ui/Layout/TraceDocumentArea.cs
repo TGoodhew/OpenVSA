@@ -49,6 +49,9 @@ namespace OpenVSA.Ui.Layout
         private readonly Canvas _canvas = new Canvas();
         private readonly Dictionary<char, TracePlot> _plots = new Dictionary<char, TracePlot>();
         private readonly List<char> _traces = new List<char>();
+
+        /// <summary>Traces that are open but have no window (<c>REQ-UI-062</c>).</summary>
+        private readonly HashSet<char> _hidden = new HashSet<char>();
         private readonly List<TraceTabStrip> _strips = new List<TraceTabStrip>();
         private readonly TraceLayoutHistory _history = new TraceLayoutHistory();
 
@@ -125,6 +128,80 @@ namespace OpenVSA.Ui.Layout
 
                 Raise(ActiveTraceChanged, value);
             }
+        }
+
+        /// <summary>
+        /// The traces that have a window in the arrangement, in order.
+        /// </summary>
+        /// <remarks>
+        /// A hidden trace is still open, still fed and still in <see cref="Traces"/>: what it has
+        /// lost is its place on screen. That distinction is the reason <c>REQ-UI-062</c> asks for
+        /// hiding as well as removing — a trace being kept for comparison should not have to be
+        /// closed and rebuilt to get it out of the way for a minute.
+        /// </remarks>
+        public IReadOnlyList<char> VisibleTraces
+        {
+            get
+            {
+                var visible = new List<char>(_traces.Count);
+
+                foreach (char trace in _traces)
+                {
+                    if (!_hidden.Contains(trace))
+                    {
+                        visible.Add(trace);
+                    }
+                }
+
+                return new ReadOnlyCollection<char>(visible);
+            }
+        }
+
+        /// <summary>Whether a trace has a window in the arrangement.</summary>
+        /// <param name="trace">The trace letter.</param>
+        public bool IsVisible(char trace) => _traces.Contains(trace) && !_hidden.Contains(trace);
+
+        /// <summary>
+        /// Shows or hides a trace's window (<c>REQ-UI-062</c>, <c>REQ-STA-001</c>).
+        /// </summary>
+        /// <param name="trace">The trace letter.</param>
+        /// <param name="visible">Whether it should have a window.</param>
+        /// <returns><c>true</c> if the arrangement changed.</returns>
+        /// <remarks>
+        /// The last visible trace cannot be hidden — an empty document area is a state with no way
+        /// out of it from the document area itself. Hiding the active trace moves the selection to
+        /// one that is still on screen, because "active" means the trace the trace commands act on
+        /// and pointing that at something invisible is how a command appears to do nothing.
+        /// </remarks>
+        public bool SetVisible(char trace, bool visible)
+        {
+            if (!_traces.Contains(trace) || IsVisible(trace) == visible)
+            {
+                return false;
+            }
+
+            if (!visible && VisibleTraces.Count <= 1)
+            {
+                return false;
+            }
+
+            if (visible)
+            {
+                _hidden.Remove(trace);
+            }
+            else
+            {
+                _hidden.Add(trace);
+            }
+
+            if (!visible && _active == trace)
+            {
+                ActiveTrace = VisibleTraces[0];
+            }
+
+            ApplyLayout(_history.Current);
+
+            return true;
         }
 
         /// <summary>The plot drawing a trace, or <c>null</c> if it is not open.</summary>
@@ -226,6 +303,7 @@ namespace OpenVSA.Ui.Layout
             }
 
             _traces.Remove(trace);
+            _hidden.Remove(trace);
             _plots.Remove(trace);
 
             if (_active == trace)
@@ -251,7 +329,7 @@ namespace OpenVSA.Ui.Layout
                 throw new ArgumentNullException(nameof(preset));
             }
 
-            _history.Apply(preset, _traces, AreaWidth, AreaHeight);
+            _history.Apply(preset, VisibleTraces, AreaWidth, AreaHeight);
             Rebuild(reArrange: false);
 
             Raise(LayoutChanged, _history.Current);
@@ -260,7 +338,7 @@ namespace OpenVSA.Ui.Layout
         /// <summary>Redistributes the trace windows evenly (<c>REQ-UI-004</c>).</summary>
         public void ResizeTraces()
         {
-            _history.ResizeTraces(_traces, AreaWidth, AreaHeight);
+            _history.ResizeTraces(VisibleTraces, AreaWidth, AreaHeight);
             Rebuild(reArrange: false);
 
             Raise(LayoutChanged, _history.Current);
@@ -312,7 +390,7 @@ namespace OpenVSA.Ui.Layout
                 _slots = _history.Current.Kind == TraceLayoutKind.Custom
                     ? _history.CurrentSlots
                     : TraceLayoutEngine.Arrange(
-                        _history.Current, _traces, AreaWidth, AreaHeight);
+                        _history.Current, VisibleTraces, AreaWidth, AreaHeight);
             }
             else
             {

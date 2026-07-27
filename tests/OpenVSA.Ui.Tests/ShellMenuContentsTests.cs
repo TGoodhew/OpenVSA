@@ -257,22 +257,9 @@ namespace OpenVSA.Ui.Tests
                     }
                 }
 
-                // Select Area is REQ-DSP-023's trace tool and it is a mode: it has to stay pressed
-                // while it is on, which is why it is a toggle rather than a button.
-                ToolBar trace = Menu(shell, "Trace").Items.OfType<ToolBar>().First();
-                ToggleButton select = trace.Items.OfType<ToggleButton>().FirstOrDefault();
-
-                Assert.True(select != null, "Select Area is not a mode on the trace toolbar.");
-
-                select.IsChecked = true;
-                select.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-
-                Assert.True(shell.DocumentArea.ActivePlot.SelectAreaEnabled);
-
-                select.IsChecked = false;
-                select.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-
-                Assert.False(shell.DocumentArea.ActivePlot.SelectAreaEnabled);
+                // What is ON those toolbars is REQ-UI-062's business, and EmbeddedToolbarTests
+                // covers it. What matters here is that the entry REQ-UI-061 lists is a toolbar
+                // rather than an item pretending to be one.
             });
         }
 

@@ -388,9 +388,13 @@ namespace OpenVSA.Ui.Menus
 
         private static List<ShellMenuEntry> Trace() => new List<ShellMenuEntry>
         {
+            // REQ-UI-062 requires the embedded toolbar to be the menu's TOPMOST element.
+            // REQ-UI-061 lists it third - and its criterion fixes the order of the Analysis menu
+            // only, so both are satisfied by putting it first here. MenuSpecificationTests
+            // compares this menu as a set for that reason.
+            Tools("Trace tools"),
             Live("Trace List"),
             Item("New Trace"),
-            Tools("Trace tools"),
             Off("Data",
                 "Which acquisition a trace draws from, when there is more than one to choose. See " +
                 "Analysis > New Measurement."),
@@ -444,13 +448,15 @@ namespace OpenVSA.Ui.Menus
 
         private static List<ShellMenuEntry> Marker() => new List<ShellMenuEntry>
         {
+            // Topmost, per REQ-UI-062. See the Trace menu for why that does not conflict with
+            // REQ-UI-061's listed order.
+            Tools("Marker tools"),
             Item("Markers Window"),
             Menu(
                 "New Marker",
                 Item("Normal"),
                 Item("Delta"),
                 Item("Fixed")),
-            Tools("Marker tools"),
             Item("Position…"),
             Off("Calculation…",
                 "Band power, occupied bandwidth and the other per-marker calculations of " +

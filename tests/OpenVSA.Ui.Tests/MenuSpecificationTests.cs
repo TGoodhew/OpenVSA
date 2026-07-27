@@ -47,7 +47,20 @@ namespace OpenVSA.Ui.Tests
                     .Select(Spelling)
                     .ToList();
 
-                if (!listed.SequenceEqual(built, StringComparer.Ordinal))
+                // Compared as a set, except for Analysis. REQ-UI-061's criterion fixes the order of
+                // exactly one menu — "with the Analysis menu in the stated order" — and leaves the
+                // other nine to be the listed items and no others. That matters here rather than
+                // being a technicality: REQ-UI-062 requires the embedded toolbar to be the topmost
+                // element of Trace and Marker, and REQ-UI-061 lists it third. Both are satisfiable
+                // together only because the order of those two menus is not fixed.
+                bool ordered = string.Equals(menu.Name, "Analysis", StringComparison.Ordinal);
+
+                bool agrees = ordered
+                    ? listed.SequenceEqual(built, StringComparer.Ordinal)
+                    : listed.OrderBy(n => n, StringComparer.Ordinal)
+                        .SequenceEqual(built.OrderBy(n => n, StringComparer.Ordinal), StringComparer.Ordinal);
+
+                if (!agrees)
                 {
                     differences.Add(
                         menu.Name + Environment.NewLine +

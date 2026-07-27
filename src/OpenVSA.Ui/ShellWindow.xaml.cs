@@ -288,9 +288,16 @@ namespace OpenVSA.Ui
             {
                 StatusText.Content = "Trace " + trace + " selected";
                 ShowActiveTrace();
+                FillTraceChooser();
             };
 
             BuildLayoutMenu();
+
+            // The embedded toolbars are built with the menu bar, which is before this - so their
+            // choosers were filled from an empty document area. Filled again now that trace A
+            // exists, or the trace chooser stays blank and Hide reads as though A were hidden.
+            FillTraceChooser();
+            FillMarkerChooser();
         }
 
         /// <summary>
@@ -380,23 +387,6 @@ namespace OpenVSA.Ui
         }
 
         private void OnResizeTraces(object sender, RoutedEventArgs e) => Documents.ResizeTraces();
-
-        /// <summary>
-        /// Turns the Select Area trace tool on or off across every trace (<c>REQ-DSP-023</c>).
-        /// </summary>
-        private void OnToggleSelectArea(object sender, RoutedEventArgs e)
-        {
-            if (_followingToolbar)
-            {
-                return;
-            }
-
-            // A view of the Marker Tools mouse mode, not a setting of its own. Two controls each
-            // holding "is Select Area on" is how they come to disagree.
-            bool on = _selectAreaButton != null && _selectAreaButton.IsChecked == true;
-
-            ChooseMouseMode(on ? Rendering.MouseMode.AreaSelect : Rendering.MouseMode.Marker);
-        }
 
         /// <summary>
         /// Zooms to a dragged region, without re-acquiring (<c>REQ-DSP-023</c>).
@@ -562,8 +552,12 @@ namespace OpenVSA.Ui
         /// </remarks>
         private void WireSelectArea(TracePlot plot)
         {
+            // Whatever mouse mode is in force on the Marker Tools toolbar (REQ-UI-063), so a
+            // trace opened while Area Select is on can be dragged over at once.
             plot.SelectAreaEnabled =
-                _selectAreaButton != null && _selectAreaButton.IsChecked == true;
+                _mouseMode == Rendering.MouseMode.AreaSelect ||
+                _mouseMode == Rendering.MouseMode.BandPower ||
+                _mouseMode == Rendering.MouseMode.TimeGate;
             plot.AreaSelected += OnAreaSelected;
 
             plot.PreviewMouseLeftButtonDown += (sender, e) =>
@@ -2545,6 +2539,7 @@ namespace OpenVSA.Ui
                     YDbm = marker.Type == MarkerType.Fixed ? marker.FixedYDbm : 0.0,
                     DeltaReference = marker.Reference == null ? 0 : marker.Reference.Number,
                     IsSelected = marker.IsSelected,
+                    IsVisible = marker.IsVisible,
                 });
             }
 
@@ -2635,18 +2630,25 @@ namespace OpenVSA.Ui
 
         private void RestoreMarker(MarkerState marker, Marker reference)
         {
+            Marker restored;
+
             if (string.Equals(marker.Type, "Fixed", StringComparison.Ordinal))
             {
-                _markers.AddFixed(marker.XHz, marker.YDbm);
+                restored = _markers.AddFixed(marker.XHz, marker.YDbm);
             }
             else if (string.Equals(marker.Type, "Delta", StringComparison.Ordinal) &&
                      reference != null)
             {
-                _markers.AddDelta(marker.XHz, reference);
+                restored = _markers.AddDelta(marker.XHz, reference);
             }
             else
             {
-                _markers.AddNormal(marker.XHz);
+                restored = _markers.AddNormal(marker.XHz);
+            }
+
+            if (restored != null)
+            {
+                restored.IsVisible = marker.IsVisible;
             }
         }
 
@@ -2996,7 +2998,10 @@ namespace OpenVSA.Ui
                 MarkerReading reading = marker.Read(_frame);
                 int index = marker.IndexIn(_frame);
 
-                if (index >= 0)
+                // REQ-UI-062: a hidden marker keeps its number, its position and its readout, and
+                // loses only its glyph. Skipped here rather than removed from the set, because the
+                // set is what the Markers window and the saved state are built from.
+                if (index >= 0 && marker.IsVisible)
                 {
                     // A delta marker's readout is a difference, but its glyph belongs at its own
                     // position and level - not at the difference, which is not a place on the plot.
@@ -3015,6 +3020,7 @@ namespace OpenVSA.Ui
             }
 
             Plot.SetMarkers(primitives, readout);
+            FillMarkerChooser();
         }
 
         /// <summary>The active-marker readout, as <c>REQ-UI-031</c> labels it.</summary>
