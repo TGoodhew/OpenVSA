@@ -237,6 +237,12 @@ namespace OpenVSA.Ui
             _analysisSettle.Tick += OnAnalysisSettled;
             _analysis.Changed += OnAnalysisChanged;
 
+            // After the analysis settings and the document area, both of which the toolbars show.
+            // REQ-UI-063's contents come from ShellToolbars; see ShellToolbarBinding.cs for what
+            // sits behind each control.
+            BuildToolbars();
+            ApplyMouseMode();
+
             // REQ-UI-065. Installed on the window so the gestures reach from anywhere in it, with
             // the unmodified ones routed through a focus check - see ShellShortcuts.
             ShellShortcuts.Install(this, RunShortcut, () => ModifierSource());
@@ -279,7 +285,10 @@ namespace OpenVSA.Ui
                 StatusText.Content = "Layout: " + preset.Name;
 
             Documents.ActiveTraceChanged += (sender, trace) =>
+            {
                 StatusText.Content = "Trace " + trace + " selected";
+                ShowActiveTrace();
+            };
 
             BuildLayoutMenu();
         }
@@ -377,21 +386,16 @@ namespace OpenVSA.Ui
         /// </summary>
         private void OnToggleSelectArea(object sender, RoutedEventArgs e)
         {
-            bool on = _selectAreaButton != null && _selectAreaButton.IsChecked == true;
-
-            foreach (char letter in Documents.Traces)
+            if (_followingToolbar)
             {
-                TracePlot plot = Documents.PlotOf(letter);
-
-                if (plot != null)
-                {
-                    plot.SelectAreaEnabled = on;
-                }
+                return;
             }
 
-            StatusText.Content = on
-                ? "Select Area: drag across a trace to zoom into it."
-                : "Select Area off.";
+            // A view of the Marker Tools mouse mode, not a setting of its own. Two controls each
+            // holding "is Select Area on" is how they come to disagree.
+            bool on = _selectAreaButton != null && _selectAreaButton.IsChecked == true;
+
+            ChooseMouseMode(on ? Rendering.MouseMode.AreaSelect : Rendering.MouseMode.Marker);
         }
 
         /// <summary>
@@ -411,6 +415,16 @@ namespace OpenVSA.Ui
         /// </remarks>
         private void OnAreaSelected(object sender, AreaSelectedEventArgs area)
         {
+            // REQ-UI-063: what a dragged rectangle does is the user's choice, made on the Area
+            // Select tool itself. Scaling an axis and re-analysing a band are different operations
+            // on one gesture, and running them together would mean a drag meant to magnify the
+            // display quietly changing what is being measured.
+            if (_areaAction == Rendering.AreaSelectAction.ScaleY)
+            {
+                ScaleYToArea(sender as TracePlot, area);
+                return;
+            }
+
             SpectrumEngine engine = _engine;
 
             if (engine == null || engine.Plan == null)
@@ -939,6 +953,7 @@ namespace OpenVSA.Ui
             }
 
             BuildSpectrogramMapMenu();
+            FollowSpectrogramMap();
 
             _eventLog.Append(
                 "Spectrogram colour map set to " + SpectrogramColourMap.NameOf(_spectrogramMap.Kind) +
@@ -1042,21 +1057,14 @@ namespace OpenVSA.Ui
         }
 
         /// <summary>Pauses a running measurement, or resumes a paused one.</summary>
-        private async void PauseOrResume()
+        private void PauseOrResume()
         {
             LastShortcut = ShellShortcuts.PauseOrResume.Action;
 
-            if (_engine != null)
-            {
-                await StopAcquisitionAsync().ConfigureAwait(true);
-                StatusText.Content = "Paused";
-                return;
-            }
-
-            if (_activeFrontEnd != null)
-            {
-                await StartMeasurementAsync().ConfigureAwait(true);
-            }
+            // The same press as the Control toolbar's Pause button, decided by the same state
+            // machine. Two paths to one control is how the key and the button end up disagreeing
+            // about what a second press means.
+            PressPause();
         }
 
         /// <summary>
@@ -1070,11 +1078,26 @@ namespace OpenVSA.Ui
         private async void RestartMeasurement()
         {
             LastShortcut = ShellShortcuts.Restart.Action;
+            LastToolbarCommand = "Control > Restart";
+
+            _sweep.Restart();
+
+            // "All current measurement data including averaging is discarded." Said here rather
+            // than left to the fact that a fresh engine happens to bring a fresh averager: the
+            // requirement asks for it to be asserted, and an assertion needs something to point at.
+            SpectrumEngine running = _engine;
+
+            if (running != null && running.Averager != null)
+            {
+                running.Averager.Reset();
+            }
 
             if (_activeFrontEnd != null)
             {
                 await StartMeasurementAsync().ConfigureAwait(true);
             }
+
+            FollowSweep();
         }
 
         /// <summary>Scales the active trace vertical axis to the trace on it.</summary>
@@ -2225,6 +2248,18 @@ namespace OpenVSA.Ui
 
             var engine = new SpectrumEngine(
                 _activeFrontEnd, new SpectrumComputer(planned.Window, null, null));
+
+            // The averaging the Average tab and the state carry. Set here rather than left null:
+            // AnalysisSettings has offered averaging since REQ-UI-072 and nothing was applying it,
+            // so a measurement ran unaveraged whatever the dialog said — which is also what left
+            // REQ-UI-063's Restart with nothing to discard.
+            engine.Averager = _analysis.Averaging == AveragingType.Off
+                ? null
+                : new TraceAverager(_analysis.Averaging, _analysis.AverageCount)
+                {
+                    RepeatAverage = _analysis.RepeatAverage,
+                };
+
             engine.FrameComputed += OnFrameComputed;
             engine.Faulted += OnEngineFaulted;
             engine.Completed += OnEngineCompleted;
@@ -2481,6 +2516,12 @@ namespace OpenVSA.Ui
 
             measurement.Trigger.Channel = Plot.TriggerChannelHotSpot.Value.Text;
 
+            // Averaging, detectors, noise correction, gating, overlap and the transform ceiling.
+            // AnalysisSettings has carried LoadFrom and SaveInto since REQ-UI-072 and the state
+            // path never called either, so a saved setup came back with none of them - a hole in
+            // REQ-STA-001 that only showed when something needed to set averaging from a state.
+            _analysis.SaveInto(measurement);
+
             TraceDisplayState trace = measurement.Traces[0];
             trace.TopDbm = Plot.TopDbm;
             trace.DecibelsPerDivision = Plot.DecibelsPerDivision;
@@ -2547,6 +2588,15 @@ namespace OpenVSA.Ui
 
             Plot.TriggerChannelHotSpot.Value.TrySet(measurement.Trigger.Channel);
             Plot.TriggerChannelHotSpot.Refresh();
+
+            // One change notification for the lot, so a recall costs one re-plan rather than one
+            // per setting.
+            using (_analysis.Batch())
+            {
+                _analysis.LoadFrom(measurement);
+            }
+
+            FollowAccumulator();
 
             if (measurement.Traces.Count > 0)
             {
@@ -2987,6 +3037,14 @@ namespace OpenVSA.Ui
 
         private void OnPlotClicked(object sender, MouseButtonEventArgs e)
         {
+            // REQ-UI-063's Marker Tools: placing a marker is one mouse mode among five, not
+            // something every click does. Pointer exists precisely so that a click can mean
+            // nothing.
+            if (_mouseMode != Rendering.MouseMode.Marker)
+            {
+                return;
+            }
+
             int index = Plot.PointAt(e.GetPosition(Plot));
 
             if (index < 0 || _frame == null)
