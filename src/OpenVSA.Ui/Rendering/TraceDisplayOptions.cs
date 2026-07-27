@@ -203,6 +203,29 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>Raised whenever any of them changes, so every surface can follow.</summary>
         public event EventHandler Changed;
 
+        /// <summary>
+        /// Returns every option to its default (<c>REQ-UI-061</c> Preset &gt; Display Preferences).
+        /// </summary>
+        /// <remarks>
+        /// From a fresh instance rather than by assigning the defaults again here. Written the
+        /// second way, an option whose default changed would go on being preset to the old one, and
+        /// nothing would report it — the same reason the factory preset is a fresh state rather
+        /// than a list of values.
+        /// </remarks>
+        public void ResetAll()
+        {
+            var defaults = new TraceDisplayOptions();
+
+            ForceWhiteBackgroundOnPrint = defaults.ForceWhiteBackgroundOnPrint;
+            IndicateLimitFailures = defaults.IndicateLimitFailures;
+            IndicateMarginWarnings = defaults.IndicateMarginWarnings;
+            ShowAnnotation = defaults.ShowAnnotation;
+            ShowGridLines = defaults.ShowGridLines;
+            HorizontalDivisions = defaults.HorizontalDivisions;
+            VerticalDivisions = defaults.VerticalDivisions;
+            XReferencePercent = defaults.XReferencePercent;
+        }
+
         /// <summary>Writes the options into a display-preferences sidecar.</summary>
         /// <param name="state">The sidecar to write into.</param>
         /// <exception cref="ArgumentNullException"><paramref name="state"/> is null.</exception>

@@ -29,132 +29,21 @@
     -->
     <DockPanel x:Name="Root">
 
-        <Menu x:Name="MainMenu" DockPanel.Dock="Top">
-            <!--
-                REQ-STA-001, REQ-STA-002 and REQ-STA-005. Saving names its exclusions in the dialog
-                rather than leaving the user to discover them, and the preset menu is built from the
-                library at open time so a preset saved this session is there without a restart.
-            -->
-            <MenuItem Header="_File">
-                <MenuItem x:Name="SaveStateItem" Header="_Save state…" Click="OnSaveState" />
-                <MenuItem x:Name="RecallStateItem" Header="_Recall state…" Click="OnRecallState" />
-                <Separator />
-                <MenuItem x:Name="PresetMenu" Header="_Preset" SubmenuOpened="OnPresetMenuOpened">
-                    <MenuItem x:Name="FactoryPresetItem" Header="_Factory preset" Click="OnFactoryPreset" />
-                </MenuItem>
-                <MenuItem x:Name="SavePresetItem" Header="Save as prese_t…" Click="OnSavePreset" />
-                <Separator />
+        <!--
+            REQ-UI-061's contents: about a hundred items across the ten menus, built in code from
+            ShellMenuTable rather than written out here.
 
-                <!--
-                    REQ-UI-015. The option exists because large areas of black do not print well
-                    on inkjet-style printers; the palette darkens light trace colours rather than
-                    leaving them invisible on white, which is the half a plain background swap
-                    misses.
-                -->
-                <MenuItem x:Name="ForceWhiteBackgroundItem" Header="Force _white background"
-                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
-                <MenuItem x:Name="PrintTraceItem" Header="_Print trace…" Click="OnPrintTrace" />
-            </MenuItem>
-            <MenuItem Header="_Edit" />
-            <MenuItem x:Name="HardwareMenu" Header="_Hardware" />
-            <MenuItem Header="_Acquisition">
-                <MenuItem x:Name="StartItem" Header="_Start" Click="OnStart" IsEnabled="False" />
-                <MenuItem x:Name="StopItem" Header="Sto_p" Click="OnStop" IsEnabled="False" />
-            </MenuItem>
-            <!--
-                REQ-UI-072's seven tabs, listed individually as REQ-UI-061's menu does. Built in
-                code from AnalysisDialog.TabNames so the menu cannot name a tab the dialog does
-                not have; each entry opens the one dialog on its own tab, because seven windows
-                editing one measurement is what a tab set exists to avoid.
-            -->
-            <MenuItem x:Name="AnalysisMenu" Header="Ana_lysis" />
+            Not a matter of taste. The requirement's criterion is exact in both directions - every
+            listed item present, and nothing present that is not listed - so a second hand-kept copy
+            of the list in markup is a second thing to drift, and drift that looks right in both
+            halves until somebody compares them. The table is the list; the bar is built from it;
+            two tests hold the table against the specification and the bar against the table.
 
-            <!--
-                REQ-UI-005's six layout entries and REQ-UI-004's Resize Traces. The layout items
-                are built in code from TraceLayoutPreset.Menu, so the menu shows the parameterised
-                entries at whatever N and N×M are currently set to rather than a generic label.
-            -->
-            <MenuItem Header="_Trace">
-                <MenuItem x:Name="AddTraceItem" Header="_Add trace" Click="OnAddTrace" />
-                <MenuItem x:Name="RemoveTraceItem" Header="_Close active trace" Click="OnRemoveTrace" />
-                <Separator />
-                <MenuItem x:Name="LayoutMenu" Header="_Layout" />
-                <MenuItem x:Name="ResizeTracesItem" Header="_Resize Traces" Click="OnResizeTraces" />
-                <Separator />
-
-                <!--
-                    REQ-DSP-023's Select Area tool and Full Span control. Select Area is a mode
-                    rather than an always-on gesture, so an imprecise click cannot change the
-                    measurement.
-                -->
-                <MenuItem x:Name="SelectAreaItem" Header="Select _Area" IsCheckable="True"
-                          Click="OnToggleSelectArea" />
-                <MenuItem x:Name="FullSpanItem" Header="_Full Span" Click="OnFullSpan"
-                          IsEnabled="False" />
-                <Separator />
-
-                <!--
-                    REQ-UI-060 has no Display menu - it was demoted, and its layout functions moved
-                    under Window and Trace. These are all about a trace, so this is where they land.
-                    REQ-UI-024's map entries are built in code from the enumeration, so the menu
-                    cannot list a map that does not exist or miss one that does.
-                -->
-                <MenuItem x:Name="SpectrogramMapMenu" Header="_Spectrogram colour map" />
-                <Separator />
-
-                <!--
-                    REQ-UI-011. Both are checkable items over the same TraceDisplayOptions the
-                    Trace tab of Display Preferences edits, so neither surface holds the setting and
-                    each follows the other. Show Annotation reclaims the annotation band rather than
-                    merely hiding the text, which is what the requirement's criterion is about.
-                -->
-                <MenuItem x:Name="ShowAnnotationItem" Header="Show a_nnotation"
-                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
-                <MenuItem x:Name="ShowGridLinesItem" Header="Show _grid lines"
-                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
-                <Separator />
-                <MenuItem x:Name="IndicateLimitFailuresItem" Header="Indicate limit _failures"
-                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
-                <MenuItem x:Name="IndicateMarginItem" Header="Indicate _margin warnings"
-                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
-            </MenuItem>
-            <!--
-                REQ-MKR-001 and REQ-MKR-005. Placing a marker is a click on the trace; this menu is
-                for the operations that have no obvious gesture.
-            -->
-            <MenuItem Header="_Marker">
-                <MenuItem x:Name="AddMarkerItem" Header="_Normal marker at peak" Click="OnAddMarker" />
-                <MenuItem x:Name="AddDeltaItem" Header="_Delta marker from selected" Click="OnAddDelta" />
-                <MenuItem x:Name="AddFixedItem" Header="_Fixed marker at peak" Click="OnAddFixed" />
-                <Separator />
-                <MenuItem x:Name="PeakSearchItem" Header="_Peak search" Click="OnPeakSearch" />
-                <MenuItem x:Name="NextPeakItem" Header="Ne_xt peak" Click="OnNextPeak" />
-                <MenuItem x:Name="MinimumSearchItem" Header="Minim_um search" Click="OnMinimumSearch" />
-                <Separator />
-                <MenuItem x:Name="DeleteMarkerItem" Header="Delete _selected" Click="OnDeleteMarker" />
-                <MenuItem x:Name="DeleteAllMarkersItem" Header="Delete _all" Click="OnDeleteAllMarkers" />
-                <Separator />
-
-                <!--
-                    REQ-UI-002 puts the Markers window on the Marker menu; the other seven are on
-                    Window. The items themselves are built in code from ToolWindows.All, so the
-                    menu cannot list seven of eight or spell one differently from the pane it
-                    opens - which is the criterion, and not something two hand-written lists would
-                    keep true for long.
-                -->
-                <MenuItem x:Name="MarkerWindowMenu" />
-            </MenuItem>
-            <!--
-                REQ-UI-061 puts Display Preferences under Utilities. It was on a Display menu until
-                REQ-UI-060 removed that menu from the bar; the dialog did not move, only its way in.
-            -->
-            <MenuItem Header="_Utilities">
-                <MenuItem x:Name="PreferencesItem" Header="Display _Preferences…"
-                          Click="OnDisplayPreferences" />
-            </MenuItem>
-            <MenuItem x:Name="WindowMenu" Header="_Window" />
-            <MenuItem Header="_Help" />
-        </Menu>
+            Each item is either bound by the shell or disabled with a reason in the table, and
+            building throws if an item is neither - "none is present and inert", enforced while the
+            window is being constructed rather than discovered by a user.
+        -->
+        <Menu x:Name="MainMenu" DockPanel.Dock="Top" />
 
         <ToolBarTray DockPanel.Dock="Top">
             <ToolBar Band="0" BandIndex="0" />

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Controls;
 using Xunit;
 
@@ -83,19 +84,70 @@ namespace OpenVSA.Ui.Tests
         [Fact]
         public void WhatTheDisplayMenuHeldIsStillReachable()
         {
-            // Removing a menu must not remove what was on it. Display Preferences moved to
-            // Utilities, where REQ-UI-061 puts it, and the trace display items moved to Trace.
+            // Removing a menu must not remove what was on it, and neither must REQ-UI-061's exact
+            // list. Display Preferences is on Utilities where the requirement puts it; the map is
+            // Trace > Spectrogram / Colour Map; the limit indications are under Trace > Limit
+            // Tests…, which is a listed item and the right home for them.
             _host.Run(() =>
             {
                 var shell = new ShellWindow { PersistPreferences = false };
 
                 Assert.NotNull(Find(shell, "Utilities", "Display Preferences…"));
-                Assert.NotNull(Find(shell, "Trace", "Spectrogram colour map"));
-                Assert.NotNull(Find(shell, "Trace", "Show annotation"));
-                Assert.NotNull(Find(shell, "Trace", "Show grid lines"));
-                Assert.NotNull(Find(shell, "Trace", "Indicate limit failures"));
-                Assert.NotNull(Find(shell, "Trace", "Indicate margin warnings"));
+                Assert.NotNull(Find(shell, "Trace", "Spectrogram / Colour Map"));
+
+                MenuItem limits = Find(shell, "Trace", "Limit Tests…");
+
+                Assert.NotNull(Under(limits, "Indicate limit failures"));
+                Assert.NotNull(Under(limits, "Indicate margin warnings"));
             });
+        }
+
+        [Fact]
+        public void ShowAnnotationAndGridLinesAreOnTheTraceTabInstead()
+        {
+            // These two were menu items until REQ-UI-061's list was applied, and the list does not
+            // have them. They are not gone: the Trace tab of Display Preferences has always held
+            // them, both surfaces wrote one TraceDisplayOptions, and now the tab is the only way in.
+            // Asserted on the dialog rather than on the options object, because "still reachable"
+            // is a claim about what a user can get at.
+            _host.Run(() =>
+            {
+                var options = new OpenVSA.Ui.Rendering.TraceDisplayOptions();
+                var page = new OpenVSA.Ui.Dialogs.Pages.TracePage(options);
+
+                var captions = new List<string>();
+
+                foreach (object child in page.Children)
+                {
+                    var box = child as CheckBox;
+
+                    if (box != null)
+                    {
+                        captions.Add((string)box.Content);
+                    }
+                }
+
+                Assert.Contains(captions, c => c.StartsWith("Show annotation", StringComparison.Ordinal));
+                Assert.Contains(captions, c => c.StartsWith("Show grid lines", StringComparison.Ordinal));
+            });
+        }
+
+        private static MenuItem Under(MenuItem parent, string name)
+        {
+            foreach (object child in parent.Items)
+            {
+                var entry = child as MenuItem;
+
+                if (entry != null &&
+                    string.Equals(
+                        ShellMenus.NameOf(entry.Header as string), name, StringComparison.Ordinal))
+                {
+                    return entry;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "'" + parent.Header + " > " + name + "' is not in the menu bar.");
         }
 
         private static List<string> Headers(ShellWindow shell)

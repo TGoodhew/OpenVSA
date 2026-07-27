@@ -58,21 +58,49 @@ namespace OpenVSA.Ui.Tests
         }
 
         [Fact]
-        public void MarkersOpensFromTheMarkerMenuAndTheRestFromWindow()
+        public void EachWindowOpensFromTheMenuTheRequirementListsItOn()
         {
-            // REQ-UI-002: "openable from the Window or Marker menu".
+            // REQ-UI-002 says "the Window or Marker menu per REQ-UI-061", and REQ-UI-061's own lists
+            // put the Player window on Acquisition, beside Recording/Playback. The cross-reference
+            // is the authority over the summary, and the Window menu's list is exact - it does not
+            // name Player, so putting it there would fail REQ-UI-061's criterion instead.
             Assert.Equal(
                 ToolWindowMenu.Marker,
                 Ui.ToolWindows.ToolWindows.MenuOf(ToolWindow.Markers));
 
+            Assert.Equal(
+                ToolWindowMenu.Acquisition,
+                Ui.ToolWindows.ToolWindows.MenuOf(ToolWindow.Player));
+
             foreach (ToolWindow window in Ui.ToolWindows.ToolWindows.All)
             {
-                if (window == ToolWindow.Markers)
+                if (window == ToolWindow.Markers || window == ToolWindow.Player)
                 {
                     continue;
                 }
 
                 Assert.Equal(ToolWindowMenu.Window, Ui.ToolWindows.ToolWindows.MenuOf(window));
+            }
+        }
+
+        [Fact]
+        public void EveryWindowIsOnTheMenuTheTablePutsItOn()
+        {
+            // The two halves have to agree: ToolWindows.MenuOf says which menu a window belongs to,
+            // and REQ-UI-061's table is what actually places the item. A window filed under Window
+            // here and listed under Acquisition there would appear once and be looked for twice.
+            foreach (ToolWindow window in Ui.ToolWindows.ToolWindows.All)
+            {
+                string menu = Ui.ToolWindows.ToolWindows.MenuOf(window).ToString();
+                string name = Ui.ToolWindows.ToolWindows.NameOf(window);
+
+                // The Markers and Player windows are listed with "Window" after the name; the six
+                // on the Window menu are listed by name alone.
+                Assert.True(
+                    OpenVSA.Ui.Menus.ShellMenuTable.At(menu + " > " + name) != null ||
+                    OpenVSA.Ui.Menus.ShellMenuTable.At(menu + " > " + name + " Window") != null,
+                    name + " is filed under the " + menu + " menu, and REQ-UI-061's table for that " +
+                    "menu does not list it.");
             }
         }
 

@@ -470,7 +470,7 @@ namespace OpenVSA.Ui.ToolWindows
             new ReadOnlyCollection<string>(new[]
             {
                 "Front-end registry: 2 signal sources discovered.",
-                "No source selected. Choose one under Hardware.",
+                "No source selected. Choose one under Hardware ▸ Instruments….",
             });
 
         /// <summary>The lines an output window is seeded with until a measurement runs.</summary>
