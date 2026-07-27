@@ -116,6 +116,53 @@ namespace OpenVSA.Ui.Layout
         }
 
         /// <summary>
+        /// Redistributes the trace windows evenly — the <em>Resize Traces</em> command
+        /// (<c>REQ-UI-004</c>).
+        /// </summary>
+        /// <param name="traces">The visible traces.</param>
+        /// <param name="width">Document area width in pixels.</param>
+        /// <param name="height">Document area height in pixels.</param>
+        /// <returns>The arrangement now in force, with every cell within a pixel of equal size.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="traces"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// Re-applies the shape in force rather than computing a separate equalisation, because
+        /// <see cref="TraceLayoutEngine.Arrange"/> already tiles evenly — the criterion is met by
+        /// the same code that lays out a preset, not by a second implementation that has to agree
+        /// with it.
+        /// </para>
+        /// <para>
+        /// After a hand arrangement the shape to restore is not obvious, since Custom names none.
+        /// The cell <em>count</em> is what the user built, so that many are tiled: the windows they
+        /// arranged all survive, evenly sized, which is what the command is for.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<TraceSlot> ResizeTraces(
+            IReadOnlyList<char> traces, int width, int height)
+        {
+            if (traces == null)
+            {
+                throw new ArgumentNullException(nameof(traces));
+            }
+
+            TraceLayoutPreset shape = Current;
+
+            if (shape.Kind == TraceLayoutKind.Custom)
+            {
+                int cells = Math.Max(1, _currentSlots.Count);
+                int rows;
+                int columns;
+
+                TraceLayoutEngine.Balance(cells, width, height, out rows, out columns);
+                shape = TraceLayoutPreset.Grid(rows, columns);
+            }
+
+            _currentSlots = TraceLayoutEngine.Arrange(shape, traces, width, height);
+
+            return _currentSlots;
+        }
+
+        /// <summary>
         /// Reverts to the layout before the last change, and makes the current one revertible.
         /// </summary>
         /// <param name="traces">The visible traces.</param>
