@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using OpenVSA.Core;
 using OpenVSA.Core.Threading;
 using OpenVSA.Dsp.Spectrum;
+using OpenVSA.Dsp.Zoom;
 using OpenVSA.Hal;
 
 namespace OpenVSA.Measurement
@@ -166,6 +167,33 @@ namespace OpenVSA.Measurement
         public TraceAverager Averager { get; set; }
 
         /// <summary>
+        /// The zoom downconverter applied to every acquired block, or <c>null</c> for full span
+        /// (<c>REQ-DSP-023</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Set while running, and it takes effect on the next block.</strong> That is the
+        /// whole point of zoom being a downconversion rather than a re-tune: the instrument is not
+        /// touched, nothing is re-armed, and the analysis narrows on samples of the kind already
+        /// arriving. Written through <see cref="Volatile"/> because the pump reads it on its own
+        /// thread and a torn read would be a downconverter half-applied.
+        /// </para>
+        /// <para>
+        /// A block too short for the filter is passed through undownconverted rather than dropped.
+        /// A zoom deeper than the record supports is <c>REQ-REC-004</c>'s business to refuse before
+        /// it gets here; silently producing no frames at all would look like the instrument had
+        /// stopped.
+        /// </para>
+        /// </remarks>
+        public DigitalDownconverter Zoom
+        {
+            get { return Volatile.Read(ref _downconverter); }
+            set { Volatile.Write(ref _downconverter, value); }
+        }
+
+        private DigitalDownconverter _downconverter;
+
+        /// <summary>
         /// Connects, negotiates, configures, arms and starts pumping.
         /// </summary>
         /// <param name="request">What to ask the front end for.</param>
@@ -312,19 +340,43 @@ namespace OpenVSA.Measurement
         /// </remarks>
         private void AnalyseAndPublish(IqBlock block, Stopwatch clock, ref long previousTicks)
         {
-            int record = _recordSamples > 0 ? _recordSamples : block.SampleCount;
+            IqBlock zoomed = null;
 
-            if (_overlap <= 0.0 && record >= block.SampleCount)
+            try
             {
-                Publish(_computer.Compute(block), record, clock, ref previousTicks);
-                return;
-            }
+                // REQ-DSP-023: zoom is a downconversion of the block that was acquired, applied
+                // before anything else looks at it. Ahead of gating and the window because it
+                // changes the sample rate, and every stage after it is sized in samples.
+                DigitalDownconverter downconverter = Volatile.Read(ref _downconverter);
 
-            foreach (IqBlock cut in FrameExtraction.Extract(block, record, _overlap))
-            {
-                using (cut)
+                if (downconverter != null &&
+                    downconverter.OutputCountFor(block.SampleCount) > 0)
                 {
-                    Publish(_computer.Compute(cut), record, clock, ref previousTicks);
+                    zoomed = downconverter.Downconvert(block);
+                    block = zoomed;
+                }
+
+                int record = _recordSamples > 0 ? _recordSamples : block.SampleCount;
+
+                if (_overlap <= 0.0 && record >= block.SampleCount)
+                {
+                    Publish(_computer.Compute(block), record, clock, ref previousTicks);
+                    return;
+                }
+
+                foreach (IqBlock cut in FrameExtraction.Extract(block, record, _overlap))
+                {
+                    using (cut)
+                    {
+                        Publish(_computer.Compute(cut), record, clock, ref previousTicks);
+                    }
+                }
+            }
+            finally
+            {
+                if (zoomed != null)
+                {
+                    zoomed.Dispose();
                 }
             }
         }
