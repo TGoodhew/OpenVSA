@@ -22,9 +22,14 @@
         Menu names follow the modern (PathWave) bar of REQ-UI-060, not the Agilent-era one:
             File | Edit | Hardware | Acquisition | Analysis | Trace | Marker | Utilities | Window | Help
     -->
-    <DockPanel>
+    <!--
+        Named so REQ-NFR-007a's content scaling has something to scale: Ctrl+plus and Ctrl+minus
+        put a transform on the whole shell rather than changing a font size, so everything grows
+        together and nothing is left behind at the old size.
+    -->
+    <DockPanel x:Name="Root">
 
-        <Menu DockPanel.Dock="Top">
+        <Menu x:Name="MainMenu" DockPanel.Dock="Top">
             <!--
                 REQ-STA-001, REQ-STA-002 and REQ-STA-005. Saving names its exclusions in the dialog
                 rather than leaving the user to discover them, and the preset menu is built from the
@@ -65,33 +70,6 @@
             <MenuItem x:Name="AnalysisMenu" Header="Ana_lysis" />
 
             <!--
-                REQ-UI-014's colour configuration, REQ-UI-023's limit colouring and REQ-UI-024's
-                spectrogram maps. The map entries are built in code from the enumeration so the
-                menu cannot list a map that does not exist, or miss one that does.
-            -->
-            <MenuItem Header="_Display">
-                <MenuItem x:Name="PreferencesItem" Header="_Preferences…" Click="OnDisplayPreferences" />
-                <MenuItem x:Name="SpectrogramMapMenu" Header="_Spectrogram colour map" />
-                <Separator />
-                <!--
-                    REQ-UI-011. Both are checkable items over the same TraceDisplayOptions the
-                    Trace tab edits, so neither surface holds the setting and each follows the
-                    other. Show Annotation reclaims the annotation band rather than merely hiding
-                    the text, which is what the requirement's criterion is about.
-                -->
-                <MenuItem x:Name="ShowAnnotationItem" Header="Show _annotation"
-                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
-                <MenuItem x:Name="ShowGridLinesItem" Header="Show _grid lines"
-                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
-                <Separator />
-                <MenuItem x:Name="IndicateLimitFailuresItem" Header="Indicate limit _failures"
-                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
-                <MenuItem x:Name="IndicateMarginItem" Header="Indicate _margin warnings"
-                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
-            </MenuItem>
-
-
-            <!--
                 REQ-UI-005's six layout entries and REQ-UI-004's Resize Traces. The layout items
                 are built in code from TraceLayoutPreset.Menu, so the menu shows the parameterised
                 entries at whatever N and N×M are currently set to rather than a generic label.
@@ -113,6 +91,32 @@
                           Click="OnToggleSelectArea" />
                 <MenuItem x:Name="FullSpanItem" Header="_Full Span" Click="OnFullSpan"
                           IsEnabled="False" />
+                <Separator />
+
+                <!--
+                    REQ-UI-060 has no Display menu - it was demoted, and its layout functions moved
+                    under Window and Trace. These are all about a trace, so this is where they land.
+                    REQ-UI-024's map entries are built in code from the enumeration, so the menu
+                    cannot list a map that does not exist or miss one that does.
+                -->
+                <MenuItem x:Name="SpectrogramMapMenu" Header="_Spectrogram colour map" />
+                <Separator />
+
+                <!--
+                    REQ-UI-011. Both are checkable items over the same TraceDisplayOptions the
+                    Trace tab of Display Preferences edits, so neither surface holds the setting and
+                    each follows the other. Show Annotation reclaims the annotation band rather than
+                    merely hiding the text, which is what the requirement's criterion is about.
+                -->
+                <MenuItem x:Name="ShowAnnotationItem" Header="Show a_nnotation"
+                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
+                <MenuItem x:Name="ShowGridLinesItem" Header="Show _grid lines"
+                          IsCheckable="True" IsChecked="True" Click="OnTraceDisplayItemChanged" />
+                <Separator />
+                <MenuItem x:Name="IndicateLimitFailuresItem" Header="Indicate limit _failures"
+                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
+                <MenuItem x:Name="IndicateMarginItem" Header="Indicate _margin warnings"
+                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
             </MenuItem>
             <!--
                 REQ-MKR-001 and REQ-MKR-005. Placing a marker is a click on the trace; this menu is
@@ -140,7 +144,14 @@
                 -->
                 <MenuItem x:Name="MarkerWindowMenu" />
             </MenuItem>
-            <MenuItem Header="_Utilities" />
+            <!--
+                REQ-UI-061 puts Display Preferences under Utilities. It was on a Display menu until
+                REQ-UI-060 removed that menu from the bar; the dialog did not move, only its way in.
+            -->
+            <MenuItem Header="_Utilities">
+                <MenuItem x:Name="PreferencesItem" Header="Display _Preferences…"
+                          Click="OnDisplayPreferences" />
+            </MenuItem>
             <MenuItem x:Name="WindowMenu" Header="_Window" />
             <MenuItem Header="_Help" />
         </Menu>

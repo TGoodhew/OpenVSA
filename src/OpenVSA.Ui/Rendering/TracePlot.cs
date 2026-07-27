@@ -678,6 +678,64 @@ namespace OpenVSA.Ui.Rendering
             }
         }
 
+        /// <summary>
+        /// Scales the vertical axis to the trace on screen (<c>REQ-UI-065</c>'s Ctrl+W).
+        /// </summary>
+        /// <returns>Whether there was a trace to scale to.</returns>
+        /// <remarks>
+        /// <para>
+        /// For log magnitude this moves the top of the graticule to the next whole division above
+        /// the peak, which keeps the per-division reading the user chose and puts the signal just
+        /// under the top line — what an analyser's auto-scale does. The other formats are ranged
+        /// from their data on every frame already, so for those this is a re-range now rather than
+        /// at the next frame.
+        /// </para>
+        /// <para>
+        /// Ranged against the full-resolution trace, not the decimated envelope: a peak that fell
+        /// between two columns would otherwise set the axis slightly low and clip the very thing
+        /// the user pressed the key to see.
+        /// </para>
+        /// </remarks>
+        public bool AutoScale()
+        {
+            ThreadAffinity.AssertOnUiThread("Auto-scaling");
+
+            if (_snapshot == null)
+            {
+                return false;
+            }
+
+            if (CurrentFormat != TraceFormat.LogMagnitude)
+            {
+                RebuildAxis(_snapshot);
+                Redraw(_snapshot);
+                return true;
+            }
+
+            double peak = double.NegativeInfinity;
+
+            foreach (float level in _snapshot.Spectrum.LevelsDbm)
+            {
+                if (!float.IsNaN(level) && level > peak)
+                {
+                    peak = level;
+                }
+            }
+
+            if (double.IsInfinity(peak))
+            {
+                return false;
+            }
+
+            _topDbm = Math.Ceiling(peak / _decibelsPerDivision) * _decibelsPerDivision;
+
+            RefreshScaleText();
+            BuildLayout();
+            Redraw(_snapshot);
+
+            return true;
+        }
+
         /// <summary>Refreshes the annotation when there is a frame behind it to describe.</summary>
         private void UpdateAnnotationIfPossible()
         {
