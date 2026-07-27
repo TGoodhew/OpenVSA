@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
@@ -231,11 +233,23 @@ namespace OpenVSA.Ui
 
             BuildAnalysisMenu();
 
+            // REQ-UI-065. Installed on the window so the gestures reach from anywhere in it, with
+            // the unmodified ones routed through a focus check - see ShellShortcuts.
+            ShellShortcuts.Install(this, RunShortcut, () => ModifierSource());
+
             Closed += (sender, e) => ShutDown();
         }
 
         /// <summary>The trace windows and their arrangement (<c>REQ-UI-005</c>).</summary>
         public TraceDocumentArea DocumentArea => Documents;
+
+        /// <summary>The menu bar of <c>REQ-UI-060</c>.</summary>
+        /// <remarks>
+        /// Exposed so a test can walk the real bar rather than a description of it. The criterion is
+        /// about what the application shows, and a list asserted against a second list proves only
+        /// that someone wrote the same thing twice.
+        /// </remarks>
+        public Menu MenuBar => MainMenu;
 
         /// <summary>
         /// Hands the shell's plot to the document area as trace A and builds the layout menu.
@@ -702,10 +716,21 @@ namespace OpenVSA.Ui
             return new ToolWindowLayout();
         }
 
+        /// <summary>
+        /// Whether this shell writes its display preferences when they change.
+        /// </summary>
+        /// <remarks>
+        /// True in the application. A test that builds a shell and closes it would otherwise
+        /// rewrite the real user's tool-window layout, colours and dialog modes in
+        /// <c>%APPDATA%</c> — which is a suite with a side effect on the machine it runs on, and
+        /// one that is invisible until somebody notices two extra panes open next morning.
+        /// </remarks>
+        public bool PersistPreferences { get; set; } = true;
+
         /// <summary>Writes the tool-window layout, so it survives a restart (<c>REQ-UI-002</c>).</summary>
         private void SaveToolWindowLayout()
         {
-            if (_toolWindows == null)
+            if (_toolWindows == null || !PersistPreferences)
             {
                 return;
             }
@@ -900,6 +925,309 @@ namespace OpenVSA.Ui
 
         /// <summary>Coalesces analysis changes into one re-plan.</summary>
         private readonly DispatcherTimer _analysisSettle;
+
+        /// <summary>How far the shell content is scaled (<c>REQ-NFR-007a</c>).</summary>
+        private double _contentScale = 1.0;
+
+        /// <summary>Smallest content scale, below which the annotation stops being legible.</summary>
+        private const double MinimumContentScale = 0.5;
+
+        /// <summary>Largest content scale, above which the trace window has no room left.</summary>
+        private const double MaximumContentScale = 3.0;
+
+        /// <summary>How much one press of the scaling keys moves the content scale.</summary>
+        private const double ContentScaleStep = 0.1;
+
+        /// <summary>The last shortcut this shell ran, for a test to read back.</summary>
+        public string LastShortcut { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// Where the shortcut handler reads the modifier keys from.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Keyboard.Modifiers"/> in the application. Per shell rather than static, so two
+        /// windows open at once cannot share it - see <see cref="ShellShortcuts.Install"/> for why
+        /// there is a seam here at all.
+        /// </remarks>
+        public Func<ModifierKeys> ModifierSource { get; set; } = () => Keyboard.Modifiers;
+
+        /// <summary>How far the shell content is scaled (<c>REQ-NFR-007a</c>).</summary>
+        public double ContentScale => _contentScale;
+
+        /// <summary>
+        /// Runs a keyboard shortcut (<c>REQ-UI-065</c>).
+        /// </summary>
+        /// <param name="shortcut">The binding whose gesture was pressed.</param>
+        /// <remarks>
+        /// One switch over the binding table rather than a handler per gesture, so a binding
+        /// declared in <see cref="ShellShortcuts"/> and not handled here fails loudly at the point
+        /// of use instead of doing nothing quietly.
+        /// </remarks>
+        private void RunShortcut(ShellShortcut shortcut)
+        {
+            if (ReferenceEquals(shortcut, ShellShortcuts.PauseOrResume))
+            {
+                PauseOrResume();
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.Restart))
+            {
+                RestartMeasurement();
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.NewTrace))
+            {
+                LastShortcut = shortcut.Action;
+                OnAddTrace(this, new RoutedEventArgs());
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.AutoScale))
+            {
+                AutoScaleActiveTrace();
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.MarkerPosition))
+            {
+                PromptForMarkerPosition();
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.PlayerWindow))
+            {
+                ShowToolWindow(ToolWindow.Player, shortcut);
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.OutputWindow))
+            {
+                ShowToolWindow(ToolWindow.Output, shortcut);
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.SaveBitmap))
+            {
+                SaveActiveTraceBitmap();
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.ContextHelp) ||
+                     ReferenceEquals(shortcut, ShellShortcuts.DynamicHelp))
+            {
+                ShowHelp(shortcut);
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.ScaleUp))
+            {
+                ScaleContent(ContentScaleStep, shortcut);
+            }
+            else if (ReferenceEquals(shortcut, ShellShortcuts.ScaleDown))
+            {
+                ScaleContent(-ContentScaleStep, shortcut);
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    "REQ-UI-065 declares the binding " + shortcut +
+                    " and this shell has no action for it.");
+            }
+        }
+
+        /// <summary>Pauses a running measurement, or resumes a paused one.</summary>
+        private async void PauseOrResume()
+        {
+            LastShortcut = ShellShortcuts.PauseOrResume.Action;
+
+            if (_engine != null)
+            {
+                await StopAcquisitionAsync().ConfigureAwait(true);
+                StatusText.Content = "Paused";
+                return;
+            }
+
+            if (_activeFrontEnd != null)
+            {
+                await StartMeasurementAsync().ConfigureAwait(true);
+            }
+        }
+
+        /// <summary>
+        /// Restarts the measurement, discarding what has been accumulated.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-UI-063</c> Restart, reached from the keyboard: all current measurement data
+        /// including averaging is discarded. Starting a fresh engine is what discards it, because
+        /// the averaging lives in the computer the engine owns.
+        /// </remarks>
+        private async void RestartMeasurement()
+        {
+            LastShortcut = ShellShortcuts.Restart.Action;
+
+            if (_activeFrontEnd != null)
+            {
+                await StartMeasurementAsync().ConfigureAwait(true);
+            }
+        }
+
+        /// <summary>Scales the active trace vertical axis to the trace on it.</summary>
+        private void AutoScaleActiveTrace()
+        {
+            LastShortcut = ShellShortcuts.AutoScale.Action;
+
+            TracePlot plot = Documents.ActivePlot;
+
+            StatusText.Content = plot != null && plot.AutoScale()
+                ? "Auto-scaled trace " + Documents.ActiveTrace
+                : "Auto-scale needs a trace to scale to.";
+        }
+
+        /// <summary>
+        /// Asks for the selected marker position (<c>REQ-UI-065</c> Ctrl+K).
+        /// </summary>
+        /// <remarks>
+        /// Modeless and live, as every setting dialog is (<c>REQ-UI-070</c>): the marker moves as
+        /// the frequency is typed, and the trace follows it.
+        /// </remarks>
+        private void PromptForMarkerPosition()
+        {
+            LastShortcut = ShellShortcuts.MarkerPosition.Action;
+
+            Marker selected = _markers.Selected;
+
+            if (selected == null)
+            {
+                StatusText.Content = "No marker is selected to position.";
+                return;
+            }
+
+            var position = NumericHotSpotValue.Frequency(selected.XHz, 1e3);
+            position.ProportionalStep = 0.001;
+
+            position.Changed += (sender, e) =>
+            {
+                _markerReadouts.MoveTo(selected, position.Value);
+                RefreshMarkers();
+            };
+
+            var dialog = new ValueEntryDialog(
+                "Marker " + selected.Number + " position", position)
+            {
+                Owner = this,
+            };
+
+            dialog.Show();
+            dialog.Activate();
+        }
+
+        /// <summary>Opens a tool window and brings it to the front.</summary>
+        private void ShowToolWindow(ToolWindow window, ShellShortcut shortcut)
+        {
+            LastShortcut = shortcut.Action;
+
+            if (_toolWindows != null)
+            {
+                _toolWindows.SetOpen(window, true);
+                StatusText.Content =
+                    Ui.ToolWindows.ToolWindows.NameOf(window) + " window shown";
+            }
+        }
+
+        /// <summary>
+        /// Writes the active trace to a PNG (<c>REQ-UI-065</c> Ctrl+B).
+        /// </summary>
+        /// <remarks>
+        /// The rendered control, not the rasterised surface alone: the annotation is WPF elements
+        /// over the bitmap, and a saved image without the scales and the centre frequency would be
+        /// a picture of a trace rather than a record of a measurement.
+        /// </remarks>
+        private void SaveActiveTraceBitmap()
+        {
+            LastShortcut = ShellShortcuts.SaveBitmap.Action;
+
+            TracePlot plot = Documents.ActivePlot;
+
+            if (plot == null || plot.ActualWidth < 1.0 || plot.ActualHeight < 1.0)
+            {
+                StatusText.Content = "There is no trace to save.";
+                return;
+            }
+
+            var picker = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter = "PNG image (*.png)|*.png",
+                FileName = "OpenVSA trace " + Documents.ActiveTrace + ".png",
+                Title = "Save trace bitmap",
+            };
+
+            if (picker.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            try
+            {
+                DpiScale dpi = VisualTreeHelper.GetDpi(plot);
+
+                var bitmap = new RenderTargetBitmap(
+                    (int)Math.Round(plot.ActualWidth * dpi.DpiScaleX),
+                    (int)Math.Round(plot.ActualHeight * dpi.DpiScaleY),
+                    96.0 * dpi.DpiScaleX,
+                    96.0 * dpi.DpiScaleY,
+                    PixelFormats.Pbgra32);
+
+                bitmap.Render(plot);
+
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+
+                using (FileStream file = File.Create(picker.FileName))
+                {
+                    encoder.Save(file);
+                }
+
+                StatusText.Content = "Saved " + Path.GetFileName(picker.FileName);
+            }
+            catch (Exception failure)
+            {
+                // Reported rather than thrown at the dispatcher: a full disk or a read-only folder
+                // must not take the measurement down with it.
+                StatusText.Content = "Could not save the bitmap: " + failure.Message;
+            }
+        }
+
+        /// <summary>
+        /// Answers the help keys (<c>REQ-UI-065</c>).
+        /// </summary>
+        /// <remarks>
+        /// The bindings are reachable and they do something visible. What they cannot do yet is
+        /// show help: this build has no help content, and saying so in the status bar and the event
+        /// log is the honest answer, because a key that appears to do nothing is
+        /// indistinguishable from a binding that was never wired up.
+        /// </remarks>
+        private void ShowHelp(ShellShortcut shortcut)
+        {
+            LastShortcut = shortcut.Action;
+
+            string message = shortcut.Action + " is bound to " + shortcut.Gesture +
+                ", but this build carries no help content yet.";
+
+            StatusText.Content = message;
+            _eventLog.Append(message);
+        }
+
+        /// <summary>
+        /// Scales the shell content (<c>REQ-NFR-007a</c>, <c>REQ-UI-065</c>).
+        /// </summary>
+        /// <param name="by">How much to change the scale by.</param>
+        /// <param name="shortcut">The binding that asked.</param>
+        /// <remarks>
+        /// A layout transform on the whole shell rather than a font size, so the trace surface, the
+        /// annotation and the chrome grow together. The bounds are there because below a half
+        /// nothing is legible and above three the trace window has no room left.
+        /// </remarks>
+        private void ScaleContent(double by, ShellShortcut shortcut)
+        {
+            LastShortcut = shortcut.Action;
+
+            double wanted = Math.Round(_contentScale + by, 2);
+
+            _contentScale = wanted < MinimumContentScale
+                ? MinimumContentScale
+                : (wanted > MaximumContentScale ? MaximumContentScale : wanted);
+
+            Root.LayoutTransform = Math.Abs(_contentScale - 1.0) < 1e-9
+                ? null
+                : new ScaleTransform(_contentScale, _contentScale);
+
+            StatusText.Content = "Content scale " +
+                (_contentScale * 100.0).ToString("0", CultureInfo.CurrentCulture) + " %";
+        }
 
         /// <summary>
         /// Builds the Analysis menu from the dialog's own tab list (<c>REQ-UI-072</c>).
