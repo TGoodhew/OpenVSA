@@ -63,7 +63,9 @@ namespace OpenVSA.Ui.Tests
         public void TheDataEntryDialogSetsTheValueFromItsField()
         {
             // The dialog is the slow path of REQ-UI-042, for a value being read off a note rather
-            // than nudged - so it takes the value and its units in one go.
+            // than nudged - so it takes the value and its units in one go. It applies as it is
+            // typed rather than on an OK, which is REQ-UI-070: a second Apply afterwards therefore
+            // reports no change, because the change has already been made.
             OnStaThread(() =>
             {
                 var value = NumericHotSpotValue.Frequency(1e9, 1e3);
@@ -73,7 +75,8 @@ namespace OpenVSA.Ui.Tests
 
                 dialog.EntryText = "2.4 GHz";
 
-                Assert.True(dialog.Apply());
+                Assert.Equal(2.4e9, value.Value, 3);
+                Assert.False(dialog.Apply());
                 Assert.Equal(2.4e9, value.Value, 3);
             });
         }
@@ -101,7 +104,7 @@ namespace OpenVSA.Ui.Tests
 
                 // A hot spot with nothing behind it has nothing to prompt for, and says so rather
                 // than putting an empty dialog on screen.
-                Assert.False(ValueEntryDialog.Prompt(null, new HotSpot()));
+                Assert.Null(ValueEntryDialog.Prompt(null, new HotSpot()));
             });
         }
 

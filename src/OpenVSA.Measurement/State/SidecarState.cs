@@ -103,6 +103,72 @@ namespace OpenVSA.Measurement.State
     }
 
     /// <summary>
+    /// One dialog's remembered mode (<c>REQ-UI-071</c>, Persist Mode).
+    /// </summary>
+    /// <remarks>
+    /// Keyed by the dialog's own name — <c>Display Preferences</c> — for the reason
+    /// <see cref="ToolWindowPlacement"/> is: the file says what it means when read, and adding a
+    /// dialog cannot silently hand it another dialog's remembered mode.
+    /// </remarks>
+    public sealed class DialogModeState
+    {
+        /// <summary>The dialog's name.</summary>
+        public string Dialog { get; set; } = string.Empty;
+
+        /// <summary>The mode it was closed in, as <c>REQ-UI-071</c> names it.</summary>
+        public string Mode { get; set; } = "Tabs on top";
+    }
+
+    /// <summary>
+    /// The dialog framework's global options (<c>REQ-UI-071</c>).
+    /// </summary>
+    /// <remarks>
+    /// The five the requirement tabulates, and nothing else. They are display preferences rather
+    /// than part of a setup for the reason the whole sidecar exists: whether your dialogs put their
+    /// tabs on the left is about you, not about the measurement.
+    /// </remarks>
+    public sealed class DialogFrameworkState
+    {
+        /// <summary>How dialogs lay their pages out, as <c>REQ-UI-071</c> names the modes.</summary>
+        public string DefaultMode { get; set; } = "Tabs on top";
+
+        /// <summary>Whether dialogs size to the largest page they contain.</summary>
+        public bool FixedSize { get; set; } = true;
+
+        /// <summary>Whether dialogs stay above the main window.</summary>
+        public bool KeepOnTop { get; set; }
+
+        /// <summary>Whether a dialog reopens in the mode it was closed with.</summary>
+        public bool PersistMode { get; set; } = true;
+
+        /// <summary>Whether "Tabs on left" starts with its tab strip collapsed.</summary>
+        public bool TabsCollapsedByDefault { get; set; }
+
+        /// <summary>The mode each dialog was last closed in, when Persist Mode is on.</summary>
+        public List<DialogModeState> Modes { get; set; } = new List<DialogModeState>();
+    }
+
+    /// <summary>
+    /// One font slot's typeface and size (<c>REQ-UI-080</c>).
+    /// </summary>
+    /// <remarks>
+    /// Named by the slot — <c>Tabular</c> — not by what currently draws from it, because the slots
+    /// are the stable thing: the symbol table and the error summary both take Tabular, and a fourth
+    /// surface may take it tomorrow without the file changing meaning.
+    /// </remarks>
+    public sealed class FontSlotState
+    {
+        /// <summary>The slot's name: <c>Annotation</c>, <c>Marker</c> or <c>Tabular</c>.</summary>
+        public string Slot { get; set; } = string.Empty;
+
+        /// <summary>The typeface asked for, which may not be installed on another machine.</summary>
+        public string Family { get; set; } = string.Empty;
+
+        /// <summary>The size, in points.</summary>
+        public double SizePoints { get; set; } = 9.0;
+    }
+
+    /// <summary>
     /// Display preferences, saved apart from the state (<c>REQ-STA-002</c>).
     /// </summary>
     public sealed class DisplayPreferencesState
@@ -165,6 +231,34 @@ namespace OpenVSA.Measurement.State
         /// The colours of a user-defined spectrogram map, index 0 the minimum (<c>REQ-UI-024</c>).
         /// </summary>
         public List<uint> SpectrogramUserMap { get; set; } = new List<uint>();
+
+        /// <summary>
+        /// The dialog framework's global options (<c>REQ-UI-071</c>).
+        /// </summary>
+        /// <remarks>
+        /// Persist Mode asks for a mode to survive "across restarts, not merely within a session",
+        /// and this file is what outlives a session.
+        /// </remarks>
+        public DialogFrameworkState Dialogs { get; set; } = new DialogFrameworkState();
+
+        /// <summary>
+        /// The three font slots of <c>REQ-UI-080</c>, where they differ from their defaults.
+        /// </summary>
+        /// <remarks>
+        /// Only the changes, as <see cref="Colours"/> holds only the changed colours: a slot absent
+        /// from this list follows the default, so a file written today does not freeze today's
+        /// recommended typeface into a display for ever.
+        /// </remarks>
+        public List<FontSlotState> Fonts { get; set; } = new List<FontSlotState>();
+
+        /// <summary>Whether printing forces a white background (<c>REQ-UI-015</c>).</summary>
+        public bool ForceWhiteBackgroundOnPrint { get; set; } = true;
+
+        /// <summary>Whether a failing limit recolours the trace (<c>REQ-UI-023</c>).</summary>
+        public bool IndicateLimitFailures { get; set; } = true;
+
+        /// <summary>Whether a trace within the margin is recoloured (<c>REQ-UI-023</c>).</summary>
+        public bool IndicateMarginWarnings { get; set; } = true;
     }
 
     /// <summary>

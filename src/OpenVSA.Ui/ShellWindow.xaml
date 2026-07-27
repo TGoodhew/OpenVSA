@@ -47,7 +47,7 @@
                     misses.
                 -->
                 <MenuItem x:Name="ForceWhiteBackgroundItem" Header="Force _white background"
-                          IsCheckable="True" IsChecked="True" />
+                          IsCheckable="True" IsChecked="True" Click="OnLimitIndicationChanged" />
                 <MenuItem x:Name="PrintTraceItem" Header="_Print trace…" Click="OnPrintTrace" />
             </MenuItem>
             <MenuItem Header="_Edit" />
@@ -64,7 +64,7 @@
                 menu cannot list a map that does not exist, or miss one that does.
             -->
             <MenuItem Header="_Display">
-                <MenuItem x:Name="ColoursItem" Header="_Colours…" Click="OnColours" />
+                <MenuItem x:Name="PreferencesItem" Header="_Preferences…" Click="OnDisplayPreferences" />
                 <MenuItem x:Name="SpectrogramMapMenu" Header="_Spectrogram colour map" />
                 <Separator />
                 <MenuItem x:Name="IndicateLimitFailuresItem" Header="Indicate limit _failures"
