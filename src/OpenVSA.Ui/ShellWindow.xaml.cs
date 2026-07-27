@@ -255,6 +255,8 @@ namespace OpenVSA.Ui
             ColourTrace(first, 'A');
             first.ApplyDisplayOptions(_traceDisplay);
 
+            UpdateMarshalFormats();
+
             Documents.LayoutChanged += (sender, preset) =>
                 StatusText.Content = "Layout: " + preset.Name;
 
@@ -307,11 +309,14 @@ namespace OpenVSA.Ui
                     // acquisition would be four identical pictures; REQ-TRC-001's separation of
                     // data from format is what makes them worth having open at once.
                     plot.SetFormat(NextFormat());
+                    UpdateMarshalFormats();
 
                     // The marshal renders to the width of whichever plot asked, so a new plot needs
                     // the current column count before it can draw anything.
                     plot.GraticuleColumnsChanged +=
                         (s, args) => _marshal.Columns = Math.Max(_marshal.Columns, plot.GraticuleColumns);
+
+                    plot.ParameterChanged += (s, args) => UpdateMarshalFormats();
 
                     if (_frame != null)
                     {
@@ -338,6 +343,7 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            UpdateMarshalFormats();
             Documents.ApplyLayout(TraceLayoutPreset.TileVisible());
         }
 
@@ -2477,8 +2483,44 @@ namespace OpenVSA.Ui
         /// cannot disagree about what the measurement is set to — which is the failure mode of
         /// letting the plot talk to the planner directly.
         /// </remarks>
+        /// <summary>
+        /// Tells the render marshal which formats are on screen (<c>REQ-TRC-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// One envelope per distinct format, built on the pump thread. Four windows showing four
+        /// formats of one acquisition is what <c>REQ-TRC-001</c> is for, and the marshal can only
+        /// build the four if it is told which four — before this, it built one from the log
+        /// magnitude and every window drew that, whatever its label said.
+        /// </para>
+        /// <para>
+        /// Called whenever a trace opens, closes or changes format. Distinct formats, not distinct
+        /// windows: eight windows showing two formats cost two decimations.
+        /// </para>
+        /// </remarks>
+        private void UpdateMarshalFormats()
+        {
+            var formats = new List<TraceFormat>();
+
+            foreach (char trace in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(trace);
+
+                if (plot != null && !formats.Contains(plot.CurrentFormat))
+                {
+                    formats.Add(plot.CurrentFormat);
+                }
+            }
+
+            _marshal.Formats = formats;
+        }
+
         private void OnPlotParameterChanged(object sender, HotSpot spot)
         {
+            // A format hot spot changes what has to be decimated, so the marshal is told before
+            // anything else is done with the change.
+            UpdateMarshalFormats();
+
             if (ReferenceEquals(spot, Plot.CenterFrequencyHotSpot))
             {
                 CentreBox.Text = EngineeringText.Frequency(NumberBehind(spot), 6);

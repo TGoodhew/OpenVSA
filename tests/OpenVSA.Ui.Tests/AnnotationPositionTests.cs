@@ -403,7 +403,16 @@ namespace OpenVSA.Ui.Tests
             SpectrumFrame frame = SpectrumFrame.FromLevels(
                 levels, 1e9 - 5e6, 12500.0, WindowType.FlatTop, 3.8194);
 
-            var marshal = new RenderMarshal { Columns = plot.GraticuleColumns };
+            // The marshal builds one envelope per format on screen, so it has to be told which one
+            // this plot is showing - a snapshot without the plot's format is one the plot will
+            // rightly refuse to draw.
+            var marshal = new RenderMarshal
+            {
+                Columns = plot.GraticuleColumns,
+                Formats = new[] { plot.CurrentFormat },
+                FormatOptions = plot.FormatOptions,
+            };
+
             marshal.Offer(frame);
 
             return marshal.TakeForRender();

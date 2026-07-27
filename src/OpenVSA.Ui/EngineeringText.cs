@@ -166,6 +166,96 @@ namespace OpenVSA.Ui
             return value.ToString(format, CultureInfo.CurrentCulture);
         }
 
+        /// <summary>
+        /// Formats a value in engineering notation with a unit.
+        /// </summary>
+        /// <param name="value">The value, in the unit's own base.</param>
+        /// <param name="unit">The unit, such as <c>V</c> or <c>s</c>.</param>
+        /// <param name="decimals">Significant decimals to show.</param>
+        /// <returns>Text such as <c>1.234 mV</c>.</returns>
+        /// <remarks>
+        /// The general form of <see cref="Frequency"/> and <see cref="Time"/>, for the trace
+        /// formats whose units are neither hertz nor seconds. Zero has no prefix — <c>0 mV</c>
+        /// would be an odd thing to read — and a non-finite value goes through
+        /// <see cref="Readout"/> so it renders as <c>REQ-UI-032</c> requires.
+        /// </remarks>
+        public static string Quantity(double value, string unit, int decimals = 3)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                return Readout(value) + " " + unit;
+            }
+
+            string format = "0." + new string('#', Math.Max(0, decimals));
+            double magnitude = Math.Abs(value);
+
+            if (magnitude == 0.0)
+            {
+                return "0 " + unit;
+            }
+
+            foreach (Prefix prefix in Prefixes)
+            {
+                if (magnitude >= prefix.Scale)
+                {
+                    return (value / prefix.Scale).ToString(format, CultureInfo.CurrentCulture) +
+                        " " + prefix.Symbol + unit;
+                }
+            }
+
+            // Below the smallest prefix, exponential rather than a rounded zero. A trace that is
+            // numerically zero - the imaginary part of a real signal, say - produces values around
+            // 1e-17, and printing those as "0 V" states something false about a number that is not
+            // zero. "1.00E-17 V" says what it is: nothing, to seventeen digits.
+            return value.ToString("0.00E+00", CultureInfo.CurrentCulture) + " " + unit;
+        }
+
+        /// <summary>
+        /// Parses a value written in engineering notation with a unit.
+        /// </summary>
+        /// <param name="text">The text, such as <c>1.5 mV</c>.</param>
+        /// <param name="unit">The unit to accept, which may be omitted in the text.</param>
+        /// <param name="value">The value, in the unit's own base.</param>
+        /// <returns>Whether the text was understood.</returns>
+        public static bool TryParse(string text, string unit, out double value) =>
+            TryParseQuantity(text, unit, out value);
+
+        /// <summary>An SI prefix and what it multiplies by.</summary>
+        private struct Prefix
+        {
+            internal Prefix(string symbol, double scale)
+            {
+                Symbol = symbol;
+                Scale = scale;
+            }
+
+            internal string Symbol { get; }
+
+            internal double Scale { get; }
+        }
+
+        /// <summary>
+        /// The prefixes, largest first.
+        /// </summary>
+        /// <remarks>
+        /// <c>u</c> rather than <c>µ</c>, as <see cref="Time"/> writes it: the Greek letter does not
+        /// survive every console, every log file and every font a user may have chosen, and a
+        /// micro-volt reading that renders as <c>?V</c> is worse than one that renders as <c>uV</c>.
+        /// </remarks>
+        private static readonly Prefix[] Prefixes =
+        {
+            new Prefix("G", 1e9),
+            new Prefix("M", 1e6),
+            new Prefix("k", 1e3),
+            new Prefix(string.Empty, 1.0),
+            new Prefix("m", 1e-3),
+            new Prefix("u", 1e-6),
+            new Prefix("n", 1e-9),
+            new Prefix("p", 1e-12),
+            new Prefix("f", 1e-15),
+            new Prefix("a", 1e-18),
+        };
+
         private static bool TryParseQuantity(string text, string unit, out double value)
         {
             value = 0.0;

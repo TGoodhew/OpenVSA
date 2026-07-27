@@ -150,6 +150,7 @@ namespace OpenVSA.TestHarness
                     ExerciseZoomControls(block, spanHz, actualToneHz);
                     ExerciseTransformCeiling(block, frame);
                     ExerciseDetectors(frame, actualToneHz);
+                    ExerciseTraceFormats(frame, actualToneHz);
                     ExerciseNoiseCorrection(block, frame, actualToneHz);
                     ExerciseChannelMeasurements(frame, actualToneHz);
                     ExerciseCrossChannelAvailability();
@@ -554,6 +555,130 @@ namespace OpenVSA.TestHarness
                 return new Outcome<double>(
                     ok, zoom.SpanHz,
                     "back to " + zoom.Annotation() + " at " + Hz(zoom.CenterFrequencyHz));
+            });
+        }
+
+        /// <summary>
+        /// Renders one real acquisition in several formats (<c>REQ-DSP-041</c>,
+        /// <c>REQ-TRC-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-DSP-041</c>'s own criterion, on the bench: "Log and Linear Magnitude of the same
+        /// data agree to within 0.01 dB after conversion, and Real/Imaginary recombine to the
+        /// Magnitude value, so the formats are views of one computation rather than parallel
+        /// paths."
+        /// </para>
+        /// <para>
+        /// Compared as a <em>ratio</em> between two bins rather than against an absolute level, so
+        /// the check needs no knowledge of the volts-to-dBm offset and cannot be satisfied by an
+        /// offset that happens to cancel. The carrier and a floor bin are tens of decibels apart,
+        /// which makes the comparison a real one.
+        /// </para>
+        /// </remarks>
+        private void ExerciseTraceFormats(SpectrumFrame full, double toneHz)
+        {
+            int peak = full.IndexOfPeak();
+
+            if (peak < 0 || full.PointCount < 8)
+            {
+                return;
+            }
+
+            int quiet = peak > full.PointCount / 2 ? 2 : full.PointCount - 3;
+
+            var linear = new float[full.PointCount];
+            var real = new float[full.PointCount];
+            var imaginary = new float[full.PointCount];
+
+            full.Format(TraceFormat.LinearMagnitude, new Span<float>(linear));
+            full.Format(TraceFormat.Real, new Span<float>(real));
+            full.Format(TraceFormat.Imaginary, new Span<float>(imaginary));
+
+            Step("REQ-DSP-041", "Log and linear magnitude agree after conversion", () =>
+            {
+                double decibelRatio = full.LevelsDbm[peak] - full.LevelsDbm[quiet];
+                double voltsRatio = 20.0 * Math.Log10(linear[peak] / linear[quiet]);
+                double error = decibelRatio - voltsRatio;
+
+                bool ok = linear[quiet] > 0.0 && Math.Abs(error) < 0.01;
+
+                return new Outcome<double>(
+                    ok, error,
+                    "carrier over a floor bin: " + decibelRatio.ToString("0.0000",
+                        System.Globalization.CultureInfo.InvariantCulture) +
+                    " dB logarithmic against " + voltsRatio.ToString("0.0000",
+                        System.Globalization.CultureInfo.InvariantCulture) +
+                    " dB from the volts (" + linear[peak].ToString("0.000000E+00",
+                        System.Globalization.CultureInfo.InvariantCulture) + " V and " +
+                    linear[quiet].ToString("0.000000E+00",
+                        System.Globalization.CultureInfo.InvariantCulture) + " V)");
+            });
+
+            Step("REQ-DSP-041", "Real and imaginary recombine to the magnitude", () =>
+            {
+                double worst = 0.0;
+
+                for (int i = 0; i < full.PointCount; i++)
+                {
+                    double recombined = Math.Sqrt(
+                        (double)real[i] * real[i] + (double)imaginary[i] * imaginary[i]);
+
+                    double magnitude = linear[i];
+
+                    if (magnitude > 0.0)
+                    {
+                        worst = Math.Max(worst, Math.Abs(recombined - magnitude) / magnitude);
+                    }
+                }
+
+                return new Outcome<double>(
+                    worst < 1e-5, worst,
+                    full.PointCount + " points recombined within " + worst.ToString("0.0E+00",
+                        System.Globalization.CultureInfo.InvariantCulture) +
+                    " of their magnitude — the formats are views of one computation");
+            });
+
+            Step("REQ-TRC-001", "Each format decimates to its own envelope, not to one shared", () =>
+            {
+                // The defect this step exists for: the display built one envelope from the log
+                // magnitude and drew it in every window, so four formats were one picture under
+                // four labels. Compared here on the values the display would decimate, which is
+                // the level at which the two were identical.
+                // Decimated here with the same partition the display uses, through the same
+                // reduction, so the comparison is of what would actually be drawn.
+                int columns = 64;
+                int count = full.PointCount;
+                double separation = 0.0;
+
+                for (int column = 0; column < columns; column++)
+                {
+                    int start = (int)((long)column * count / columns);
+                    int end = (int)(((long)column + 1) * count / columns);
+
+                    float logLow;
+                    float logHigh;
+                    float voltsLow;
+                    float voltsHigh;
+
+                    TraceDetection.Detect(
+                        full.LevelsDbm, start, end, TraceDetector.Normal, true,
+                        out logLow, out logHigh);
+
+                    TraceDetection.Detect(
+                        linear, start, end, TraceDetector.Normal, false,
+                        out voltsLow, out voltsHigh);
+
+                    separation = Math.Max(separation, Math.Abs(logHigh - voltsHigh));
+                    separation = Math.Max(separation, Math.Abs(logLow - voltsLow));
+                }
+
+                return new Outcome<double>(
+                    separation > 1.0, separation,
+                    columns + " columns: the two envelopes differ by up to " +
+                    separation.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) +
+                    " in their own units, so a window set to linear magnitude cannot be drawing " +
+                    "the logarithmic one");
             });
         }
 

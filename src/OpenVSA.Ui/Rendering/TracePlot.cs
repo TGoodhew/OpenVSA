@@ -88,6 +88,7 @@ namespace OpenVSA.Ui.Rendering
         private int _xReferencePercent = ReferencePosition.DefaultXPercent;
         private bool _showAnnotation = true;
         private bool _showGridLines = true;
+        private TraceAxis _axis;
         private Size _builtFor = Size.Empty;
         private bool _suppressParameterEvents;
         private LimitTest _limitTest;
@@ -273,6 +274,17 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>Level at the top of the graticule, in dBm. Follows the reference level.</summary>
         public double TopDbm => _topDbm;
+
+        /// <summary>
+        /// The axis the current format needs (<c>REQ-DSP-041</c>, <c>REQ-TRC-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// Log magnitude keeps the reference-driven decibel axis the user set; every other format
+        /// is a different quantity in a different unit and gets its own. Drawing volts on a decibel
+        /// axis puts the whole trace in the bottom pixel row, which reads as no signal rather than
+        /// as the wrong axis.
+        /// </remarks>
+        public TraceAxis Axis => _axis;
 
         /// <summary>Level at the bottom of the graticule, in dBm.</summary>
         public double BottomDbm => _topDbm - FullScaleDb;
@@ -566,6 +578,7 @@ namespace OpenVSA.Ui.Rendering
             // signed and want zero in the middle, and leaving a spectrum's 100 % in force would put
             // half of every constellation off the screen.
             ApplyReferenceDefaultFor(format);
+            RebuildAxis(_snapshot);
 
             if (_snapshot != null)
             {
@@ -621,6 +634,48 @@ namespace OpenVSA.Ui.Rendering
 
             RowDefinitions[0].Height = band;
             RowDefinitions[2].Height = band;
+        }
+
+        /// <summary>
+        /// Rebuilds the vertical axis for the format now in force (<c>REQ-DSP-041</c>).
+        /// </summary>
+        /// <param name="snapshot">The frame to range against, or <c>null</c> for none.</param>
+        /// <remarks>
+        /// Ranged against the full-resolution trace rather than against the decimated envelope, so
+        /// the axis does not jump when the window is resized and the column count changes with it.
+        /// </remarks>
+        private void RebuildAxis(TraceSnapshot snapshot)
+        {
+            TraceFormat format = CurrentFormat;
+            float[] values = null;
+
+            if (snapshot != null && format != TraceFormat.LogMagnitude &&
+                TraceAxis.IsLineTrace(format))
+            {
+                values = new float[snapshot.Spectrum.PointCount];
+                snapshot.Spectrum.Format(format, new Span<float>(values), _formatOptions);
+            }
+
+            TraceAxis axis = TraceAxis.For(
+                format,
+                values == null ? ReadOnlySpan<float>.Empty : new ReadOnlySpan<float>(values),
+                _referenceLevelDbm,
+                _decibelsPerDivision,
+                _verticalDivisions,
+                _yReferencePercent);
+
+            bool moved = _axis == null ||
+                         Math.Abs(_axis.TopValue - axis.TopValue) > 1e-12 ||
+                         Math.Abs(_axis.BottomValue - axis.BottomValue) > 1e-12 ||
+                         !string.Equals(_axis.Unit, axis.Unit, StringComparison.Ordinal);
+
+            _axis = axis;
+
+            if (moved)
+            {
+                RefreshScaleText();
+                BuildLayout();
+            }
         }
 
         /// <summary>Refreshes the annotation when there is a frame behind it to describe.</summary>
@@ -775,7 +830,6 @@ namespace OpenVSA.Ui.Rendering
             {
                 _referenceLevelDbm = snapshot.Spectrum.ReferenceLevelDbm;
                 _topDbm = TopForReference(_referenceLevelDbm);
-                BuildLayout();
             }
 
             if (snapshot.Columns != _layout.Graticule.Width)
@@ -783,7 +837,18 @@ namespace OpenVSA.Ui.Rendering
                 return false;
             }
 
+            // A format this snapshot has no envelope for: the format changed between the pump
+            // thread reading the list of wanted formats and this frame arriving. Draw nothing
+            // rather than another format's geometry - the next frame carries it.
+            if (TraceAxis.IsLineTrace(CurrentFormat) &&
+                snapshot.MinMaxFor(CurrentFormat).Length == 0)
+            {
+                return false;
+            }
+
             _snapshot = snapshot;
+
+            RebuildAxis(snapshot);
             Redraw(snapshot);
             return true;
         }
@@ -1178,8 +1243,7 @@ namespace OpenVSA.Ui.Rendering
         {
             _topScale.Value = NumericHotSpotValue.Decibels(_topDbm);
 
-            _perDivision.Value = new ChoiceHotSpotValue(
-                new[] { "1 dB/div", "2 dB/div", "5 dB/div", "10 dB/div", "20 dB/div" }, 3);
+            BuildPerDivisionChoices();
 
             _bottomScale.Value = NumericHotSpotValue.Decibels(BottomDbm);
 
@@ -1274,14 +1338,42 @@ namespace OpenVSA.Ui.Rendering
             Redraw(_snapshot);
         }
 
+        /// <summary>
+        /// Brings the scale annotation into line with the axis, in the axis's own unit.
+        /// </summary>
+        /// <remarks>
+        /// The hot spots are rebuilt when the unit changes rather than reformatted, because a hot
+        /// spot's value carries its own formatting and parsing: a top scale that displayed volts
+        /// and parsed decibels would take a typed entry and silently mean something else by it.
+        /// </remarks>
         private void RefreshScaleText()
         {
+            TraceAxis axis = _axis;
             _suppressParameterEvents = true;
 
             try
             {
-                ((NumericHotSpotValue)_topScale.Value).Value = _topDbm;
-                ((NumericHotSpotValue)_bottomScale.Value).Value = BottomDbm;
+                if (axis == null || axis.IsDecibels)
+                {
+                    if (!(_topScale.Value is NumericHotSpotValue) || !_scaleIsDecibels)
+                    {
+                        _topScale.Value = NumericHotSpotValue.Decibels(_topDbm);
+                        _bottomScale.Value = NumericHotSpotValue.Decibels(BottomDbm);
+                        _scaleIsDecibels = true;
+                    }
+
+                    ((NumericHotSpotValue)_topScale.Value).Value = _topDbm;
+                    ((NumericHotSpotValue)_bottomScale.Value).Value = BottomDbm;
+                }
+                else
+                {
+                    _topScale.Value = Scaled(axis, axis.TopValue);
+                    _bottomScale.Value = Scaled(axis, axis.BottomValue);
+                    _scaleIsDecibels = false;
+                }
+
+                RefreshPerDivision(axis);
+
                 _topScale.Refresh();
                 _bottomScale.Refresh();
             }
@@ -1289,6 +1381,82 @@ namespace OpenVSA.Ui.Rendering
             {
                 _suppressParameterEvents = false;
             }
+        }
+
+        /// <summary>
+        /// Shows the per-division step in the axis's own unit.
+        /// </summary>
+        /// <remarks>
+        /// The decibel choice list is what the user picks from on a log-magnitude trace, and it is
+        /// the only axis whose step they choose. On an auto-ranged axis the step is a consequence
+        /// of the data, so it is shown as a reading — and it has to be shown in the axis's unit,
+        /// because "10 dB/div" over a trace measured in volts is simply a false statement.
+        /// </remarks>
+        /// <summary>
+        /// Restores the decibel per-division ladder, selecting the step in force.
+        /// </summary>
+        /// <remarks>
+        /// The 1-2-5 ladder a graticule is readable at. Rebuilt rather than reselected, because
+        /// coming back from an auto-ranged axis means the hot spot is holding a single reading
+        /// rather than the ladder.
+        /// </remarks>
+        private void BuildPerDivisionChoices()
+        {
+            string[] steps = { "1 dB/div", "2 dB/div", "5 dB/div", "10 dB/div", "20 dB/div" };
+            int index = 3;
+
+            for (int i = 0; i < steps.Length; i++)
+            {
+                if (steps[i] ==
+                    _decibelsPerDivision.ToString("0.##", CultureInfo.InvariantCulture) + " dB/div")
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            _perDivision.Value = new ChoiceHotSpotValue(steps, index);
+        }
+
+        private void RefreshPerDivision(TraceAxis axis)
+        {
+            if (axis == null || axis.IsDecibels)
+            {
+                if (!_perDivisionIsDecibels)
+                {
+                    BuildPerDivisionChoices();
+                    _perDivisionIsDecibels = true;
+                }
+
+                return;
+            }
+
+            _perDivision.Value = new ChoiceHotSpotValue(
+                new[] { EngineeringText.Quantity(axis.PerDivision, axis.Unit) + "/div" });
+
+            _perDivisionIsDecibels = false;
+        }
+
+        /// <summary>Whether the scale hot spots are currently in decibels.</summary>
+        private bool _scaleIsDecibels = true;
+
+        /// <summary>Whether the per-division hot spot is currently the decibel choice list.</summary>
+        private bool _perDivisionIsDecibels = true;
+
+        /// <summary>A scale hot spot's value in an axis's own unit.</summary>
+        private static NumericHotSpotValue Scaled(TraceAxis axis, double value)
+        {
+            TraceAxis captured = axis;
+
+            return new NumericHotSpotValue(
+                value,
+                Math.Max(1e-15, Math.Abs(axis.PerDivision) / 10.0),
+                v => captured.Format(v),
+                text =>
+                {
+                    double parsed;
+                    return captured.TryParse(text, out parsed) ? parsed : (double?)null;
+                });
         }
 
         private void OnHotSpotDialogRequested(object sender, EventArgs e)
@@ -1408,12 +1576,14 @@ namespace OpenVSA.Ui.Rendering
                 return;
             }
 
+            TraceAxis axis = _axis;
+
             _layout = new PlotLayout(
                 _surface.Width,
                 _surface.Height,
                 _marginPixels,
-                _topDbm,
-                BottomDbm,
+                axis == null ? _topDbm : axis.TopValue,
+                axis == null ? BottomDbm : axis.BottomValue,
                 _horizontalDivisions,
                 _verticalDivisions,
                 _yReferencePercent,
@@ -1427,11 +1597,14 @@ namespace OpenVSA.Ui.Rendering
                 return;
             }
 
+            // This plot's own format, never the frame's log magnitude. Four windows showing four
+            // formats of one acquisition is REQ-TRC-001's whole point, and drawing snapshot.MinMax
+            // here is what made all four of them the same picture under four labels.
             PlotRasterizer.Render(
                 _surface,
                 _layout,
                 _palette,
-                snapshot == null ? ReadOnlySpan<float>.Empty : snapshot.MinMax,
+                snapshot == null ? ReadOnlySpan<float>.Empty : snapshot.MinMaxFor(CurrentFormat),
                 ColumnColours(snapshot),
                 _showGridLines);
 
