@@ -183,7 +183,11 @@ namespace OpenVSA.Ui
         private void BuildDocumentArea()
         {
             Documents.AdoptPrimaryPlot(Plot);
-            WireSelectArea(Documents.AddTrace('A'));
+
+            TracePlot first = Documents.AddTrace('A');
+
+            WireSelectArea(first);
+            ColourTrace(first, 'A');
 
             Documents.LayoutChanged += (sender, preset) =>
                 StatusText.Content = "Layout: " + preset.Name;
@@ -229,6 +233,7 @@ namespace OpenVSA.Ui
                     TracePlot plot = Documents.AddTrace(letter);
 
                     WireSelectArea(plot);
+                    ColourTrace(plot, letter);
 
                     // A new trace opens in the next format round the list rather than as a second
                     // copy of the one beside it. Four windows all showing log magnitude of the same
@@ -371,6 +376,63 @@ namespace OpenVSA.Ui
 
         /// <summary>Where the analysis sits inside the captured band (<c>REQ-DSP-023</c>).</summary>
         private ZoomControl _zoom;
+
+        /// <summary>
+        /// Gives a trace its colour from the twenty-entry table (<c>REQ-UI-020</c>).
+        /// </summary>
+        /// <remarks>
+        /// One setting, and it drives the line and the trace's own annotation together
+        /// (<c>REQ-UI-021</c>) — the plot applies it to both, so there is no second colour here to
+        /// keep in step with the first.
+        /// </remarks>
+        private void ColourTrace(TracePlot plot, char letter)
+        {
+            plot.Palette = plot.Palette.WithTrace(TraceColours.ForTrace(letter));
+        }
+
+        /// <summary>
+        /// Prints the active trace, optionally forcing a white background (<c>REQ-UI-015</c>).
+        /// </summary>
+        /// <remarks>
+        /// The option exists because large areas of black do not print well, and the palette's
+        /// <c>ForPrinting</c> darkens the light colours rather than leaving them invisible on
+        /// white — which is the half of it that a plain background swap misses.
+        /// </remarks>
+        private void OnPrintTrace(object sender, RoutedEventArgs e)
+        {
+            TracePlot plot = Documents.ActivePlot;
+
+            if (plot == null)
+            {
+                return;
+            }
+
+            var dialog = new PrintDialog();
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            PlotPalette onScreen = plot.Palette;
+
+            try
+            {
+                if (ForceWhiteBackgroundItem.IsChecked)
+                {
+                    plot.Palette = onScreen.ForPrinting();
+                    plot.UpdateLayout();
+                }
+
+                dialog.PrintVisual(plot, "OpenVSA trace " + Documents.ActiveTrace);
+            }
+            finally
+            {
+                // Restored whatever the print did, so a failed or cancelled print never leaves the
+                // display in the printing palette.
+                plot.Palette = onScreen;
+            }
+        }
 
         /// <summary>
         /// Wires a plot's mouse to the Select Area gesture.
