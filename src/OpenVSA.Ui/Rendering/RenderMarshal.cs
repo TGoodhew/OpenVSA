@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using OpenVSA.Core.Threading;
 using OpenVSA.Dsp.Spectrum;
@@ -16,12 +17,13 @@ namespace OpenVSA.Ui.Rendering
     /// </remarks>
     public sealed class TraceSnapshot
     {
-        private readonly float[] _minMax;
+        private readonly Dictionary<TraceFormat, float[]> _envelopes;
 
-        internal TraceSnapshot(SpectrumFrame spectrum, float[] minMax, int columns)
+        internal TraceSnapshot(
+            SpectrumFrame spectrum, Dictionary<TraceFormat, float[]> envelopes, int columns)
         {
             Spectrum = spectrum;
-            _minMax = minMax;
+            _envelopes = envelopes;
             Columns = columns;
         }
 
@@ -31,8 +33,33 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>Number of pixel columns the envelope was reduced to.</summary>
         public int Columns { get; }
 
-        /// <summary>The envelope: <c>Columns × 2</c> values as (minimum, maximum) pairs.</summary>
-        public ReadOnlySpan<float> MinMax => new ReadOnlySpan<float>(_minMax);
+        /// <summary>The formats this snapshot carries an envelope for.</summary>
+        public IEnumerable<TraceFormat> Formats => _envelopes.Keys;
+
+        /// <summary>
+        /// The log-magnitude envelope: <c>Columns × 2</c> values as (minimum, maximum) pairs.
+        /// </summary>
+        public ReadOnlySpan<float> MinMax => MinMaxFor(TraceFormat.LogMagnitude);
+
+        /// <summary>
+        /// The envelope for a format, or an empty span if this snapshot does not carry one.
+        /// </summary>
+        /// <param name="format">The format.</param>
+        /// <remarks>
+        /// <strong>Empty is a real answer.</strong> A plot whose format was not among those asked
+        /// for when this frame was decimated — because it changed format between the pump thread
+        /// reading the list and the frame arriving — must draw nothing rather than draw another
+        /// format's geometry, which is the defect this whole mechanism exists to fix. The next
+        /// frame will carry it.
+        /// </remarks>
+        public ReadOnlySpan<float> MinMaxFor(TraceFormat format)
+        {
+            float[] envelope;
+
+            return _envelopes.TryGetValue(format, out envelope)
+                ? new ReadOnlySpan<float>(envelope)
+                : ReadOnlySpan<float>.Empty;
+        }
     }
 
     /// <summary>
@@ -67,6 +94,7 @@ namespace OpenVSA.Ui.Rendering
 
         private readonly object _slot = new object();
 
+        private TraceFormat[] _formats = { TraceFormat.LogMagnitude };
         private TraceSnapshot _pending;
         private long _framesDropped;
         private int _outstandingPosts;
@@ -96,6 +124,61 @@ namespace OpenVSA.Ui.Rendering
         public TraceDetector Detector { get; set; } = TraceDetector.Normal;
 
         /// <summary>
+        /// The formats currently on screen, each of which gets its own envelope.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Per format, and off the UI thread.</strong> Four windows showing four formats of
+        /// one acquisition is <c>REQ-TRC-001</c>'s whole point, and four windows showing one
+        /// format's geometry under four labels is what happens if the envelope is built once from
+        /// the log magnitude. Building them here rather than in each plot keeps the per-point work
+        /// off the dispatcher, which is <c>REQ-NFR-010</c>.
+        /// </para>
+        /// <para>
+        /// Set from the UI thread when a trace window opens, closes or changes format. Read once
+        /// per frame on the pump thread, so a format changed mid-frame costs one frame drawn
+        /// without it — a dropped frame, not a mismatch.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<TraceFormat> Formats
+        {
+            get { return _formats; }
+
+            set
+            {
+                var wanted = new List<TraceFormat>();
+
+                if (value != null)
+                {
+                    foreach (TraceFormat format in value)
+                    {
+                        // Only the line formats. IQ is two values per point and a constellation,
+                        // not a curve; an envelope of its interleaved pairs would mean nothing.
+                        if (TraceAxis.IsLineTrace(format) && !wanted.Contains(format))
+                        {
+                            wanted.Add(format);
+                        }
+                    }
+                }
+
+                if (wanted.Count == 0)
+                {
+                    wanted.Add(TraceFormat.LogMagnitude);
+                }
+
+                // Replaced wholesale rather than mutated, so the pump thread reads a complete list
+                // or the previous one and never a half-built one.
+                Interlocked.Exchange(ref _formats, wanted.ToArray());
+            }
+        }
+
+        /// <summary>
+        /// The format options phase and group delay are computed with (<c>REQ-DSP-044</c>,
+        /// <c>REQ-DSP-045</c>).
+        /// </summary>
+        public TraceFormatOptions FormatOptions { get; set; } = TraceFormatOptions.Default;
+
+        /// <summary>
         /// Decimates a frame and makes it the pending one, on the pump thread.
         /// </summary>
         /// <param name="frame">The frame to publish.</param>
@@ -121,15 +204,42 @@ namespace OpenVSA.Ui.Rendering
                 return false;
             }
 
+            TraceFormat[] formats = _formats;
+            TraceDetector detector = Detector;
+            TraceFormatOptions options = FormatOptions;
+
             // A fresh array per frame rather than a reused scratch, for the reason SpectrumFrame
             // gives: it is published to another thread and must never be written again. At two
-            // floats per pixel column it is a few kilobytes, not a frame buffer.
-            var envelope = new float[columns * 2];
+            // floats per pixel column it is a few kilobytes per format, not a frame buffer.
+            var envelopes = new Dictionary<TraceFormat, float[]>(formats.Length);
+            var formatted = new float[frame.PointCount];
 
-            // Decibels, because that is what LevelsDbm holds - which is what makes the average
-            // detector's power conversion correct rather than a guess about the format.
-            TraceEnvelope.Build(
-                frame.LevelsDbm, columns, new Span<float>(envelope), Detector, valuesAreDecibels: true);
+            foreach (TraceFormat format in formats)
+            {
+                var envelope = new float[columns * 2];
+
+                if (format == TraceFormat.LogMagnitude)
+                {
+                    // The one the frame already holds; formatting it again would be the same
+                    // arithmetic twice.
+                    TraceEnvelope.Build(
+                        frame.LevelsDbm, columns, new Span<float>(envelope), detector,
+                        valuesAreDecibels: true);
+                }
+                else
+                {
+                    frame.Format(format, new Span<float>(formatted), options);
+
+                    // Whether the average detector converts to power is a property of the format,
+                    // not a constant. Averaging volts as though they were decibels — or the other
+                    // way round — is the same class of error either way.
+                    TraceEnvelope.Build(
+                        formatted, columns, new Span<float>(envelope), detector,
+                        valuesAreDecibels: false);
+                }
+
+                envelopes[format] = envelope;
+            }
 
             lock (_slot)
             {
@@ -138,7 +248,7 @@ namespace OpenVSA.Ui.Rendering
                     Interlocked.Increment(ref _framesDropped);
                 }
 
-                _pending = new TraceSnapshot(frame, envelope, columns);
+                _pending = new TraceSnapshot(frame, envelopes, columns);
             }
 
             if (Interlocked.Increment(ref _outstandingPosts) <= MaximumOutstandingPosts)
