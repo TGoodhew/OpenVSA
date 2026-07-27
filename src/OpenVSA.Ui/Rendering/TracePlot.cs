@@ -132,6 +132,11 @@ namespace OpenVSA.Ui.Rendering
             upper.Children.Add(Row(_format, _resolutionBandwidth, _triggerChannel));
             upper.Children.Add(_analysisText);
 
+            // Deliberately left in its own column, unlike the bottom band. The top band has the
+            // scale readouts on its left and the marker readout on its right, so a centred stack
+            // given more width runs over one or the other - both were tried, and both interleave
+            // illegibly. Where the bottom band has a free column either side, this one has none.
+
             _markerText = NewLabel(HorizontalAlignment.Right);
             Place(_markerText, 0, 2, HorizontalAlignment.Right, VerticalAlignment.Top);
 
@@ -140,8 +145,9 @@ namespace OpenVSA.Ui.Rendering
 
             _centerFrequency = NewHotSpot("Center ", HorizontalAlignment.Center);
             _mainTime = NewHotSpot("Time ", HorizontalAlignment.Center);
-            AddStack(Orientation.Horizontal, 2, 1, HorizontalAlignment.Center,
-                VerticalAlignment.Bottom, _centerFrequency, _mainTime);
+            SpanFullWidth(
+                AddStack(Orientation.Horizontal, 2, 1, HorizontalAlignment.Center,
+                    VerticalAlignment.Bottom, _centerFrequency, _mainTime));
 
             // The one piece of annotation that belongs inside the graticule (REQ-UI-040), pushed in
             // from the top right by the band's thickness so it clears the graticule's own border.
@@ -379,6 +385,18 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>The element holding the trace indicator strings (<c>REQ-UI-041</c>).</summary>
         public FrameworkElement IndicatorElement => _indicatorText;
+
+        /// <summary>
+        /// The brush the trace's annotation is drawn in, which is the trace's own colour
+        /// (<c>REQ-UI-021</c>).
+        /// </summary>
+        /// <remarks>
+        /// Exposed so the criterion — "a trace's line and its annotation text sample to the same
+        /// colour in the rendered frame" — can be asserted against the rendered control rather than
+        /// against the palette it was given. Testing the palette would prove the two settings
+        /// agreed, not that the two things on screen did.
+        /// </remarks>
+        public Brush TraceAnnotationBrush { get; private set; }
 
         /// <summary>
         /// Whether a drag across the trace selects a region to zoom into, rather than doing
@@ -773,6 +791,33 @@ namespace OpenVSA.Ui.Rendering
             return panel;
         }
 
+        /// <summary>
+        /// Lets a centred annotation stack use the whole width instead of one column of it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The three columns exist to place annotation left, centre and right, not to ration a
+        /// third of the width to each. A hot spot is a <see cref="TextBlock"/>, and a text block
+        /// arranged narrower than its text <em>clips</em> rather than overflowing — centred, it
+        /// clips at both ends, which is how <c>Center 1.000000 GHz</c> came to read
+        /// <c>er 1.000000 GHz</c> on a narrow trace window.
+        /// </para>
+        /// <para>
+        /// Spanning all three keeps the centring exactly where it was — the columns are equal, so
+        /// the midpoint of all three is the midpoint of the middle one, and the centre-frequency
+        /// label still sits under the centre of the graticule where it belongs. What changes is
+        /// only how much width it may use before the text is cut.
+        /// </para>
+        /// </remarks>
+        private static void SpanFullWidth(FrameworkElement element)
+        {
+            // Column 0 as well as the span. Spanning three from column 1 covers columns 1 and 2
+            // only, which centres the stack two-thirds of the way across instead of in the middle
+            // — the annotation-position test caught exactly that.
+            SetColumn(element, 0);
+            SetColumnSpan(element, 3);
+        }
+
         private StackPanel AddStack(
             Orientation orientation,
             int row,
@@ -965,17 +1010,28 @@ namespace OpenVSA.Ui.Rendering
 
             _band.Fill = fill;
 
+            // REQ-UI-021: a trace's line and its annotation text share one colour. The annotation
+            // describing this trace's data — its scales, its format, its RBW, its readouts — is
+            // tinted to match the line, which is how a reader tells four overlaid traces apart at a
+            // glance. One setting drives both, so there is no per-trace annotation colour to drift
+            // out of step with the line. The firmware defect REQ-UI-021 quotes — an annotation
+            // colour wrong after preset — is exactly what a second setting produces.
+            var traceInk = new SolidColorBrush(ToMediaColor(_palette.Trace));
+            traceInk.Freeze();
+
+            TraceAnnotationBrush = traceInk;
+
             foreach (FrameworkElement element in _annotation)
             {
                 var text = element as TextBlock;
 
                 if (text != null)
                 {
-                    text.Foreground = annotation;
+                    text.Foreground = traceInk;
                 }
             }
 
-            _markerText.Foreground = annotation;
+            _markerText.Foreground = traceInk;
 
             // Its own colour, because it is the only annotation over the trace background rather
             // than the annotation background (REQ-UI-040).

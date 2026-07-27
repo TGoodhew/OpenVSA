@@ -38,6 +38,17 @@
                     <MenuItem x:Name="FactoryPresetItem" Header="_Factory preset" Click="OnFactoryPreset" />
                 </MenuItem>
                 <MenuItem x:Name="SavePresetItem" Header="Save as prese_t…" Click="OnSavePreset" />
+                <Separator />
+
+                <!--
+                    REQ-UI-015. The option exists because large areas of black do not print well
+                    on inkjet-style printers; the palette darkens light trace colours rather than
+                    leaving them invisible on white, which is the half a plain background swap
+                    misses.
+                -->
+                <MenuItem x:Name="ForceWhiteBackgroundItem" Header="Force _white background"
+                          IsCheckable="True" IsChecked="True" />
+                <MenuItem x:Name="PrintTraceItem" Header="_Print trace…" Click="OnPrintTrace" />
             </MenuItem>
             <MenuItem Header="_Edit" />
             <MenuItem x:Name="HardwareMenu" Header="_Hardware" />

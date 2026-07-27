@@ -187,5 +187,107 @@ namespace OpenVSA.Ui.Rendering
         /// <param name="value">The new colour.</param>
         public PlotPalette WithIndicator(PlotColor value) =>
             new PlotPalette(TraceBackground, Grid, Annotation, AnnotationBackground, Trace, SelectedMarker, NotSelectedMarker, value);
+
+        /// <summary>
+        /// The relative luminance below which a colour is treated as dark, from 0 to 1.
+        /// </summary>
+        /// <remarks>
+        /// Half. A colour above it would be invisible on white and is darkened by
+        /// <see cref="ForPrinting"/>; one below it is already legible and is left exactly as it is,
+        /// so a printed trace keeps whatever colour the user chose wherever that is possible.
+        /// </remarks>
+        public const double PrintDarkeningThreshold = 0.5;
+
+        /// <summary>
+        /// The luminance a darkened colour is taken to, from 0 to 1.
+        /// </summary>
+        /// <remarks>
+        /// Below <see cref="PrintDarkeningThreshold"/>, not equal to it. The threshold decides
+        /// <em>whether</em> a colour needs darkening; this decides <em>how far</em>, and darkening
+        /// exactly to the threshold leaves every printed colour sitting on the boundary of being
+        /// legible — which is not the same as being legible, and is what the first version did.
+        /// </remarks>
+        public const double PrintTargetLuminance = 0.34;
+
+        /// <summary>
+        /// This palette with a white trace background, for the <em>Force white background</em>
+        /// print option (<c>REQ-UI-015</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The reference product offers this because "large areas of black do not print well on
+        /// inkjet-style printers", and its own note adds that "very light colors will print black
+        /// so they can be seen". That second clause is the part worth implementing carefully:
+        /// simply whitening the background would leave an amber trace as a pale smear and a white
+        /// marker as nothing at all.
+        /// </para>
+        /// <para>
+        /// <strong>Light colours are darkened, not replaced.</strong> Each is scaled towards black
+        /// until it clears the contrast the requirement's own reasoning implies, which keeps four
+        /// traces distinguishable from one another on paper — replacing them all with black, as the
+        /// note's literal wording suggests, would make a four-trace overlay unreadable in exactly
+        /// the case someone prints one.
+        /// </para>
+        /// <para>
+        /// Colours already dark enough to read on white are left untouched, so a user who chose a
+        /// dark trace colour gets it printed rather than a darkened version of it.
+        /// </para>
+        /// </remarks>
+        public PlotPalette ForPrinting() =>
+            new PlotPalette(
+                PlotColor.FromArgb(0xFFFFFFFF),
+                Darkened(Grid),
+                Darkened(Annotation),
+                PlotColor.FromArgb(0xFFFFFFFF),
+                Darkened(Trace),
+                Darkened(SelectedMarker),
+                Darkened(NotSelectedMarker),
+                Darkened(Indicator));
+
+        /// <summary>
+        /// Whether a colour would be legible on white.
+        /// </summary>
+        /// <param name="colour">The colour.</param>
+        public static bool IsLegibleOnWhite(PlotColor colour) =>
+            Luminance(colour) < PrintDarkeningThreshold;
+
+        /// <summary>
+        /// A colour dark enough to read on white, keeping its hue.
+        /// </summary>
+        /// <param name="colour">The colour.</param>
+        /// <returns>The colour unchanged when it is already dark enough.</returns>
+        public static PlotColor Darkened(PlotColor colour)
+        {
+            double luminance = Luminance(colour);
+
+            if (luminance < PrintDarkeningThreshold)
+            {
+                return colour;
+            }
+
+            // Scaled rather than clamped: multiplying all three channels by the same factor holds
+            // the hue, where clamping each to a ceiling would drag every light colour towards grey
+            // and lose the distinction between traces that is the point of colouring them.
+            double scale = PrintTargetLuminance / Math.Max(luminance, 1e-6);
+
+            return new PlotColor(
+                (byte)Math.Round(colour.R * scale),
+                (byte)Math.Round(colour.G * scale),
+                (byte)Math.Round(colour.B * scale),
+                colour.A);
+        }
+
+        /// <summary>
+        /// Relative luminance, from 0 for black to 1 for white.
+        /// </summary>
+        /// <param name="colour">The colour.</param>
+        /// <remarks>
+        /// The Rec. 709 coefficients, on the channel values as stored. Not the gamma-corrected form
+        /// of <c>REQ-UI-090</c>'s contrast ratio: this decides whether ink will show on paper, a
+        /// coarser question than whether two colours meet a contrast floor, and using the stricter
+        /// measure here would darken colours that print perfectly well.
+        /// </remarks>
+        public static double Luminance(PlotColor colour) =>
+            (0.2126 * colour.R + 0.7152 * colour.G + 0.0722 * colour.B) / 255.0;
     }
 }
