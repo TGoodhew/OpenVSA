@@ -19,6 +19,7 @@ using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.HotSpots;
 using OpenVSA.Ui.Rendering;
+using OpenVSA.Ui.ToolWindows;
 
 // Aliased rather than imported: this file's own base class is System.Windows.Window, and importing
 // the DSP namespace would make the word ambiguous in a WPF window of all places.
@@ -75,6 +76,31 @@ namespace OpenVSA.Ui
         /// arise yet, but the model carries the letter so that it will be right when it can.
         /// </remarks>
         private readonly MarkerSet _markers = new MarkerSet('A');
+
+        /// <summary>
+        /// The marker readouts the Markers window shows (<c>REQ-MKR-006</c>).
+        /// </summary>
+        /// <remarks>
+        /// Trace A's set is <see cref="_markers"/>; this collection wraps it so the window and the
+        /// above-grid readout render the same text from the same place rather than formatting the
+        /// same values twice.
+        /// </remarks>
+        private readonly MarkerCollection _markerReadouts = new MarkerCollection();
+
+        /// <summary>Measurement results, live once a measurement writes to it.</summary>
+        private readonly ToolWindowLog _outputLog = new ToolWindowLog(ToolWindow.Output);
+
+        /// <summary>Instrument traffic, live once a transport writes to it.</summary>
+        private readonly ToolWindowLog _scpiLog = new ToolWindowLog(ToolWindow.ScpiLog, 2000);
+
+        /// <summary>Application events, live once something happens.</summary>
+        private readonly ToolWindowLog _eventLog = new ToolWindowLog(ToolWindow.EventLog);
+
+        /// <summary>The measurement contexts in the session (<c>REQ-STA-004</c>).</summary>
+        private readonly ContextWindowSource _contexts = new ContextWindowSource();
+
+        /// <summary>The eight tool windows of <c>REQ-UI-002</c>.</summary>
+        private ToolWindowHost _toolWindows;
 
         /// <summary>The conditions annotated inside the grid (<c>REQ-UI-041</c>).</summary>
         private readonly TraceIndicators _indicators = new TraceIndicators();
@@ -135,8 +161,139 @@ namespace OpenVSA.Ui
             };
             _statusTimer.Tick += (sender, e) => ShowRunningStatistics();
 
+            BuildToolWindows();
+
             Closed += (sender, e) => ShutDown();
         }
+
+        /// <summary>The eight tool windows of <c>REQ-UI-002</c>.</summary>
+        public ToolWindowHost ToolWindows => _toolWindows;
+
+        /// <summary>
+        /// Creates the eight tool windows, restores where they were, and attaches their sources.
+        /// </summary>
+        /// <remarks>
+        /// Four have live sources today. The Markers window reads
+        /// <see cref="MarkerCollection.Readouts"/>, which is the same text the above-grid readout
+        /// shows — <c>REQ-MKR-006</c>'s agreement, by construction. Output, the SCPI Log and the
+        /// Event Log are appendable logs that become live the moment anything real is written to
+        /// them, and carry transcribed traffic until then.
+        ///
+        /// Player, Block Diagram and Macros have nothing behind them at all — playback is
+        /// <c>REQ-REC-002</c>, the diagram wants a live signal-path model and macros want the
+        /// automation API. They show a worked example of what each window is for, labelled as
+        /// demonstration data by <see cref="ToolWindowSource.Lines"/> so it cannot be read as a
+        /// loaded recording or live traffic.
+        /// </remarks>
+        private void BuildToolWindows()
+        {
+            _toolWindows = new ToolWindowHost(Docking, LoadToolWindowLayout());
+            _toolWindows.PopulateMenus(WindowMenu, MarkerWindowMenu);
+
+            _markerReadouts.Update('A', SpectrumFrame.FromLevels(
+                new float[] { -100.0f, -100.0f }, 0.0, 1.0, DspWindow.Default, 1.0));
+
+            // Seeded before the logs are attached: SetSource renders what the source says now, and
+            // attaching an empty log leaves a pane that stays blank until something is written to
+            // it - which for three of these is "never, on a bench with nothing connected".
+            foreach (string line in ToolWindowDemonstrations.Output())
+            {
+                _outputLog.Seed(line);
+            }
+
+            foreach (string line in ToolWindowDemonstrations.ScpiLog())
+            {
+                _scpiLog.Seed(line);
+            }
+
+            foreach (string line in ToolWindowDemonstrations.EventLog())
+            {
+                _eventLog.Seed(line);
+            }
+
+            _toolWindows.SetSource(new MarkerWindowSource(_markerReadouts));
+            _toolWindows.SetSource(_outputLog);
+            _toolWindows.SetSource(_scpiLog);
+            _toolWindows.SetSource(_eventLog);
+            _toolWindows.SetSource(_contexts);
+
+            foreach (ToolWindow window in Ui.ToolWindows.ToolWindows.All)
+            {
+                IToolWindowSource demonstration = ToolWindowDemonstrations.For(window);
+
+                if (demonstration != null)
+                {
+                    _toolWindows.SetSource(demonstration);
+                }
+            }
+
+            foreach (ToolWindow window in Ui.ToolWindows.ToolWindows.All)
+            {
+                _toolWindows.SetOpen(window, _toolWindows.Layout.IsOpen(window));
+            }
+        }
+
+        /// <summary>
+        /// Reads the saved tool-window layout, or defaults if there is none.
+        /// </summary>
+        /// <remarks>
+        /// Never throws. A display preference file that cannot be read is worth a default layout
+        /// and a line in the event log, not a shell that will not open.
+        /// </remarks>
+        private ToolWindowLayout LoadToolWindowLayout()
+        {
+            try
+            {
+                if (File.Exists(ToolWindowLayoutPath))
+                {
+                    var saved = SidecarFile.Load<DisplayPreferencesState>(ToolWindowLayoutPath);
+
+                    return ToolWindowLayout.FromState(saved.ToolWindows);
+                }
+            }
+            catch (Exception failure)
+            {
+                _eventLog.Append(
+                    "Tool-window layout could not be read (" + failure.GetType().Name +
+                    "); starting from defaults.");
+            }
+
+            return new ToolWindowLayout();
+        }
+
+        /// <summary>Writes the tool-window layout, so it survives a restart (<c>REQ-UI-002</c>).</summary>
+        private void SaveToolWindowLayout()
+        {
+            if (_toolWindows == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _toolWindows.CaptureSizes();
+
+                var preferences = new DisplayPreferencesState
+                {
+                    ToolWindows = _toolWindows.Layout.ToState(),
+                };
+
+                Directory.CreateDirectory(Path.GetDirectoryName(ToolWindowLayoutPath));
+                SidecarFile.Save(preferences, ToolWindowLayoutPath);
+            }
+            catch (Exception)
+            {
+                // A layout that could not be saved is a layout that starts at defaults next time.
+                // Failing to close over it would be the worse outcome by a wide margin.
+            }
+        }
+
+        /// <summary>Where the display sidecar carrying the tool-window layout lives.</summary>
+        private static string ToolWindowLayoutPath =>
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OpenVSA",
+                "layout" + SidecarState.PreferencesExtension);
 
         /// <summary>The front end currently selected, or null if none has been chosen.</summary>
         public IFrontEnd ActiveFrontEnd => _activeFrontEnd;
@@ -1589,6 +1746,10 @@ namespace OpenVSA.Ui
 
         private void ShutDown()
         {
+            // Before the window's controls are gone: the sizes are read off the panes, and a
+            // disposed visual tree reports nothing useful.
+            SaveToolWindowLayout();
+
             SpectrumEngine engine = _engine;
             _engine = null;
 

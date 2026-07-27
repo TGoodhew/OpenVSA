@@ -60,6 +60,32 @@ namespace OpenVSA.Measurement.State
     }
 
     /// <summary>
+    /// One tool window's docked position, size and open state (<c>REQ-UI-002</c>).
+    /// </summary>
+    /// <remarks>
+    /// Keyed by the window's displayed name — <c>SCPI Log</c>, not an ordinal — so the file says
+    /// what it means when read, and so reordering the shell's own enumeration cannot silently
+    /// reassign one window's saved geometry to another.
+    /// </remarks>
+    public sealed class ToolWindowPlacement
+    {
+        /// <summary>The window's name, exactly as <c>REQ-UI-002</c> writes it.</summary>
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>Which edge it is docked to: <c>Left</c>, <c>Right</c> or <c>Bottom</c>.</summary>
+        public string Side { get; set; } = "Right";
+
+        /// <summary>Docked width in device-independent pixels, for a left or right dock.</summary>
+        public double Width { get; set; } = 280.0;
+
+        /// <summary>Docked height in device-independent pixels, for a bottom dock.</summary>
+        public double Height { get; set; } = 180.0;
+
+        /// <summary>Whether the window is open.</summary>
+        public bool IsOpen { get; set; }
+    }
+
+    /// <summary>
     /// Display preferences, saved apart from the state (<c>REQ-STA-002</c>).
     /// </summary>
     public sealed class DisplayPreferencesState
@@ -87,6 +113,18 @@ namespace OpenVSA.Measurement.State
 
         /// <summary>Markers-window font family (<c>REQ-UI-033</c>).</summary>
         public string MarkerFontFamily { get; set; } = "Consolas";
+
+        /// <summary>
+        /// Where each tool window is docked, how big it is, and whether it is open
+        /// (<c>REQ-UI-002</c>).
+        /// </summary>
+        /// <remarks>
+        /// A display preference rather than part of a setup, for the reason the whole sidecar
+        /// exists: recalling a colleague's measurement should not rearrange your windows. The
+        /// requirement asks for this to persist "across a restart", and the display sidecar is what
+        /// outlives a session.
+        /// </remarks>
+        public List<ToolWindowPlacement> ToolWindows { get; set; } = new List<ToolWindowPlacement>();
     }
 
     /// <summary>

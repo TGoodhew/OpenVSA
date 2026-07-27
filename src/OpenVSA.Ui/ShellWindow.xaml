@@ -61,9 +61,19 @@
                 <Separator />
                 <MenuItem x:Name="DeleteMarkerItem" Header="Delete _selected" Click="OnDeleteMarker" />
                 <MenuItem x:Name="DeleteAllMarkersItem" Header="Delete _all" Click="OnDeleteAllMarkers" />
+                <Separator />
+
+                <!--
+                    REQ-UI-002 puts the Markers window on the Marker menu; the other seven are on
+                    Window. The items themselves are built in code from ToolWindows.All, so the
+                    menu cannot list seven of eight or spell one differently from the pane it
+                    opens - which is the criterion, and not something two hand-written lists would
+                    keep true for long.
+                -->
+                <MenuItem x:Name="MarkerWindowMenu" />
             </MenuItem>
             <MenuItem Header="_Utilities" />
-            <MenuItem Header="_Window" />
+            <MenuItem x:Name="WindowMenu" Header="_Window" />
             <MenuItem Header="_Help" />
         </Menu>
 
