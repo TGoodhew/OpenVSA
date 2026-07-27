@@ -141,6 +141,9 @@ namespace OpenVSA.Ui
                 case "File > Preset > Display Preferences":
                     return PresetItem(PresetVariant.DisplayPreferences);
 
+                case "File > Preset > Toolbars":
+                    return PresetItem(PresetVariant.Toolbars);
+
                 case "File > Preset > Factory Defaults":
                     return PresetItem(PresetVariant.FactoryDefaults);
 
@@ -292,6 +295,9 @@ namespace OpenVSA.Ui
                 // ---- Utilities ----------------------------------------------------------------
                 case "Utilities > Display Preferences…":
                     return Runs(OnDisplayPreferences);
+
+                case "Utilities > Toolbars…":
+                    return Runs(OnToolbarCustomiser);
 
                 // ---- Window -------------------------------------------------------------------
                 case "Window > Output":
@@ -1357,9 +1363,20 @@ namespace OpenVSA.Ui
 
             ApplyState(next.Measurements[0]);
 
-            if (Presets.Has(Presets.CategoriesOf(variant), PresetCategory.DisplayPreferences))
+            PresetCategory scope = Presets.CategoriesOf(variant);
+
+            if (Presets.Has(scope, PresetCategory.DisplayPreferences))
             {
                 ResetDisplayPreferences();
+            }
+
+            // REQ-UI-064: File > Preset > Toolbars restores the five preconfigured toolbars to
+            // their default contents and removes the custom ones. Asked of the scope rather than
+            // of the variant, so that Factory Defaults — whose scope also names the toolbars —
+            // resets them by the same route rather than by a second branch that could disagree.
+            if (Presets.Has(scope, PresetCategory.Toolbars))
+            {
+                ResetToolbars();
             }
 
             StatusText.Content = "Preset: " + Presets.NameOf(variant);

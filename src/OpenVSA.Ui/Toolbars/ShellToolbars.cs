@@ -157,6 +157,28 @@ namespace OpenVSA.Ui.Toolbars
         /// <param name="control">The control's name.</param>
         public static string PathOf(string toolbar, string control) => toolbar + " > " + control;
 
+        /// <summary>
+        /// The control at a path, or <c>null</c> if this build declares none.
+        /// </summary>
+        /// <param name="path">A path from <see cref="PathOf"/>.</param>
+        /// <remarks>
+        /// How <see cref="ToolbarLayout"/>'s stored paths become controls again. The path is the
+        /// control's identity wherever the customiser of <c>REQ-UI-064</c> has put it, so this looks
+        /// the control up by where the requirement declares it and not by where it now sits.
+        /// </remarks>
+        public static ToolbarControl ControlAt(string path)
+        {
+            foreach (KeyValuePair<string, ToolbarControl> found in AllControls())
+            {
+                if (string.Equals(found.Key, path, StringComparison.Ordinal))
+                {
+                    return found.Value;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>Every control, with its path, in order.</summary>
         public static IEnumerable<KeyValuePair<string, ToolbarControl>> AllControls()
         {
