@@ -58,6 +58,17 @@
                 <Separator />
                 <MenuItem x:Name="LayoutMenu" Header="_Layout" />
                 <MenuItem x:Name="ResizeTracesItem" Header="_Resize Traces" Click="OnResizeTraces" />
+                <Separator />
+
+                <!--
+                    REQ-DSP-023's Select Area tool and Full Span control. Select Area is a mode
+                    rather than an always-on gesture, so an imprecise click cannot change the
+                    measurement.
+                -->
+                <MenuItem x:Name="SelectAreaItem" Header="Select _Area" IsCheckable="True"
+                          Click="OnToggleSelectArea" />
+                <MenuItem x:Name="FullSpanItem" Header="_Full Span" Click="OnFullSpan"
+                          IsEnabled="False" />
             </MenuItem>
             <!--
                 REQ-MKR-001 and REQ-MKR-005. Placing a marker is a click on the trace; this menu is

@@ -18,6 +18,7 @@ using OpenVSA.Capture.Triggering;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.HotSpots;
+using OpenVSA.Dsp.Zoom;
 using OpenVSA.Ui.Layout;
 using OpenVSA.Ui.Rendering;
 using OpenVSA.Ui.ToolWindows;
@@ -182,7 +183,7 @@ namespace OpenVSA.Ui
         private void BuildDocumentArea()
         {
             Documents.AdoptPrimaryPlot(Plot);
-            Documents.AddTrace('A');
+            WireSelectArea(Documents.AddTrace('A'));
 
             Documents.LayoutChanged += (sender, preset) =>
                 StatusText.Content = "Layout: " + preset.Name;
@@ -227,6 +228,8 @@ namespace OpenVSA.Ui
                 {
                     TracePlot plot = Documents.AddTrace(letter);
 
+                    WireSelectArea(plot);
+
                     // A new trace opens in the next format round the list rather than as a second
                     // copy of the one beside it. Four windows all showing log magnitude of the same
                     // acquisition would be four identical pictures; REQ-TRC-001's separation of
@@ -267,6 +270,153 @@ namespace OpenVSA.Ui
         }
 
         private void OnResizeTraces(object sender, RoutedEventArgs e) => Documents.ResizeTraces();
+
+        /// <summary>
+        /// Turns the Select Area trace tool on or off across every trace (<c>REQ-DSP-023</c>).
+        /// </summary>
+        private void OnToggleSelectArea(object sender, RoutedEventArgs e)
+        {
+            bool on = SelectAreaItem.IsChecked;
+
+            foreach (char letter in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(letter);
+
+                if (plot != null)
+                {
+                    plot.SelectAreaEnabled = on;
+                }
+            }
+
+            StatusText.Content = on
+                ? "Select Area: drag across a trace to zoom into it."
+                : "Select Area off.";
+        }
+
+        /// <summary>
+        /// Zooms to a dragged region, without re-acquiring (<c>REQ-DSP-023</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The zoom is a downconversion of the blocks already arriving: the instrument is not
+        /// re-tuned, the plan is not re-negotiated, and nothing is re-armed. That is what
+        /// <c>REQ-DSP-023</c>'s "using only the captured block" means, and it is why the span can
+        /// go far below anything the front end would accept as a setting.
+        /// </para>
+        /// <para>
+        /// <c>ZoomControl</c> owns the 1/256 bound and its message (<c>REQ-REC-004</c>), so a drag
+        /// past it is refused here with the same words a typed span would get.
+        /// </para>
+        /// </remarks>
+        private void OnAreaSelected(object sender, AreaSelectedEventArgs area)
+        {
+            SpectrumEngine engine = _engine;
+
+            if (engine == null || engine.Plan == null)
+            {
+                StatusText.Content = "Nothing is being measured, so there is nothing to zoom into.";
+                return;
+            }
+
+            if (_zoom == null)
+            {
+                _zoom = new ZoomControl(engine.Plan.CenterFrequencyHz, engine.Plan.SpanHz);
+            }
+
+            try
+            {
+                _zoom.SelectArea(area.StartHz, area.StopHz);
+            }
+            catch (ArgumentOutOfRangeException refused)
+            {
+                StatusText.Content = refused.Message.Split('\n')[0];
+                return;
+            }
+
+            DigitalDownconverter downconverter;
+
+            if (!_zoom.TryCreateDownconverter(engine.Plan.SampleRateHz, out downconverter))
+            {
+                StatusText.Content =
+                    "That region is as wide as the acquisition; nothing to downconvert.";
+                return;
+            }
+
+            engine.Zoom = downconverter;
+            FullSpanItem.IsEnabled = true;
+
+            StatusText.Content =
+                _zoom.Annotation() + " — " + downconverter.Decimation + ":1 downconversion, " +
+                "no re-acquisition";
+        }
+
+        /// <summary>Returns the analysis to the whole captured band (<c>REQ-DSP-023</c>).</summary>
+        private void OnFullSpan(object sender, RoutedEventArgs e)
+        {
+            SpectrumEngine engine = _engine;
+
+            if (_zoom != null)
+            {
+                _zoom.FullSpan();
+            }
+
+            if (engine != null)
+            {
+                engine.Zoom = null;
+            }
+
+            FullSpanItem.IsEnabled = false;
+            StatusText.Content = "Full span.";
+        }
+
+        /// <summary>Where the analysis sits inside the captured band (<c>REQ-DSP-023</c>).</summary>
+        private ZoomControl _zoom;
+
+        /// <summary>
+        /// Wires a plot's mouse to the Select Area gesture.
+        /// </summary>
+        /// <remarks>
+        /// The pointer is captured for the duration, so a drag that leaves the plot still ends
+        /// where the button was released rather than being abandoned mid-selection — which is what
+        /// happens when the region wanted runs to the very edge of the trace.
+        /// </remarks>
+        private void WireSelectArea(TracePlot plot)
+        {
+            plot.SelectAreaEnabled = SelectAreaItem.IsChecked;
+            plot.AreaSelected += OnAreaSelected;
+
+            plot.PreviewMouseLeftButtonDown += (sender, e) =>
+            {
+                if (plot.BeginSelectArea(e.GetPosition(plot)))
+                {
+                    plot.CaptureMouse();
+                    e.Handled = true;
+                }
+            };
+
+            plot.MouseMove += (sender, e) =>
+            {
+                if (plot.IsSelectingArea)
+                {
+                    plot.ExtendSelectArea(e.GetPosition(plot));
+                }
+            };
+
+            plot.PreviewMouseLeftButtonUp += (sender, e) =>
+            {
+                if (!plot.IsSelectingArea)
+                {
+                    return;
+                }
+
+                plot.ReleaseMouseCapture();
+
+                if (plot.EndSelectArea(e.GetPosition(plot)))
+                {
+                    e.Handled = true;
+                }
+            };
+        }
 
         /// <summary>
         /// The format a newly opened trace starts in, stepping round the ones that always apply.

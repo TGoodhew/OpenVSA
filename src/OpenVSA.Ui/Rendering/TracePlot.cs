@@ -154,9 +154,31 @@ namespace OpenVSA.Ui.Rendering
             SetColumn(_indicatorText, 0);
             Children.Add(_indicatorText);
 
+            // The rubber band drawn while a region is being dragged (REQ-DSP-023). A sibling of
+            // the rasterised image rather than something painted into it: the image is redrawn
+            // from the trace on every frame, and a band painted there would flicker at the update
+            // rate or be lost to the next acquisition.
+            _band = new System.Windows.Shapes.Rectangle
+            {
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                StrokeThickness = 1.0,
+            };
+
+            SetRowSpan(_band, 3);
+            SetColumnSpan(_band, 3);
+            SetRow(_band, 0);
+            SetColumn(_band, 0);
+            Children.Add(_band);
+
             BuildValues();
             ApplyPalette();
         }
+
+        private readonly System.Windows.Shapes.Rectangle _band;
+        private double _dragFromX = double.NaN;
 
         /// <summary>Raised when the graticule changes width, and so the column count to decimate to.</summary>
         public event EventHandler GraticuleColumnsChanged;
@@ -358,6 +380,17 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>The element holding the trace indicator strings (<c>REQ-UI-041</c>).</summary>
         public FrameworkElement IndicatorElement => _indicatorText;
 
+        /// <summary>
+        /// Whether a drag across the trace selects a region to zoom into, rather than doing
+        /// nothing (<c>REQ-DSP-023</c>'s <em>Select Area</em> trace tool).
+        /// </summary>
+        /// <remarks>
+        /// Off by default. A plot that zoomed on every drag would make an imprecise click into a
+        /// change of measurement, and the tool is a mode in the reference product for the same
+        /// reason.
+        /// </remarks>
+        public bool SelectAreaEnabled { get; set; }
+
         /// <summary>The graticule's rectangle within this control, in device-independent pixels.</summary>
         public Rect GraticuleBounds =>
             new Rect(
@@ -485,6 +518,160 @@ namespace OpenVSA.Ui.Rendering
             _markerText.Text = _markerReadout;
 
             Redraw(_snapshot);
+        }
+
+        /// <summary>
+        /// Begins a Select Area drag at a position.
+        /// </summary>
+        /// <param name="position">Where the drag started, within this control.</param>
+        /// <returns><c>true</c> if a drag started.</returns>
+        /// <remarks>
+        /// Public so the gesture can be driven without a mouse — by a test, or by an automation
+        /// client. The shell wires the mouse to these three.
+        /// </remarks>
+        public bool BeginSelectArea(Point position)
+        {
+            if (!SelectAreaEnabled || _snapshot == null ||
+                !GraticuleBounds.Contains(position))
+            {
+                return false;
+            }
+
+            _dragFromX = position.X;
+            ShowBand(position.X, position.X);
+
+            return true;
+        }
+
+        /// <summary>Extends a Select Area drag.</summary>
+        /// <param name="position">The pointer's current position.</param>
+        public void ExtendSelectArea(Point position)
+        {
+            if (double.IsNaN(_dragFromX))
+            {
+                return;
+            }
+
+            ShowBand(_dragFromX, position.X);
+        }
+
+        /// <summary>
+        /// Ends a Select Area drag, raising <see cref="AreaSelected"/> if it covered anything.
+        /// </summary>
+        /// <param name="position">Where the drag ended.</param>
+        /// <returns><c>true</c> if a selection was reported.</returns>
+        /// <remarks>
+        /// A drag of a few pixels is a click that moved, not a selection. It is discarded rather
+        /// than zooming to a sliver, because a zoom to two pixels of span is far harder to undo
+        /// than it was to ask for.
+        /// </remarks>
+        public bool EndSelectArea(Point position)
+        {
+            if (double.IsNaN(_dragFromX))
+            {
+                return false;
+            }
+
+            double fromX = _dragFromX;
+
+            _dragFromX = double.NaN;
+            _band.Visibility = Visibility.Collapsed;
+
+            if (Math.Abs(position.X - fromX) < MinimumSelectionDip)
+            {
+                return false;
+            }
+
+            double first = FrequencyAt(new Point(fromX, position.Y));
+            double second = FrequencyAt(position);
+
+            if (double.IsNaN(first) || double.IsNaN(second) || first == second)
+            {
+                return false;
+            }
+
+            EventHandler<AreaSelectedEventArgs> handler = AreaSelected;
+
+            if (handler != null)
+            {
+                handler(
+                    this,
+                    new AreaSelectedEventArgs(Math.Min(first, second), Math.Max(first, second)));
+            }
+
+            return true;
+        }
+
+        /// <summary>Abandons a Select Area drag without selecting anything.</summary>
+        public void CancelSelectArea()
+        {
+            _dragFromX = double.NaN;
+            _band.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>Whether a Select Area drag is in progress.</summary>
+        public bool IsSelectingArea => !double.IsNaN(_dragFromX);
+
+        /// <summary>The shortest drag that counts as a selection, in device-independent pixels.</summary>
+        public const double MinimumSelectionDip = 6.0;
+
+        private void ShowBand(double fromX, double toX)
+        {
+            Rect graticule = GraticuleBounds;
+
+            double left = Math.Max(graticule.Left, Math.Min(fromX, toX));
+            double right = Math.Min(graticule.Right, Math.Max(fromX, toX));
+
+            _band.Margin = new Thickness(left, graticule.Top, 0.0, 0.0);
+            _band.Width = Math.Max(0.0, right - left);
+            _band.Height = graticule.Height;
+            _band.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Raised when a region has been dragged across the trace — the <em>Select Area</em>
+        /// gesture (<c>REQ-DSP-023</c>).
+        /// </summary>
+        /// <remarks>
+        /// Carries the two frequencies in hertz, low first. A drag right-to-left means the same
+        /// region as one left-to-right; requiring a direction would make half the gestures do
+        /// nothing.
+        /// </remarks>
+        public event EventHandler<AreaSelectedEventArgs> AreaSelected;
+
+        /// <summary>
+        /// The frequency at a pixel position, or <see cref="double.NaN"/> outside the graticule.
+        /// </summary>
+        /// <param name="position">Position within this control, in device-independent pixels.</param>
+        /// <remarks>
+        /// Interpolated across the graticule rather than snapped to the nearest point, because a
+        /// dragged edge is a position on the axis and not a choice among the drawn points — a
+        /// selection that snapped would be up to half a point wider or narrower than the one the
+        /// user drew.
+        /// </remarks>
+        public double FrequencyAt(Point position)
+        {
+            if (_snapshot == null)
+            {
+                return double.NaN;
+            }
+
+            Rect graticule = GraticuleBounds;
+
+            if (graticule.Width <= 0.0)
+            {
+                return double.NaN;
+            }
+
+            double fraction = (position.X - graticule.Left) / graticule.Width;
+
+            fraction = Math.Max(0.0, Math.Min(1.0, fraction));
+
+            SpectrumFrame frame = _snapshot.Spectrum;
+
+            return frame.PointCount < 2
+                ? frame.StartFrequencyHz
+                : frame.StartFrequencyHz + fraction * frame.BinWidthHz * (frame.PointCount - 1);
         }
 
         /// <summary>
@@ -766,6 +953,17 @@ namespace OpenVSA.Ui.Rendering
         {
             var annotation = new SolidColorBrush(ToMediaColor(_palette.Annotation));
             annotation.Freeze();
+
+            // The selection band takes the annotation colour: it is chrome over the trace, not a
+            // trace of its own, and giving it the trace colour would make a dragged region look
+            // briefly like measured data.
+            _band.Stroke = annotation;
+
+            Color wash = ToMediaColor(_palette.Annotation);
+            var fill = new SolidColorBrush(Color.FromArgb(48, wash.R, wash.G, wash.B));
+            fill.Freeze();
+
+            _band.Fill = fill;
 
             foreach (FrameworkElement element in _annotation)
             {
