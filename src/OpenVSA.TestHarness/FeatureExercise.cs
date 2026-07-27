@@ -2166,37 +2166,13 @@ namespace OpenVSA.TestHarness
         }
 
         /// <summary>
-        /// Exercises auto-ranging against the connected instrument and a real 20 dB drop
-        /// (<c>REQ-ACQ-004</c>).
-        /// </summary>
-        /// <param name="centerFrequencyHz">Analysis centre frequency.</param>
-        /// <param name="spanHz">Analysis span.</param>
-        /// <param name="toneHz">Carrier frequency the generator is set to.</param>
-        /// <param name="levelDbm">Generator level the first acquisition was made at.</param>
-        /// <param name="peakDbm">Peak measured at that level, in dBm.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <remarks>
-        /// <para>
-        /// Two things are checked, and only the first of them is about this instrument. The E4406A
-        /// declares no input range control — in Basic mode it ranges its own converter and takes no
-        /// range command — so the requirement's last clause applies to it: the function must be
-        /// <em>unavailable</em>, and asking anyway must be refused rather than quietly ignored.
-        /// That is the strongest statement this bench can make about the real front end, and it is
-        /// made against the real front end.
-        /// </para>
-        /// <para>
-        /// The second step then drops the generator by 20 dB — the criterion's own number, on real
-        /// hardware — re-measures, and puts the two real peaks through the decision. Range control
-        /// has to be declared for that, so the capabilities are wrapped to say so; that wrapper is
-        /// the one synthetic element in this exercise and it changes nothing else. What is real is
-        /// what matters here: two peaks measured through the instrument, 20 dB apart, with the
-        /// noise and the awkward numbers a real measurement has.
-        /// </para>
-        /// </remarks>
-        /// <summary>
         /// Steps the generator across the span and checks the spectrogram's ridge
         /// (<c>REQ-DSP-043</c>).
         /// </summary>
+        /// <param name="centerFrequencyHz">Analysis centre frequency.</param>
+        /// <param name="spanHz">Analysis span.</param>
+        /// <param name="levelDbm">Generator level.</param>
+        /// <param name="ct">Cancellation token.</param>
         /// <remarks>
         /// The requirement's criterion is worded to catch a particular failure: a spectrogram that
         /// drew <em>something</em> while having its time axis reversed or its frequency axis
@@ -2355,6 +2331,34 @@ namespace OpenVSA.TestHarness
             });
         }
 
+        /// <summary>
+        /// Exercises auto-ranging against the connected instrument and a real 20 dB drop
+        /// (<c>REQ-ACQ-004</c>).
+        /// </summary>
+        /// <param name="centerFrequencyHz">Analysis centre frequency.</param>
+        /// <param name="spanHz">Analysis span.</param>
+        /// <param name="toneHz">Carrier frequency the generator is set to.</param>
+        /// <param name="levelDbm">Generator level the first acquisition was made at.</param>
+        /// <param name="peakDbm">Peak measured at that level, in dBm.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <remarks>
+        /// <para>
+        /// Two things are checked, and only the first of them is about this instrument. The
+        /// connected front end declares no input range control — it ranges its own converter and
+        /// takes no range command — so the requirement's last clause applies to it: the function
+        /// must be <em>unavailable</em>, and asking anyway must be refused rather than quietly
+        /// ignored. That is the strongest statement this bench can make about the real front end,
+        /// and it is made against the real front end.
+        /// </para>
+        /// <para>
+        /// The second step then drops the generator by 20 dB — the criterion's own number, on real
+        /// hardware — re-measures, and puts the two real peaks through the decision. Range control
+        /// has to be declared for that, so the capabilities are wrapped to say so; that wrapper is
+        /// the one synthetic element in this exercise and it changes nothing else. What is real is
+        /// what matters here: two peaks measured through the instrument, 20 dB apart, with the
+        /// noise and the awkward numbers a real measurement has.
+        /// </para>
+        /// </remarks>
         private async Task ExerciseAutoRangeAsync(
             double centerFrequencyHz,
             double spanHz,
