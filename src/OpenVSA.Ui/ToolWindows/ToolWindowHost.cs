@@ -5,6 +5,8 @@ using System.Windows;
 using System.Windows.Controls;
 using Syncfusion.Windows.Tools.Controls;
 
+using OpenVSA.Ui.Rendering;
+
 namespace OpenVSA.Ui.ToolWindows
 {
     /// <summary>
@@ -267,6 +269,33 @@ namespace OpenVSA.Ui.ToolWindows
         }
 
         private MenuItem _markerMenu;
+
+        /// <summary>
+        /// Applies the Marker font slot to the Markers window (<c>REQ-UI-033</c>,
+        /// <c>REQ-UI-080</c>).
+        /// </summary>
+        /// <param name="fonts">The font slots in force.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="fonts"/> is null.</exception>
+        /// <remarks>
+        /// The Markers window only. The other seven panes are also columns of figures and also draw
+        /// fixed-width, but <c>REQ-UI-080</c> gives the Marker slot one surface and the Tabular slot
+        /// two others; letting one slot quietly restyle all eight would make "setting one leaves the
+        /// other two unchanged" untestable on screen.
+        /// </remarks>
+        public void ApplyFonts(FontPreferences fonts)
+        {
+            if (fonts == null)
+            {
+                throw new ArgumentNullException(nameof(fonts));
+            }
+
+            TextBlock markers;
+
+            if (_text.TryGetValue(ToolWindow.Markers, out markers))
+            {
+                fonts.ApplyTo(FontSlot.Marker, markers);
+            }
+        }
 
         private void Create(ToolWindow window)
         {

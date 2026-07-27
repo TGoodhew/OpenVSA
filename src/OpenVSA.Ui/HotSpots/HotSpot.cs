@@ -81,7 +81,18 @@ namespace OpenVSA.Ui.HotSpots
 
             set
             {
+                if (_value != null)
+                {
+                    _value.Changed -= OnValueChangedElsewhere;
+                }
+
                 _value = value;
+
+                if (_value != null)
+                {
+                    _value.Changed += OnValueChangedElsewhere;
+                }
+
                 _typed = string.Empty;
                 Refresh();
             }
@@ -332,6 +343,29 @@ namespace OpenVSA.Ui.HotSpots
         /// <summary>Redisplays the value, discarding any partial entry.</summary>
         public void Refresh() =>
             Text = _value == null ? Label.TrimEnd() : Label + _value.Text;
+
+        /// <summary>
+        /// Follows a change made somewhere other than this hot spot (<c>REQ-UI-070</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The dialog and the hot spot edit one value, so a change made in either has to appear on
+        /// both without the other being reopened. That is the requirement's third criterion, and
+        /// this handler is what makes it true of the hot spot.
+        /// </para>
+        /// <para>
+        /// Not while an entry is being typed here. Overwriting a half-typed number with a value
+        /// from elsewhere would discard what the user was in the middle of, and the entry they are
+        /// making is about to supersede it anyway.
+        /// </para>
+        /// </remarks>
+        private void OnValueChangedElsewhere(object sender, EventArgs e)
+        {
+            if (_typed.Length == 0)
+            {
+                Refresh();
+            }
+        }
 
         private ContextMenu BuildContextMenu()
         {

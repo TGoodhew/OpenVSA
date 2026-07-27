@@ -17,6 +17,7 @@ using System.IO;
 using OpenVSA.Capture.Triggering;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
+using OpenVSA.Ui.Dialogs;
 using OpenVSA.Ui.HotSpots;
 using OpenVSA.Dsp.Zoom;
 using OpenVSA.Ui.Layout;
@@ -107,6 +108,23 @@ namespace OpenVSA.Ui
         /// <summary>Every colour a user can change, and the ones they have (<c>REQ-UI-014</c>).</summary>
         private readonly ColourPreferences _colours = new ColourPreferences();
 
+        /// <summary>The three font slots of <c>REQ-UI-080</c>.</summary>
+        private readonly FontPreferences _fonts = new FontPreferences();
+
+        /// <summary>The Trace tab's display options, shared with the Display menu.</summary>
+        private readonly TraceDisplayOptions _traceDisplay = new TraceDisplayOptions();
+
+        /// <summary>The dialog framework's global options (<c>REQ-UI-071</c>).</summary>
+        private readonly DialogFrameworkOptions _dialogOptions = new DialogFrameworkOptions();
+
+        /// <summary>The Display Preferences dialog while it is open, or null (<c>REQ-UI-073</c>).</summary>
+        /// <remarks>
+        /// Held so that asking for it twice raises the one that is open rather than stacking a
+        /// second copy over it. A modeless dialog can be left open and forgotten, and two of them
+        /// editing the same preferences would each show the other's changes arriving from nowhere.
+        /// </remarks>
+        private DisplayPreferencesDialog _preferences;
+
         /// <summary>The spectrogram colour map in force (<c>REQ-UI-024</c>).</summary>
         private SpectrogramColourMap _spectrogramMap = SpectrogramColourMap.Default;
 
@@ -172,10 +190,17 @@ namespace OpenVSA.Ui
             BuildToolWindows();
             BuildDocumentArea();
 
-            // After the document area, so the colours reach the plots that exist. BuildToolWindows
-            // is what read them out of the sidecar; applying them there would paint nothing.
+            // After the document area, so the colours and fonts reach the plots that exist.
+            // BuildToolWindows is what read them out of the sidecar; applying them there would
+            // paint nothing.
             BuildSpectrogramMapMenu();
             ApplyColours();
+            ApplyFonts();
+
+            // The menu follows the options rather than holding them, so that the Trace tab and the
+            // Display menu are two views of one setting (REQ-UI-070).
+            _traceDisplay.Changed += (sender, e) => FollowTraceDisplayOptions();
+            FollowTraceDisplayOptions();
 
             Closed += (sender, e) => ShutDown();
         }
@@ -429,7 +454,7 @@ namespace OpenVSA.Ui
 
             try
             {
-                if (ForceWhiteBackgroundItem.IsChecked)
+                if (_traceDisplay.ForceWhiteBackgroundOnPrint)
                 {
                     plot.Palette = onScreen.ForPrinting();
                     plot.UpdateLayout();
@@ -533,6 +558,15 @@ namespace OpenVSA.Ui
 
         /// <summary>Every colour a user can change (<c>REQ-UI-014</c>).</summary>
         public ColourPreferences Colours => _colours;
+
+        /// <summary>The three font slots (<c>REQ-UI-080</c>).</summary>
+        public FontPreferences Fonts => _fonts;
+
+        /// <summary>The trace display options shared by the Trace tab and the Display menu.</summary>
+        public TraceDisplayOptions TraceDisplay => _traceDisplay;
+
+        /// <summary>The dialog framework's global options (<c>REQ-UI-071</c>).</summary>
+        public DialogFrameworkOptions DialogOptions => _dialogOptions;
 
         /// <summary>The spectrogram colour map in force (<c>REQ-UI-024</c>).</summary>
         public SpectrogramColourMap SpectrogramMap => _spectrogramMap;
@@ -647,9 +681,13 @@ namespace OpenVSA.Ui
                 {
                     ToolWindows = _toolWindows.Layout.ToState(),
                     SpectrogramColourMap = SpectrogramColourMap.NameOf(_spectrogramMap.Kind),
+                    SpectrogramUserMap = UserMapEntries(),
                 };
 
                 _colours.SaveInto(preferences);
+                _fonts.SaveInto(preferences);
+                _dialogOptions.SaveInto(preferences);
+                _traceDisplay.SaveInto(preferences);
 
                 Directory.CreateDirectory(Path.GetDirectoryName(ToolWindowLayoutPath));
                 SidecarFile.Save(preferences, ToolWindowLayoutPath);
@@ -681,6 +719,28 @@ namespace OpenVSA.Ui
                     " colour(s) this build does not have; the rest were applied.");
             }
 
+            IReadOnlyList<string> unknownFonts = _fonts.LoadFrom(saved);
+
+            if (unknownFonts.Count > 0)
+            {
+                _eventLog.Append(
+                    "Display preferences name " + unknownFonts.Count +
+                    " font slot(s) this build cannot use; the rest were applied.");
+            }
+
+            // REQ-UI-071's Persist Mode: the mode a dialog was closed in has to survive a restart,
+            // and this is the read that makes "across restarts" true rather than "within a session".
+            IReadOnlyList<string> unknownModes = _dialogOptions.LoadFrom(saved);
+
+            if (unknownModes.Count > 0)
+            {
+                _eventLog.Append(
+                    "Display preferences name " + unknownModes.Count +
+                    " dialog mode(s) this build does not have; the rest were applied.");
+            }
+
+            _traceDisplay.LoadFrom(saved);
+
             SpectrogramColourMapKind kind;
 
             if (!SpectrogramColourMap.TryParseName(saved.SpectrogramColourMap, out kind))
@@ -695,6 +755,31 @@ namespace OpenVSA.Ui
             _spectrogramMap = kind == SpectrogramColourMapKind.UserDefined
                 ? UserMapFrom(saved)
                 : SpectrogramColourMap.Of(kind);
+        }
+
+        /// <summary>
+        /// The user map's colours for the sidecar, or an empty list if the map is a built-in one.
+        /// </summary>
+        /// <remarks>
+        /// Written only for a user-defined map. A built-in map is named, not enumerated: writing its
+        /// 64 colours out would freeze today's built-in map into the file and make a change to it
+        /// invisible to everyone who had ever saved preferences.
+        /// </remarks>
+        private List<uint> UserMapEntries()
+        {
+            var colours = new List<uint>();
+
+            if (_spectrogramMap.Kind != SpectrogramColourMapKind.UserDefined)
+            {
+                return colours;
+            }
+
+            foreach (PlotColor colour in _spectrogramMap.Entries)
+            {
+                colours.Add(ColourPreferences.Pack(colour));
+            }
+
+            return colours;
         }
 
         /// <summary>Rebuilds a user-defined spectrogram map from the sidecar, or falls back.</summary>
@@ -776,20 +861,82 @@ namespace OpenVSA.Ui
                 " (" + _spectrogramMap.Count + " entries).");
         }
 
-        /// <summary>Opens the colour picker (<c>REQ-UI-014</c>).</summary>
-        private void OnColours(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Opens Display Preferences: modeless, live, five tabs (<c>REQ-UI-070</c>,
+        /// <c>REQ-UI-073</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Shown rather than shown modally, so the measurement keeps updating behind it and the hot
+        /// spots stay usable — which is what <c>REQ-UI-070</c> requires and what makes choosing a
+        /// grid colour against the live grid possible at all.
+        /// </para>
+        /// <para>
+        /// The preferences are written when the dialog closes rather than on every slider movement.
+        /// A colour dragged through two hundred intermediate values would otherwise be two hundred
+        /// writes of a file nobody is reading.
+        /// </para>
+        /// </remarks>
+        private void OnDisplayPreferences(object sender, RoutedEventArgs e)
         {
-            var dialog = new ColourPickerDialog(_colours) { Owner = this };
+            if (_preferences != null)
+            {
+                _preferences.Activate();
+                return;
+            }
+
+            var dialog = new DisplayPreferencesDialog(
+                _dialogOptions, _colours, _fonts, _traceDisplay, _spectrogramMap);
 
             dialog.ColoursChanged += (s, args) => ApplyColours();
-            dialog.ShowDialog();
+            dialog.FontsChanged += (s, args) => ApplyFonts();
 
-            ApplyColours();
-            SaveToolWindowLayout();
+            dialog.SpectrogramMapChanged += (s, args) =>
+            {
+                _spectrogramMap = dialog.SpectrogramMap;
+                BuildSpectrogramMapMenu();
+            };
 
-            _eventLog.Append(
-                "Colour picker closed; " + _colours.ChangedCount +
-                " colour(s) differ from their defaults.");
+            dialog.Closed += (s, args) =>
+            {
+                _preferences = null;
+                SaveToolWindowLayout();
+
+                _eventLog.Append(
+                    "Display Preferences closed; " + _colours.ChangedCount +
+                    " colour(s) and " + _fonts.ChangedCount +
+                    " font slot(s) differ from their defaults.");
+            };
+
+            _preferences = dialog;
+            dialog.ShowModeless(this);
+        }
+
+        /// <summary>
+        /// Pushes the chosen font slots onto the surfaces that draw from them (<c>REQ-UI-080</c>).
+        /// </summary>
+        /// <remarks>
+        /// Annotation reaches every trace window; Marker reaches the Markers window and nothing
+        /// else. Tabular has no surface yet — the symbol table and error summary of
+        /// <c>REQ-UI-052</c> do not exist — so it is settable and persisted but draws nothing, which
+        /// is said here rather than left to be discovered.
+        /// </remarks>
+        private void ApplyFonts()
+        {
+            foreach (char trace in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(trace);
+
+                if (plot != null)
+                {
+                    plot.ApplyFonts(_fonts);
+                }
+            }
+
+            if (_toolWindows != null)
+            {
+                _toolWindows.ApplyFonts(_fonts);
+            }
         }
 
         /// <summary>
@@ -808,8 +955,8 @@ namespace OpenVSA.Ui
                 Margin = _colours.ColourOf("Margin"),
                 FailLimit = _colours.ColourOf("Fail Limit"),
                 FailMargin = _colours.ColourOf("Fail Margin"),
-                IndicateFailures = IndicateLimitFailuresItem.IsChecked,
-                IndicateMargin = IndicateMarginItem.IsChecked,
+                IndicateFailures = _traceDisplay.IndicateLimitFailures,
+                IndicateMargin = _traceDisplay.IndicateMarginWarnings,
             };
 
             // Per trace, because Trace is a per-trace element in REQ-UI-022 and the rest are not.
@@ -855,14 +1002,58 @@ namespace OpenVSA.Ui
                 : TraceColours.ForTrace(trace);
         }
 
+        /// <summary>
+        /// The Display menu's limit-indication items, writing the same state the Trace tab does.
+        /// </summary>
+        /// <remarks>
+        /// The menu item does not hold the setting; it sets it. <see cref="TraceDisplayOptions"/>
+        /// does, and both surfaces follow its change event — <c>REQ-UI-070</c>'s "each surface
+        /// reflects a change made from the other", which is only true if neither surface is the
+        /// state.
+        /// </remarks>
         private void OnLimitIndicationChanged(object sender, RoutedEventArgs e)
         {
+            if (_menuFollowing)
+            {
+                return;
+            }
+
+            _traceDisplay.IndicateLimitFailures = IndicateLimitFailuresItem.IsChecked;
+            _traceDisplay.IndicateMarginWarnings = IndicateMarginItem.IsChecked;
+            _traceDisplay.ForceWhiteBackgroundOnPrint = ForceWhiteBackgroundItem.IsChecked;
+        }
+
+        /// <summary>Whether the Display menu is being updated from the options, not by the user.</summary>
+        private bool _menuFollowing;
+
+        /// <summary>
+        /// Brings the Display menu's check marks into line with the options.
+        /// </summary>
+        /// <remarks>
+        /// Guarded, because setting <c>IsChecked</c> raises the click handler's sibling events and
+        /// an unguarded round trip would write the value back to the options it just read.
+        /// </remarks>
+        private void FollowTraceDisplayOptions()
+        {
+            _menuFollowing = true;
+
+            try
+            {
+                IndicateLimitFailuresItem.IsChecked = _traceDisplay.IndicateLimitFailures;
+                IndicateMarginItem.IsChecked = _traceDisplay.IndicateMarginWarnings;
+                ForceWhiteBackgroundItem.IsChecked = _traceDisplay.ForceWhiteBackgroundOnPrint;
+            }
+            finally
+            {
+                _menuFollowing = false;
+            }
+
             ApplyColours();
 
             _eventLog.Append(
                 "Limit indication: failures " +
-                (IndicateLimitFailuresItem.IsChecked ? "shown" : "hidden") + ", margin warnings " +
-                (IndicateMarginItem.IsChecked ? "shown" : "hidden") + ".");
+                (_traceDisplay.IndicateLimitFailures ? "shown" : "hidden") + ", margin warnings " +
+                (_traceDisplay.IndicateMarginWarnings ? "shown" : "hidden") + ".");
         }
 
         /// <summary>Where the display sidecar carrying the tool-window layout lives.</summary>

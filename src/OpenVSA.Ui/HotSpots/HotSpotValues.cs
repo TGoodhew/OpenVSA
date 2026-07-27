@@ -19,6 +19,18 @@ namespace OpenVSA.Ui.HotSpots
         string Text { get; }
 
         /// <summary>
+        /// Raised whenever the value changes, however it was changed.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-UI-070</c> requires a hot spot and its dialog to drive one piece of state, each
+        /// reflecting a change made from the other "without needing to be reopened". The value is
+        /// that one piece of state, so this is where the notification has to live: a hot spot that
+        /// only refreshed when it was itself edited would show a stale number for as long as the
+        /// dialog was open, and would be showing it beside a measurement that had already moved.
+        /// </remarks>
+        event EventHandler Changed;
+
+        /// <summary>
         /// Moves the value by a number of steps, as a wheel notch or an arrow key asks.
         /// </summary>
         /// <param name="steps">Steps to move; negative moves down.</param>
@@ -31,6 +43,19 @@ namespace OpenVSA.Ui.HotSpots
         /// <param name="text">The text.</param>
         /// <returns><c>true</c> if the text was understood and the value changed.</returns>
         bool TrySet(string text);
+
+        /// <summary>
+        /// Whether text is one this value could take, whether or not it would change it.
+        /// </summary>
+        /// <param name="text">The text.</param>
+        /// <remarks>
+        /// Separate from <see cref="TrySet"/> because that answers two questions at once — was it
+        /// understood, and did it move the value — and the live entry dialog of <c>REQ-UI-070</c>
+        /// needs them apart. Typing a number that the setting already holds is understood and
+        /// changes nothing, and reporting it as a rejected entry would be a message about nothing
+        /// having gone wrong.
+        /// </remarks>
+        bool Understands(string text);
     }
 
     /// <summary>
@@ -91,12 +116,26 @@ namespace OpenVSA.Ui.HotSpots
             Maximum = double.PositiveInfinity;
         }
 
+        /// <inheritdoc />
+        public event EventHandler Changed;
+
         /// <summary>The value.</summary>
         public double Value
         {
             get { return _value; }
 
-            set { _value = Clamp(value); }
+            set
+            {
+                double clamped = Clamp(value);
+
+                if (clamped.Equals(_value))
+                {
+                    return;
+                }
+
+                _value = clamped;
+                RaiseChanged();
+            }
         }
 
         /// <summary>Additive step per wheel notch or arrow key.</summary>
@@ -141,8 +180,13 @@ namespace OpenVSA.Ui.HotSpots
             }
 
             _value = clamped;
+            RaiseChanged();
             return true;
         }
+
+        /// <inheritdoc />
+        public bool Understands(string text) =>
+            !string.IsNullOrEmpty(text) && _parse(text) != null;
 
         /// <inheritdoc />
         public bool TrySet(string text)
@@ -167,6 +211,7 @@ namespace OpenVSA.Ui.HotSpots
             }
 
             _value = clamped;
+            RaiseChanged();
             return true;
         }
 
@@ -230,6 +275,16 @@ namespace OpenVSA.Ui.HotSpots
                 : trimmed;
         }
 
+        private void RaiseChanged()
+        {
+            EventHandler handler = Changed;
+
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
+        }
+
         private double Clamp(double value)
         {
             if (double.IsNaN(value))
@@ -289,6 +344,9 @@ namespace OpenVSA.Ui.HotSpots
             _index = index;
         }
 
+        /// <inheritdoc />
+        public event EventHandler Changed;
+
         /// <summary>The options, in order.</summary>
         public IReadOnlyList<string> Options => _options;
 
@@ -306,7 +364,13 @@ namespace OpenVSA.Ui.HotSpots
                         nameof(value), value, "Outside the list of options.");
                 }
 
+                if (_index == value)
+                {
+                    return;
+                }
+
                 _index = value;
+                RaiseChanged();
             }
         }
 
@@ -331,7 +395,29 @@ namespace OpenVSA.Ui.HotSpots
             }
 
             _index = moved;
+            RaiseChanged();
             return true;
+        }
+
+        /// <inheritdoc />
+        public bool Understands(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            string trimmed = text.Trim();
+
+            foreach (string option in _options)
+            {
+                if (string.Equals(option, trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <inheritdoc />
@@ -354,11 +440,22 @@ namespace OpenVSA.Ui.HotSpots
                     }
 
                     _index = i;
+                    RaiseChanged();
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private void RaiseChanged()
+        {
+            EventHandler handler = Changed;
+
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
         }
     }
 }

@@ -6,7 +6,8 @@ using System.Windows.Input;
 namespace OpenVSA.Ui.HotSpots
 {
     /// <summary>
-    /// The data-entry dialog a hot spot's double click opens (<c>REQ-UI-042</c>).
+    /// The data-entry dialog a hot spot's double click opens (<c>REQ-UI-042</c>), modeless and live
+    /// (<c>REQ-UI-070</c>).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -16,18 +17,37 @@ namespace OpenVSA.Ui.HotSpots
     /// in one go.
     /// </para>
     /// <para>
-    /// <see cref="Apply"/> is separate from showing the window so the behaviour can be exercised
-    /// without a message pump; <see cref="Prompt"/> is the whole interaction for the shell to call.
+    /// <strong>There is no OK, and the entry applies as it is typed.</strong> That is
+    /// <c>REQ-UI-070</c>: no round-trip, and no modal loop stopping the measurement behind the
+    /// dialog. A partially typed number that does not parse is simply not applied and says so;
+    /// nothing is committed, because everything already was.
+    /// </para>
+    /// <para>
+    /// <strong>Applying on each keystroke is safe here because of what is downstream.</strong>
+    /// Typing <c>1.5 GHz</c> passes through <c>1</c> and <c>1.5</c> on the way, and the shell
+    /// coalesces hot-spot changes over a settling interval before it re-plans — the same mechanism
+    /// that stops a dozen wheel notches becoming a dozen re-arms. Without that coalescing this would
+    /// be a bad idea, so it is worth knowing that removing it breaks this dialog and not just the
+    /// wheel.
+    /// </para>
+    /// <para>
+    /// <strong>The dialog and the hot spot are two surfaces over one value.</strong> Neither owns
+    /// it. The dialog follows <see cref="IHotSpotValue.Changed"/> so that adjusting the hot spot
+    /// with the wheel moves the number in the open dialog, and the hot spot follows the same event
+    /// so that typing here moves the number on the trace.
     /// </para>
     /// </remarks>
     public sealed class ValueEntryDialog : Window
     {
         private readonly TextBox _entry;
+        private readonly TextBlock _note;
         private readonly IHotSpotValue _value;
+
+        private bool _updating;
 
         /// <summary>Creates the dialog over a value.</summary>
         /// <param name="caption">What is being edited, for the title bar.</param>
-        /// <param name="value">The value to set.</param>
+        /// <param name="value">The value to set; edited in place.</param>
         /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
         public ValueEntryDialog(string caption, IHotSpotValue value)
         {
@@ -48,14 +68,30 @@ namespace OpenVSA.Ui.HotSpots
             {
                 Text = value.Text,
                 MinWidth = 220.0,
-                Margin = new Thickness(12.0, 12.0, 12.0, 6.0),
+                Margin = new Thickness(12.0, 12.0, 12.0, 4.0),
             };
 
-            var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 72.0, Margin = new Thickness(4.0) };
-            var cancel = new Button { Content = "Cancel", IsCancel = true, MinWidth = 72.0, Margin = new Thickness(4.0) };
+            _entry.TextChanged += OnEntryChanged;
 
-            ok.Click += (sender, e) => Close(Apply());
-            cancel.Click += (sender, e) => Close(false);
+            _note = new TextBlock
+            {
+                Margin = new Thickness(12.0, 0.0, 12.0, 6.0),
+                MaxWidth = 260.0,
+                TextWrapping = TextWrapping.Wrap,
+            };
+
+            var close = new Button
+            {
+                // "Close", never "OK": the value was applied as it was typed, so there is nothing
+                // here to accept and nothing to cancel.
+                Content = "Close",
+                MinWidth = 72.0,
+                Margin = new Thickness(4.0),
+                IsDefault = true,
+                IsCancel = true,
+            };
+
+            close.Click += (sender, e) => Close();
 
             var buttons = new StackPanel
             {
@@ -64,14 +100,17 @@ namespace OpenVSA.Ui.HotSpots
                 Margin = new Thickness(8.0, 0.0, 8.0, 8.0),
             };
 
-            buttons.Children.Add(ok);
-            buttons.Children.Add(cancel);
+            buttons.Children.Add(close);
 
             var panel = new StackPanel();
             panel.Children.Add(_entry);
+            panel.Children.Add(_note);
             panel.Children.Add(buttons);
 
             Content = panel;
+
+            _value.Changed += OnValueChangedElsewhere;
+            Closed += (sender, e) => _value.Changed -= OnValueChangedElsewhere;
 
             Loaded += (sender, e) =>
             {
@@ -83,32 +122,57 @@ namespace OpenVSA.Ui.HotSpots
             {
                 if (e.Key == Key.Escape)
                 {
-                    Close(false);
+                    Close();
                 }
             };
         }
 
+        /// <summary>The value both this dialog and its hot spot edit.</summary>
+        public IHotSpotValue Value => _value;
+
         /// <summary>The text currently in the entry field.</summary>
+        /// <remarks>Setting it applies, exactly as typing it does.</remarks>
         public string EntryText
         {
             get { return _entry.Text; }
             set { _entry.Text = value ?? string.Empty; }
         }
 
+        /// <summary>What the dialog is saying about the last entry, or empty if it took.</summary>
+        public string Note => _note.Text;
+
         /// <summary>
         /// Applies the entry to the value.
         /// </summary>
         /// <returns><c>true</c> if the text was understood and the value changed.</returns>
-        public bool Apply() => _value.TrySet(_entry.Text);
+        /// <remarks>
+        /// Public because the behaviour has to be exercisable without a message pump, not because
+        /// anything has to call it to commit: the text-changed handler already has.
+        /// </remarks>
+        public bool Apply()
+        {
+            bool changed = _value.TrySet(_entry.Text);
+
+            _note.Text = _value.Understands(_entry.Text)
+                ? string.Empty
+                : "'" + _entry.Text + "' is not a value this setting understands.";
+
+            return changed;
+        }
 
         /// <summary>
-        /// Shows the dialog over a hot spot and applies the result.
+        /// Opens the dialog over a hot spot, without blocking the measurement.
         /// </summary>
         /// <param name="owner">The owning window, or <c>null</c>.</param>
         /// <param name="spot">The hot spot being edited.</param>
-        /// <returns><c>true</c> if the value changed.</returns>
+        /// <returns>The dialog, or <c>null</c> if the hot spot has no value to edit.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="spot"/> is null.</exception>
-        public static bool Prompt(Window owner, HotSpot spot)
+        /// <remarks>
+        /// Modeless: <c>REQ-UI-070</c> requires the measurement to keep updating and the main window
+        /// to stay interactive — including the hot spots — while a setting dialog is open. The hot
+        /// spot needs no refresh call here; it is following the same value this dialog is.
+        /// </remarks>
+        public static ValueEntryDialog Prompt(Window owner, HotSpot spot)
         {
             if (spot == null)
             {
@@ -117,35 +181,47 @@ namespace OpenVSA.Ui.HotSpots
 
             if (spot.Value == null)
             {
-                return false;
+                return null;
             }
 
             var dialog = new ValueEntryDialog(spot.Label, spot.Value) { Owner = owner };
 
-            bool? accepted = dialog.ShowDialog();
+            dialog.Show();
+            dialog.Activate();
 
-            if (accepted != true)
-            {
-                return false;
-            }
-
-            spot.Refresh();
-            return true;
+            return dialog;
         }
 
-        private void Close(bool accepted)
+        private void OnEntryChanged(object sender, TextChangedEventArgs e)
         {
-            try
+            if (_updating)
             {
-                DialogResult = accepted;
-            }
-            catch (InvalidOperationException)
-            {
-                // Only a window shown modally has a dialog result. One shown any other way still
-                // closes, and refusing to would strand it on screen.
+                return;
             }
 
-            base.Close();
+            Apply();
+        }
+
+        private void OnValueChangedElsewhere(object sender, EventArgs e)
+        {
+            // Not while this field has the caret: the user is mid-entry, and replacing what they
+            // are typing with the value their own last keystroke produced would fight them.
+            if (_entry.IsKeyboardFocusWithin)
+            {
+                return;
+            }
+
+            _updating = true;
+
+            try
+            {
+                _entry.Text = _value.Text;
+                _note.Text = string.Empty;
+            }
+            finally
+            {
+                _updating = false;
+            }
         }
     }
 }

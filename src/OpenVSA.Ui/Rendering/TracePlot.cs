@@ -766,6 +766,44 @@ namespace OpenVSA.Ui.Rendering
             _indicatorText.Text = string.Empty;
         }
 
+        /// <summary>
+        /// Applies the Annotation font slot to every annotation element (<c>REQ-UI-080</c>).
+        /// </summary>
+        /// <param name="fonts">The font slots in force.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="fonts"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// Every annotation element, including the marker readout and the indicator, so a trace
+        /// window is drawn in one typeface rather than in whichever ones happened to be set at
+        /// construction.
+        /// </para>
+        /// <para>
+        /// The annotation band's height is fixed (<see cref="AnnotationBandDip"/>), so a very large
+        /// annotation font will crowd it. That is the user's choice to make and to see — clamping
+        /// the size here would leave a setting that visibly did nothing past a certain point.
+        /// </para>
+        /// </remarks>
+        public void ApplyFonts(FontPreferences fonts)
+        {
+            if (fonts == null)
+            {
+                throw new ArgumentNullException(nameof(fonts));
+            }
+
+            foreach (FrameworkElement element in _annotation)
+            {
+                var text = element as TextBlock;
+
+                if (text != null)
+                {
+                    fonts.ApplyTo(FontSlot.Annotation, text);
+                }
+            }
+
+            fonts.ApplyTo(FontSlot.Annotation, _markerText);
+            fonts.ApplyTo(FontSlot.Annotation, _indicatorText);
+        }
+
         // ---- Annotation construction -----------------------------------------------------------
 
         private HotSpot NewHotSpot(string label, HorizontalAlignment horizontal)
