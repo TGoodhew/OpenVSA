@@ -149,6 +149,7 @@ namespace OpenVSA.TestHarness
                     ExerciseZoom(block, frame, actualToneHz);
                     ExerciseZoomControls(block, spanHz, actualToneHz);
                     ExerciseTransformCeiling(block, frame);
+                    ExerciseDetectors(frame, actualToneHz);
                     ExerciseNoiseCorrection(block, frame, actualToneHz);
                     ExerciseChannelMeasurements(frame, actualToneHz);
                     ExerciseCrossChannelAvailability();
@@ -553,6 +554,156 @@ namespace OpenVSA.TestHarness
                 return new Outcome<double>(
                     ok, zoom.SpanHz,
                     "back to " + zoom.Annotation() + " at " + Hz(zoom.CenterFrequencyHz));
+            });
+        }
+
+        /// <summary>
+        /// Reduces a real trace by each display detector (<c>REQ-UI-072</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// On the instrument's own trace, which is the point: a unit test invents a column and the
+        /// detectors do the obvious thing to it. Here the column spans a real carrier standing tens
+        /// of decibels above a real noise floor, which is the case where averaging in decibels
+        /// instead of in power is both wrong and plausible-looking.
+        /// </para>
+        /// <para>
+        /// The discriminating figure is the gap between the two averages. Over a column containing
+        /// a carrier and its skirts the power mean sits within a decibel or two of the carrier,
+        /// while the mean of the decibels sits far below it — so an implementation that averaged
+        /// decibels fails here by tens of dB, not by a rounding error.
+        /// </para>
+        /// </remarks>
+        private void ExerciseDetectors(SpectrumFrame full, double toneHz)
+        {
+            int peakIndex = full.IndexOfPeak();
+
+            if (peakIndex < 0)
+            {
+                return;
+            }
+
+            // A column of the width the display would actually give it: a few hundred points over
+            // a graticule several hundred pixels wide puts a handful of bins in each column, and
+            // the carrier's skirts are what make the detectors differ.
+            int half = Math.Max(2, full.PointCount / 64);
+            int start = Math.Max(0, peakIndex - half);
+            int end = Math.Min(full.PointCount, peakIndex + half + 1);
+
+            Step("REQ-UI-072", "Every detector reduces the real column as it says it does", () =>
+            {
+                float normalLow;
+                float normalHigh;
+                float peakLow;
+                float peakHigh;
+                float negativeLow;
+                float negativeHigh;
+                float sampleLow;
+                float sampleHigh;
+
+                TraceDetection.Detect(
+                    full.LevelsDbm, start, end, TraceDetector.Normal, true,
+                    out normalLow, out normalHigh);
+
+                TraceDetection.Detect(
+                    full.LevelsDbm, start, end, TraceDetector.Peak, true, out peakLow, out peakHigh);
+
+                TraceDetection.Detect(
+                    full.LevelsDbm, start, end, TraceDetector.NegativePeak, true,
+                    out negativeLow, out negativeHigh);
+
+                TraceDetection.Detect(
+                    full.LevelsDbm, start, end, TraceDetector.Sample, true,
+                    out sampleLow, out sampleHigh);
+
+                bool ok = Math.Abs(peakHigh - normalHigh) < 1e-4 &&
+                          Math.Abs(peakLow - peakHigh) < 1e-4 &&
+                          Math.Abs(negativeLow - normalLow) < 1e-4 &&
+                          Math.Abs(negativeHigh - negativeLow) < 1e-4 &&
+                          Math.Abs(sampleLow - full.LevelsDbm[start]) < 1e-4 &&
+                          normalHigh > normalLow;
+
+                return new Outcome<double>(
+                    ok,
+                    normalHigh - normalLow,
+                    (end - start) + " bins about the carrier at " + Hz(toneHz) + ": Normal spans " +
+                    Db(normalLow) + " to " + Db(normalHigh) + ", Peak reads " + Db(peakHigh) +
+                    ", Negative peak " + Db(negativeLow) + ", Sample " + Db(sampleLow));
+            });
+
+            Step("REQ-UI-072", "The average detector averages power, not decibels", () =>
+            {
+                float averageLow;
+                float averageHigh;
+
+                TraceDetection.Detect(
+                    full.LevelsDbm, start, end, TraceDetector.Average, true,
+                    out averageLow, out averageHigh);
+
+                // The wrong answer, computed here so the two can be compared on the same data.
+                double decibelMean = 0.0;
+                int counted = 0;
+
+                for (int i = start; i < end; i++)
+                {
+                    if (!float.IsNaN(full.LevelsDbm[i]))
+                    {
+                        decibelMean += full.LevelsDbm[i];
+                        counted++;
+                    }
+                }
+
+                decibelMean /= Math.Max(1, counted);
+
+                float normalLow;
+                float normalHigh;
+
+                TraceDetection.Detect(
+                    full.LevelsDbm, start, end, TraceDetector.Normal, true,
+                    out normalLow, out normalHigh);
+
+                double error = averageLow - decibelMean;
+
+                // The power mean lies between the extrema and above the mean of the decibels, and
+                // on a real carrier it is far above it. One decibel of separation would be within
+                // the noise; ten is a different arithmetic.
+                bool ok = Math.Abs(averageLow - averageHigh) < 1e-4 &&
+                          averageLow <= normalHigh + 1e-3 &&
+                          averageLow >= normalLow - 1e-3 &&
+                          error > 10.0;
+
+                return new Outcome<double>(
+                    ok,
+                    error,
+                    "power mean " + Db(averageLow) + " against a mean of the decibels of " +
+                    Db((float)decibelMean) + " — " + error.ToString("0.0",
+                        System.Globalization.CultureInfo.InvariantCulture) +
+                    " dB apart, between the extrema " + Db(normalLow) + " and " + Db(normalHigh));
+            });
+
+            Step("REQ-UI-072", "The detector reduces the trace and never the acquisition", () =>
+            {
+                // Every point is still there and still what a marker would read: the detector is a
+                // display decision, and a step that could not tell the difference would pass on an
+                // implementation that had thrown the other points away.
+                int points = full.PointCount;
+                double peakLevel = full.LevelsDbm[peakIndex];
+
+                float low;
+                float high;
+
+                TraceDetection.Detect(
+                    full.LevelsDbm, start, end, TraceDetector.Average, true, out low, out high);
+
+                bool ok = full.PointCount == points &&
+                          Math.Abs(full.LevelsDbm[peakIndex] - peakLevel) < 1e-9 &&
+                          Math.Abs(full.IndexOfPeak() - peakIndex) == 0;
+
+                return new Outcome<double>(
+                    ok,
+                    peakLevel,
+                    points + " points untouched by the reduction; the peak still reads " +
+                    Db((float)peakLevel) + " at bin " + peakIndex);
             });
         }
 

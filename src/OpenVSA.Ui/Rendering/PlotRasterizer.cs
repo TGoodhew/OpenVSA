@@ -38,7 +38,7 @@ namespace OpenVSA.Ui.Rendering
         /// <param name="palette">Colours to draw with.</param>
         /// <param name="minMax">
         /// Decimated trace, as (minimum, maximum) pairs — one pair per graticule column, as
-        /// produced by <see cref="TraceDecimator.Decimate"/>. Pass an empty span to draw the
+        /// produced by <see cref="TraceDecimator.Decimate(System.ReadOnlySpan{float}, int, System.Span{float})"/>. Pass an empty span to draw the
         /// graticule with no trace.
         /// </param>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>

@@ -1,4 +1,5 @@
 using System;
+using OpenVSA.Dsp.Spectrum;
 
 namespace OpenVSA.Ui.Rendering
 {
@@ -31,7 +32,31 @@ namespace OpenVSA.Ui.Rendering
         /// </param>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="columns"/> is not positive.</exception>
         /// <exception cref="ArgumentException"><paramref name="minMax"/> is not exactly <c>columns × 2</c> long.</exception>
-        public static void Decimate(ReadOnlySpan<float> values, int columns, Span<float> minMax)
+        public static void Decimate(ReadOnlySpan<float> values, int columns, Span<float> minMax) =>
+            Decimate(values, columns, minMax, TraceDetector.Normal, valuesAreDecibels: true);
+
+        /// <summary>
+        /// Reduces <paramref name="values"/> to one column each, by a chosen detector
+        /// (<c>REQ-UI-072</c>).
+        /// </summary>
+        /// <param name="values">Source trace values; <see cref="float.NaN"/> marks a blanked point.</param>
+        /// <param name="columns">Number of pixel columns; must be positive.</param>
+        /// <param name="minMax">Receives <c>columns × 2</c> values as (minimum, maximum) pairs.</param>
+        /// <param name="detector">How the points of a column are reduced.</param>
+        /// <param name="valuesAreDecibels">Whether the values are logarithmic, for the average.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="columns"/> is not positive.</exception>
+        /// <exception cref="ArgumentException"><paramref name="minMax"/> is not exactly <c>columns × 2</c> long.</exception>
+        /// <remarks>
+        /// The column partition is the detector's business only in that every detector uses the
+        /// same one. Which points belong to a column is a property of the decimation and must not
+        /// change with the detector, or a peak and an average would be reading different data.
+        /// </remarks>
+        public static void Decimate(
+            ReadOnlySpan<float> values,
+            int columns,
+            Span<float> minMax,
+            TraceDetector detector,
+            bool valuesAreDecibels)
         {
             if (columns <= 0)
             {
@@ -56,29 +81,14 @@ namespace OpenVSA.Ui.Rendering
                 int start = (int)((long)column * count / columns);
                 int end = (int)(((long)column + 1) * count / columns);
 
-                float minimum = float.PositiveInfinity;
-                float maximum = float.NegativeInfinity;
+                float minimum;
+                float maximum;
 
-                for (int i = start; i < end; i++)
-                {
-                    float value = values[i];
+                TraceDetection.Detect(
+                    values, start, end, detector, valuesAreDecibels, out minimum, out maximum);
 
-                    // NaN fails both comparisons, so a blanked point is excluded without a
-                    // separate test — and a column of nothing but blanks stays empty.
-                    if (value < minimum)
-                    {
-                        minimum = value;
-                    }
-
-                    if (value > maximum)
-                    {
-                        maximum = value;
-                    }
-                }
-
-                bool empty = float.IsInfinity(minimum);
-                minMax[column * 2] = empty ? float.NaN : minimum;
-                minMax[column * 2 + 1] = empty ? float.NaN : maximum;
+                minMax[column * 2] = minimum;
+                minMax[column * 2 + 1] = maximum;
             }
         }
 
