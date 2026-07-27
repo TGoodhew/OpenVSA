@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
         xmlns:rendering="clr-namespace:OpenVSA.Ui.Rendering"
+        xmlns:layout="clr-namespace:OpenVSA.Ui.Layout"
         Title="OpenVSA" Height="720" Width="1280">
 
     <!--
@@ -45,7 +46,19 @@
                 <MenuItem x:Name="StopItem" Header="Sto_p" Click="OnStop" IsEnabled="False" />
             </MenuItem>
             <MenuItem Header="Ana_lysis" />
-            <MenuItem Header="_Trace" />
+
+            <!--
+                REQ-UI-005's six layout entries and REQ-UI-004's Resize Traces. The layout items
+                are built in code from TraceLayoutPreset.Menu, so the menu shows the parameterised
+                entries at whatever N and N×M are currently set to rather than a generic label.
+            -->
+            <MenuItem Header="_Trace">
+                <MenuItem x:Name="AddTraceItem" Header="_Add trace" Click="OnAddTrace" />
+                <MenuItem x:Name="RemoveTraceItem" Header="_Close active trace" Click="OnRemoveTrace" />
+                <Separator />
+                <MenuItem x:Name="LayoutMenu" Header="_Layout" />
+                <MenuItem x:Name="ResizeTracesItem" Header="_Resize Traces" Click="OnResizeTraces" />
+            </MenuItem>
             <!--
                 REQ-MKR-001 and REQ-MKR-005. Placing a marker is a click on the trace; this menu is
                 for the operations that have no obvious gesture.
@@ -253,6 +266,17 @@
                             syncfusion:DockingManager.State="Document">
                 <Grid>
                     <!--
+                        REQ-UI-005's arrangement lives here. The document area places each trace
+                        window at the rectangle TraceLayoutEngine gave it, so what is on screen is
+                        the same thing the layout tests assert about - rather than a second
+                        arrangement expressed in Grid rows that would have to be kept in agreement.
+
+                        The plot below is handed to it as trace A, which keeps the measurement
+                        pipeline, hot spots and marker wiring working unchanged.
+                    -->
+                    <layout:TraceDocumentArea x:Name="Documents" />
+
+                    <!--
                         The rasterised image fills the control and is hit-testable, so a click
                         anywhere over the trace bubbles to here; the plot converts it to a point
                         index. No Background is set: the palette owns that (REQ-UI-010).
@@ -264,9 +288,22 @@
                         plot draws its own empty graticule, so this sits over it rather than
                         replacing it.
                     -->
-                    <TextBlock x:Name="DocumentPlaceholder" Margin="72"
-                               TextWrapping="Wrap" Foreground="Gray"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <!--
+                        Aligned to the top rather than centred. Once the document area holds more
+                        than one trace window, a centred overlay lands across the middle of the
+                        arrangement and reads as though it belonged to whichever trace it happened
+                        to cover - it does not belong to any of them, it is guidance about the
+                        measurement as a whole.
+                    -->
+                    <Border x:Name="DocumentPlaceholderPanel"
+                            Background="#CC1E1E24" CornerRadius="3"
+                            Padding="14,8" Margin="0,0,0,18"
+                            HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                            IsHitTestVisible="False">
+                        <TextBlock x:Name="DocumentPlaceholder"
+                                   TextWrapping="Wrap" Foreground="#B0B0B8"
+                                   TextAlignment="Center" MaxWidth="420" />
+                    </Border>
                 </Grid>
             </ContentControl>
 

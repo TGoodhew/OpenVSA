@@ -39,6 +39,7 @@ namespace OpenVSA.Ui.Layout
         private readonly List<char> _traces = new List<char>();
 
         private char _active;
+        private bool _highlights = true;
 
         /// <summary>Creates an empty strip.</summary>
         public TraceTabStrip()
@@ -82,6 +83,33 @@ namespace OpenVSA.Ui.Layout
 
         /// <summary>The traces in this group, left to right.</summary>
         public IReadOnlyList<char> Traces => new ReadOnlyCollection<char>(_traces);
+
+        /// <summary>
+        /// Whether this group holds the application's active trace, and so may render one tab bold.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The active trace is one trace, not one per group.</strong> Every group has a tab
+        /// on top, so bolding each group's own top tab makes four traces look active at once when
+        /// four are tiled — which is what it did, and it reads as though the application had lost
+        /// track of which one is selected.
+        /// </para>
+        /// <para>
+        /// A strip on its own defaults to <c>true</c>, because a strip that is the only one is the
+        /// active one. A document area with several sets it on the group holding its active trace
+        /// and clears it on the rest.
+        /// </para>
+        /// </remarks>
+        public bool HighlightsActive
+        {
+            get { return _highlights; }
+
+            set
+            {
+                _highlights = value;
+                ApplyWeights();
+            }
+        }
 
         /// <summary>
         /// The active trace, whose tab is the bold one.
@@ -263,8 +291,9 @@ namespace OpenVSA.Ui.Layout
         {
             for (int i = 0; i < _labels.Count; i++)
             {
-                _labels[i].FontWeight =
-                    _traces[i] == _active ? FontWeights.Bold : FontWeights.Normal;
+                _labels[i].FontWeight = _highlights && _traces[i] == _active
+                    ? FontWeights.Bold
+                    : FontWeights.Normal;
             }
         }
 
