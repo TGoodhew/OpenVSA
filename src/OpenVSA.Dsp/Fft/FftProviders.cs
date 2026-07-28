@@ -33,6 +33,38 @@ namespace OpenVSA.Dsp.Fft
 
         private static IFftProvider _active;
 
+        private static readonly Dictionary<string, string> Unavailable =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Providers that were found but could not be constructed, and why.
+        /// </summary>
+        /// <remarks>
+        /// So "the native provider is not registered" is answerable rather than merely observable.
+        /// The usual reason is that the native library was not deployed, which is allowed.
+        /// </remarks>
+        public static IReadOnlyDictionary<string, string> UnavailableProviders
+        {
+            get
+            {
+                lock (Gate)
+                {
+                    return new Dictionary<string, string>(Unavailable, StringComparer.Ordinal);
+                }
+            }
+        }
+
+        /// <summary>The innermost cause, which is the one worth reporting.</summary>
+        private static Exception Unwrap(Exception failure)
+        {
+            while (failure is TargetInvocationException && failure.InnerException != null)
+            {
+                failure = failure.InnerException;
+            }
+
+            return failure;
+        }
+
         static FftProviders()
         {
             DiscoverIn(typeof(FftProviders).Assembly);
@@ -112,7 +144,25 @@ namespace OpenVSA.Dsp.Fft
                         type.FullName + " is marked [FftProvider] but does not implement IFftProvider.");
                 }
 
-                Register((IFftProvider)Activator.CreateInstance(type));
+                IFftProvider provider;
+
+                try
+                {
+                    provider = (IFftProvider)Activator.CreateInstance(type);
+                }
+                catch (Exception failure)
+                {
+                    // A provider that cannot be constructed is not registered, rather than taking
+                    // the registry down with it. This is how the *optional* half of REQ-NFR-004
+                    // works: the native provider's library may simply not be deployed, and a
+                    // machine without it should run on the managed default rather than fail to
+                    // start. Swallowed narrowly — the type is skipped and everything else is still
+                    // discovered — and recorded so the absence is diagnosable.
+                    Unavailable[type.FullName] = Unwrap(failure).Message;
+                    continue;
+                }
+
+                Register(provider);
             }
         }
 

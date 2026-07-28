@@ -23,4 +23,34 @@
     <Reference Include="System.Configuration" />
   </ItemGroup>
 
+  <!--
+    REQ-NFR-004's native provider. Built by src\OpenVSA.Dsp.Native and copied beside this assembly
+    so the P/Invoke resolves with no deployment step.
+
+    Not a ProjectReference: a .vcxproj referenced from a C# project makes MSBuild try to resolve an
+    assembly from it, and there is none. The dependency is expressed as a build ordering plus a
+    copied file, which is what a native dependency actually is.
+
+    ContinueOnError, because REQ-NFR-004 makes the native provider optional: a machine with no C++
+    toolchain still builds the product and runs on the managed default, registering one provider
+    instead of two.
+  -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OpenVsaNativeFft>$(MSBuildThisFileDirectory)..\OpenVSA.Dsp.Native\bin\x64\$(Configuration)\OpenVSA.Fft.Native.dll</OpenVsaNativeFft>
+  </PropertyGroup>
+
+  <Target Name="BuildNativeFft" BeforeTargets="BeforeBuild">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\OpenVSA.Dsp.Native\OpenVSA.Dsp.Native.vcxproj"
+             Properties="Configuration=$(Configuration);Platform=x64"
+             ContinueOnError="true" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="$(OpenVsaNativeFft)" Condition="Exists('$(OpenVsaNativeFft)')">
+      <Link>OpenVSA.Fft.Native.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
