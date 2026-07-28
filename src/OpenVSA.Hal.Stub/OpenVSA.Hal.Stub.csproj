@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Hal.Stub</RootNamespace>
+    <AssemblyTitle>OpenVSA.Hal.Stub</AssemblyTitle>
+    <Description>A front end that acquires nothing, for proving REQ-ARC-001: the analysis stack builds and its tests pass with every real transport removed.</Description>
+  </PropertyGroup>
+
+  <!--
+    References the HAL interface assembly and nothing else. That is the point: if this needed
+    anything from a transport, the separation REQ-ARC-001 asserts would not exist.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
+  </ItemGroup>
+
+</Project>

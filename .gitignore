@@ -81,3 +81,4 @@ local.secrets.config
 
 # BenchmarkDotNet output.
 BenchmarkDotNet.Artifacts/
+artifacts/

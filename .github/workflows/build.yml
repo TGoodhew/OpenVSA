@@ -47,6 +47,13 @@ jobs:
       - name: Test
         run: dotnet test OpenVSA.slnx -c Release --no-build --logger "trx;LogFileName=results.trx"
 
+      # REQ-ARC-001. The architecture tests assert that no analysis assembly *names* a transport,
+      # which is weaker than it looks: an assembly can avoid a compile-time reference and still be
+      # unbuildable without one, through a shared build property, a copied plug-in, or a fixture
+      # that quietly needs a real source. Building without them is what settles it.
+      - name: Build the analysis stack with no front end present
+        run: pwsh tools/build_without_front_ends.ps1 -Configuration Release
+
       # REQ-TST-007, and the shared criterion of every one of REQ-NFR-020..026: the harness runs
       # in CI and fails the build on a >15 % regression against a stored baseline.
       #
