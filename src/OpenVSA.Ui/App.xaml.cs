@@ -1,4 +1,6 @@
+using System;
 using System.Windows;
+using OpenVSA.Core;
 using OpenVSA.Core.Threading;
 using Syncfusion.Licensing;
 
@@ -28,6 +30,24 @@ namespace OpenVSA.Ui
         /// </remarks>
         public App()
         {
+            // REQ-NFR-030: refuse below the platform floor with a message naming the unmet
+            // requirement, rather than failing obscurely somewhere in the load. In the constructor
+            // because it must run before InitializeComponent touches WPF: a 32-bit process that
+            // reached a XAML parse would report a BadImageFormatException from a resource
+            // dictionary, which tells the person in front of it nothing.
+            string unmet = PlatformRequirements.Unmet();
+
+            if (unmet != null)
+            {
+                MessageBox.Show(
+                    unmet,
+                    "OpenVSA cannot run on this system",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Stop);
+
+                Environment.Exit(2);
+            }
+
             // REQ-NFR-010: the thread this runs on is the dispatcher thread, and marking it here is
             // what lets every layer below assert that it is not doing DSP or I/O on it. Debug
             // builds only - the call compiles away in Release.
