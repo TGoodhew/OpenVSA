@@ -39,6 +39,8 @@
     <Project Path="tests/OpenVSA.Benchmarks/OpenVSA.Benchmarks.csproj" />
     <Project Path="tests/OpenVSA.PerformanceGate/OpenVSA.PerformanceGate.csproj" />
     <Project Path="tests/OpenVSA.PerformanceGate.Tests/OpenVSA.PerformanceGate.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Personality.Example/OpenVSA.Personality.Example.csproj" />
+    <Project Path="tests/OpenVSA.Personality.Tests/OpenVSA.Personality.Tests.csproj" />
   </Folder>
 
   <Folder Name="/solution items/">
