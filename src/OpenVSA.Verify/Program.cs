@@ -33,6 +33,18 @@ namespace OpenVSA.Verify
         /// <returns>0 if every scenario passed.</returns>
         public static int Main(string[] args)
         {
+            // REQ-NFR-001's ceiling has to be demonstrated in a process configured for it.
+            // gcAllowVeryLargeObjects is a runtime startup setting, so a unit test cannot show it:
+            // the vstest host is not configured that way and the allocation fails there however
+            // the product is built. This harness is, so the check runs here and the test drives it.
+            foreach (string argument in args)
+            {
+                if (string.Equals(argument, "--check-large-array", StringComparison.OrdinalIgnoreCase))
+                {
+                    return CheckLargeArray();
+                }
+            }
+
             try
             {
                 return RunAsync(args).GetAwaiter().GetResult();
@@ -41,6 +53,59 @@ namespace OpenVSA.Verify
             {
                 Console.Error.WriteLine("Verification could not run: " + failure.Message);
                 return 2;
+            }
+        }
+
+        /// <summary>
+        /// <c>REQ-NFR-001</c>: allocates the array the requirement names and touches both ends.
+        /// </summary>
+        /// <returns>0 when it succeeded, 1 when it was refused, 2 when there was not room.</returns>
+        /// <remarks>
+        /// Both ends are written, not just the length checked: a length alone would pass against a
+        /// reservation that is committed lazily and faults on first use.
+        /// </remarks>
+        private static int CheckLargeArray()
+        {
+            const long Elements = 2000000000L;
+
+            if (IntPtr.Size != 8)
+            {
+                Console.Error.WriteLine("Not a 64-bit process, so the ceiling cannot be tested.");
+                return 1;
+            }
+
+            try
+            {
+                float[] huge = new float[Elements];
+
+                huge[0] = 1.0f;
+                huge[Elements - 1] = 2.0f;
+
+                bool ok = huge[0] == 1.0f && huge[Elements - 1] == 2.0f;
+
+                Console.WriteLine(
+                    "allocated " + Elements + " floats (" +
+                    (Elements * 4.0 / 1073741824.0).ToString("F1", CultureInfo.InvariantCulture) +
+                    " GiB) and touched both ends: " + (ok ? "ok" : "VALUES WRONG"));
+
+                huge = null;
+                GC.Collect();
+
+                return ok ? 0 : 1;
+            }
+            catch (OutOfMemoryException e)
+            {
+                // Two different failures wear this exception. "Array dimensions exceeded supported
+                // range" means gcAllowVeryLargeObjects is not in force and is a real failure of the
+                // requirement; anything else means this machine has not the room, which is not.
+                bool refused = e.Message.IndexOf("dimensions", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                Console.Error.WriteLine(
+                    (refused
+                        ? "REFUSED, gcAllowVeryLargeObjects is not in force: "
+                        : "no room on this machine: ") + e.Message);
+
+                return refused ? 1 : 2;
             }
         }
 

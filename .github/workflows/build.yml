@@ -33,6 +33,11 @@ jobs:
           python tools/parse_requirements.py
           python tools/check_phase_atomicity.py
 
+      # REQ-NFR-008. Cheap, and it only regresses through an edit to a project file or to the
+      # register, so it runs before the build rather than after it.
+      - name: Check the dependency register
+        run: python tools/check_dependencies.py
+
       - name: Restore
         run: msbuild OpenVSA.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
 
