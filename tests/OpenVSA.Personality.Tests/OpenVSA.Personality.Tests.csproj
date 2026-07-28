@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Personality.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Personality\OpenVSA.Personality.csproj" />
+  </ItemGroup>
+
+  <!--
+    The example personality is built BEFORE these tests but deliberately NOT referenced: referencing
+    it would put it in the test's output and prove nothing about discovery. It is built here only so
+    the file exists to be copied, with ReferenceOutputAssembly=false so no compile-time dependency
+    is created.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Personality.Example\OpenVSA.Personality.Example.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

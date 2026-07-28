@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Personality.Example</RootNamespace>
+    <AssemblyName>OpenVSA.Personality.Example</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+    <AppConfig />
+    <Description>A personality that exists only to be discovered. REQ-ARC-003's criterion is that an assembly dropped into Personalities\ is found with no rebuild of the host, and that cannot be shown by a type the host already references.</Description>
+  </PropertyGroup>
+
+  <!--
+    References the personality SDK and nothing else. Nothing references THIS project in turn, which
+    is the point: it is copied into a plug-in directory at test time and found by reflection.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Personality\OpenVSA.Personality.csproj" />
+  </ItemGroup>
+
+</Project>
