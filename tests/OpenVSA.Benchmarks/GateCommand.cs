@@ -27,6 +27,11 @@ namespace OpenVSA.Benchmarks
         /// <returns>0 when the gate passes, 1 on a regression or a skipped target, 2 on misuse.</returns>
         public static int Run(string[] args)
         {
+            if (Has(args, "--allocation"))
+            {
+                return MeasureAllocation();
+            }
+
             if (Has(args, "--kernels"))
             {
                 return CompareKernels();
@@ -104,6 +109,120 @@ namespace OpenVSA.Benchmarks
             }
 
             return report.ExitCode;
+        }
+
+        /// <summary>
+        /// REQ-NFR-002: DSP-attributable allocation and Gen-2 collections over a sustained run.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The requirement is explicit that process-wide "zero Gen-2" is not a realistic target in
+        /// a WPF host and shall not be used as the criterion — it asks for DSP-<em>attributable</em>
+        /// allocation, by call site.
+        /// </para>
+        /// <para>
+        /// <strong>This attributes by isolation rather than by call site, and that is weaker.</strong>
+        /// Nothing but the DSP pipeline runs in this process during the window, so every byte and
+        /// every collection counted is the pipeline's. What it cannot do is say which line
+        /// allocated them, which a profiler would — so it can prove the bound is exceeded and can
+        /// prove it is met, but cannot point at the culprit when it fails. That is a real
+        /// limitation and it is stated rather than papered over.
+        /// </para>
+        /// </remarks>
+        private static int MeasureAllocation()
+        {
+            // Both sizes. 8 192 is the everyday frame; 2^20 is where SpectrumComputer's per-frame
+            // float[points * 2] lands on the large object heap, which is what #409's
+            // burst-versus-sustained gap pointed at.
+            foreach (int points in new[] { 8192, 1 << 20 })
+            {
+                if (MeasureAllocationAt(points) != 0)
+                {
+                    return 1;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int MeasureAllocationAt(int Points)
+        {
+            const double FramesPerSecond = 20.0;
+
+            TimeSpan window = TimeSpan.FromSeconds(30.0);
+
+            Console.WriteLine("REQ-NFR-002: allocation over a sustained run at " +
+                              FramesPerSecond + " frames/s, " + Points + "-point frames.");
+            Console.WriteLine("  Attributed by isolation: nothing else runs in this process.");
+            Console.WriteLine();
+
+            var computer = new OpenVSA.Dsp.Spectrum.SpectrumComputer(
+                OpenVSA.Dsp.Windowing.WindowType.FlatTop, null, null);
+
+            var metadata = new OpenVSA.Core.IqBlockMetadata(
+                Points, 2.0e6, 1.0e9, false, 1.0, 0.0, 1L,
+                new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc), 0.0, false,
+                new OpenVSA.Core.FrontEndId("bench"), null);
+
+            OpenVSA.Core.IqBlock block = OpenVSA.Core.IqBlock.Rent(metadata);
+            Span<float> samples = block.GetSamples();
+
+            for (int n = 0; n < Points; n++)
+            {
+                samples[n * 2] = (float)Math.Cos(0.125 * 2.0 * Math.PI * n);
+                samples[n * 2 + 1] = (float)Math.Sin(0.125 * 2.0 * Math.PI * n);
+            }
+
+            // Settle before counting, so start-up allocation is not attributed to the loop.
+            for (int i = 0; i < 20; i++)
+            {
+                computer.Compute(block);
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            long allocatedBefore = GC.GetTotalMemory(false);
+            int gen0 = GC.CollectionCount(0);
+            int gen1 = GC.CollectionCount(1);
+            int gen2 = GC.CollectionCount(2);
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var period = TimeSpan.FromSeconds(1.0 / FramesPerSecond);
+            int frames = 0;
+
+            while (clock.Elapsed < window)
+            {
+                computer.Compute(block);
+                frames++;
+
+                TimeSpan due = TimeSpan.FromTicks((long)(frames * period.Ticks));
+                TimeSpan wait = due - clock.Elapsed;
+
+                if (wait > TimeSpan.Zero)
+                {
+                    System.Threading.Thread.Sleep(wait);
+                }
+            }
+
+            long allocatedAfter = GC.GetTotalMemory(false);
+
+            int gen0Delta = GC.CollectionCount(0) - gen0;
+            int gen1Delta = GC.CollectionCount(1) - gen1;
+            int gen2Delta = GC.CollectionCount(2) - gen2;
+
+            Console.WriteLine("  " + frames + " frames over " +
+                              clock.Elapsed.TotalSeconds.ToString("F1") + " s");
+            Console.WriteLine("  heap " + (allocatedBefore / 1048576.0).ToString("F1") + " -> " +
+                              (allocatedAfter / 1048576.0).ToString("F1") + " MiB");
+            Console.WriteLine("  collections: gen0 " + gen0Delta + ", gen1 " + gen1Delta +
+                              ", gen2 " + gen2Delta);
+            Console.WriteLine();
+            Console.WriteLine("  gen-2 collections attributable to the DSP pipeline: " + gen2Delta +
+                              (gen2Delta == 0 ? "  (meets REQ-NFR-002)" : "  (REQ-NFR-002 requires none)"));
+
+            return gen2Delta == 0 ? 0 : 1;
         }
 
         /// <summary>
