@@ -35,6 +35,15 @@
     toolchain still builds the product and runs on the managed default, registering one provider
     instead of two.
   -->
+  <!--
+    REQ-NFR-003's vector kernels. System.Numerics.Vectors carries Vector<float> on .NET Framework;
+    without it the type resolves to the non-accelerated fallback in mscorlib and every measurement
+    would compare scalar code against scalar code wearing a vector's name.
+  -->
+  <ItemGroup>
+    <PackageReference Include="System.Numerics.Vectors" Version="4.6.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OpenVsaNativeFft>$(MSBuildThisFileDirectory)..\OpenVSA.Dsp.Native\bin\x64\$(Configuration)\OpenVSA.Fft.Native.dll</OpenVsaNativeFft>
