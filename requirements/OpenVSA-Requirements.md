@@ -764,10 +764,16 @@ applied to the samples.
 exported data except in its SDF (Fast) format — a real fidelity trap. **[V]** OpenVSA shall
 track this explicitly and propagate it into exported files rather than silently losing it.
 **AC:** Blocks acquired with and without trigger corrections carry different
-`TriggerCorrectionsApplied` values, and each value survives a round trip through every
-supported export and re-import format. A test enumerates the export writers and fails any
-that writes a constant or defaulted value for the flag, since that is precisely the silent
-loss this requirement exists to prevent.
+`TriggerCorrectionsApplied` values, and the flag survives every transformation the analysis
+layers apply — extraction, gating and downconversion each preserve it rather than defaulting
+it, asserted per transformation.
+
+**`REQ-DAT-002a` (P1) — The fidelity flag survives export and re-import.**
+**AC:** Each value survives a round trip through every supported export and re-import format.
+A test enumerates the export writers and fails any that writes a constant or defaulted value
+for the flag, since that is precisely the silent loss this requirement exists to prevent.
+*Split from `REQ-DAT-002`: the export formats are `REQ-REC-005`'s, and none exists yet, so
+this criterion cannot run until they do. Tracked in the Needs Verification epic.*
 
 **`REQ-DAT-003` (P2) — `Complex32` value type.** A 8-byte `readonly struct Complex32`
 with SIMD-friendly layout shall be provided for interpreted access to `Samples`, but bulk
@@ -3821,10 +3827,16 @@ everything the install wrote outside the user profile's data directories.
 instrument attached is what makes the DSP developable, testable in CI, and demonstrable.
 It should be treated as an architectural constraint, not a convenience feature.
 **AC:** On a machine with no VISA runtime installed and no instrument attached, the
-application starts, the simulator and file-playback front ends are available, and a full
-demodulation measurement runs to an error summary. A test asserts the VISA assemblies are
-not loaded in that configuration, so the capability cannot regress into "starts, but only
-because VISA happened to be present". `REQ-NFR-036`'s no-egress rule holds throughout.
+application starts and the simulator and file-playback front ends are available. A test
+asserts the VISA assemblies are not loaded in that configuration, so the capability cannot
+regress into "starts, but only because VISA happened to be present". `REQ-NFR-036`'s
+no-egress rule holds throughout.
+
+**`REQ-NFR-032a` (P0) — A full measurement runs with no hardware.**
+**AC:** On the same machine, a full demodulation measurement runs to an error summary.
+*Split from `REQ-NFR-032`: an error summary is the demodulator's output and Phase 2 delivers
+it. The half that matters architecturally — that the product starts and offers its sources
+with no VISA present — is provable from the first build and stays where it belongs.*
 
 **`REQ-NFR-033` needs a scope decision, or it contradicts the exact-string requirements.**
 This requirement is **externalisation only: no second locale is shipped.** Strings live in

@@ -427,7 +427,7 @@
   "num": "002",
   "priority": "P1",
   "title": "Trigger-correction fidelity flag",
-  "body": "**`REQ-DAT-002` (P1) — Trigger-correction fidelity flag.**\n`TriggerCorrectionsApplied` shall record whether trigger delay/phase corrections have been\napplied to the samples.\n*Rationale:* the reference product documents that trigger corrections are **not** applied to\nexported data except in its SDF (Fast) format — a real fidelity trap. **[V]** OpenVSA shall\ntrack this explicitly and propagate it into exported files rather than silently losing it.\n**AC:** Blocks acquired with and without trigger corrections carry different\n`TriggerCorrectionsApplied` values, and each value survives a round trip through every\nsupported export and re-import format. A test enumerates the export writers and fails any\nthat writes a constant or defaulted value for the flag, since that is precisely the silent\nloss this requirement exists to prevent.",
+  "body": "**`REQ-DAT-002` (P1) — Trigger-correction fidelity flag.**\n`TriggerCorrectionsApplied` shall record whether trigger delay/phase corrections have been\napplied to the samples.\n*Rationale:* the reference product documents that trigger corrections are **not** applied to\nexported data except in its SDF (Fast) format — a real fidelity trap. **[V]** OpenVSA shall\ntrack this explicitly and propagate it into exported files rather than silently losing it.\n**AC:** Blocks acquired with and without trigger corrections carry different\n`TriggerCorrectionsApplied` values, and the flag survives every transformation the analysis\nlayers apply — extraction, gating and downconversion each preserve it rather than defaulting\nit, asserted per transformation.",
   "phase": 0,
   "evidence": [
    "verified"
@@ -435,6 +435,19 @@
   "has_ac": true,
   "ac_exempt": false,
   "line": 760
+ },
+ {
+  "id": "REQ-DAT-002a",
+  "area": "DAT",
+  "num": "002a",
+  "priority": "P1",
+  "title": "The fidelity flag survives export and re-import",
+  "body": "**`REQ-DAT-002a` (P1) — The fidelity flag survives export and re-import.**\n**AC:** Each value survives a round trip through every supported export and re-import format.\nA test enumerates the export writers and fails any that writes a constant or defaulted value\nfor the flag, since that is precisely the silent loss this requirement exists to prevent.\n*Split from `REQ-DAT-002`: the export formats are `REQ-REC-005`'s, and none exists yet, so\nthis criterion cannot run until they do. Tracked in the Needs Verification epic.*",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 771
  },
  {
   "id": "REQ-DAT-003",
@@ -447,7 +460,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 772
+  "line": 778
  },
  {
   "id": "REQ-HAL-001",
@@ -460,7 +473,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 839
+  "line": 845
  },
  {
   "id": "REQ-HAL-002",
@@ -473,7 +486,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 847
+  "line": 853
  },
  {
   "id": "REQ-HAL-003",
@@ -486,7 +499,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 853
+  "line": 859
  },
  {
   "id": "REQ-DAT-010",
@@ -501,7 +514,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 862
+  "line": 868
  },
  {
   "id": "REQ-TRC-001",
@@ -514,7 +527,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 889
+  "line": 895
  },
  {
   "id": "REQ-TRC-001a",
@@ -529,7 +542,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 895
+  "line": 901
  },
  {
   "id": "REQ-TRC-002",
@@ -542,7 +555,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 910
+  "line": 916
  },
  {
   "id": "REQ-TRC-003",
@@ -555,7 +568,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 919
+  "line": 925
  },
  {
   "id": "REQ-ACQ-001",
@@ -568,7 +581,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 941
+  "line": 947
  },
  {
   "id": "REQ-ACQ-002",
@@ -583,7 +596,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 957
+  "line": 963
  },
  {
   "id": "REQ-ACQ-003",
@@ -598,7 +611,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 964
+  "line": 970
  },
  {
   "id": "REQ-ACQ-004",
@@ -611,7 +624,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 977
+  "line": 983
  },
  {
   "id": "REQ-AMP-001",
@@ -624,7 +637,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 993
+  "line": 999
  },
  {
   "id": "REQ-AMP-002",
@@ -637,7 +650,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1002
+  "line": 1008
  },
  {
   "id": "REQ-AMP-003",
@@ -650,7 +663,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1009
+  "line": 1015
  },
  {
   "id": "REQ-AMP-004",
@@ -663,7 +676,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1017
+  "line": 1023
  },
  {
   "id": "REQ-ACQ-010",
@@ -676,7 +689,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1025
+  "line": 1031
  },
  {
   "id": "REQ-TRG-001",
@@ -691,7 +704,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1037
+  "line": 1043
  },
  {
   "id": "REQ-TRG-002",
@@ -706,7 +719,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1045
+  "line": 1051
  },
  {
   "id": "REQ-TRG-003",
@@ -721,7 +734,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1052
+  "line": 1058
  },
  {
   "id": "REQ-E44-001",
@@ -734,7 +747,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1062
+  "line": 1068
  },
  {
   "id": "REQ-E44-002",
@@ -747,7 +760,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1068
+  "line": 1074
  },
  {
   "id": "REQ-E44-002a",
@@ -762,7 +775,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1110
+  "line": 1116
  },
  {
   "id": "REQ-E44-002b",
@@ -777,7 +790,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1130
+  "line": 1136
  },
  {
   "id": "REQ-E44-002c",
@@ -792,7 +805,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1157
+  "line": 1163
  },
  {
   "id": "REQ-E44-002d",
@@ -807,7 +820,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1186
+  "line": 1192
  },
  {
   "id": "REQ-E44-003",
@@ -820,7 +833,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1201
+  "line": 1207
  },
  {
   "id": "REQ-E44-004",
@@ -833,7 +846,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1210
+  "line": 1216
  },
  {
   "id": "REQ-E44-005",
@@ -846,7 +859,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1221
+  "line": 1227
  },
  {
   "id": "REQ-E44-006",
@@ -859,7 +872,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1228
+  "line": 1234
  },
  {
   "id": "REQ-E44-007",
@@ -872,7 +885,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1239
+  "line": 1245
  },
  {
   "id": "REQ-REC-001",
@@ -885,7 +898,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1250
+  "line": 1256
  },
  {
   "id": "REQ-REC-002",
@@ -898,7 +911,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1259
+  "line": 1265
  },
  {
   "id": "REQ-REC-003",
@@ -911,7 +924,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1265
+  "line": 1271
  },
  {
   "id": "REQ-REC-004",
@@ -926,7 +939,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1271
+  "line": 1277
  },
  {
   "id": "REQ-REC-004a",
@@ -939,7 +952,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1282
+  "line": 1288
  },
  {
   "id": "REQ-REC-005",
@@ -955,7 +968,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1291
+  "line": 1297
  },
  {
   "id": "REQ-REC-006",
@@ -970,7 +983,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1324
+  "line": 1330
  },
  {
   "id": "REQ-REC-007",
@@ -983,7 +996,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1338
+  "line": 1344
  },
  {
   "id": "REQ-REC-008",
@@ -996,7 +1009,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1346
+  "line": 1352
  },
  {
   "id": "REQ-REC-009",
@@ -1009,7 +1022,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1356
+  "line": 1362
  },
  {
   "id": "REQ-SIM-001",
@@ -1022,7 +1035,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1366
+  "line": 1372
  },
  {
   "id": "REQ-SIM-001a",
@@ -1035,7 +1048,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1376
+  "line": 1382
  },
  {
   "id": "REQ-SIM-002",
@@ -1048,7 +1061,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1385
+  "line": 1391
  },
  {
   "id": "REQ-SIM-002a",
@@ -1061,7 +1074,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1400
+  "line": 1406
  },
  {
   "id": "REQ-SIM-003",
@@ -1074,7 +1087,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1409
+  "line": 1415
  },
  {
   "id": "REQ-SIM-004",
@@ -1087,7 +1100,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1414
+  "line": 1420
  },
  {
   "id": "REQ-SIM-005",
@@ -1100,7 +1113,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1423
+  "line": 1429
  },
  {
   "id": "REQ-DSP-001",
@@ -1113,7 +1126,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1436
+  "line": 1442
  },
  {
   "id": "REQ-DSP-001a",
@@ -1126,7 +1139,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1450
+  "line": 1456
  },
  {
   "id": "REQ-DSP-002",
@@ -1139,7 +1152,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1460
+  "line": 1466
  },
  {
   "id": "REQ-DSP-010",
@@ -1154,7 +1167,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1469
+  "line": 1475
  },
  {
   "id": "REQ-DSP-010a",
@@ -1167,7 +1180,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1490
+  "line": 1496
  },
  {
   "id": "REQ-DSP-010b",
@@ -1182,7 +1195,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1506
+  "line": 1512
  },
  {
   "id": "REQ-DSP-011",
@@ -1195,7 +1208,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1529
+  "line": 1535
  },
  {
   "id": "REQ-DSP-012",
@@ -1210,7 +1223,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1537
+  "line": 1543
  },
  {
   "id": "REQ-DSP-020",
@@ -1225,7 +1238,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1547
+  "line": 1553
  },
  {
   "id": "REQ-DSP-021",
@@ -1240,7 +1253,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1554
+  "line": 1560
  },
  {
   "id": "REQ-DSP-022",
@@ -1253,7 +1266,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1565
+  "line": 1571
  },
  {
   "id": "REQ-DSP-023",
@@ -1268,7 +1281,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1583
+  "line": 1589
  },
  {
   "id": "REQ-DSP-023a",
@@ -1283,7 +1296,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1595
+  "line": 1601
  },
  {
   "id": "REQ-DSP-024",
@@ -1298,7 +1311,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1614
+  "line": 1620
  },
  {
   "id": "REQ-DSP-030",
@@ -1314,7 +1327,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1627
+  "line": 1633
  },
  {
   "id": "REQ-DSP-031",
@@ -1329,7 +1342,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1655
+  "line": 1661
  },
  {
   "id": "REQ-DSP-040",
@@ -1344,7 +1357,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1666
+  "line": 1672
  },
  {
   "id": "REQ-DSP-040a",
@@ -1357,7 +1370,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1683
+  "line": 1689
  },
  {
   "id": "REQ-DSP-041",
@@ -1372,7 +1385,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1699
+  "line": 1705
  },
  {
   "id": "REQ-DSP-042",
@@ -1385,7 +1398,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1711
+  "line": 1717
  },
  {
   "id": "REQ-DSP-043",
@@ -1400,7 +1413,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1722
+  "line": 1728
  },
  {
   "id": "REQ-DSP-044",
@@ -1413,7 +1426,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1732
+  "line": 1738
  },
  {
   "id": "REQ-DSP-045",
@@ -1426,7 +1439,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1742
+  "line": 1748
  },
  {
   "id": "REQ-DSP-046",
@@ -1441,7 +1454,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1750
+  "line": 1756
  },
  {
   "id": "REQ-DSP-050",
@@ -1456,7 +1469,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1765
+  "line": 1771
  },
  {
   "id": "REQ-MKR-001",
@@ -1471,7 +1484,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1779
+  "line": 1785
  },
  {
   "id": "REQ-MKR-002",
@@ -1486,7 +1499,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1790
+  "line": 1796
  },
  {
   "id": "REQ-MKR-003",
@@ -1501,7 +1514,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1803
+  "line": 1809
  },
  {
   "id": "REQ-MKR-004",
@@ -1516,7 +1529,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1818
+  "line": 1824
  },
  {
   "id": "REQ-MKR-005",
@@ -1531,7 +1544,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1827
+  "line": 1833
  },
  {
   "id": "REQ-MKR-006",
@@ -1546,7 +1559,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1839
+  "line": 1845
  },
  {
   "id": "REQ-MKR-007",
@@ -1561,7 +1574,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1848
+  "line": 1854
  },
  {
   "id": "REQ-LIM-001",
@@ -1576,7 +1589,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1860
+  "line": 1866
  },
  {
   "id": "REQ-LIM-002",
@@ -1591,7 +1604,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1873
+  "line": 1879
  },
  {
   "id": "REQ-LIM-003",
@@ -1606,7 +1619,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1881
+  "line": 1887
  },
  {
   "id": "REQ-CHM-001",
@@ -1619,7 +1632,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1892
+  "line": 1898
  },
  {
   "id": "REQ-CHM-002",
@@ -1632,7 +1645,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1903
+  "line": 1909
  },
  {
   "id": "REQ-CHM-003",
@@ -1645,7 +1658,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1912
+  "line": 1918
  },
  {
   "id": "REQ-DEM-001",
@@ -1658,7 +1671,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1929
+  "line": 1935
  },
  {
   "id": "REQ-DEM-002",
@@ -1673,7 +1686,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1960
+  "line": 1966
  },
  {
   "id": "REQ-DEM-010",
@@ -1689,7 +1702,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1978
+  "line": 1984
  },
  {
   "id": "REQ-DEM-010a",
@@ -1702,7 +1715,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2003
+  "line": 2009
  },
  {
   "id": "REQ-DEM-011",
@@ -1715,7 +1728,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2016
+  "line": 2022
  },
  {
   "id": "REQ-DEM-012",
@@ -1730,7 +1743,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2023
+  "line": 2029
  },
  {
   "id": "REQ-DEM-013",
@@ -1745,7 +1758,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2035
+  "line": 2041
  },
  {
   "id": "REQ-DEM-020",
@@ -1760,7 +1773,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2045
+  "line": 2051
  },
  {
   "id": "REQ-DEM-021",
@@ -1775,7 +1788,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2059
+  "line": 2065
  },
  {
   "id": "REQ-DEM-022",
@@ -1788,7 +1801,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2078
+  "line": 2084
  },
  {
   "id": "REQ-DEM-022a",
@@ -1801,7 +1814,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2098
+  "line": 2104
  },
  {
   "id": "REQ-DEM-023",
@@ -1814,7 +1827,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2120
+  "line": 2126
  },
  {
   "id": "REQ-DEM-030",
@@ -1829,7 +1842,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2134
+  "line": 2140
  },
  {
   "id": "REQ-DEM-031",
@@ -1844,7 +1857,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2145
+  "line": 2151
  },
  {
   "id": "REQ-DEM-032",
@@ -1859,7 +1872,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2153
+  "line": 2159
  },
  {
   "id": "REQ-DEM-033",
@@ -1874,7 +1887,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2163
+  "line": 2169
  },
  {
   "id": "REQ-DEM-034",
@@ -1889,7 +1902,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2176
+  "line": 2182
  },
  {
   "id": "REQ-DEM-034a",
@@ -1902,7 +1915,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2188
+  "line": 2194
  },
  {
   "id": "REQ-DEM-035",
@@ -1917,7 +1930,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2200
+  "line": 2206
  },
  {
   "id": "REQ-DEM-036",
@@ -1932,7 +1945,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2208
+  "line": 2214
  },
  {
   "id": "REQ-DEM-040",
@@ -1947,7 +1960,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2218
+  "line": 2224
  },
  {
   "id": "REQ-DEM-041",
@@ -1962,7 +1975,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2226
+  "line": 2232
  },
  {
   "id": "REQ-DEM-050",
@@ -1977,7 +1990,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2237
+  "line": 2243
  },
  {
   "id": "REQ-DEM-051",
@@ -1992,7 +2005,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2249
+  "line": 2255
  },
  {
   "id": "REQ-DEM-052",
@@ -2007,7 +2020,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2265
+  "line": 2271
  },
  {
   "id": "REQ-DEM-053",
@@ -2022,7 +2035,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2311
+  "line": 2317
  },
  {
   "id": "REQ-DEM-060",
@@ -2037,7 +2050,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2333
+  "line": 2339
  },
  {
   "id": "REQ-DEM-061",
@@ -2052,7 +2065,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2352
+  "line": 2358
  },
  {
   "id": "REQ-DEM-062",
@@ -2067,7 +2080,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2366
+  "line": 2372
  },
  {
   "id": "REQ-DEM-063",
@@ -2082,7 +2095,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2375
+  "line": 2381
  },
  {
   "id": "REQ-DEM-064",
@@ -2095,7 +2108,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2386
+  "line": 2392
  },
  {
   "id": "REQ-DEM-065",
@@ -2110,7 +2123,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2399
+  "line": 2405
  },
  {
   "id": "REQ-DEM-066",
@@ -2125,7 +2138,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2404
+  "line": 2410
  },
  {
   "id": "REQ-DEM-067",
@@ -2138,7 +2151,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2435
+  "line": 2441
  },
  {
   "id": "REQ-DEM-067a",
@@ -2153,7 +2166,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2463
+  "line": 2469
  },
  {
   "id": "REQ-DEM-068",
@@ -2168,7 +2181,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2484
+  "line": 2490
  },
  {
   "id": "REQ-DEM-069",
@@ -2183,7 +2196,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2497
+  "line": 2503
  },
  {
   "id": "REQ-DEM-070",
@@ -2198,7 +2211,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2515
+  "line": 2521
  },
  {
   "id": "REQ-DEM-071",
@@ -2213,7 +2226,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2529
+  "line": 2535
  },
  {
   "id": "REQ-DEM-072",
@@ -2226,7 +2239,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2539
+  "line": 2545
  },
  {
   "id": "REQ-DEM-080",
@@ -2242,7 +2255,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2555
+  "line": 2561
  },
  {
   "id": "REQ-DEM-081",
@@ -2257,7 +2270,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2584
+  "line": 2590
  },
  {
   "id": "REQ-DEM-082",
@@ -2270,7 +2283,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2595
+  "line": 2601
  },
  {
   "id": "REQ-DEM-083",
@@ -2283,7 +2296,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2601
+  "line": 2607
  },
  {
   "id": "REQ-PER-001",
@@ -2296,7 +2309,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2617
+  "line": 2623
  },
  {
   "id": "REQ-PER-002",
@@ -2309,7 +2322,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2647
+  "line": 2653
  },
  {
   "id": "REQ-PER-003",
@@ -2324,7 +2337,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2661
+  "line": 2667
  },
  {
   "id": "REQ-PER-010",
@@ -2337,7 +2350,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2699
+  "line": 2705
  },
  {
   "id": "REQ-PER-011",
@@ -2350,7 +2363,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2712
+  "line": 2718
  },
  {
   "id": "REQ-UI-001",
@@ -2365,7 +2378,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2746
+  "line": 2752
  },
  {
   "id": "REQ-UI-002",
@@ -2380,7 +2393,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2769
+  "line": 2775
  },
  {
   "id": "REQ-UI-003",
@@ -2395,7 +2408,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2775
+  "line": 2781
  },
  {
   "id": "REQ-UI-004",
@@ -2410,7 +2423,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2784
+  "line": 2790
  },
  {
   "id": "REQ-UI-005",
@@ -2425,7 +2438,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2799
+  "line": 2805
  },
  {
   "id": "REQ-UI-006",
@@ -2440,7 +2453,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2823
+  "line": 2829
  },
  {
   "id": "REQ-UI-007",
@@ -2453,7 +2466,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2845
+  "line": 2851
  },
  {
   "id": "REQ-UI-010",
@@ -2468,7 +2481,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2861
+  "line": 2867
  },
  {
   "id": "REQ-UI-011",
@@ -2483,7 +2496,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2891
+  "line": 2897
  },
  {
   "id": "REQ-UI-012",
@@ -2496,7 +2509,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2898
+  "line": 2904
  },
  {
   "id": "REQ-UI-013",
@@ -2511,7 +2524,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2914
+  "line": 2920
  },
  {
   "id": "REQ-UI-014",
@@ -2526,7 +2539,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2928
+  "line": 2934
  },
  {
   "id": "REQ-UI-015",
@@ -2539,7 +2552,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2937
+  "line": 2943
  },
  {
   "id": "REQ-UI-020",
@@ -2554,7 +2567,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2955
+  "line": 2961
  },
  {
   "id": "REQ-UI-021",
@@ -2569,7 +2582,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2966
+  "line": 2972
  },
  {
   "id": "REQ-UI-022",
@@ -2582,7 +2595,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2979
+  "line": 2985
  },
  {
   "id": "REQ-UI-023",
@@ -2597,7 +2610,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2999
+  "line": 3005
  },
  {
   "id": "REQ-UI-024",
@@ -2612,7 +2625,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3017
+  "line": 3023
  },
  {
   "id": "REQ-UI-030",
@@ -2627,7 +2640,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3043
+  "line": 3049
  },
  {
   "id": "REQ-UI-031",
@@ -2642,7 +2655,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3063
+  "line": 3069
  },
  {
   "id": "REQ-UI-032",
@@ -2657,7 +2670,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3074
+  "line": 3080
  },
  {
   "id": "REQ-UI-033",
@@ -2672,7 +2685,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3088
+  "line": 3094
  },
  {
   "id": "REQ-UI-040",
@@ -2685,7 +2698,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3099
+  "line": 3105
  },
  {
   "id": "REQ-UI-041",
@@ -2700,7 +2713,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3122
+  "line": 3128
  },
  {
   "id": "REQ-UI-042",
@@ -2715,7 +2728,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3141
+  "line": 3147
  },
  {
   "id": "REQ-UI-050",
@@ -2730,7 +2743,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3171
+  "line": 3177
  },
  {
   "id": "REQ-UI-051",
@@ -2745,7 +2758,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3187
+  "line": 3193
  },
  {
   "id": "REQ-UI-052",
@@ -2760,7 +2773,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3203
+  "line": 3209
  },
  {
   "id": "REQ-UI-053",
@@ -2775,7 +2788,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3226
+  "line": 3232
  },
  {
   "id": "REQ-UI-054",
@@ -2790,7 +2803,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3252
+  "line": 3258
  },
  {
   "id": "REQ-UI-060",
@@ -2803,7 +2816,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3268
+  "line": 3274
  },
  {
   "id": "REQ-UI-061",
@@ -2818,7 +2831,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3286
+  "line": 3292
  },
  {
   "id": "REQ-UI-062",
@@ -2833,7 +2846,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3326
+  "line": 3332
  },
  {
   "id": "REQ-UI-063",
@@ -2848,7 +2861,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3338
+  "line": 3344
  },
  {
   "id": "REQ-UI-064",
@@ -2863,7 +2876,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3360
+  "line": 3366
  },
  {
   "id": "REQ-UI-065",
@@ -2878,7 +2891,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3368
+  "line": 3374
  },
  {
   "id": "REQ-UI-070",
@@ -2893,7 +2906,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3394
+  "line": 3400
  },
  {
   "id": "REQ-UI-071",
@@ -2908,7 +2921,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3406
+  "line": 3412
  },
  {
   "id": "REQ-UI-072",
@@ -2923,7 +2936,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3429
+  "line": 3435
  },
  {
   "id": "REQ-UI-073",
@@ -2938,7 +2951,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3435
+  "line": 3441
  },
  {
   "id": "REQ-UI-080",
@@ -2954,7 +2967,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3446
+  "line": 3452
  },
  {
   "id": "REQ-UI-081",
@@ -2969,7 +2982,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3463
+  "line": 3469
  },
  {
   "id": "REQ-UI-082",
@@ -2984,7 +2997,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3484
+  "line": 3490
  },
  {
   "id": "REQ-UI-083",
@@ -2997,7 +3010,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3499
+  "line": 3505
  },
  {
   "id": "REQ-UI-090",
@@ -3010,7 +3023,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3534
+  "line": 3540
  },
  {
   "id": "REQ-UI-091",
@@ -3023,7 +3036,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3566
+  "line": 3572
  },
  {
   "id": "REQ-STA-001",
@@ -3038,7 +3051,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3630
+  "line": 3636
  },
  {
   "id": "REQ-STA-002",
@@ -3053,7 +3066,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3644
+  "line": 3650
  },
  {
   "id": "REQ-STA-003",
@@ -3068,7 +3081,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3654
+  "line": 3660
  },
  {
   "id": "REQ-STA-004",
@@ -3083,7 +3096,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3662
+  "line": 3668
  },
  {
   "id": "REQ-STA-005",
@@ -3096,7 +3109,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3672
+  "line": 3678
  },
  {
   "id": "REQ-API-001",
@@ -3111,7 +3124,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3684
+  "line": 3690
  },
  {
   "id": "REQ-API-002",
@@ -3124,7 +3137,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3719
+  "line": 3725
  },
  {
   "id": "REQ-API-003",
@@ -3139,7 +3152,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3725
+  "line": 3731
  },
  {
   "id": "REQ-API-004",
@@ -3152,7 +3165,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3738
+  "line": 3744
  },
  {
   "id": "REQ-API-005",
@@ -3167,7 +3180,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3751
+  "line": 3757
  },
  {
   "id": "REQ-API-006",
@@ -3182,7 +3195,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3761
+  "line": 3767
  },
  {
   "id": "REQ-API-007",
@@ -3197,7 +3210,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3772
+  "line": 3778
  },
  {
   "id": "REQ-NFR-030",
@@ -3210,7 +3223,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3791
+  "line": 3797
  },
  {
   "id": "REQ-NFR-031",
@@ -3223,7 +3236,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3792
+  "line": 3798
  },
  {
   "id": "REQ-NFR-032",
@@ -3231,12 +3244,12 @@
   "num": "032",
   "priority": "P0",
   "title": "Runs with no hardware and no VISA installed",
-  "body": "Application starts and runs usefully with **no** hardware and **no** VISA installed (simulator + file playback only)\n\n---\n\n**`REQ-NFR-032` deserves emphasis.** The ability to run the full analysis stack with no\ninstrument attached is what makes the DSP developable, testable in CI, and demonstrable.\nIt should be treated as an architectural constraint, not a convenience feature.\n**AC:** On a machine with no VISA runtime installed and no instrument attached, the\napplication starts, the simulator and file-playback front ends are available, and a full\ndemodulation measurement runs to an error summary. A test asserts the VISA assemblies are\nnot loaded in that configuration, so the capability cannot regress into \"starts, but only\nbecause VISA happened to be present\". `REQ-NFR-036`'s no-egress rule holds throughout.",
+  "body": "Application starts and runs usefully with **no** hardware and **no** VISA installed (simulator + file playback only)\n\n---\n\n**`REQ-NFR-032` deserves emphasis.** The ability to run the full analysis stack with no\ninstrument attached is what makes the DSP developable, testable in CI, and demonstrable.\nIt should be treated as an architectural constraint, not a convenience feature.\n**AC:** On a machine with no VISA runtime installed and no instrument attached, the\napplication starts and the simulator and file-playback front ends are available. A test\nasserts the VISA assemblies are not loaded in that configuration, so the capability cannot\nregress into \"starts, but only because VISA happened to be present\". `REQ-NFR-036`'s\nno-egress rule holds throughout.",
   "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3793
+  "line": 3799
  },
  {
   "id": "REQ-NFR-033",
@@ -3249,7 +3262,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3794
+  "line": 3800
  },
  {
   "id": "REQ-NFR-034",
@@ -3262,7 +3275,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3795
+  "line": 3801
  },
  {
   "id": "REQ-NFR-035",
@@ -3275,7 +3288,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3796
+  "line": 3802
  },
  {
   "id": "REQ-NFR-036",
@@ -3288,7 +3301,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3797
+  "line": 3803
  },
  {
   "id": "REQ-NFR-037",
@@ -3301,7 +3314,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3798
+  "line": 3804
  },
  {
   "id": "REQ-NFR-040",
@@ -3314,7 +3327,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3799
+  "line": 3805
  },
  {
   "id": "REQ-NFR-041",
@@ -3327,7 +3340,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3800
+  "line": 3806
  },
  {
   "id": "REQ-NFR-042",
@@ -3340,7 +3353,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3801
+  "line": 3807
  },
  {
   "id": "REQ-NFR-038",
@@ -3353,7 +3366,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3802
+  "line": 3808
  },
  {
   "id": "REQ-NFR-039",
@@ -3366,7 +3379,20 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3803
+  "line": 3809
+ },
+ {
+  "id": "REQ-NFR-032a",
+  "area": "NFR",
+  "num": "032a",
+  "priority": "P0",
+  "title": "A full measurement runs with no hardware",
+  "body": "**`REQ-NFR-032a` (P0) — A full measurement runs with no hardware.**\n**AC:** On the same machine, a full demodulation measurement runs to an error summary.\n*Split from `REQ-NFR-032`: an error summary is the demodulator's output and Phase 2 delivers\nit. The half that matters architecturally — that the product starts and offers its sources\nwith no VISA present — is provable from the first build and stays where it belongs.*",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 3835
  },
  {
   "id": "REQ-NFR-036a",
@@ -3379,7 +3405,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3887
+  "line": 3899
  },
  {
   "id": "REQ-LIC-010",
@@ -3392,7 +3418,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3973
+  "line": 3985
  },
  {
   "id": "REQ-LIC-010a",
@@ -3405,7 +3431,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3989
+  "line": 4001
  },
  {
   "id": "REQ-LIC-011",
@@ -3418,7 +3444,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4000
+  "line": 4012
  },
  {
   "id": "REQ-TST-001",
@@ -3431,7 +3457,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4024
+  "line": 4036
  },
  {
   "id": "REQ-TST-002",
@@ -3444,7 +3470,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4049
+  "line": 4061
  },
  {
   "id": "REQ-TST-003",
@@ -3457,7 +3483,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4076
+  "line": 4088
  },
  {
   "id": "REQ-TST-004",
@@ -3470,7 +3496,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4084
+  "line": 4096
  },
  {
   "id": "REQ-TST-004a",
@@ -3483,7 +3509,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4099
+  "line": 4111
  },
  {
   "id": "REQ-TST-005",
@@ -3496,7 +3522,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4116
+  "line": 4128
  },
  {
   "id": "REQ-TST-006",
@@ -3509,7 +3535,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4129
+  "line": 4141
  },
  {
   "id": "REQ-TST-007",
@@ -3522,7 +3548,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4150
+  "line": 4162
  },
  {
   "id": "REQ-TST-007a",
@@ -3535,7 +3561,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4162
+  "line": 4174
  },
  {
   "id": "REQ-TST-008",
@@ -3548,7 +3574,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4169
+  "line": 4181
  },
  {
   "id": "REQ-TST-009",
@@ -3561,7 +3587,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4178
+  "line": 4190
  },
  {
   "id": "REQ-PLN-001",
@@ -3574,6 +3600,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 4216
+  "line": 4228
  }
 ]
