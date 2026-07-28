@@ -17,6 +17,7 @@ restrictive terms.
 | `xunit.runner.visualstudio` | 2.8.2 | Apache-2.0 | Test runner. Test-only, not shipped. |
 | `Microsoft.NET.Test.Sdk` | 17.11.1 | MIT | Test host. Test-only, not shipped. |
 | `BenchmarkDotNet` | 0.15.8 | MIT | The performance gates of `REQ-NFR-020`–`026`. Test-only, not shipped. |
+| `Syncfusion.Licensing` | 34.1.32 | Syncfusion Community (free, royalty-free) | Registers the Syncfusion key so the controls below do not render a trial banner. Pulled in transitively by the three packages that follow, and referenced explicitly because `App` calls `SyncfusionLicenseProvider.RegisterLicense` directly. |
 | `Syncfusion.Tools.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | `DockingManager` and Ribbon for the shell furniture of `REQ-UI-001`/`REQ-UI-060`. See the decision below. |
 | `Syncfusion.SfGrid.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Marker, limit-line and demod error-summary tables. |
 | `Syncfusion.Shared.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Numeric editors, used as the entry control inside the `REQ-UI-042` hot-spot framework. |
