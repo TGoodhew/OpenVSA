@@ -115,4 +115,17 @@
           Condition="Exists('%(FrontEndPlugin.FullPath)')" />
   </Target>
 
+  <!--
+    REQ-HAL-002's second clause is "switching front ends visibly re-ranges the affected controls",
+    which is a statement about what the settings pane shows and cannot be asserted from outside the
+    shell. RangeSettingsFor is internal rather than public for that: the test needs it, no caller
+    outside this assembly does, and making it public to test it would put a UI implementation
+    detail in the product's surface.
+  -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>OpenVSA.Ui.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
