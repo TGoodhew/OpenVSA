@@ -84,6 +84,12 @@ namespace OpenVSA.Ui.Tests
         {
             // The band being reclaimed is the point, but annotation left visible over an expanded
             // graticule would be worse than either.
+            //
+            // The fault indicators are the one exception and this test used to assert the opposite.
+            // REQ-UI-007 requires the conditions that invalidate a measurement to be shown on the
+            // trace and not buried; hiding them because a user turned annotation off is a worse
+            // burial than the event log that requirement already forbids. See
+            // FaultIndicatorTests.TheIndicatorSurvivesShowAnnotationBeingTurnedOff.
             Sta.Run(() =>
             {
                 TracePlot plot = Laid();
@@ -95,7 +101,7 @@ namespace OpenVSA.Ui.Tests
                     Assert.Equal(Visibility.Collapsed, element.Visibility);
                 }
 
-                Assert.Equal(Visibility.Collapsed, plot.IndicatorElement.Visibility);
+                Assert.Equal(Visibility.Visible, plot.IndicatorElement.Visibility);
 
                 plot.ShowAnnotation = true;
 

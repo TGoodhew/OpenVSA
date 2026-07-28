@@ -156,6 +156,29 @@ namespace OpenVSA.Ui.Rendering
             }
         }
 
+        /// <summary>
+        /// Draws both portions from the Tabular slot (<c>REQ-UI-080</c>, <c>REQ-UI-052</c>).
+        /// </summary>
+        /// <param name="fonts">The font preferences.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="fonts"/> is null.</exception>
+        /// <remarks>
+        /// <strong>Tabular, never Annotation, and that is the whole reason the third slot
+        /// exists.</strong> <c>REQ-UI-080</c> says so outright: the reference product's two-slot
+        /// scheme forces an unhappy compromise here, because general trace annotation reads better
+        /// proportional while this block only aligns in a fixed-width face. Taking the Annotation
+        /// slot would give the right answer whenever a user happened to have set Annotation to a
+        /// monospaced face and the wrong one the rest of the time.
+        /// </remarks>
+        public void ApplyFonts(FontPreferences fonts)
+        {
+            if (fonts == null)
+            {
+                throw new ArgumentNullException(nameof(fonts));
+            }
+
+            ApplyFont(fonts.Resolve(FontSlot.Tabular), fonts.Choice(FontSlot.Tabular).SizePoints);
+        }
+
         private void Refresh()
         {
             if (_trace == null || _trace.SymbolCount == 0)
