@@ -17,7 +17,6 @@
     <Project Path="src/OpenVSA.Hal.Stub/OpenVSA.Hal.Stub.csproj" />
     <Project Path="src/OpenVSA.Capture/OpenVSA.Capture.csproj" />
     <Project Path="src/OpenVSA.Dsp/OpenVSA.Dsp.csproj" />
-    <Project Path="src/OpenVSA.Dsp.Native/OpenVSA.Dsp.Native.vcxproj" />
     <Project Path="src/OpenVSA.Demod/OpenVSA.Demod.csproj" />
     <Project Path="src/OpenVSA.Measurement/OpenVSA.Measurement.csproj" />
     <Project Path="src/OpenVSA.Personality/OpenVSA.Personality.csproj" />

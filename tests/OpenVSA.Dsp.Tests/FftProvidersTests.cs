@@ -39,7 +39,19 @@ namespace OpenVSA.Dsp.Tests
 
                 Assert.True(typeof(IFftProvider).IsAssignableFrom(type),
                     type.Name + " is marked [FftProvider] but does not implement IFftProvider.");
-                Assert.NotNull(FftProviders.Find(attribute.Name));
+
+                // Registered, or explicitly recorded as unavailable with a reason. REQ-NFR-004
+                // makes the native provider optional, so a marked type whose native library was
+                // not deployed is legitimately absent — but it may not be absent *silently*, and
+                // ANativeProviderIsRegistered still fails loudly if no native provider exists at
+                // all.
+                bool registered = FftProviders.Find(attribute.Name) != null;
+                bool explained = FftProviders.UnavailableProviders.ContainsKey(type.FullName);
+
+                Assert.True(
+                    registered || explained,
+                    type.Name + " is marked [FftProvider] but is neither registered nor recorded " +
+                    "as unavailable.");
             }
         }
 

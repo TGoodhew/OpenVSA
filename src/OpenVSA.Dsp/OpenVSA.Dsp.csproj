@@ -40,7 +40,14 @@
     <OpenVsaNativeFft>$(MSBuildThisFileDirectory)..\OpenVSA.Dsp.Native\bin\x64\$(Configuration)\OpenVSA.Fft.Native.dll</OpenVsaNativeFft>
   </PropertyGroup>
 
-  <Target Name="BuildNativeFft" BeforeTargets="BeforeBuild">
+  <!--
+    Full MSBuild only. The dotnet CLI's MSBuild has no C++ targets, so evaluating a .vcxproj under
+    it fails with MSB4278 before any of this runs. That is also why OpenVSA.Dsp.Native is not in
+    OpenVSA.slnx: "dotnet test OpenVSA.slnx" evaluates every project in the solution, C++ or not.
+    The native library is built here, by the full-MSBuild build that precedes the tests.
+  -->
+  <Target Name="BuildNativeFft" BeforeTargets="BeforeBuild"
+          Condition="'$(MSBuildRuntimeType)' != 'Core'">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\OpenVSA.Dsp.Native\OpenVSA.Dsp.Native.vcxproj"
              Properties="Configuration=$(Configuration);Platform=x64"
              ContinueOnError="true" />
