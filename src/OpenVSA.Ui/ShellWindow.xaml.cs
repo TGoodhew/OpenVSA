@@ -2281,7 +2281,7 @@ namespace OpenVSA.Ui
         /// interface — there is no table of models, and a front end that declares a 1 kHz maximum
         /// span gets a 1 kHz maximum span in the UI without anything here being told about it.
         /// </remarks>
-        private void RangeSettingsFor(IFrontEndCapabilities capabilities)
+        internal void RangeSettingsFor(IFrontEndCapabilities capabilities)
         {
             if (capabilities == null)
             {
