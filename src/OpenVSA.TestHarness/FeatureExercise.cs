@@ -16,6 +16,7 @@ using OpenVSA.Measurement.Channels;
 using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
+using OpenVSA.Demod.Results;
 using OpenVSA.TestHarness.Synthesis;
 
 namespace OpenVSA.TestHarness
@@ -3207,6 +3208,15 @@ namespace OpenVSA.TestHarness
         /// is what stands between "the displays are not built" and "the displays cannot be built".
         /// </para>
         /// </remarks>
+        /// <summary>A symbol-table row's gutter value.</summary>
+        private static int Gutter(IReadOnlyList<string> rows, int row) =>
+            int.Parse(
+                rows[row].Substring(0, SymbolTable.GutterWidth).Trim(),
+                CultureInfo.InvariantCulture);
+
+        /// <summary>A symbol-table row with its gutter and separator removed.</summary>
+        private static string Body(string row) => row.Substring(SymbolTable.GutterWidth + 1);
+
         private void ExerciseSyntheticSymbols()
         {
             Step("REQ-UI-050", "A generated constellation has one known point per symbol", () =>
@@ -3349,6 +3359,86 @@ namespace OpenVSA.TestHarness
                     rows.Count + " rows of " + burst.Scheme.BitsPerSymbol + "-bit symbols, EVM " +
                     (evm * 100.0).ToString("0.00", CultureInfo.CurrentCulture) +
                     " % at 25 dB SNR; first row " + rows[0].Substring(0, 14) + "…");
+            });
+
+            Step("REQ-UI-053", "The error summary reproduces the requirement's layout", () =>
+            {
+                // Rendered against a signal of known impairments, which is the criterion's framing.
+                // What is asserted is the layout: the = at a fixed column on every row, RMS then
+                // peak then "at symbol N", engineering prefixes rather than exponents, and the
+                // terse labels exactly.
+                SymbolTrace result = new SyntheticSymbolSource
+                {
+                    Scheme = ModulationScheme.Qam16(),
+                    SignalToNoiseDb = 26.0,
+                }.Generate(400).ToSymbolTrace();
+
+                ErrorSummary summary = ErrorSummary.For(result);
+                IReadOnlyList<string> rows = summary.Render();
+
+                bool aligned = rows.Count > 0;
+                bool labelled = true;
+
+                foreach (string row in rows)
+                {
+                    aligned &= row.IndexOf('=') == ErrorSummary.EqualsColumn;
+                    aligned &= row.IndexOf('E' + "+", StringComparison.Ordinal) < 0;
+                }
+
+                foreach (ErrorMetric metric in summary.Metrics)
+                {
+                    labelled &= ErrorSummary.Labels.Contains(metric.Label);
+                }
+
+                string evm = rows.Count > 0 ? rows[0] : string.Empty;
+
+                bool ordered = evm.IndexOf("%rms", StringComparison.Ordinal) > 0 &&
+                               evm.IndexOf(" pk", StringComparison.Ordinal) >
+                                   evm.IndexOf("%rms", StringComparison.Ordinal) &&
+                               evm.IndexOf("at symbol ", StringComparison.Ordinal) >
+                                   evm.IndexOf(" pk", StringComparison.Ordinal);
+
+                return new Outcome<int>(
+                    aligned && labelled && ordered, rows.Count,
+                    rows.Count + " rows, '=' at column " + ErrorSummary.EqualsColumn +
+                    " throughout; first row: " + evm.Trim());
+            });
+
+            Step("REQ-UI-052", "The symbol table's gutter counts bits in binary and symbols in hex", () =>
+            {
+                // The criterion's sharpest clause, and the one an implementation gets half right:
+                // the two gutters count different quantities over the same stream.
+                SymbolTrace result = new SyntheticSymbolSource
+                {
+                    Scheme = ModulationScheme.Qam16(),
+                }.Generate(64).ToSymbolTrace();
+
+                IReadOnlyList<string> binary = SymbolTable.Render(
+                    result.Symbols, result.BitsPerSymbol, SymbolTableFormat.Binary, 32);
+
+                IReadOnlyList<string> hex = SymbolTable.Render(
+                    result.Symbols, result.BitsPerSymbol, SymbolTableFormat.Hexadecimal, 16);
+
+                int binaryGutter = Gutter(binary, 1);
+                int hexGutter = Gutter(hex, 1);
+
+                // Row 1 of the binary table starts at bit 32; row 1 of the hex table at symbol 16.
+                bool counted = binaryGutter == 32 && hexGutter == 16;
+
+                // Groups of eight characters separated by a space, in both.
+                bool grouped =
+                    Body(binary[0]).Split(' ').All(g => g.Length == SymbolTable.GroupSize) &&
+                    Body(hex[0]).Split(' ').All(g => g.Length == SymbolTable.GroupSize);
+
+                // And hex is refused below four bits a symbol, with a reason.
+                bool refused = !SymbolTable.IsAvailable(SymbolTableFormat.Hexadecimal, 2) &&
+                               SymbolTable.ReasonAgainst(SymbolTableFormat.Hexadecimal, 2) != null;
+
+                return new Outcome<int>(
+                    counted && grouped && refused, binaryGutter,
+                    "binary row 1 at bit " + binaryGutter + ", hex row 1 at symbol " + hexGutter +
+                    "; groups of " + SymbolTable.GroupSize +
+                    "; hex refused below 4 bits a symbol: " + refused);
             });
 
             Step("REQ-UI-050", "The generated signal is a real one through the product's own DSP", () =>

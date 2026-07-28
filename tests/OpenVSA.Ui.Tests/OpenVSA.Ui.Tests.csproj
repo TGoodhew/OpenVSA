@@ -15,6 +15,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
+
+    <!--
+      The synthetic modulated source of the display group. REQ-UI-050, REQ-UI-051 and REQ-UI-052
+      are all worded against a signal whose symbols and symbol clock are known, so the tests that
+      check them need the generator that produces one. A test-only reference to a test-only
+      assembly; nothing in src\OpenVSA.Ui references it, and the layering test still holds.
+    -->
+    <ProjectReference Include="..\..\src\OpenVSA.TestHarness\OpenVSA.TestHarness.csproj" />
   </ItemGroup>
 
 </Project>

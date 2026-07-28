@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
 using OpenVSA.Core;
+using OpenVSA.Demod.Results;
 
 namespace OpenVSA.TestHarness.Synthesis
 {
@@ -199,6 +200,51 @@ namespace OpenVSA.TestHarness.Synthesis
             }
 
             return right;
+        }
+
+        /// <summary>
+        /// The burst as a demodulated result, for the displays of <c>REQ-UI-050</c> onwards.
+        /// </summary>
+        /// <param name="modulationTypes">
+        /// Which modulation each symbol belongs to, for exercising <c>REQ-UI-050</c>'s
+        /// mixed-modulation colouring, or <c>null</c> when they all agree.
+        /// </param>
+        /// <exception cref="ArgumentException">
+        /// A modulation-type list is given whose length is not the symbol count.
+        /// </exception>
+        /// <remarks>
+        /// <strong>This is the bridge the display group stands on.</strong> The burst knows what was
+        /// sent and where; a <c>SymbolTrace</c> is what a demodulator would produce and what the
+        /// displays draw. Producing one here means every display criterion can be checked against a
+        /// known signal now, and the same displays will take a real demodulator's output unchanged
+        /// when there is one.
+        /// </remarks>
+        public SymbolTrace ToSymbolTrace(IList<int> modulationTypes = null)
+        {
+            var ideal = new List<ConstellationPoint>(_symbols.Count);
+            var measured = new List<ConstellationPoint>(_symbols.Count);
+
+            for (int symbol = 0; symbol < _symbols.Count; symbol++)
+            {
+                SymbolPoint want = Scheme.IdealPoints[_symbols[symbol]];
+                SymbolPoint got = MeasuredAt(symbol);
+
+                ideal.Add(new ConstellationPoint(want.I, want.Q));
+                measured.Add(new ConstellationPoint(got.I, got.Q));
+            }
+
+            return new SymbolTrace(
+                Scheme.Name,
+                Scheme.BitsPerSymbol,
+                Scheme.LevelsPerAxis,
+                new List<int>(_symbols),
+                ideal,
+                measured,
+                new List<int>(_decisions),
+                _samples,
+                SamplesPerSymbol,
+                SymbolRateHz,
+                modulationTypes);
         }
 
         /// <summary>

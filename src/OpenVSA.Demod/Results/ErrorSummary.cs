@@ -1,0 +1,430 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Text;
+
+namespace OpenVSA.Demod.Results
+{
+    /// <summary>
+    /// One row of the error summary (<c>REQ-UI-053</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A row is a label, a value with a unit, and — for the metrics that have one — a peak and the
+    /// symbol it occurred at. <strong>A scalar-only metric renders one value and omits the peak
+    /// columns rather than padding them with zeros</strong>, which is the requirement's own
+    /// wording and the difference between a summary that reads and one that has to be decoded.
+    /// </para>
+    /// </remarks>
+    public sealed class ErrorMetric
+    {
+        /// <summary>Creates a metric with an RMS value, a peak, and the symbol the peak fell on.</summary>
+        /// <param name="label">The row label; one of <see cref="ErrorSummary.Labels"/>.</param>
+        /// <param name="unit">The unit the values are in, before any engineering prefix.</param>
+        /// <param name="rms">The RMS value.</param>
+        /// <param name="peak">The peak value.</param>
+        /// <param name="peakSymbol">Which symbol the peak fell on.</param>
+        public ErrorMetric(string label, string unit, double rms, double peak, int peakSymbol)
+            : this(label, unit, rms)
+        {
+            Peak = peak;
+            PeakSymbol = peakSymbol;
+            HasPeak = true;
+        }
+
+        /// <summary>Creates a scalar metric: one value, no peak and no symbol.</summary>
+        /// <param name="label">The row label.</param>
+        /// <param name="unit">The unit.</param>
+        /// <param name="value">The value.</param>
+        /// <exception cref="ArgumentException"><paramref name="label"/> is null or blank.</exception>
+        public ErrorMetric(string label, string unit, double value)
+        {
+            if (string.IsNullOrEmpty(label) || label.Trim().Length == 0)
+            {
+                throw new ArgumentException("A metric needs a label.", nameof(label));
+            }
+
+            Label = label.Trim();
+            Unit = unit ?? string.Empty;
+            Rms = value;
+        }
+
+        /// <summary>The row label, in the reference product's terse style.</summary>
+        public string Label { get; }
+
+        /// <summary>The unit, before any engineering prefix.</summary>
+        public string Unit { get; }
+
+        /// <summary>The RMS value, or the single value of a scalar metric.</summary>
+        public double Rms { get; }
+
+        /// <summary>The peak value, when there is one.</summary>
+        public double Peak { get; }
+
+        /// <summary>Which symbol the peak fell on, when there is one.</summary>
+        public int PeakSymbol { get; }
+
+        /// <summary>Whether this metric has a peak and a symbol as well as an RMS value.</summary>
+        public bool HasPeak { get; }
+
+        /// <inheritdoc />
+        public override string ToString() => Label + " = " + Rms + " " + Unit;
+    }
+
+    /// <summary>
+    /// The error summary of <c>REQ-UI-053</c>: the metrics, and the layout they are shown in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The requirement gives the actual on-screen text of a real analyser of this family and makes
+    /// it the layout model. What is testable in it, and what <see cref="Render"/> reproduces:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>the <c>=</c> at a fixed column across every row;</description></item>
+    /// <item><description>RMS, then peak, then "at symbol N";</description></item>
+    /// <item><description>engineering prefixes on units — <c>m%rms</c>, <c>mdeg</c> — rather than
+    /// exponent notation;</description></item>
+    /// <item><description>the terse labels exactly: <c>Carr Ofst</c>, never "Carrier Offset".</description></item>
+    /// </list>
+    /// <para>
+    /// <strong>The <c>=</c> column is the whole reason this needs a fixed-width slot.</strong> The
+    /// requirement's own model has <c>Phase Error=</c> with no space before the sign — the label
+    /// field is a fixed width and a long label runs right up to it. Rendering this in a
+    /// proportional face puts the equals signs in a ragged line and the numbers nowhere near each
+    /// other, which is why <c>REQ-UI-052</c> puts both portions in the Tabular slot.
+    /// </para>
+    /// </remarks>
+    public sealed class ErrorSummary
+    {
+        /// <summary>
+        /// The column the <c>=</c> sits in, counted from zero.
+        /// </summary>
+        /// <remarks>
+        /// Eleven, which is the width of the longest label in <see cref="Labels"/> plus one — the
+        /// requirement's model shows <c>Phase Error=</c> running straight into the sign, so the
+        /// field is exactly wide enough for the longest label and no wider.
+        /// </remarks>
+        public const int EqualsColumn = 11;
+
+        /// <summary>
+        /// The row labels of <c>REQ-UI-053</c>, exactly as it lists them.
+        /// </summary>
+        /// <remarks>
+        /// <strong>Asserted as literals by a test, and that is the point of them being here.</strong>
+        /// The house style is short, truncated and no-space-where-possible; the natural instinct is
+        /// to write "Carrier Offset" and "Symbol Clock Error", and a summary that did would not be
+        /// the display this requirement describes.
+        /// </remarks>
+        public static readonly IReadOnlyList<string> Labels =
+            new ReadOnlyCollection<string>(new List<string>
+            {
+                "Amp Droop",
+                "Carr Ofst",
+                "EVM",
+                "EVM Pk",
+                "Freq Err",
+                "Mag Err",
+                "Offset EVM",
+                "Phase Err",
+                "Pilot Lvl",
+                "Time Offset",
+                "IQ Offset",
+                "IQ Gain Imbalance",
+                "IQ Quad. Error",
+                "IQ Timing Skew",
+                "SymClk Err",
+                "RSSI",
+            });
+
+        private readonly List<ErrorMetric> _metrics = new List<ErrorMetric>();
+
+        /// <summary>The metrics, in the order they will be rendered.</summary>
+        public IReadOnlyList<ErrorMetric> Metrics => _metrics;
+
+        /// <summary>
+        /// Adds a metric.
+        /// </summary>
+        /// <param name="metric">The metric.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="metric"/> is null.</exception>
+        /// <returns>This summary, so metrics can be chained.</returns>
+        public ErrorSummary Add(ErrorMetric metric)
+        {
+            if (metric == null)
+            {
+                throw new ArgumentNullException(nameof(metric));
+            }
+
+            _metrics.Add(metric);
+            return this;
+        }
+
+        /// <summary>
+        /// Computes the summary a result implies (<c>REQ-DEM-070</c>'s metrics over
+        /// <c>REQ-UI-053</c>'s layout).
+        /// </summary>
+        /// <param name="trace">The demodulated result.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="trace"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// The four the geometry alone can support — EVM, magnitude error, phase error and IQ
+        /// offset — and no more. A summary that invented a frequency error or a symbol-clock error
+        /// from a result that cannot show one would be the failure <c>REQ-DEM-072</c> exists to
+        /// prevent: a number without its provenance. The rest arrive with the demodulator that can
+        /// measure them.
+        /// </para>
+        /// <para>
+        /// EVM is referenced to the RMS of the ideal points rather than to unity, so a result whose
+        /// constellation is not normalised still gives the figure an instrument would.
+        /// </para>
+        /// </remarks>
+        public static ErrorSummary For(SymbolTrace trace)
+        {
+            if (trace == null)
+            {
+                throw new ArgumentNullException(nameof(trace));
+            }
+
+            var summary = new ErrorSummary();
+
+            if (trace.SymbolCount == 0)
+            {
+                return summary;
+            }
+
+            double reference = ReferencePower(trace);
+
+            double errorSquared = 0.0;
+            double magSquared = 0.0;
+            double phaseSquared = 0.0;
+
+            double worstError = 0.0;
+            double worstMag = 0.0;
+            double worstPhase = 0.0;
+
+            int worstErrorAt = 0;
+            int worstMagAt = 0;
+            int worstPhaseAt = 0;
+
+            double offsetI = 0.0;
+            double offsetQ = 0.0;
+
+            for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
+            {
+                ConstellationPoint measured = trace.Measured[symbol];
+                ConstellationPoint ideal = trace.Ideal[symbol];
+                ConstellationPoint error = trace.ErrorAt(symbol);
+
+                double magnitude = Math.Sqrt(error.I * error.I + error.Q * error.Q) / reference;
+
+                errorSquared += magnitude * magnitude;
+
+                if (magnitude > Math.Abs(worstError))
+                {
+                    worstError = magnitude;
+                    worstErrorAt = symbol;
+                }
+
+                double idealMagnitude = Math.Sqrt(ideal.I * ideal.I + ideal.Q * ideal.Q);
+                double measuredMagnitude = Math.Sqrt(measured.I * measured.I + measured.Q * measured.Q);
+
+                double magError = idealMagnitude < 1e-12
+                    ? 0.0
+                    : (measuredMagnitude - idealMagnitude) / idealMagnitude;
+
+                magSquared += magError * magError;
+
+                if (Math.Abs(magError) > Math.Abs(worstMag))
+                {
+                    worstMag = magError;
+                    worstMagAt = symbol;
+                }
+
+                double phaseError = Wrap(
+                    Math.Atan2(measured.Q, measured.I) - Math.Atan2(ideal.Q, ideal.I)) *
+                    180.0 / Math.PI;
+
+                phaseSquared += phaseError * phaseError;
+
+                if (Math.Abs(phaseError) > Math.Abs(worstPhase))
+                {
+                    worstPhase = phaseError;
+                    worstPhaseAt = symbol;
+                }
+
+                offsetI += error.I;
+                offsetQ += error.Q;
+            }
+
+            int count = trace.SymbolCount;
+
+            summary.Add(new ErrorMetric(
+                "EVM", "%rms", Math.Sqrt(errorSquared / count) * 100.0, worstError * 100.0, worstErrorAt));
+
+            summary.Add(new ErrorMetric(
+                "Mag Err", "%rms", Math.Sqrt(magSquared / count) * 100.0, worstMag * 100.0, worstMagAt));
+
+            summary.Add(new ErrorMetric(
+                "Phase Err", "deg", Math.Sqrt(phaseSquared / count), worstPhase, worstPhaseAt));
+
+            // The mean error vector as a level below the reference: a constellation whose centre of
+            // gravity is off the origin has a carrier leaking through, and that is what this reads.
+            double offset = Math.Sqrt(
+                (offsetI / count) * (offsetI / count) + (offsetQ / count) * (offsetQ / count)) /
+                reference;
+
+            summary.Add(new ErrorMetric(
+                "IQ Offset", "dB", offset < 1e-12 ? -200.0 : 20.0 * Math.Log10(offset)));
+
+            return summary;
+        }
+
+        /// <summary>
+        /// The summary as <c>REQ-UI-053</c>'s layout, one string per row.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The label is left-justified in a field of <see cref="EqualsColumn"/> characters, so the
+        /// <c>=</c> lands in the same column on every row whatever the label's length — including
+        /// the case the requirement's own model shows, where a label fills the field and the sign
+        /// abuts it.
+        /// </para>
+        /// <para>
+        /// Values carry engineering prefixes: <c>248.7475 m%rms</c>, not <c>2.487475E-01 %rms</c>.
+        /// The prefix goes on the unit rather than being written as a separate factor, which is
+        /// what makes <c>m%rms</c> and <c>mdeg</c> read as the requirement writes them.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<string> Render()
+        {
+            var rows = new List<string>(_metrics.Count);
+
+            foreach (ErrorMetric metric in _metrics)
+            {
+                var row = new StringBuilder();
+
+                row.Append(metric.Label.PadRight(EqualsColumn));
+                row.Append('=');
+                row.Append(' ');
+                row.Append(Engineering(metric.Rms, metric.Unit).PadLeft(16));
+
+                if (metric.HasPeak)
+                {
+                    row.Append(' ');
+                    row.Append(Engineering(metric.Peak, PeakUnit(metric.Unit)).PadLeft(18));
+                    row.Append(" at symbol ");
+                    row.Append(metric.PeakSymbol.ToString(CultureInfo.InvariantCulture));
+                }
+
+                rows.Add(row.ToString().TrimEnd());
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// A value with an engineering prefix on its unit (<c>REQ-UI-053</c>).
+        /// </summary>
+        /// <param name="value">The value.</param>
+        /// <param name="unit">The unit the value is in.</param>
+        /// <remarks>
+        /// <para>
+        /// Seven significant figures, which is what the requirement's model shows —
+        /// <c>248.7475 m%rms</c>, <c>1.043872 deg pk</c> — and enough that the last digit of an EVM
+        /// figure is below the noise of any real measurement rather than above it.
+        /// </para>
+        /// <para>
+        /// Decibels take no prefix. A level is already logarithmic, and <c>-67.543 dB</c> written
+        /// as <c>-67.543 dB</c> is what every instrument shows; <c>-67.543 </c> with a prefix would
+        /// be a unit nobody uses.
+        /// </para>
+        /// </remarks>
+        public static string Engineering(double value, string unit)
+        {
+            if (double.IsNaN(value))
+            {
+                return "NAN " + unit;
+            }
+
+            if (unit.StartsWith("dB", StringComparison.Ordinal) || value == 0.0)
+            {
+                return Significant(value) + " " + unit;
+            }
+
+            string[] prefixes = { "p", "n", "u", "m", string.Empty, "k", "M", "G" };
+            const int Unity = 4;
+
+            double magnitude = Math.Abs(value);
+            int step = Unity;
+
+            while (magnitude < 1.0 && step > 0)
+            {
+                magnitude *= 1000.0;
+                value *= 1000.0;
+                step--;
+            }
+
+            while (magnitude >= 1000.0 && step < prefixes.Length - 1)
+            {
+                magnitude /= 1000.0;
+                value /= 1000.0;
+                step++;
+            }
+
+            return Significant(value) + " " + prefixes[step] + unit;
+        }
+
+        /// <summary>
+        /// The unit a peak is shown in.
+        /// </summary>
+        /// <remarks>
+        /// The RMS suffix comes off, because a peak is not an RMS value. The requirement's own
+        /// model shows exactly this — <c>248.7475 m%rms</c> against <c>732.2379 m% pk</c> on the
+        /// same row — and carrying <c>rms</c> into the peak column would label the largest single
+        /// error as an average.
+        /// </remarks>
+        private static string PeakUnit(string unit)
+        {
+            string bare = unit.EndsWith("rms", StringComparison.Ordinal)
+                ? unit.Substring(0, unit.Length - 3)
+                : unit;
+
+            return bare + " pk";
+        }
+
+        private static string Significant(double value) =>
+            value.ToString("G7", CultureInfo.InvariantCulture);
+
+        private static double ReferencePower(SymbolTrace trace)
+        {
+            double sum = 0.0;
+
+            foreach (ConstellationPoint ideal in trace.Ideal)
+            {
+                sum += ideal.I * ideal.I + ideal.Q * ideal.Q;
+            }
+
+            double rms = Math.Sqrt(sum / trace.SymbolCount);
+
+            return rms < 1e-12 ? 1.0 : rms;
+        }
+
+        private static double Wrap(double radians)
+        {
+            while (radians > Math.PI)
+            {
+                radians -= 2.0 * Math.PI;
+            }
+
+            while (radians < -Math.PI)
+            {
+                radians += 2.0 * Math.PI;
+            }
+
+            return radians;
+        }
+
+        /// <inheritdoc />
+        public override string ToString() => _metrics.Count + " metric(s)";
+    }
+}
