@@ -27,6 +27,12 @@ namespace OpenVSA.Benchmarks
         /// <returns>0 when the gate passes, 1 on a regression or a skipped target, 2 on misuse.</returns>
         public static int Run(string[] args)
         {
+            if (Has(args, "--stages"))
+            {
+                WindowedMeasurements.StageBreakdown(1 << 20);
+                return 0;
+            }
+
             if (Has(args, "--measure"))
             {
                 return Measure(Argument(args, "--measurements"));
