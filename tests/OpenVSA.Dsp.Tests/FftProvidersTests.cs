@@ -147,11 +147,24 @@ namespace OpenVSA.Dsp.Tests
                 FftProviders.Resolve(FftProviders.DefaultProviderName));
         }
 
-        [Fact(Skip = "REQ-NFR-004 requires a native provider (oneMKL or IPP). Not yet implemented; " +
-                     "the interface, registry and parametrised suite are in place to receive one.")]
+        [Fact]
         public void ANativeProviderIsRegistered()
         {
-            Assert.Contains(FftProviders.All, p => p.IsNativeAccelerated);
+            // REQ-NFR-004: "at least two IFftProvider implementations are registered, one fully
+            // managed and one native". If the native library is not deployed the provider is
+            // absent by design, so the reason is reported rather than the assertion simply failing.
+            string why = FftProviders.UnavailableProviders.Count == 0
+                ? string.Empty
+                : " Unavailable: " + string.Join("; ",
+                    FftProviders.UnavailableProviders.Select(kv => kv.Key + " -> " + kv.Value));
+
+            Assert.True(
+                FftProviders.All.Any(p => p.IsNativeAccelerated),
+                "No native provider is registered." + why);
+
+            Assert.True(
+                FftProviders.All.Any(p => !p.IsNativeAccelerated),
+                "No fully managed provider is registered.");
         }
     }
 }

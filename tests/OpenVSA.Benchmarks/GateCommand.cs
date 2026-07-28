@@ -27,6 +27,11 @@ namespace OpenVSA.Benchmarks
         /// <returns>0 when the gate passes, 1 on a regression or a skipped target, 2 on misuse.</returns>
         public static int Run(string[] args)
         {
+            if (Has(args, "--fft-compare"))
+            {
+                return CompareFftProviders();
+            }
+
             if (Has(args, "--stages"))
             {
                 WindowedMeasurements.StageBreakdown(1 << 20);
@@ -88,6 +93,105 @@ namespace OpenVSA.Benchmarks
             }
 
             return report.ExitCode;
+        }
+
+        /// <summary>
+        /// REQ-NFR-004: the same binaries, each registered provider, timed and cross-checked.
+        /// </summary>
+        /// <remarks>
+        /// This is the acceptance criterion's "running the suite twice with different providers
+        /// selected and the same binaries", made observable: nothing here is recompiled between
+        /// providers, they are taken from the registry as deployed.
+        /// </remarks>
+        private static int CompareFftProviders()
+        {
+            Console.WriteLine("REQ-NFR-004 providers, same binaries:");
+            Console.WriteLine();
+
+            foreach (OpenVSA.Dsp.Fft.IFftProvider provider in OpenVSA.Dsp.Fft.FftProviders.All)
+            {
+                Console.WriteLine(
+                    "  " + provider.Name.PadRight(10) +
+                    (provider.IsNativeAccelerated ? "native " : "managed") +
+                    "   " + provider.SignificandBits + "-bit significand");
+            }
+
+            foreach (var kv in OpenVSA.Dsp.Fft.FftProviders.UnavailableProviders)
+            {
+                Console.WriteLine("  UNAVAILABLE " + kv.Key + ": " + kv.Value);
+            }
+
+            Console.WriteLine();
+
+            foreach (int points in new[] { 8192, 1 << 20 })
+            {
+                double[] reference = null;
+
+                foreach (OpenVSA.Dsp.Fft.IFftProvider provider in OpenVSA.Dsp.Fft.FftProviders.All)
+                {
+                    var buffer = new double[points * 2];
+
+                    for (int i = 0; i < points; i++)
+                    {
+                        buffer[2 * i] = Math.Cos(0.1 * i) + 0.01 * Math.Cos(0.7 * i);
+                        buffer[2 * i + 1] = Math.Sin(0.1 * i);
+                    }
+
+                    provider.Forward(new Span<double>(buffer));
+
+                    // Re-fill and time, so the warm-up transform is not in the figure.
+                    int repetitions = points <= 8192 ? 300 : 20;
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+
+                    for (int r = 0; r < repetitions; r++)
+                    {
+                        provider.Forward(new Span<double>(buffer));
+                    }
+
+                    clock.Stop();
+
+                    // Agreement is checked against whichever provider ran first, at the tolerance
+                    // REQ-NFR-004a states for the less precise of the two.
+                    string agreement = string.Empty;
+
+                    var fresh = new double[points * 2];
+
+                    for (int i = 0; i < points; i++)
+                    {
+                        fresh[2 * i] = Math.Cos(0.1 * i) + 0.01 * Math.Cos(0.7 * i);
+                        fresh[2 * i + 1] = Math.Sin(0.1 * i);
+                    }
+
+                    provider.Forward(new Span<double>(fresh));
+
+                    if (reference == null)
+                    {
+                        reference = fresh;
+                    }
+                    else
+                    {
+                        double worst = 0.0;
+                        double scale = 0.0;
+
+                        for (int i = 0; i < fresh.Length; i++)
+                        {
+                            worst = Math.Max(worst, Math.Abs(fresh[i] - reference[i]));
+                            scale = Math.Max(scale, Math.Abs(reference[i]));
+                        }
+
+                        agreement = "   agrees to " + (worst / Math.Max(scale, 1e-300)).ToString("E2");
+                    }
+
+                    Console.WriteLine(
+                        "  " + provider.Name.PadRight(10) + points.ToString().PadLeft(8) + " pts   " +
+                        (clock.Elapsed.TotalMilliseconds / repetitions).ToString("F3").PadLeft(8) +
+                        " ms" + agreement);
+                }
+
+                Console.WriteLine();
+            }
+
+            return 0;
         }
 
         /// <summary>The <c>--measure</c> mode: take the rendered targets and write them out.</summary>
