@@ -54,10 +54,21 @@
   </Target>
 
   <ItemGroup>
-    <None Include="$(OpenVsaNativeFft)" Condition="Exists('$(OpenVsaNativeFft)')">
+    <!--
+      Conditioned on the runtime, NOT on Exists(). Item conditions are evaluated before any target
+      runs, so on a clean checkout Exists() is false at evaluation time, because BuildNativeFft has
+      not produced the library yet. The item is dropped and the copy silently never happens. That
+      is what made CI report "Unable to load DLL OpenVSA.Fft.Native.dll" from a build that had
+      compiled it moments earlier.
+
+      Under full MSBuild the item is always present and BuildNativeFft has run by the time the copy
+      does. Under the dotnet CLI the native project cannot be built at all, so the item is absent
+      and the managed default carries the product.
+    -->
+    <Content Include="$(OpenVsaNativeFft)" Condition="'$(MSBuildRuntimeType)' != 'Core'">
       <Link>OpenVSA.Fft.Native.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    </Content>
   </ItemGroup>
 
 </Project>
