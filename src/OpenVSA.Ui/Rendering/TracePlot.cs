@@ -887,6 +887,120 @@ namespace OpenVSA.Ui.Rendering
         private static int Clamp(int value, int low, int high) =>
             value < low ? low : (value > high ? high : value);
 
+        // ---- The display range (REQ-UI-040, #397) -----------------------------------------------
+
+        private double _displayStartHz = double.NaN;
+        private double _displayStopHz = double.NaN;
+
+        /// <summary>
+        /// The frame as measured, before any display magnification (#397).
+        /// </summary>
+        /// <remarks>
+        /// <strong>Kept because the annotation must describe the measurement, not the
+        /// picture.</strong> Under magnification <c>_snapshot.Spectrum</c> is the windowed frame,
+        /// and annotating the centre and span from it would report the magnified band as the
+        /// measured one — which is the same lie the other way round, and the reason Scale X was
+        /// refused for as long as it was.
+        /// </remarks>
+        private SpectrumFrame _measuredFrame;
+
+        /// <summary>
+        /// Whether the display is magnified into part of the measured span (#397).
+        /// </summary>
+        /// <remarks>
+        /// The one question every other piece of this answers to. When it is false the centre and
+        /// span readouts describe both the measurement and the display, and there is nothing extra
+        /// to annotate; when it is true they describe only the measurement and the displayed range
+        /// has to be said out loud.
+        /// </remarks>
+        public bool IsMagnified => !double.IsNaN(_displayStartHz) && !double.IsNaN(_displayStopHz);
+
+        /// <summary>The first frequency drawn, in hertz, or the frame's own start.</summary>
+        public double DisplayStartHz =>
+            IsMagnified ? _displayStartHz : (_measuredFrame?.StartFrequencyHz ?? double.NaN);
+
+        /// <summary>The last frequency drawn, in hertz, or the frame's own stop.</summary>
+        public double DisplayStopHz =>
+            IsMagnified ? _displayStopHz : (_measuredFrame?.StopFrequencyHz ?? double.NaN);
+
+        /// <summary>The centre of the displayed range, in hertz.</summary>
+        public double DisplayCentreHz => (DisplayStartHz + DisplayStopHz) / 2.0;
+
+        /// <summary>The width of the displayed range, in hertz.</summary>
+        public double DisplaySpanHz => DisplayStopHz - DisplayStartHz;
+
+        /// <summary>
+        /// Magnifies the display into part of the measured span, without re-measuring (#397).
+        /// </summary>
+        /// <param name="startHz">First frequency to draw.</param>
+        /// <param name="stopHz">Last frequency to draw.</param>
+        /// <returns>Whether the range was accepted.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>This changes the display and nothing else.</strong> The measurement keeps its
+        /// centre, its span and its resolution bandwidth; what changes is which of the points
+        /// already acquired are spread across the graticule. That is the whole difference between
+        /// this and Set centre and span, which re-analyses the dragged band and gives more
+        /// resolution rather than the same points magnified.
+        /// </para>
+        /// <para>
+        /// Refused when it would leave fewer than two points to draw. A magnification past the
+        /// resolution of the data is not more detail — it is one point stretched across the
+        /// screen, which looks like a measurement and is not one.
+        /// </para>
+        /// </remarks>
+        public bool SetDisplayRange(double startHz, double stopHz)
+        {
+            if (double.IsNaN(startHz) || double.IsNaN(stopHz) || stopHz <= startHz)
+            {
+                return false;
+            }
+
+            SpectrumFrame frame = _measuredFrame;
+
+            if (frame == null)
+            {
+                return false;
+            }
+
+            double first = Math.Max(startHz, frame.StartFrequencyHz);
+            double last = Math.Min(stopHz, frame.StopFrequencyHz);
+
+            if (last <= first || (last - first) / frame.BinWidthHz < 2.0)
+            {
+                return false;
+            }
+
+            _displayStartHz = first;
+            _displayStopHz = last;
+
+            Rebuild(_builtFor);
+            return true;
+        }
+
+        /// <summary>Returns the display to the whole measured span (#397).</summary>
+        public void ClearDisplayRange()
+        {
+            if (!IsMagnified)
+            {
+                return;
+            }
+
+            _displayStartHz = double.NaN;
+            _displayStopHz = double.NaN;
+
+            Rebuild(_builtFor);
+        }
+
+        /// <summary>
+        /// The analysis annotation line, for asserting what it says.
+        /// </summary>
+        /// <remarks>
+        /// The window, point count, span and — when the display is magnified — the band actually
+        /// drawn. Read from the element the user sees.
+        /// </remarks>
+        public string AnalysisText => _analysisText.Text ?? string.Empty;
+
         /// <summary>Whether this plot is holding a frame to draw (#395).</summary>
         public bool HasTrace => _snapshot != null;
 
@@ -1366,6 +1480,16 @@ namespace OpenVSA.Ui.Rendering
             }
 
             _snapshot = snapshot;
+            _measuredFrame = snapshot.Spectrum;
+
+            // A new acquisition at a different span cannot keep a magnification into the old one.
+            if (IsMagnified &&
+                (_displayStartHz < snapshot.Spectrum.StartFrequencyHz ||
+                 _displayStopHz > snapshot.Spectrum.StopFrequencyHz))
+            {
+                _displayStartHz = double.NaN;
+                _displayStopHz = double.NaN;
+            }
 
             RebuildAxis(snapshot);
             Redraw(snapshot);
@@ -2176,20 +2300,34 @@ namespace OpenVSA.Ui.Rendering
         {
             TraceSnapshot held = _snapshot;
 
-            if (held == null || _layout == null)
+            // Always from the measured frame, never from whatever is currently drawn. Decimating
+            // the windowed frame again would magnify a magnification, and clearing the range would
+            // restore only as much as the last window happened to hold — which is what the
+            // clearing test caught.
+            SpectrumFrame measured = _measuredFrame;
+
+            if (held == null || measured == null || _layout == null)
             {
                 return held;
             }
 
             int columns = _layout.Graticule.Width;
 
-            if (columns < 1 || held.Columns == columns)
+            if (columns < 1)
+            {
+                return held;
+            }
+
+            bool matches = held.Columns == columns &&
+                           Math.Abs(held.Spectrum.StartFrequencyHz - DisplayStartHz) < 1e-6;
+
+            if (matches)
             {
                 return held;
             }
 
             _snapshot = RenderMarshal.Decimate(
-                held.Spectrum,
+                IsMagnified ? Windowed(measured) : measured,
                 columns,
                 new[] { CurrentFormat },
                 TraceDetector.Normal,
@@ -2197,6 +2335,58 @@ namespace OpenVSA.Ui.Rendering
 
             return _snapshot;
         }
+
+        /// <summary>
+        /// The part of a frame the display range selects, as a frame in its own right (#397).
+        /// </summary>
+        /// <remarks>
+        /// A real frame rather than a pair of indices, so everything downstream — the envelope, the
+        /// markers, the axis — works on it unchanged. The points are the ones already acquired;
+        /// nothing is interpolated, because magnifying a display invents no measurement.
+        /// </remarks>
+        private SpectrumFrame Windowed(SpectrumFrame frame)
+        {
+            int first = (int)Math.Floor((_displayStartHz - frame.StartFrequencyHz) / frame.BinWidthHz);
+            int last = (int)Math.Ceiling((_displayStopHz - frame.StartFrequencyHz) / frame.BinWidthHz);
+
+            first = Math.Max(0, Math.Min(first, frame.PointCount - 2));
+            last = Math.Max(first + 1, Math.Min(last, frame.PointCount - 1));
+
+            ReadOnlySpan<float> levels = frame.LevelsDbm;
+            var windowed = new float[last - first + 1];
+
+            for (int i = 0; i < windowed.Length; i++)
+            {
+                windowed[i] = levels[first + i];
+            }
+
+            return SpectrumFrame.FromLevels(
+                windowed,
+                frame.StartFrequencyHz + first * frame.BinWidthHz,
+                frame.BinWidthHz,
+                frame.Window,
+                frame.EquivalentNoiseBandwidthBins);
+        }
+
+        /// <summary>
+        /// What the annotation says about a magnified display, or nothing (#397).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Only when the two differ.</strong> An unmagnified trace already has its centre
+        /// and span beneath the X axis describing both the measurement and the picture; a second
+        /// pair saying the same thing would be clutter that trains a reader to ignore the line
+        /// that matters when it does appear.
+        /// </para>
+        /// <para>
+        /// The word is "Disp", in the terse style <c>REQ-UI-053</c> establishes for readout labels
+        /// — the annotation band is short of room, which is what #396 was about.
+        /// </para>
+        /// </remarks>
+        private string DisplayRangeNote() =>
+            IsMagnified
+                ? "   Disp " + Frequency(DisplayCentreHz) + " ± " + Frequency(DisplaySpanHz / 2.0)
+                : string.Empty;
 
         private void BuildLayout()
         {
@@ -2490,16 +2680,20 @@ namespace OpenVSA.Ui.Rendering
         /// </remarks>
         private void UpdateAnnotation(SpectrumFrame frame)
         {
+            // The measurement's own frame, never the windowed one: the centre, span and resolution
+            // bandwidth describe what was measured whatever the display is magnified into (#397).
+            SpectrumFrame measured = _measuredFrame ?? frame;
+
             _suppressParameterEvents = true;
 
             try
             {
-                Set(_resolutionBandwidth, frame.ResolutionBandwidthHz);
-                Set(_centerFrequency, frame.CenterFrequencyHz);
+                Set(_resolutionBandwidth, measured.ResolutionBandwidthHz);
+                Set(_centerFrequency, measured.CenterFrequencyHz);
 
-                if (frame.PointCount > 1 && frame.SpanHz > 0.0)
+                if (measured.PointCount > 1 && measured.SpanHz > 0.0)
                 {
-                    Set(_mainTime, (frame.PointCount - 1) / frame.SpanHz);
+                    Set(_mainTime, (measured.PointCount - 1) / measured.SpanHz);
                 }
             }
             finally
@@ -2513,11 +2707,12 @@ namespace OpenVSA.Ui.Rendering
             string formatNote = _formatOptions.Describe(CurrentFormat);
 
             _analysisText.Text =
-                WindowText.Describe(frame.Window) + "   " +
-                frame.PointCount.ToString(CultureInfo.CurrentCulture) + " pts" +
-                AveragingNote(frame) + "   Span " + Frequency(frame.SpanHz) +
-                TransformNote(frame) + NoiseCorrectionNote(frame) +
-                (formatNote.Length == 0 ? string.Empty : "   " + formatNote);
+                WindowText.Describe(measured.Window) + "   " +
+                measured.PointCount.ToString(CultureInfo.CurrentCulture) + " pts" +
+                AveragingNote(measured) + "   Span " + Frequency(measured.SpanHz) +
+                TransformNote(measured) + NoiseCorrectionNote(measured) +
+                (formatNote.Length == 0 ? string.Empty : "   " + formatNote) +
+                DisplayRangeNote();
 
             if (_markers.Count == 0)
             {
