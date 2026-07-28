@@ -287,6 +287,16 @@ namespace OpenVSA.Measurement.State
         /// </remarks>
         public List<ToolbarBarState> Toolbars { get; set; } = new List<ToolbarBarState>();
 
+        /// <summary>
+        /// The chrome theme in force, by name (<c>REQ-UI-083</c>).
+        /// </summary>
+        /// <remarks>
+        /// A name rather than an ordinal or a flag, because <c>REQ-UI-083</c>'s whole obligation is
+        /// that a third theme costs a dictionary and no code change — and a file that recorded
+        /// "dark" as a boolean or as index 1 would have to be migrated the day one arrived.
+        /// </remarks>
+        public string ChromeTheme { get; set; } = "Dark";
+
         /// <summary>Whether printing forces a white background (<c>REQ-UI-015</c>).</summary>
         public bool ForceWhiteBackgroundOnPrint { get; set; } = true;
 

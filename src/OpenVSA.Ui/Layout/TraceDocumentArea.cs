@@ -454,10 +454,14 @@ namespace OpenVSA.Ui.Layout
             {
                 Child = cell,
                 BorderThickness = new Thickness(1.0),
-                BorderBrush = Brushes.Gray,
                 Width = slot.Width,
                 Height = slot.Height,
             };
+
+            // The frame round a trace window is chrome, not plot surface: REQ-UI-081 draws the line
+            // at the graticule, and a resource reference is what makes this side of it follow a
+            // theme change (REQ-UI-083).
+            frame.SetResourceReference(Border.BorderBrushProperty, Theming.ChromeKeys.Border);
 
             Canvas.SetLeft(frame, slot.Left);
             Canvas.SetTop(frame, slot.Top);

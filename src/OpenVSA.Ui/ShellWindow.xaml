@@ -4,7 +4,9 @@
         xmlns:syncfusion="http://schemas.syncfusion.com/wpf"
         xmlns:rendering="clr-namespace:OpenVSA.Ui.Rendering"
         xmlns:layout="clr-namespace:OpenVSA.Ui.Layout"
-        Title="OpenVSA" Height="720" Width="1280">
+        Title="OpenVSA" Height="720" Width="1280"
+        Background="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+        Foreground="{DynamicResource OpenVSA.Chrome.WindowForeground}">
 
     <!--
         Shell anatomy, per REQ-UI-001, top to bottom:
@@ -43,7 +45,9 @@
             building throws if an item is neither - "none is present and inert", enforced while the
             window is being constructed rather than discovered by a user.
         -->
-        <Menu x:Name="MainMenu" DockPanel.Dock="Top" />
+        <Menu x:Name="MainMenu" DockPanel.Dock="Top"
+              Background="{DynamicResource OpenVSA.Chrome.MenuBackground}"
+              Foreground="{DynamicResource OpenVSA.Chrome.MenuForeground}" />
 
         <!--
             REQ-UI-063's six toolbars, built in code from ShellToolbars for the reason the menus
@@ -51,14 +55,17 @@
             second thing to drift. A control that is neither bound nor given a reason throws while
             the window is being built.
         -->
-        <ToolBarTray x:Name="Toolbars" DockPanel.Dock="Top" />
+        <ToolBarTray x:Name="Toolbars" DockPanel.Dock="Top"
+                     Background="{DynamicResource OpenVSA.Chrome.ToolbarBackground}" />
 
         <!--
             REQ-UI-006: measurement status messages sit specifically at the bottom left.
             OpenVSA adds dropped-frame count (REQ-NFR-012) and measured front-end transfer
             rate / duty cycle (REQ-NFR-027) to the reference product's status bar contents.
         -->
-        <StatusBar DockPanel.Dock="Bottom">
+        <StatusBar DockPanel.Dock="Bottom"
+                   Background="{DynamicResource OpenVSA.Chrome.StatusBarBackground}"
+                   Foreground="{DynamicResource OpenVSA.Chrome.StatusBarForeground}">
             <StatusBarItem x:Name="StatusText" Content="Ready" />
             <Separator />
             <StatusBarItem x:Name="RateText" />
@@ -121,21 +128,21 @@
                     <TextBox Grid.Row="0" Grid.Column="1" x:Name="CentreBox" Margin="0,4" AutomationProperties.AutomationId="Centre"
                              KeyDown="OnSettingKeyDown" />
                     <TextBlock Grid.Row="1" Grid.Column="1" x:Name="CentreRange" FontSize="10"
-                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+                               Foreground="{DynamicResource OpenVSA.Chrome.MutedForeground}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Span" Margin="0,4,8,4"
                                VerticalAlignment="Center" />
                     <TextBox Grid.Row="2" Grid.Column="1" x:Name="SpanBox" Margin="0,4" AutomationProperties.AutomationId="Span"
                              KeyDown="OnSettingKeyDown" />
                     <TextBlock Grid.Row="3" Grid.Column="1" x:Name="SpanRange" FontSize="10"
-                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+                               Foreground="{DynamicResource OpenVSA.Chrome.MutedForeground}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <TextBlock Grid.Row="4" Grid.Column="0" Text="Ref level" Margin="0,4,8,4"
                                VerticalAlignment="Center" />
                     <TextBox Grid.Row="4" Grid.Column="1" x:Name="ReferenceLevelBox" Margin="0,4" AutomationProperties.AutomationId="ReferenceLevel"
                              KeyDown="OnSettingKeyDown" />
                     <TextBlock Grid.Row="5" Grid.Column="1" x:Name="ReferenceLevelRange" FontSize="10"
-                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+                               Foreground="{DynamicResource OpenVSA.Chrome.MutedForeground}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <TextBlock Grid.Row="6" Grid.Column="0" Text="Window" Margin="0,4,8,4"
                                VerticalAlignment="Center" />
@@ -146,14 +153,14 @@
                     <ComboBox Grid.Row="7" Grid.Column="1" x:Name="PointsBox" Margin="0,4" AutomationProperties.AutomationId="Points"
                               SelectionChanged="OnPointsSelectionChanged" />
                     <TextBlock Grid.Row="8" Grid.Column="1" x:Name="PointsRange" FontSize="10"
-                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+                               Foreground="{DynamicResource OpenVSA.Chrome.MutedForeground}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <TextBlock Grid.Row="9" Grid.Column="0" Text="Res BW" Margin="0,4,8,4"
                                VerticalAlignment="Center" />
                     <TextBox Grid.Row="9" Grid.Column="1" x:Name="ResolutionBandwidthBox" Margin="0,4" AutomationProperties.AutomationId="ResolutionBandwidth"
                              IsEnabled="False" KeyDown="OnSettingKeyDown" />
                     <TextBlock Grid.Row="10" Grid.Column="1" x:Name="ResolutionBandwidthNote" FontSize="10"
-                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+                               Foreground="{DynamicResource OpenVSA.Chrome.MutedForeground}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <!--
                         REQ-TRG-001: the styles offered are exactly the ones the connected front
@@ -166,7 +173,7 @@
                     <ComboBox Grid.Row="11" Grid.Column="1" x:Name="TriggerBox" Margin="0,4" AutomationProperties.AutomationId="Trigger"
                               SelectionChanged="OnTriggerSelectionChanged" />
                     <TextBlock Grid.Row="12" Grid.Column="1" x:Name="TriggerNote" FontSize="10"
-                               Foreground="Gray" Margin="0,0,0,8" TextWrapping="Wrap" />
+                               Foreground="{DynamicResource OpenVSA.Chrome.MutedForeground}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
                     <StackPanel Grid.Row="13" Grid.Column="1" Orientation="Vertical">
                         <StackPanel Orientation="Horizontal">
@@ -255,12 +262,14 @@
                         measurement as a whole.
                     -->
                     <Border x:Name="DocumentPlaceholderPanel"
-                            Background="#CC1E1E24" CornerRadius="3"
+                            Background="{DynamicResource OpenVSA.Chrome.OverlayBackground}"
+                            CornerRadius="3"
                             Padding="14,8" Margin="0,0,0,18"
                             HorizontalAlignment="Center" VerticalAlignment="Bottom"
                             IsHitTestVisible="False">
                         <TextBlock x:Name="DocumentPlaceholder"
-                                   TextWrapping="Wrap" Foreground="#B0B0B8"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource OpenVSA.Chrome.OverlayForeground}"
                                    TextAlignment="Center" MaxWidth="420" />
                     </Border>
                 </Grid>

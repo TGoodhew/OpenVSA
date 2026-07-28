@@ -40,9 +40,13 @@ namespace OpenVSA.Ui.Dialogs.Pages
             {
                 Height = 56.0,
                 BorderThickness = new Thickness(1.0),
-                BorderBrush = Brushes.Gray,
                 Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
             };
+
+            // A resource reference rather than a brush, so the swatch's frame follows a chrome
+            // theme change like every other border (REQ-UI-083). What is inside the swatch is the
+            // colour being edited and is nothing to do with the theme.
+            _swatch.SetResourceReference(Border.BorderBrushProperty, Theming.ChromeKeys.Border);
 
             _caption = new TextBlock
             {

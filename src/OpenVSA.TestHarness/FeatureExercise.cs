@@ -16,6 +16,7 @@ using OpenVSA.Measurement.Channels;
 using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
+using OpenVSA.TestHarness.Synthesis;
 
 namespace OpenVSA.TestHarness
 {
@@ -3183,6 +3184,228 @@ namespace OpenVSA.TestHarness
                     mentioned == null
                         ? "a preset names no front end, resource or connection"
                         : "a preset mentions '" + mentioned + "'");
+            });
+
+            ExerciseSyntheticSymbols();
+        }
+
+        /// <summary>
+        /// Checks that the harness can produce what the demodulation displays need
+        /// (<c>REQ-UI-050</c>, <c>REQ-UI-051</c>, <c>REQ-UI-052</c>, <c>REQ-DEM-083</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>No instrument, and that is the point of it being here.</strong> The display
+        /// group's criteria are all worded against a signal whose symbols and symbol clock are
+        /// known, and none of them can be attempted until something can produce one. These steps
+        /// say, in the harness's own report, that it now can — and analyse the generated signal
+        /// through the product's own spectrum path rather than through a copy of it, so a
+        /// generator that agreed only with itself would fail here.
+        /// </para>
+        /// <para>
+        /// They will be replaced by the displays' own criteria as those are built. Until then this
+        /// is what stands between "the displays are not built" and "the displays cannot be built".
+        /// </para>
+        /// </remarks>
+        private void ExerciseSyntheticSymbols()
+        {
+            Step("REQ-UI-050", "A generated constellation has one known point per symbol", () =>
+            {
+                // "exactly one point per symbol, at the decision instants" needs a signal that says
+                // where its decision instants are and what was sent at each.
+                var wrong = new List<string>();
+                int total = 0;
+
+                foreach (ModulationScheme scheme in ModulationScheme.All)
+                {
+                    var source = new SyntheticSymbolSource { Scheme = scheme };
+                    SyntheticBurst burst = source.Generate(256);
+
+                    total += burst.Symbols.Count;
+
+                    if (burst.DecisionSampleIndices.Count != burst.Symbols.Count ||
+                        burst.CorrectlyDecided() != burst.Symbols.Count ||
+                        burst.ErrorVectorMagnitude() > 0.01)
+                    {
+                        wrong.Add(
+                            scheme.Name + " (" + burst.CorrectlyDecided() + " of " +
+                            burst.Symbols.Count + " decided, EVM " +
+                            (burst.ErrorVectorMagnitude() * 100.0).ToString("0.000", CultureInfo.CurrentCulture) +
+                            " %)");
+                    }
+                }
+
+                return new Outcome<int>(
+                    wrong.Count == 0, total,
+                    wrong.Count == 0
+                        ? total + " symbols over " + ModulationScheme.All.Count +
+                          " modulations, every one recovered at its own decision instant"
+                        : "wrong: " + string.Join(", ", wrong));
+            });
+
+            Step("REQ-UI-051", "Each modulation declares the eye openings it should show", () =>
+            {
+                // "an m-level modulation shows m-1 eyes stacked vertically, counted for at least
+                // two values of m". Counted from the constellation rather than declared, so the
+                // number a display is checked against cannot be a number someone typed.
+                var counted = new List<string>();
+                bool agree = true;
+
+                foreach (ModulationScheme scheme in ModulationScheme.All)
+                {
+                    var levels = new HashSet<double>();
+
+                    foreach (SymbolPoint point in scheme.IdealPoints)
+                    {
+                        levels.Add(Math.Round(point.I, 6));
+                    }
+
+                    agree &= levels.Count - 1 == scheme.EyeOpenings;
+
+                    counted.Add(scheme.Name + " " + scheme.EyeOpenings);
+                }
+
+                var clock = new SyntheticSymbolSource { SamplesPerSymbol = 10 }.Generate(32);
+                bool evenlyClocked = true;
+
+                for (int i = 1; i < clock.DecisionSampleIndices.Count; i++)
+                {
+                    evenlyClocked &=
+                        clock.DecisionSampleIndices[i] - clock.DecisionSampleIndices[i - 1] == 10;
+                }
+
+                return new Outcome<int>(
+                    agree && evenlyClocked, ModulationScheme.All.Count,
+                    "eyes: " + string.Join(", ", counted) +
+                    "; the symbol clock is even to the sample: " + evenlyClocked);
+            });
+
+            Step("REQ-DEM-083", "One displaced symbol is identifiable among its neighbours", () =>
+            {
+                // "verified against a signal in which one symbol is displaced so the correct point
+                // is identifiable, which an off-by-one selection fails".
+                const int Displaced = 37;
+
+                var source = new SyntheticSymbolSource
+                {
+                    Scheme = ModulationScheme.Qpsk(),
+                    DisplacedSymbolIndex = Displaced,
+                    Displacement = 0.4,
+                };
+
+                SyntheticBurst burst = source.Generate(120);
+
+                double at = burst.MeasuredAt(Displaced)
+                    .DistanceTo(burst.Scheme.IdealPoints[burst.Symbols[Displaced]]);
+
+                double worstOther = 0.0;
+
+                for (int symbol = 0; symbol < burst.Symbols.Count; symbol++)
+                {
+                    if (symbol == Displaced)
+                    {
+                        continue;
+                    }
+
+                    worstOther = Math.Max(
+                        worstOther,
+                        burst.MeasuredAt(symbol)
+                            .DistanceTo(burst.Scheme.IdealPoints[burst.Symbols[symbol]]));
+                }
+
+                return new Outcome<double>(
+                    at > worstOther * 10.0, at,
+                    "symbol " + Displaced + " is " + at.ToString("0.0000", CultureInfo.CurrentCulture) +
+                    " from its ideal point against a worst of " +
+                    worstOther.ToString("0.0000", CultureInfo.CurrentCulture) +
+                    " for the other " + (burst.Symbols.Count - 1));
+            });
+
+            Step("REQ-UI-052", "A generated burst yields a symbol stream and its metrics", () =>
+            {
+                // The two portions of the one trace: the detected symbol/bit stream below, the
+                // error-summary metrics above.
+                var source = new SyntheticSymbolSource
+                {
+                    Scheme = ModulationScheme.Qam16(),
+                    SignalToNoiseDb = 25.0,
+                };
+
+                SyntheticBurst burst = source.Generate(160);
+
+                IReadOnlyList<string> rows = burst.SymbolStream(binary: true, perRow: 16);
+                double evm = burst.ErrorVectorMagnitude();
+
+                bool shaped = rows.Count == 10 &&
+                              rows[0].Split(' ').Length == 16 &&
+                              rows[0].Split(' ')[0].Length == burst.Scheme.BitsPerSymbol;
+
+                // 25 dB of signal to noise is about 5.6 per cent EVM, which is a figure an error
+                // summary would show rather than one that reads as a broken measurement.
+                bool plausible = evm > 0.02 && evm < 0.12;
+
+                return new Outcome<double>(
+                    shaped && plausible, evm,
+                    rows.Count + " rows of " + burst.Scheme.BitsPerSymbol + "-bit symbols, EVM " +
+                    (evm * 100.0).ToString("0.00", CultureInfo.CurrentCulture) +
+                    " % at 25 dB SNR; first row " + rows[0].Substring(0, 14) + "…");
+            });
+
+            Step("REQ-UI-050", "The generated signal is a real one through the product's own DSP", () =>
+            {
+                // The generator analysed by the product rather than by itself: a burst whose
+                // spectrum did not match its own symbol rate would not be a signal any display
+                // could honestly be checked against.
+                var source = new SyntheticSymbolSource
+                {
+                    Scheme = ModulationScheme.Qam16(),
+                    SampleRateHz = 12.8e6,
+                    SamplesPerSymbol = 8,
+                    RollOff = 0.35,
+                };
+
+                SyntheticBurst burst = source.Generate(512);
+
+                using (IqBlock block = burst.ToBlock(1e9, DateTime.UtcNow))
+                {
+                    SpectrumFrame frame =
+                        new SpectrumComputer(WindowType.Hann, null, null).Compute(block);
+
+                    ReadOnlySpan<float> levels = frame.LevelsDbm;
+
+                    double peak = double.MinValue;
+
+                    for (int i = 0; i < levels.Length; i++)
+                    {
+                        peak = Math.Max(peak, levels[i]);
+                    }
+
+                    int first = -1;
+                    int last = -1;
+
+                    for (int i = 0; i < levels.Length; i++)
+                    {
+                        if (levels[i] > peak - 20.0)
+                        {
+                            if (first < 0)
+                            {
+                                first = i;
+                            }
+
+                            last = i;
+                        }
+                    }
+
+                    double measuredHz = (last - first) * frame.BinWidthHz;
+                    double expectedHz = burst.SymbolRateHz * (1.0 + source.RollOff);
+
+                    return new Outcome<double>(
+                        measuredHz > expectedHz * 0.75 && measuredHz < expectedHz * 1.25,
+                        measuredHz,
+                        "symbol rate " + Hz(burst.SymbolRateHz) + " occupies " + Hz(measuredHz) +
+                        " at 20 dB down, against " + Hz(expectedHz) + " for a roll-off of " +
+                        source.RollOff.ToString("0.00", CultureInfo.CurrentCulture));
+                }
             });
         }
 

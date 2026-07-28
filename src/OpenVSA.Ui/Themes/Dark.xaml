@@ -1,0 +1,49 @@
+<!--
+    The Dark chrome theme (REQ-UI-083).
+
+    Chrome only. REQ-UI-081 is explicit that a theme styles the window, the menus, the toolbars and
+    the panes, and that the graticule, the traces and the annotation are governed entirely by the
+    colour settings of REQ-UI-022 — which are ThemeElements' and are not in this file. Nothing here
+    reaches the plot surface, and ChromeAndPlotSeparationTests samples every plot colour across a
+    theme change to say so.
+
+    Every key of ChromeKeys.All appears here and in Light.xaml. A theme that defines some of them
+    does not fail at the point of the omission: WPF resolves the missing reference to nothing and
+    the control keeps its default brush, which reads as a styling mistake rather than as an
+    incomplete theme. A test enumerates the list against both files.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowBackground" Color="#FF1B1B1F" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowForeground" Color="#FFE6E6EA" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceBackground" Color="#FF232329" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceForeground" Color="#FFE6E6EA" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MutedForeground" Color="#FF9A9AA4" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.DisabledForeground" Color="#FF6A6A74" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.Border" Color="#FF3A3A44" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuBackground" Color="#FF232329" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuForeground" Color="#FFE6E6EA" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.ToolbarBackground" Color="#FF232329" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarBackground" Color="#FF1B1B1F" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarForeground" Color="#FFB6B6C0" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionBackground" Color="#FF2F5D8C" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionForeground" Color="#FFFFFFFF" />
+
+    <SolidColorBrush x:Key="OpenVSA.Chrome.Accent" Color="#FF4FA3E3" />
+
+    <!--
+        Partly transparent, because the overlay is drawn over a trace window and the geometry under
+        it has to stay readable while the guidance is on screen.
+    -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayBackground" Color="#CC1E1E24" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayForeground" Color="#FFB0B0B8" />
+
+</ResourceDictionary>

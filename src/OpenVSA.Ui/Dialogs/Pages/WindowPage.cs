@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using OpenVSA.Ui.Theming;
 
 namespace OpenVSA.Ui.Dialogs.Pages
 {
@@ -32,7 +33,24 @@ namespace OpenVSA.Ui.Dialogs.Pages
     public sealed class WindowPage : StackPanel
     {
         private readonly DialogFrameworkOptions _options;
+        private readonly ThemeCatalogue _themes;
         private readonly ComboBox _mode;
+
+        private ComboBox _theme;
+
+        /// <summary>
+        /// Told when a chrome theme is chosen (<c>REQ-UI-083</c>).
+        /// </summary>
+        /// <remarks>
+        /// The page offers the names the catalogue has and reports which was picked; the shell
+        /// installs it. A page that installed it itself would be a second place that knows how a
+        /// theme is applied, and the third theme this requirement exists to make cheap would have
+        /// to be taught to both.
+        /// </remarks>
+        public Action<string> ThemeChosen { get; set; } = name => { };
+
+        /// <summary>The chrome-theme chooser, or <c>null</c> when the page was built without one.</summary>
+        public ComboBox ThemeBox => _theme;
         private readonly CheckBox _fixedSize;
         private readonly CheckBox _keepOnTop;
         private readonly CheckBox _persistMode;
@@ -43,8 +61,9 @@ namespace OpenVSA.Ui.Dialogs.Pages
 
         /// <summary>Creates the page over the framework options.</summary>
         /// <param name="options">The options to edit; changed in place.</param>
+        /// <param name="themes">The chrome themes on offer, or <c>null</c> to omit the chooser.</param>
         /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
-        public WindowPage(DialogFrameworkOptions options)
+        public WindowPage(DialogFrameworkOptions options, ThemeCatalogue themes = null)
         {
             if (options == null)
             {
@@ -52,9 +71,15 @@ namespace OpenVSA.Ui.Dialogs.Pages
             }
 
             _options = options;
+            _themes = themes;
 
             Margin = new Thickness(4.0);
             MinWidth = 420.0;
+
+            if (themes != null)
+            {
+                BuildThemeChooser();
+            }
 
             Children.Add(new TextBlock
             {
@@ -126,6 +151,86 @@ namespace OpenVSA.Ui.Dialogs.Pages
 
         /// <summary>The note under Tabs Collapsed by Default, which says where it applies.</summary>
         public string CollapsedNote => _collapsedNote.Text;
+
+        /// <summary>
+        /// The chrome-theme chooser (<c>REQ-UI-083</c>, and <c>REQ-UI-073</c>'s placement).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// On the Window tab because <c>REQ-UI-073</c> says theming lives under Window and Colour,
+        /// and that the instinct to add a General or Appearance tab for it is the wrong one.
+        /// </para>
+        /// <para>
+        /// <strong>Filled from the catalogue, never from a list written here.</strong> That is what
+        /// makes a third theme cost a dictionary: it appears in this box without this file being
+        /// touched, which is the same rule <c>ColourPreferences.Entries</c> keeps for the colour
+        /// picker.
+        /// </para>
+        /// </remarks>
+        private void BuildThemeChooser()
+        {
+            Children.Add(new TextBlock
+            {
+                Text = "Theme",
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0.0, 0.0, 0.0, 2.0),
+            });
+
+            _theme = new ComboBox
+            {
+                MinWidth = 220.0,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0.0, 2.0, 0.0, 2.0),
+            };
+
+            foreach (string name in _themes.Names)
+            {
+                _theme.Items.Add(name);
+            }
+
+            _theme.SelectedItem = _themes.CurrentName;
+
+            _theme.SelectionChanged += (sender, e) =>
+            {
+                var chosen = _theme.SelectedItem as string;
+
+                if (!_updating && !string.IsNullOrEmpty(chosen))
+                {
+                    ThemeChosen(chosen);
+                }
+            };
+
+            Children.Add(_theme);
+
+            Children.Add(new TextBlock
+            {
+                Text = "Applies at once. A theme styles the window, menus, toolbars and panes; " +
+                       "the graticule, traces and annotation follow the Colour tab and do not " +
+                       "change with it.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0.0, 0.0, 0.0, 12.0),
+            });
+        }
+
+        /// <summary>Brings the theme box into line with the theme in force.</summary>
+        public void FollowTheme()
+        {
+            if (_theme == null || _themes == null)
+            {
+                return;
+            }
+
+            _updating = true;
+
+            try
+            {
+                _theme.SelectedItem = _themes.CurrentName;
+            }
+            finally
+            {
+                _updating = false;
+            }
+        }
 
         private CheckBox Check(string caption, Action<bool> set)
         {

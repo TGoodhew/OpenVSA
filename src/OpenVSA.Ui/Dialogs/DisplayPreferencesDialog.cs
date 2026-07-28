@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using OpenVSA.Ui.Dialogs.Pages;
@@ -48,13 +48,15 @@ namespace OpenVSA.Ui.Dialogs
         /// <param name="fonts">The three font slots (<c>REQ-UI-080</c>).</param>
         /// <param name="traces">The trace display options.</param>
         /// <param name="spectrogramMap">The spectrogram map to seed the user map from.</param>
+        /// <param name="themes">The chrome themes on offer (<c>REQ-UI-083</c>), or <c>null</c>.</param>
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         public DisplayPreferencesDialog(
             DialogFrameworkOptions options,
             ColourPreferences colours,
             FontPreferences fonts,
             TraceDisplayOptions traces,
-            SpectrogramColourMap spectrogramMap)
+            SpectrogramColourMap spectrogramMap,
+            Theming.ThemeCatalogue themes = null)
             : base(DialogTitle, options)
         {
             if (colours == null)
@@ -81,7 +83,7 @@ namespace OpenVSA.Ui.Dialogs
             _colour = new ColourPage(colours);
             _userMap = new UserMapColourPage(spectrogramMap);
             _font = new FontPage(fonts);
-            _window = new WindowPage(options);
+            _window = new WindowPage(options, themes);
 
             foreach (string name in Names)
             {

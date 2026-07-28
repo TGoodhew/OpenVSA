@@ -25,6 +25,7 @@ using OpenVSA.Dsp.Zoom;
 using OpenVSA.Ui.Layout;
 using OpenVSA.Ui.Menus;
 using OpenVSA.Ui.Rendering;
+using OpenVSA.Ui.Theming;
 using OpenVSA.Ui.ToolWindows;
 
 // Aliased rather than imported: this file's own base class is System.Windows.Window, and importing
@@ -146,6 +147,19 @@ namespace OpenVSA.Ui
         private ToolbarCustomiserDialog _customiser;
 
         /// <summary>
+        /// The chrome themes on offer, and the one in force (<c>REQ-UI-083</c>).
+        /// </summary>
+        /// <remarks>
+        /// Per shell rather than static, so that a test can build a shell, swap its theme and leave
+        /// nothing behind for the next one — the same reason <see cref="PersistPreferences"/>
+        /// exists. Applied to the application's resources when there is an application and to the
+        /// window's own when there is not, which is what lets the criterion be tested without one.
+        /// </remarks>
+        private readonly ThemeCatalogue _themes = ThemeCatalogue.Shipped();
+
+        private string _themeName = ThemeCatalogue.DarkName;
+
+        /// <summary>
         /// The rows a spectrogram draws (<c>REQ-UI-054</c>).
         /// </summary>
         /// <remarks>
@@ -221,7 +235,12 @@ namespace OpenVSA.Ui
             };
             _statusTimer.Tick += (sender, e) => ShowRunningStatistics();
 
+            // Before anything is built, so that the first thing on screen is the theme the user
+            // left rather than the default one replaced a moment later. BuildToolWindows is what
+            // reads the sidecar, so the name it found is applied immediately after.
             BuildToolWindows();
+
+            ApplyTheme(_themeName);
 
             // Before the document area, because building the bar is what creates the layout,
             // format and trace-list submenus the document area then fills. REQ-UI-061's contents
@@ -269,6 +288,66 @@ namespace OpenVSA.Ui
             ShellShortcuts.Install(this, RunShortcut, () => ModifierSource());
 
             Closed += (sender, e) => ShutDown();
+        }
+
+        /// <summary>The chrome themes on offer (<c>REQ-UI-083</c>).</summary>
+        public ThemeCatalogue Themes => _themes;
+
+        /// <summary>
+        /// The chrome theme in force, by name (<c>REQ-UI-083</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A name, not a value of a two-valued type. <c>REQ-UI-083</c> forbids an
+        /// <c>enum Theme { Light, Dark }</c> switched over to pick values and a boolean "is dark"
+        /// anywhere in the rendering or view-model layers, because both satisfy "light and dark"
+        /// today and have to be unpicked when a third theme arrives. The name finds a dictionary
+        /// and nothing else is decided from it.
+        /// </para>
+        /// <para>
+        /// Setting it applies the theme immediately — "both selectable with no restart" — and a
+        /// name this build has no theme for is refused rather than silently ignored, so a
+        /// preferences file naming a theme that has gone leaves the shell on the one it had.
+        /// </para>
+        /// </remarks>
+        public string ThemeName
+        {
+            get { return _themeName; }
+
+            set
+            {
+                if (string.Equals(_themeName, value, StringComparison.OrdinalIgnoreCase) &&
+                    _themes.Current != null)
+                {
+                    return;
+                }
+
+                if (ApplyTheme(value))
+                {
+                    _themeName = _themes.CurrentName;
+                    SaveToolWindowLayout();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Installs a chrome theme by name (<c>REQ-UI-083</c>).
+        /// </summary>
+        /// <param name="name">The theme's name.</param>
+        /// <returns>Whether this build has a theme of that name.</returns>
+        /// <remarks>
+        /// Into the application's resources when there is an application, so every window follows,
+        /// and into this window's own when there is not — a shell built by a test has no
+        /// <see cref="Application"/> and still has to be themeable, or the criterion could only be
+        /// checked by running the program.
+        /// </remarks>
+        private bool ApplyTheme(string name)
+        {
+            ResourceDictionary target = Application.Current == null
+                ? Resources
+                : Application.Current.Resources;
+
+            return _themes.Apply(name, target);
         }
 
         /// <summary>The trace windows and their arrangement (<c>REQ-UI-005</c>).</summary>
@@ -857,6 +936,7 @@ namespace OpenVSA.Ui
                     SpectrogramColourMap = SpectrogramColourMap.NameOf(_spectrogramMap.Kind),
                     SpectrogramUserMap = UserMapEntries(),
                     Toolbars = ToolbarArrangement.ToState(),
+                    ChromeTheme = _themeName,
                 };
 
                 _colours.SaveInto(preferences);
@@ -915,6 +995,23 @@ namespace OpenVSA.Ui
             }
 
             _traceDisplay.LoadFrom(saved);
+
+            // REQ-UI-083: a theme this build no longer has leaves the shell on the one it had,
+            // reported rather than thrown on — the rule the colours and the toolbars keep, and the
+            // case a preferences file naming a removed custom theme produces.
+            if (!string.IsNullOrEmpty(saved.ChromeTheme))
+            {
+                if (_themes.Find(saved.ChromeTheme) == null)
+                {
+                    _eventLog.Append(
+                        "Display preferences name a chrome theme this build does not have ('" +
+                        saved.ChromeTheme + "'); using " + _themeName + ".");
+                }
+                else
+                {
+                    _themeName = saved.ChromeTheme;
+                }
+            }
 
             // REQ-UI-064: a custom toolbar survives a restart. Read before the tray is built, so
             // that the first thing on screen is the arrangement the user left rather than the
@@ -1577,7 +1674,17 @@ namespace OpenVSA.Ui
             }
 
             var dialog = new DisplayPreferencesDialog(
-                _dialogOptions, _colours, _fonts, _traceDisplay, _spectrogramMap);
+                _dialogOptions, _colours, _fonts, _traceDisplay, _spectrogramMap, _themes);
+
+            // REQ-UI-083: chosen here, installed by the shell. The page knows the names; only one
+            // place knows how a theme is applied.
+            dialog.Window.ThemeChosen = name =>
+            {
+                ThemeName = name;
+                dialog.Window.FollowTheme();
+
+                StatusText.Content = "Theme: " + _themes.CurrentName;
+            };
 
             dialog.ColoursChanged += (s, args) => ApplyColours();
             dialog.FontsChanged += (s, args) => ApplyFonts();
