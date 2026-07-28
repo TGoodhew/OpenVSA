@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>OpenVSA.Measurement.Tests</RootNamespace>
@@ -6,6 +6,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
+
+    <!--
+      REQ-LIM-003 is a criterion about the automation API, so the tests for it need it. A test-only
+      reference; nothing in OpenVSA.Measurement references OpenVSA.Api, which sits above it.
+    -->
+    <ProjectReference Include="..\..\src\OpenVSA.Api\OpenVSA.Api.csproj" />
   </ItemGroup>
 
 </Project>
