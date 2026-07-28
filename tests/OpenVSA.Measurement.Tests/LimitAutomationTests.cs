@@ -148,6 +148,14 @@ namespace OpenVSA.Measurement.Tests
 
                 answers++;
 
+                // Yield to the writer. Without this the reader is a tight loop that never blocks,
+                // and on a machine with few cores it starves the writer completely — a CI runner
+                // with two cores gave "115265217 queries during 0 evaluations", so the test failed
+                // for the one reason it was not testing. The point here is that reading is never
+                // blocked out, and that is still shown: yielding lets the scheduler run the writer
+                // and the reader still gets orders of magnitude more turns than it needs.
+                Thread.Yield();
+
                 if (result == null)
                 {
                     continue;
@@ -177,10 +185,10 @@ namespace OpenVSA.Measurement.Tests
                 " evaluations; " + wholeVerdicts + " whole verdicts, 0 partial");
 
             Assert.True(answers > 100, "The reader was answered only " + answers + " times.");
-            Assert.True(wholeVerdicts > 0, "No verdict was ever observed.");
             Assert.True(
                 measurement.LimitTests.EvaluationCount > 0,
-                "The writer completed no evaluations.");
+                "The writer completed no evaluations, so nothing about concurrent reading was shown.");
+            Assert.True(wholeVerdicts > 0, "No verdict was ever observed.");
         }
 
         [Fact]
