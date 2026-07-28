@@ -132,6 +132,17 @@ namespace OpenVSA.Benchmarks
             results.Add(OnStaThread(() => SpectrumUpdateRate("Spectrum1MRenderedDecimated", 1 << 20)));
             results.Add(OnStaThread(TwentyTraceWindows));
 
+            // REQ-NFR-025 launches the real shell, so it is not on an STA thread of ours and is
+            // allowed to be absent: a build with no OpenVSA.exe beside it can still measure the
+            // three in-process targets, and the gate will report the missing one rather than
+            // pretending the set was complete.
+            TargetMeasurement coldStart = ColdStartMeasurement.Run(ShellPath());
+
+            if (coldStart != null)
+            {
+                results.Add(coldStart);
+            }
+
             return results;
         }
 
@@ -448,6 +459,40 @@ namespace OpenVSA.Benchmarks
 
                 return new[] { 0.0, clock.Elapsed.TotalMilliseconds, 0.0, 0.0, 0.0 };
             }
+        }
+
+        /// <summary>The built shell, from its own output directory.</summary>
+        /// <remarks>
+        /// <strong>Its own directory, not the copy beside this assembly.</strong> A referenced exe
+        /// is copied into the referencing project's output without its <c>app.config</c>, so the
+        /// copy runs under BenchmarkDotNet's binding redirects and dies on a
+        /// <c>System.Runtime.CompilerServices.Unsafe</c> manifest mismatch before its window
+        /// appears. The shell in <c>src/OpenVSA.Ui/bin</c> has the redirects it was built with.
+        /// The csproj already warned about this collision for the test host; it applies to the
+        /// product exe too.
+        /// </remarks>
+        private static string ShellPath()
+        {
+            string here = System.IO.Path.GetDirectoryName(typeof(WindowedMeasurements).Assembly.Location);
+
+            if (here == null)
+            {
+                return null;
+            }
+
+            int bin = here.IndexOf("bin", StringComparison.OrdinalIgnoreCase);
+
+            if (bin < 0)
+            {
+                return null;
+            }
+
+            // The same bin/platform/config/tfm tail, but under the shell's project.
+            string tail = here.Substring(bin);
+            string root = System.IO.Path.GetFullPath(System.IO.Path.Combine(here.Substring(0, bin), "..", ".."));
+            string own = System.IO.Path.Combine(root, "src", "OpenVSA.Ui", tail, "OpenVSA.exe");
+
+            return System.IO.File.Exists(own) ? own : null;
         }
 
         /// <summary>Runs a measurement on its own STA thread with a live dispatcher.</summary>

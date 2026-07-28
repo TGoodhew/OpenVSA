@@ -26,6 +26,12 @@
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
   </ItemGroup>
 
+  <!-- REQ-NFR-025 drives the real shell through UI Automation rather than constructing it. -->
+  <ItemGroup>
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
     <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
