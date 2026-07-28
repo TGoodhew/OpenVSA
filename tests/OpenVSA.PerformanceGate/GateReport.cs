@@ -55,6 +55,27 @@ namespace OpenVSA.PerformanceGate
             return n;
         }
 
+        /// <summary>Targets measured below the figure their own requirement states.</summary>
+        /// <remarks>
+        /// Reported separately from the regression gate's pass or fail, because the two answer
+        /// different questions. A baseline records what the product does; the stated figure records
+        /// what it is required to do. A target that has always been too slow passes every
+        /// regression check there will ever be.
+        /// </remarks>
+        public IEnumerable<TargetVerdict> BelowStatedTarget
+        {
+            get
+            {
+                foreach (TargetVerdict v in Verdicts)
+                {
+                    if (v.MissesStatedTarget)
+                    {
+                        yield return v;
+                    }
+                }
+            }
+        }
+
         /// <summary>Whether the run should fail the build.</summary>
         public bool Failed
         {
@@ -101,6 +122,14 @@ namespace OpenVSA.PerformanceGate
                 b.Append("  ").Append(Label(v.Verdict).PadRight(14))
                  .Append(v.Target.Requirement.PadRight(12))
                  .Append(Detail(v)).Append('\n');
+
+                if (v.MissesStatedTarget)
+                {
+                    b.Append("                BELOW THE STATED TARGET of ")
+                     .Append(v.Target.Stated.ToString("G6", CultureInfo.InvariantCulture))
+                     .Append(' ').Append(v.Target.Unit)
+                     .Append(" — the requirement's own figure, not a baseline\n");
+                }
             }
 
             b.Append('\n');

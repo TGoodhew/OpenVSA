@@ -27,6 +27,11 @@ namespace OpenVSA.Benchmarks
         /// <returns>0 when the gate passes, 1 on a regression or a skipped target, 2 on misuse.</returns>
         public static int Run(string[] args)
         {
+            if (Has(args, "--measure"))
+            {
+                return Measure(Argument(args, "--measurements"));
+            }
+
             string measurementsPath = Argument(args, "--measurements");
             string baselinePath = Argument(args, "--baselines") ?? DefaultBaselinePath();
             bool adopt = Has(args, "--adopt");
@@ -77,6 +82,47 @@ namespace OpenVSA.Benchmarks
             }
 
             return report.ExitCode;
+        }
+
+        /// <summary>The <c>--measure</c> mode: take the rendered targets and write them out.</summary>
+        /// <param name="path">Where to write the measurements.</param>
+        private static int Measure(string path)
+        {
+            if (path == null)
+            {
+                Console.Error.WriteLine("usage: OpenVSA.Benchmarks --gate --measure --measurements <path>");
+                return 2;
+            }
+
+            Console.WriteLine("Measuring the rendered targets of REQ-NFR-020, -021 and -024.");
+            Console.WriteLine("Each runs for " + WindowedMeasurements.MeasurementWindow.TotalSeconds + " s with a live dispatcher.");
+            Console.WriteLine();
+
+            IList<TargetMeasurement> measurements = WindowedMeasurements.Run();
+
+            foreach (TargetMeasurement m in measurements)
+            {
+                PerformanceTarget target = TargetCatalogue.ByName(m.Name);
+
+                Console.WriteLine(
+                    "  " + (target == null ? m.Name : target.Requirement).PadRight(12) +
+                    m.Mean.ToString("F2") + " " + (target == null ? string.Empty : target.Unit) +
+                    " ±" + (m.RelativeResolution * 100.0).ToString("F1") + "%" +
+                    (target == null ? string.Empty : "   (target " + target.Stated.ToString("F0") + ")"));
+            }
+
+            string directory = Path.GetDirectoryName(path);
+
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(path, MeasurementFile.Write(measurements), new UTF8Encoding(false));
+
+            Console.WriteLine();
+            Console.WriteLine("  written to " + path);
+            return 0;
         }
 
         private static void Adopt(
