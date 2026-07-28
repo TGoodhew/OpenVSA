@@ -1841,6 +1841,16 @@ namespace OpenVSA.Ui
         /// carry the four of <c>REQ-UI-023</c>. Both come from the same preference set, so a colour
         /// changed in the picker cannot reach one and not the other.
         /// </remarks>
+        /// <summary>
+        /// Pushes the colours onto every surface again (<c>REQ-UI-014</c>).
+        /// </summary>
+        /// <remarks>
+        /// What the colour picker calls when a colour changes, and what a test calls to check a
+        /// surface took it. Public because the criterion is that a change reaches the display, and
+        /// a test that could only set the preference would be asserting the preference.
+        /// </remarks>
+        public void RefreshColours() => ApplyColours();
+
         private void ApplyColours()
         {
             var limits = new LimitColours
@@ -1882,6 +1892,13 @@ namespace OpenVSA.Ui
                 // palette, which carries the global ones.
                 plot.SpectrogramMarkerColour = PerTraceColourOf("SpectrogramMarker", trace);
                 plot.TraceSelectColour = PerTraceColourOf("TraceSelect", trace);
+            }
+
+            // REQ-UI-032: the Markers window has a background colour of its own, and this is the
+            // surface REQ-UI-022's Marker Window Background element exists for.
+            if (_toolWindows != null)
+            {
+                _toolWindows.ApplyColours(_colours);
             }
         }
 
