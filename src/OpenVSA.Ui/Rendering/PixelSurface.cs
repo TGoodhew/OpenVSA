@@ -165,6 +165,53 @@ namespace OpenVSA.Ui.Rendering
             _pixels[offset + 3] = color.A;
         }
 
+        /// <summary>
+        /// Writes a run of pixels across one row, clipped to the surface.
+        /// </summary>
+        /// <param name="x">Column of the first pixel.</param>
+        /// <param name="y">Row.</param>
+        /// <param name="colours">The colours to write, one per column.</param>
+        /// <remarks>
+        /// For the callers that have already worked out a whole row and would otherwise pay
+        /// <see cref="SetPixel"/>'s bounds check and offset arithmetic once per pixel. A
+        /// full-width spectrogram is half a million pixels a frame, and that difference is the
+        /// difference between owning the frame and fitting in it.
+        /// </remarks>
+        public void SetRow(int x, int y, ReadOnlySpan<PlotColor> colours)
+        {
+            if (y < 0 || y >= Height)
+            {
+                return;
+            }
+
+            int first = x < 0 ? -x : 0;
+            int count = colours.Length - first;
+
+            if (x + colours.Length > Width)
+            {
+                count = Width - x - first;
+            }
+
+            if (count <= 0)
+            {
+                return;
+            }
+
+            int offset = y * Stride + (x + first) * 4;
+
+            for (int i = 0; i < count; i++)
+            {
+                PlotColor colour = colours[first + i];
+
+                _pixels[offset] = colour.B;
+                _pixels[offset + 1] = colour.G;
+                _pixels[offset + 2] = colour.R;
+                _pixels[offset + 3] = colour.A;
+
+                offset += 4;
+            }
+        }
+
         /// <summary>Fills a rectangle, clipped to the surface.</summary>
         /// <param name="rect">Rectangle to fill.</param>
         /// <param name="color">Colour to fill with.</param>
