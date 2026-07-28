@@ -1,0 +1,7 @@
+# REQ-TST-007 performance baselines. One row per machine class and benchmark.
+# A change here is a claim about how fast OpenVSA is; review it as one.
+machine	benchmark	mean	resolution	recorded	commit
+12th Gen Intel(R) Core(TM) i9-12900K | 24c | 64GiB	ColdStartToFirstTrace	1.36977695	0.0250318	2026-07-28T06:05:28Z	
+12th Gen Intel(R) Core(TM) i9-12900K | 24c | 64GiB	Spectrum1MRenderedDecimated	12.3482738	0.00964819	2026-07-28T06:05:28Z	
+12th Gen Intel(R) Core(TM) i9-12900K | 24c | 64GiB	Spectrum8192Rendered	388.578441	0.0151041	2026-07-28T06:05:28Z	
+12th Gen Intel(R) Core(TM) i9-12900K | 24c | 64GiB	TwentyTraceWindows	112.071109	0.0579873	2026-07-28T06:05:28Z	

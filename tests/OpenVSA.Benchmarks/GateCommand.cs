@@ -155,14 +155,33 @@ namespace OpenVSA.Benchmarks
             File.WriteAllText(path, baselines.Write(), new UTF8Encoding(false));
         }
 
-        /// <summary>Where the checked-in baselines live, relative to the running assembly.</summary>
+        /// <summary>Where the checked-in baselines live.</summary>
+        /// <remarks>
+        /// Found by walking up to the directory holding <c>OpenVSA.slnx</c> rather than by counting
+        /// levels. The output path is <c>bin\x64\Release\net472</c> in one configuration and
+        /// <c>bin\Debug\net472</c> in another, so a fixed number of <c>..</c> segments is right for
+        /// one of them and silently writes the baseline into the project directory for the other —
+        /// which is what it did.
+        /// </remarks>
         private static string DefaultBaselinePath()
         {
-            string here = Path.GetDirectoryName(typeof(GateCommand).Assembly.Location);
+            var directory = new DirectoryInfo(
+                Path.GetDirectoryName(typeof(GateCommand).Assembly.Location) ?? ".");
 
-            // bin\<config>\<tfm> under the project, so four levels up is the repository root.
-            return Path.GetFullPath(Path.Combine(
-                here ?? ".", "..", "..", "..", "..", "performance-baselines.tsv"));
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "OpenVSA.slnx")))
+                {
+                    return Path.Combine(directory.FullName, "performance-baselines.tsv");
+                }
+
+                directory = directory.Parent;
+            }
+
+            // No solution above us: keep the figures beside the binary rather than refusing to run.
+            return Path.Combine(
+                Path.GetDirectoryName(typeof(GateCommand).Assembly.Location) ?? ".",
+                "performance-baselines.tsv");
         }
 
         private static bool Has(string[] args, string name)
