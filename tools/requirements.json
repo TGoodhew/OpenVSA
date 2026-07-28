@@ -18,12 +18,25 @@
   "num": "002",
   "priority": "P0",
   "title": "Front-end interchangeability at runtime",
-  "body": "**`REQ-ARC-002` (P0) — Front-end interchangeability at runtime.**\nThe active front end shall be selectable at runtime without restarting the application, and\na measurement configuration shall survive a front-end change wherever the new front end\ncan satisfy its parameters.\n**AC:** With a spectrum and a demod measurement configured and running against the\nsimulator, switching to file playback and then to the E4406A retains measurement setup,\ntrace layout, markers and limit lines; only parameters the new source cannot honour are\ncoerced, and each coercion raises a user-visible event-log entry.",
+  "body": "**`REQ-ARC-002` (P0) — Front-end interchangeability at runtime.**\nThe active front end shall be selectable at runtime without restarting the application, and\na measurement configuration shall survive a front-end change wherever the new front end\ncan satisfy its parameters.\n**AC:** With a spectrum measurement configured and running against the simulator, switching to\nfile playback and then to the E4406A retains measurement setup, trace layout, markers and\nlimit lines; only parameters the new source cannot honour are coerced, and each coercion\nraises a user-visible event-log entry. The E4406A leg is exercised against the instrument on\nthe bench, not a mock, because coercion is precisely where a real front end's limits differ\nfrom a simulated one's.",
   "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
   "line": 312
+ },
+ {
+  "id": "REQ-ARC-002a",
+  "area": "ARC",
+  "num": "002a",
+  "priority": "P0",
+  "title": "A demod measurement survives a front-end change",
+  "body": "**`REQ-ARC-002a` (P0) — A demod measurement survives a front-end change.**\n`REQ-ARC-002` shall hold for a demodulation measurement as well as a spectrum one.\n**AC:** As `REQ-ARC-002`, with a demod measurement configured and running in addition to the\nspectrum one; the demodulator's format, symbol rate and filter survive the change, and a\nfront end that cannot supply the sample rate the demodulator needs coerces it and says so.\n*Split from `REQ-ARC-002`: the spectrum leg is provable now and the demod leg cannot be until\na demodulator exists. Tracked in the Needs Verification epic against the closed\nimplementation.*",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 323
  },
  {
   "id": "REQ-ARC-003",
@@ -36,7 +49,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 321
+  "line": 332
  },
  {
   "id": "REQ-NFR-001",
@@ -44,12 +57,12 @@
   "num": "001",
   "priority": "P0",
   "title": "x64 only, large-object support enabled",
-  "body": "**`REQ-NFR-001` (P0) — x64 only, large-object support enabled.**\nThe application shall build and ship as **x64 only** (`<PlatformTarget>x64`), and\n`app.config` shall enable `<gcAllowVeryLargeObjects enabled=\"true\"/>`.\n*Rationale:* a 30-second capture at 25.6 MS/s of `Complex32` is 6.1 GB. 32-bit is\ncategorically unusable, and even on x64 the default 2 GB single-array ceiling is hit by a\nsingle long recording.\n**AC:** `new float[2_000_000_000]` (≈8 GB) succeeds on a machine with adequate RAM; the build\nproduces no AnyCPU or x86 output.\n*Ceiling, and it must be designed around:* even with `gcAllowVeryLargeObjects`, the maximum\nelement count for a non-`byte` array is **2 146 435 071** (0x7FEFFFFF). A single `float[]`\ntherefore holds at most ~1.07 G complex samples (≈8.6 GB). Captures above that **must** be\nchunked across multiple arrays — `REQ-DAT-001`'s `SampleCount` is an `int` for exactly this\nreason, and `REQ-REC-001` recordings must segment.",
+  "body": "**`REQ-NFR-001` (P0) — x64 only, large-object support enabled.**\nThe application shall build and ship as **x64 only** (`<PlatformTarget>x64`), and\n`app.config` shall enable `<gcAllowVeryLargeObjects enabled=\"true\"/>`.\n*Rationale:* a 30-second capture at 25.6 MS/s of `Complex32` is 6.1 GB. 32-bit is\ncategorically unusable, and even on x64 the default 2 GB single-array ceiling is hit by a\nsingle long recording.\n*Ceiling, and it must be designed around:* even with `gcAllowVeryLargeObjects`, the maximum\nelement count for a non-`byte` array is **2 146 435 071** (0x7FEFFFFF). A single `float[]`\ntherefore holds at most ~1.07 G complex samples (≈8.6 GB). Captures above that **must** be\nchunked across multiple arrays — `REQ-DAT-001`'s `SampleCount` is an `int` for exactly this\nreason, and `REQ-REC-001` recordings must segment. *(Stated as rationale and not as\nacceptance criteria: it is a consequence later phases must honour, and putting it inside the\ncriteria made this requirement unprovable until recordings existed.)*\n**AC:** `new float[2_000_000_000]` (≈8 GB) succeeds on a machine with adequate RAM; the build\nproduces no AnyCPU or x86 output.",
   "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 383
+  "line": 394
  },
  {
   "id": "REQ-NFR-002",
@@ -62,7 +75,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 397
+  "line": 410
  },
  {
   "id": "REQ-NFR-003",
@@ -75,7 +88,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 415
+  "line": 428
  },
  {
   "id": "REQ-NFR-004",
@@ -90,7 +103,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 433
+  "line": 446
  },
  {
   "id": "REQ-NFR-004a",
@@ -103,7 +116,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 449
+  "line": 462
  },
  {
   "id": "REQ-NFR-005",
@@ -116,7 +129,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 457
+  "line": 470
  },
  {
   "id": "REQ-NFR-006",
@@ -129,7 +142,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 487
+  "line": 500
  },
  {
   "id": "REQ-NFR-007",
@@ -142,7 +155,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 496
+  "line": 509
  },
  {
   "id": "REQ-NFR-007a",
@@ -157,7 +170,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 515
+  "line": 528
  },
  {
   "id": "REQ-VISA-001",
@@ -170,7 +183,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 524
+  "line": 537
  },
  {
   "id": "REQ-VISA-002",
@@ -185,7 +198,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 542
+  "line": 555
  },
  {
   "id": "REQ-VISA-003",
@@ -198,7 +211,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 556
+  "line": 569
  },
  {
   "id": "REQ-VISA-004",
@@ -211,7 +224,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 563
+  "line": 576
  },
  {
   "id": "REQ-VISA-005",
@@ -224,7 +237,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 579
+  "line": 592
  },
  {
   "id": "REQ-NFR-008",
@@ -237,7 +250,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 594
+  "line": 607
  },
  {
   "id": "REQ-NFR-010",
@@ -250,7 +263,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 612
+  "line": 625
  },
  {
   "id": "REQ-NFR-011",
@@ -263,7 +276,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 626
+  "line": 639
  },
  {
   "id": "REQ-NFR-012",
@@ -276,7 +289,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 633
+  "line": 646
  },
  {
   "id": "REQ-NFR-020",
@@ -289,7 +302,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 647
+  "line": 660
  },
  {
   "id": "REQ-NFR-021",
@@ -302,7 +315,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 648
+  "line": 661
  },
  {
   "id": "REQ-NFR-022",
@@ -311,11 +324,11 @@
   "priority": "P1",
   "title": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: complete analysis ≤50 ms",
   "body": "Flexible demod, 16-QAM, 4 096 symbols, 4 pts/symbol, equaliser off: complete analysis ≤50 ms\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
-  "phase": 0,
+  "phase": 2,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 649
+  "line": 662
  },
  {
   "id": "REQ-NFR-023",
@@ -324,11 +337,11 @@
   "priority": "P2",
   "title": "Flexible demod, 1024-QAM, 4 000 symbols, equaliser on (31 symbols): ≤400 ms",
   "body": "Flexible demod, 1024-QAM, 4 000 symbols, equaliser on (31 symbols): ≤400 ms\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
-  "phase": 0,
+  "phase": 2,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 650
+  "line": 663
  },
  {
   "id": "REQ-NFR-024",
@@ -337,11 +350,11 @@
   "priority": "P1",
   "title": "20 simultaneous trace windows updating: aggregate ≥10 updates/s, UI input latency <100 ms",
   "body": "20 simultaneous trace windows updating: aggregate ≥10 updates/s, UI input latency <100 ms\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
-  "phase": 0,
+  "phase": 1,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 651
+  "line": 664
  },
  {
   "id": "REQ-NFR-025",
@@ -350,11 +363,11 @@
   "priority": "P2",
   "title": "Cold start to first trace displayed (simulated source): ≤3 s",
   "body": "Cold start to first trace displayed (simulated source): ≤3 s\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
-  "phase": 0,
+  "phase": 1,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 652
+  "line": 665
  },
  {
   "id": "REQ-NFR-026",
@@ -363,11 +376,11 @@
   "priority": "P2",
   "title": "Playback of a 4 GB recording: sustained ≥1× real-time at the recorded sample rate",
   "body": "Playback of a 4 GB recording: sustained ≥1× real-time at the recorded sample rate\n\n**AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement\ndriver, and a windowed harness for the rendered targets) runs in CI and fails the build on a\n>15 % regression against a stored baseline.",
-  "phase": 0,
+  "phase": 3,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 653
+  "line": 666
  },
  {
   "id": "REQ-NFR-027",
@@ -380,7 +393,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 666
+  "line": 679
  },
  {
   "id": "REQ-DAT-001",
@@ -393,7 +406,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 721
+  "line": 734
  },
  {
   "id": "REQ-DAT-001a",
@@ -406,7 +419,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 735
+  "line": 748
  },
  {
   "id": "REQ-DAT-002",
@@ -421,7 +434,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 747
+  "line": 760
  },
  {
   "id": "REQ-DAT-003",
@@ -434,7 +447,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 759
+  "line": 772
  },
  {
   "id": "REQ-HAL-001",
@@ -447,7 +460,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 826
+  "line": 839
  },
  {
   "id": "REQ-HAL-002",
@@ -460,7 +473,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 834
+  "line": 847
  },
  {
   "id": "REQ-HAL-003",
@@ -473,7 +486,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 840
+  "line": 853
  },
  {
   "id": "REQ-DAT-010",
@@ -482,13 +495,13 @@
   "priority": "P1",
   "title": "Named measurement contexts",
   "body": "**`REQ-DAT-010` (P1)** — Following the reference product's model, OpenVSA shall support\nmultiple named **measurement contexts** (the reference calls these \"Analyzer\nConfigurations\"), each holding a complete measurement setup, and shall present them as\nfirst-class, addressable, nameable objects in the UI, in saved states and in the automation\nAPI. **[V]**\n**AC:** Two contexts (e.g. \"Spectrum\" and \"QPSK demod\") run concurrently against one\ncapture session, each with its own trace windows and markers; both are saved and recalled\nby name; a state file whose context names do not match existing contexts raises a specific,\nactionable error rather than partially applying.",
-  "phase": 0,
+  "phase": 1,
   "evidence": [
    "verified"
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 849
+  "line": 862
  },
  {
   "id": "REQ-TRC-001",
@@ -501,7 +514,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 876
+  "line": 889
  },
  {
   "id": "REQ-TRC-001a",
@@ -516,7 +529,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 882
+  "line": 895
  },
  {
   "id": "REQ-TRC-002",
@@ -529,7 +542,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 897
+  "line": 910
  },
  {
   "id": "REQ-TRC-003",
@@ -542,7 +555,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 906
+  "line": 919
  },
  {
   "id": "REQ-ACQ-001",
@@ -555,7 +568,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 928
+  "line": 941
  },
  {
   "id": "REQ-ACQ-002",
@@ -570,7 +583,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 944
+  "line": 957
  },
  {
   "id": "REQ-ACQ-003",
@@ -585,7 +598,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 951
+  "line": 964
  },
  {
   "id": "REQ-ACQ-004",
@@ -598,7 +611,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 964
+  "line": 977
  },
  {
   "id": "REQ-AMP-001",
@@ -611,7 +624,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 980
+  "line": 993
  },
  {
   "id": "REQ-AMP-002",
@@ -624,7 +637,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 989
+  "line": 1002
  },
  {
   "id": "REQ-AMP-003",
@@ -637,7 +650,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 996
+  "line": 1009
  },
  {
   "id": "REQ-AMP-004",
@@ -650,7 +663,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1004
+  "line": 1017
  },
  {
   "id": "REQ-ACQ-010",
@@ -663,7 +676,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1012
+  "line": 1025
  },
  {
   "id": "REQ-TRG-001",
@@ -678,7 +691,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1024
+  "line": 1037
  },
  {
   "id": "REQ-TRG-002",
@@ -693,7 +706,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1032
+  "line": 1045
  },
  {
   "id": "REQ-TRG-003",
@@ -708,7 +721,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1039
+  "line": 1052
  },
  {
   "id": "REQ-E44-001",
@@ -721,7 +734,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1049
+  "line": 1062
  },
  {
   "id": "REQ-E44-002",
@@ -734,7 +747,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1055
+  "line": 1068
  },
  {
   "id": "REQ-E44-002a",
@@ -749,7 +762,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1097
+  "line": 1110
  },
  {
   "id": "REQ-E44-002b",
@@ -764,7 +777,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1117
+  "line": 1130
  },
  {
   "id": "REQ-E44-002c",
@@ -779,7 +792,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1144
+  "line": 1157
  },
  {
   "id": "REQ-E44-002d",
@@ -794,7 +807,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1173
+  "line": 1186
  },
  {
   "id": "REQ-E44-003",
@@ -807,7 +820,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1188
+  "line": 1201
  },
  {
   "id": "REQ-E44-004",
@@ -820,7 +833,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1197
+  "line": 1210
  },
  {
   "id": "REQ-E44-005",
@@ -833,7 +846,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1208
+  "line": 1221
  },
  {
   "id": "REQ-E44-006",
@@ -842,11 +855,11 @@
   "priority": "P2",
   "title": "Screen capture passthrough",
   "body": "**`REQ-E44-006` (P2) — Screen capture passthrough.**\nThe driver shall optionally retrieve the instrument's own display (HP-GL plot or PCL print\nhardcopy) for inclusion in reports — useful for cross-checking OpenVSA's results against the\ninstrument's native personality measurements.\n**AC:** A screen capture retrieved from the instrument renders as an image and embeds in a\n`REQ-NFR-040` report. Both offered forms are handled, or the unsupported one is declared\nunavailable rather than producing a corrupt file. The capture is optional and off by default:\na normal acquisition cycle issues no hardcopy command, asserted from the SCPI traffic, since\nthese transfers are slow enough to matter on a GPIB link (§6.3). Failure to retrieve degrades\nthe report gracefully instead of failing the measurement.",
-  "phase": 3,
+  "phase": 4,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1215
+  "line": 1228
  },
  {
   "id": "REQ-E44-007",
@@ -859,7 +872,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1226
+  "line": 1239
  },
  {
   "id": "REQ-REC-001",
@@ -872,7 +885,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1237
+  "line": 1250
  },
  {
   "id": "REQ-REC-002",
@@ -885,7 +898,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1246
+  "line": 1259
  },
  {
   "id": "REQ-REC-003",
@@ -898,7 +911,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1252
+  "line": 1265
  },
  {
   "id": "REQ-REC-004",
@@ -906,14 +919,27 @@
   "num": "004",
   "priority": "P1",
   "title": "Zoom range bound, applied consistently",
-  "body": "**`REQ-REC-004` (P1) — Zoom range bound, applied consistently.**\nRe-analysis by digital downconversion and decimation shall be permitted down to **1/256** of\nthe source span, matching the reference product's documented playback bound. **[V]**\n\n**This bound applies identically to live-block zoom (`REQ-DSP-023`) and to playback** — the\ntwo must not disagree, since both perform the same DDC on the same captured samples. Where\n`REQ-DSP-023` speaks of \"arbitrarily narrow\" analysis, it means arbitrary within this bound.\n**AC:** A recording made at 10 MHz span analyses correctly at spans down to 39.0625 kHz;\nnarrower requests are rejected with an explanatory message naming the bound; the same limit\nand the same message apply to live zoom.",
-  "phase": 3,
+  "body": "**`REQ-REC-004` (P1) — Zoom range bound, applied consistently.**\nRe-analysis by digital downconversion and decimation shall be permitted down to **1/256** of\nthe source span, matching the reference product's documented playback bound. **[V]**\n\n**This bound applies identically to live-block zoom (`REQ-DSP-023`) and to playback** — the\ntwo must not disagree, since both perform the same DDC on the same captured samples. Where\n`REQ-DSP-023` speaks of \"arbitrarily narrow\" analysis, it means arbitrary within this bound.\n**AC:** A live block captured at 10 MHz span analyses correctly at spans down to 39.0625 kHz;\nnarrower requests are rejected with an explanatory message naming the bound and the span that\nwas asked for.",
+  "phase": 1,
   "evidence": [
    "verified"
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1258
+  "line": 1271
+ },
+ {
+  "id": "REQ-REC-004a",
+  "area": "REC",
+  "num": "004a",
+  "priority": "P1",
+  "title": "The bound holds identically on playback",
+  "body": "**`REQ-REC-004a` (P1) — The bound holds identically on playback.**\n**AC:** A recording made at 10 MHz span analyses correctly at spans down to 39.0625 kHz, and\na narrower request is rejected with the same bound and the same message as live zoom — the\nmessage text is compared between the two paths, not merely asserted to exist in each, since\ntwo independently worded messages are how the two bounds drift apart.\n*Split from `REQ-REC-004`: the bound is defined here but first used by live-block zoom\n(`REQ-DSP-023`) in Phase 1, and a Phase 1 requirement cannot depend on a Phase 3 one for the\nmessage it must produce.*",
+  "phase": 3,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1282
  },
  {
   "id": "REQ-REC-005",
@@ -929,7 +955,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1269
+  "line": 1291
  },
  {
   "id": "REQ-REC-006",
@@ -944,7 +970,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1302
+  "line": 1324
  },
  {
   "id": "REQ-REC-007",
@@ -957,7 +983,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1316
+  "line": 1338
  },
  {
   "id": "REQ-REC-008",
@@ -970,7 +996,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1324
+  "line": 1346
  },
  {
   "id": "REQ-REC-009",
@@ -983,7 +1009,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1334
+  "line": 1356
  },
  {
   "id": "REQ-SIM-001",
@@ -991,12 +1017,25 @@
   "num": "001",
   "priority": "P0",
   "title": "Synthetic modulated source",
-  "body": "**`REQ-SIM-001` (P0) — Synthetic modulated source.**\n`SimulatedFrontEnd` shall generate IQ for any modulation format supported by the\ndemodulator (§11.2), with settable symbol rate, pulse-shaping filter and roll-off, carrier\noffset, and amplitude.\n**AC:** For every supported format, a clean generated signal demodulates with RMS EVM\n< 0.1 % — the residual being numerical only.",
+  "body": "**`REQ-SIM-001` (P0) — Synthetic modulated source.**\n`SimulatedFrontEnd` shall generate IQ for any modulation format supported by the\ndemodulator (§11.2), with settable symbol rate, pulse-shaping filter and roll-off, carrier\noffset, and amplitude.\n**AC:** For every supported format, the generated waveform is checked back against the\nparameters it was asked for, from its own samples and without demodulating: the symbol\nsequence recovered at the known symbol instants matches the constellation the format\ndeclares, the symbol rate and carrier offset are recovered to within 1e-6 relative, and the\npulse-shaping filter's roll-off is recovered from the spectrum to within 1 %.",
   "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1344
+  "line": 1366
+ },
+ {
+  "id": "REQ-SIM-001a",
+  "area": "SIM",
+  "num": "001a",
+  "priority": "P0",
+  "title": "The synthetic source proven by demodulation",
+  "body": "**`REQ-SIM-001a` (P0) — The synthetic source proven by demodulation.**\nThe source of `REQ-SIM-001` shall be correct to the standard the metrics engine needs, which\nonly a demodulator can establish.\n**AC:** For every supported format, a clean generated signal demodulates with RMS EVM\n< 0.1 % — the residual being numerical only.\n*Split from `REQ-SIM-001` because that criterion cannot run until a demodulator exists.\nKeeping the two together made a requirement whose implementation belonged to one phase and\nwhose proof belonged to another, so neither phase could be closed honestly.*",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1376
  },
  {
   "id": "REQ-SIM-002",
@@ -1004,12 +1043,25 @@
   "num": "002",
   "priority": "P0",
   "title": "Controllable impairments",
-  "body": "**`REQ-SIM-002` (P0) — Controllable impairments.**\nThe generator shall inject, independently and quantitatively: AWGN (specified SNR),\ncarrier frequency offset (Hz), carrier phase offset, IQ gain imbalance (dB), quadrature skew\n(degrees), IQ origin offset (dB), amplitude droop (dB/symbol), timing offset (fraction of a\nsymbol), symbol-clock error (ppm), phase noise (mask-specified), AM/AM and AM/PM\ncompression, and multipath (tapped-delay-line channel).\n**AC:** Each impairment injected at a known magnitude is recovered by the demodulator's\ncorresponding metric to within 5 % or 0.1 dB, whichever is looser. **This is the primary\ncorrectness proof for the entire metrics engine** and is elaborated in §17.2.",
+  "body": "**`REQ-SIM-002` (P0) — Controllable impairments.**\nThe generator shall inject, independently and quantitatively: AWGN (specified SNR),\ncarrier frequency offset (Hz), carrier phase offset, IQ gain imbalance (dB), quadrature skew\n(degrees), IQ origin offset (dB), amplitude droop (dB/symbol), timing offset (fraction of a\nsymbol), symbol-clock error (ppm), phase noise (mask-specified), AM/AM and AM/PM\ncompression, and multipath (tapped-delay-line channel).\n**AC:** Each impairment is measured back from the generated samples — not from a\ndemodulator — and matches the magnitude requested to within 1 %: SNR from the noise power in\na signal-free band, carrier offset and phase from the complex mean at the symbol instants,\ngain imbalance and quadrature skew from the I and Q second moments, origin offset from the\nmean, droop from a fit to the symbol magnitudes, timing offset and clock error from the\nrecovered symbol instants. **Independence is the harder half and is tested explicitly:**\ninjecting one impairment leaves every other's measured value unchanged to within its own\ntolerance, so a generator that couples two of them fails.",
   "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1351
+  "line": 1385
+ },
+ {
+  "id": "REQ-SIM-002a",
+  "area": "SIM",
+  "num": "002a",
+  "priority": "P0",
+  "title": "Impairments recovered by the metrics engine",
+  "body": "**`REQ-SIM-002a` (P0) — Impairments recovered by the metrics engine.**\nEvery impairment of `REQ-SIM-002` shall be recovered by the measurement that reports it.\n**AC:** Each impairment injected at a known magnitude is recovered by the demodulator's\ncorresponding metric to within 5 % or 0.1 dB, whichever is looser. **This is the primary\ncorrectness proof for the entire metrics engine** and is elaborated in §17.2.\n*Split from `REQ-SIM-002` for the reason given under `REQ-SIM-001a`. The generator can be\nproved correct without a demodulator; the metrics engine cannot, and it is the metrics engine\nthis criterion actually tests.*",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1400
  },
  {
   "id": "REQ-SIM-003",
@@ -1022,7 +1074,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1361
+  "line": 1409
  },
  {
   "id": "REQ-SIM-004",
@@ -1035,7 +1087,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1366
+  "line": 1414
  },
  {
   "id": "REQ-SIM-005",
@@ -1044,11 +1096,11 @@
   "priority": "P2",
   "title": "Standard-signal presets",
   "body": "**`REQ-SIM-005` (P2) — Standard-signal presets.** Presets producing structurally correct\nsignals for each implemented personality (GSM burst, W-CDMA frame, LTE resource grid, …)\nshall be provided for personality development without hardware.\n**AC:** Each preset is decoded by the personality it targets with no manual parameter entry,\nand the recovered structure — burst, frame and slot boundaries, and modulation format —\nmatches the preset's declared parameters. A preset naming a personality that is not yet\nimplemented fails the parse rather than shipping as a preset that cannot be decoded.",
-  "phase": 0,
+  "phase": 5,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1375
+  "line": 1423
  },
  {
   "id": "REQ-DSP-001",
@@ -1056,12 +1108,25 @@
   "num": "001",
   "priority": "P0",
   "title": "Block-based, non-real-time analysis",
-  "body": "**`REQ-DSP-001` (P0) — Block-based, non-real-time analysis.**\nAnalysis shall operate on finite blocks with full random access to the whole block. Nothing\nin the DSP design shall assume causality or streaming operation.\n*Rationale:* this is what makes the reference product's estimation quality achievable —\nwhole-block maximum-likelihood estimation of carrier, timing and phase strictly outperforms\ncausal tracking loops, and it is why the reference product can lock reliably on short\nbursts. It is a deliberate architectural choice, not a compromise.\n**AC:** An architecture test over the public DSP surface fails if any analysis entry point\ntakes an incremental or push-style form — a per-sample `Process`, a `Push`, or a stateful\naccumulator that survives between calls — rather than a complete block. The estimation\nconsequence is tested directly: carrier, timing and phase estimates for a short burst are\ninvariant, to the tolerances of `REQ-SIM-002`, to where in the block the burst sits. A causal\ntracking implementation cannot satisfy that, so the test discriminates.",
+  "body": "**`REQ-DSP-001` (P0) — Block-based, non-real-time analysis.**\nAnalysis shall operate on finite blocks with full random access to the whole block. Nothing\nin the DSP design shall assume causality or streaming operation.\n*Rationale:* this is what makes the reference product's estimation quality achievable —\nwhole-block maximum-likelihood estimation of carrier, timing and phase strictly outperforms\ncausal tracking loops, and it is why the reference product can lock reliably on short\nbursts. It is a deliberate architectural choice, not a compromise.\n**AC:** An architecture test over the public DSP surface fails if any analysis entry point\ntakes an incremental or push-style form — a per-sample `Process`, a `Push`, or a stateful\naccumulator that survives between calls — rather than a complete block. Block-position\ninvariance is tested with what the DSP layer already estimates: the spectrum of a short burst,\nand the burst's own measured position and power, are invariant to where in the block the burst\nsits, to within the numerical tolerance of the transform.",
   "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1388
+  "line": 1436
+ },
+ {
+  "id": "REQ-DSP-001a",
+  "area": "DSP",
+  "num": "001a",
+  "priority": "P0",
+  "title": "Block-based estimation proven on the estimators",
+  "body": "**`REQ-DSP-001a` (P0) — Block-based estimation proven on the estimators.**\nThe estimation advantage claimed for whole-block analysis shall be demonstrated on the\nestimators that claim it.\n**AC:** Carrier, timing and phase estimates for a short burst are invariant, to the tolerances\nof `REQ-SIM-002a`, to where in the block the burst sits. A causal tracking implementation\ncannot satisfy that, so the test discriminates.\n*Split from `REQ-DSP-001` because there are no carrier, timing or phase estimators until the\ndemodulator exists. The architectural rule — no push-style entry point — is enforceable from\nthe first commit and stays where it belongs.*",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1450
  },
  {
   "id": "REQ-DSP-002",
@@ -1074,7 +1139,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1402
+  "line": 1460
  },
  {
   "id": "REQ-DSP-010",
@@ -1089,7 +1154,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1411
+  "line": 1469
  },
  {
   "id": "REQ-DSP-010a",
@@ -1102,7 +1167,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1432
+  "line": 1490
  },
  {
   "id": "REQ-DSP-010b",
@@ -1117,7 +1182,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1448
+  "line": 1506
  },
  {
   "id": "REQ-DSP-011",
@@ -1130,7 +1195,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1471
+  "line": 1529
  },
  {
   "id": "REQ-DSP-012",
@@ -1139,13 +1204,13 @@
   "priority": "P2",
   "title": "Zero-span channel filter shape",
   "body": "**`REQ-DSP-012` (P2) — Zero-span channel filter shape.** In zero-span/power-spectrum\noperation, \"window type\" shall be replaced by **Channel Filter Shape** (Gaussian, or\nNone/anti-alias only), mirroring the reference product. **[V]**\n**AC:** Entering zero-span or power-spectrum operation replaces the window-type control with\na Channel Filter Shape control offering Gaussian and None/anti-alias-only, and no window-type\nselection remains reachable in that mode. The selected shape is recorded in the trace state\nand in exported metadata, so a saved measurement records which filter produced it.",
-  "phase": 0,
+  "phase": 1,
   "evidence": [
    "verified"
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1479
+  "line": 1537
  },
  {
   "id": "REQ-DSP-020",
@@ -1160,7 +1225,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1489
+  "line": 1547
  },
  {
   "id": "REQ-DSP-021",
@@ -1175,7 +1240,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1496
+  "line": 1554
  },
  {
   "id": "REQ-DSP-022",
@@ -1188,7 +1253,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1507
+  "line": 1565
  },
  {
   "id": "REQ-DSP-023",
@@ -1203,7 +1268,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1525
+  "line": 1583
  },
  {
   "id": "REQ-DSP-023a",
@@ -1218,7 +1283,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1537
+  "line": 1595
  },
  {
   "id": "REQ-DSP-024",
@@ -1233,7 +1298,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1556
+  "line": 1614
  },
  {
   "id": "REQ-DSP-030",
@@ -1249,7 +1314,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1569
+  "line": 1627
  },
  {
   "id": "REQ-DSP-031",
@@ -1264,7 +1329,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1597
+  "line": 1655
  },
  {
   "id": "REQ-DSP-040",
@@ -1279,7 +1344,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1608
+  "line": 1666
  },
  {
   "id": "REQ-DSP-040a",
@@ -1288,11 +1353,11 @@
   "priority": "P2",
   "title": "Cross-channel trace data types",
   "body": "**`REQ-DSP-040a` (P2) — Cross-channel trace data types.**\nCross Spectrum · Cross Correlation · Coherence · Frequency Response · Impulse Response.\n\nThese are **P2, not P0**, and are gated on multi-channel support in the HAL\n(`IFrontEndCapabilities.ChannelCount` and `SupportsPhaseCoherentChannels`,\n`REQ-HAL-001`). They require phase-coherent, common-timebase acquisition of two channels,\nwhich no front end in Phase 3 provides; specifying them as P0 against a single-channel\n`IqBlock` would be incoherent. When implemented, `IqBlock` shall be extended to carry a\nchannel index, or grouped into an `IqBlockSet` with a declared coherence guarantee.\n**AC:** Each cross-channel type is offered only when the active front end declares\n`ChannelCount ≥ 2` and `SupportsPhaseCoherentChannels`; against a single-channel front end\nthey are absent from the selectable set rather than present and erroring. Once a coherent\ntwo-channel source exists, coherence of a signal with itself is 1.0 to within 1e-6 at every\nfrequency, coherence of two independent noise sources tends to $1/N_{\\text{avg}}$, and the\nfrequency response of a known synthetic filter is recovered to within 0.1 dB and 1°.",
-  "phase": 1,
+  "phase": 3,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1625
+  "line": 1683
  },
  {
   "id": "REQ-DSP-041",
@@ -1307,7 +1372,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1641
+  "line": 1699
  },
  {
   "id": "REQ-DSP-042",
@@ -1320,7 +1385,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1653
+  "line": 1711
  },
  {
   "id": "REQ-DSP-043",
@@ -1335,7 +1400,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1664
+  "line": 1722
  },
  {
   "id": "REQ-DSP-044",
@@ -1348,7 +1413,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1674
+  "line": 1732
  },
  {
   "id": "REQ-DSP-045",
@@ -1361,7 +1426,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1684
+  "line": 1742
  },
  {
   "id": "REQ-DSP-046",
@@ -1376,7 +1441,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1692
+  "line": 1750
  },
  {
   "id": "REQ-DSP-050",
@@ -1391,7 +1456,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1707
+  "line": 1765
  },
  {
   "id": "REQ-MKR-001",
@@ -1406,7 +1471,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1721
+  "line": 1779
  },
  {
   "id": "REQ-MKR-002",
@@ -1421,7 +1486,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1732
+  "line": 1790
  },
  {
   "id": "REQ-MKR-003",
@@ -1436,7 +1501,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1745
+  "line": 1803
  },
  {
   "id": "REQ-MKR-004",
@@ -1451,7 +1516,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1760
+  "line": 1818
  },
  {
   "id": "REQ-MKR-005",
@@ -1466,7 +1531,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1769
+  "line": 1827
  },
  {
   "id": "REQ-MKR-006",
@@ -1481,7 +1546,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1781
+  "line": 1839
  },
  {
   "id": "REQ-MKR-007",
@@ -1496,7 +1561,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1790
+  "line": 1848
  },
  {
   "id": "REQ-LIM-001",
@@ -1511,7 +1576,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1802
+  "line": 1860
  },
  {
   "id": "REQ-LIM-002",
@@ -1526,7 +1591,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1815
+  "line": 1873
  },
  {
   "id": "REQ-LIM-003",
@@ -1541,7 +1606,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1823
+  "line": 1881
  },
  {
   "id": "REQ-CHM-001",
@@ -1554,7 +1619,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1834
+  "line": 1892
  },
  {
   "id": "REQ-CHM-002",
@@ -1567,7 +1632,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1845
+  "line": 1903
  },
  {
   "id": "REQ-CHM-003",
@@ -1580,7 +1645,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1854
+  "line": 1912
  },
  {
   "id": "REQ-DEM-001",
@@ -1593,7 +1658,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1871
+  "line": 1929
  },
  {
   "id": "REQ-DEM-002",
@@ -1608,7 +1673,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1902
+  "line": 1960
  },
  {
   "id": "REQ-DEM-010",
@@ -1624,7 +1689,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1920
+  "line": 1978
  },
  {
   "id": "REQ-DEM-010a",
@@ -1637,7 +1702,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1945
+  "line": 2003
  },
  {
   "id": "REQ-DEM-011",
@@ -1650,7 +1715,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1958
+  "line": 2016
  },
  {
   "id": "REQ-DEM-012",
@@ -1665,7 +1730,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1965
+  "line": 2023
  },
  {
   "id": "REQ-DEM-013",
@@ -1680,7 +1745,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1977
+  "line": 2035
  },
  {
   "id": "REQ-DEM-020",
@@ -1695,7 +1760,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1987
+  "line": 2045
  },
  {
   "id": "REQ-DEM-021",
@@ -1710,7 +1775,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2001
+  "line": 2059
  },
  {
   "id": "REQ-DEM-022",
@@ -1723,7 +1788,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2020
+  "line": 2078
  },
  {
   "id": "REQ-DEM-022a",
@@ -1736,7 +1801,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2040
+  "line": 2098
  },
  {
   "id": "REQ-DEM-023",
@@ -1749,7 +1814,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2062
+  "line": 2120
  },
  {
   "id": "REQ-DEM-030",
@@ -1764,7 +1829,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2076
+  "line": 2134
  },
  {
   "id": "REQ-DEM-031",
@@ -1779,7 +1844,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2087
+  "line": 2145
  },
  {
   "id": "REQ-DEM-032",
@@ -1794,7 +1859,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2095
+  "line": 2153
  },
  {
   "id": "REQ-DEM-033",
@@ -1809,7 +1874,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2105
+  "line": 2163
  },
  {
   "id": "REQ-DEM-034",
@@ -1824,7 +1889,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2118
+  "line": 2176
  },
  {
   "id": "REQ-DEM-034a",
@@ -1837,7 +1902,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2130
+  "line": 2188
  },
  {
   "id": "REQ-DEM-035",
@@ -1852,7 +1917,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2142
+  "line": 2200
  },
  {
   "id": "REQ-DEM-036",
@@ -1867,7 +1932,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2150
+  "line": 2208
  },
  {
   "id": "REQ-DEM-040",
@@ -1882,7 +1947,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2160
+  "line": 2218
  },
  {
   "id": "REQ-DEM-041",
@@ -1897,7 +1962,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2168
+  "line": 2226
  },
  {
   "id": "REQ-DEM-050",
@@ -1912,7 +1977,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2179
+  "line": 2237
  },
  {
   "id": "REQ-DEM-051",
@@ -1927,7 +1992,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2191
+  "line": 2249
  },
  {
   "id": "REQ-DEM-052",
@@ -1942,7 +2007,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2207
+  "line": 2265
  },
  {
   "id": "REQ-DEM-053",
@@ -1957,7 +2022,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2253
+  "line": 2311
  },
  {
   "id": "REQ-DEM-060",
@@ -1972,7 +2037,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2275
+  "line": 2333
  },
  {
   "id": "REQ-DEM-061",
@@ -1987,7 +2052,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2294
+  "line": 2352
  },
  {
   "id": "REQ-DEM-062",
@@ -2002,7 +2067,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2308
+  "line": 2366
  },
  {
   "id": "REQ-DEM-063",
@@ -2017,7 +2082,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2317
+  "line": 2375
  },
  {
   "id": "REQ-DEM-064",
@@ -2030,7 +2095,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2328
+  "line": 2386
  },
  {
   "id": "REQ-DEM-065",
@@ -2045,7 +2110,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2341
+  "line": 2399
  },
  {
   "id": "REQ-DEM-066",
@@ -2060,7 +2125,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2346
+  "line": 2404
  },
  {
   "id": "REQ-DEM-067",
@@ -2073,7 +2138,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2377
+  "line": 2435
  },
  {
   "id": "REQ-DEM-067a",
@@ -2088,7 +2153,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2405
+  "line": 2463
  },
  {
   "id": "REQ-DEM-068",
@@ -2103,7 +2168,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2426
+  "line": 2484
  },
  {
   "id": "REQ-DEM-069",
@@ -2118,7 +2183,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2439
+  "line": 2497
  },
  {
   "id": "REQ-DEM-070",
@@ -2133,7 +2198,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2457
+  "line": 2515
  },
  {
   "id": "REQ-DEM-071",
@@ -2148,7 +2213,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2471
+  "line": 2529
  },
  {
   "id": "REQ-DEM-072",
@@ -2161,7 +2226,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2481
+  "line": 2539
  },
  {
   "id": "REQ-DEM-080",
@@ -2177,7 +2242,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2497
+  "line": 2555
  },
  {
   "id": "REQ-DEM-081",
@@ -2192,7 +2257,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2526
+  "line": 2584
  },
  {
   "id": "REQ-DEM-082",
@@ -2205,7 +2270,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2537
+  "line": 2595
  },
  {
   "id": "REQ-DEM-083",
@@ -2218,7 +2283,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2543
+  "line": 2601
  },
  {
   "id": "REQ-PER-001",
@@ -2231,7 +2296,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2559
+  "line": 2617
  },
  {
   "id": "REQ-PER-002",
@@ -2244,7 +2309,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2589
+  "line": 2647
  },
  {
   "id": "REQ-PER-003",
@@ -2259,7 +2324,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2603
+  "line": 2661
  },
  {
   "id": "REQ-PER-010",
@@ -2272,7 +2337,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2641
+  "line": 2699
  },
  {
   "id": "REQ-PER-011",
@@ -2285,7 +2350,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2654
+  "line": 2712
  },
  {
   "id": "REQ-UI-001",
@@ -2300,7 +2365,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2688
+  "line": 2746
  },
  {
   "id": "REQ-UI-002",
@@ -2315,7 +2380,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2711
+  "line": 2769
  },
  {
   "id": "REQ-UI-003",
@@ -2330,7 +2395,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2717
+  "line": 2775
  },
  {
   "id": "REQ-UI-004",
@@ -2345,7 +2410,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2726
+  "line": 2784
  },
  {
   "id": "REQ-UI-005",
@@ -2360,7 +2425,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2741
+  "line": 2799
  },
  {
   "id": "REQ-UI-006",
@@ -2375,7 +2440,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2765
+  "line": 2823
  },
  {
   "id": "REQ-UI-007",
@@ -2388,7 +2453,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2787
+  "line": 2845
  },
  {
   "id": "REQ-UI-010",
@@ -2397,13 +2462,13 @@
   "priority": "P0",
   "title": "Three independently coloured zones",
   "body": "**`REQ-UI-010` (P0) — Three independently coloured zones.**\nThis is the single most load-bearing layout fact, taken from the reference product's own\ndisplay-colour enumeration: **[V]**\n\n```\n┌─────────────────────────────────────────────────┐  ← AnnotationBackground\n│  annotation text (Annotation colour)            │     (outer band)\n│   ┌───────────────────────────────────────┐     │\n│   │                                       │     │  ← TraceBackground\n│   │   graticule (Grid colour)             │     │     (inner rectangle,\n│   │   trace geometry                      │     │      behind the graticule)\n│   │                                       │     │\n│   └───────────────────────────────────────┘     │\n│  annotation text                                │\n└─────────────────────────────────────────────────┘\n```\n\nVerbatim definitions: `TraceBackground` — \"Color for the background of the trace data (behind\nthe graticule)\"; `Grid` — \"Color for the graticule lines\"; `Annotation` — \"Color for the trace\nannotation (text outside of the graticule)\"; `AnnotationBackground` — \"Color for background of\narea outside of the trace graticule\".\n\n**AC:** `TraceBackground`, `Grid`, `Annotation` and `AnnotationBackground` are four\nindependently settable colours. Set each to a distinct value and render: sampling the\nrendered frame returns `TraceBackground` inside the graticule rectangle away from any grid\nline or trace, `Grid` on a graticule line, `AnnotationBackground` in the surrounding band away\nfrom text, and `Annotation` on annotation glyphs. Changing any one of the four leaves the\nother three regions' sampled values unchanged — the zones are genuinely independent, not two\ncolours with a shared background.",
-  "phase": 0,
+  "phase": 1,
   "evidence": [
    "verified"
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2803
+  "line": 2861
  },
  {
   "id": "REQ-UI-011",
@@ -2418,7 +2483,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2833
+  "line": 2891
  },
  {
   "id": "REQ-UI-012",
@@ -2431,7 +2496,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2840
+  "line": 2898
  },
  {
   "id": "REQ-UI-013",
@@ -2446,7 +2511,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2856
+  "line": 2914
  },
  {
   "id": "REQ-UI-014",
@@ -2461,7 +2526,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2870
+  "line": 2928
  },
  {
   "id": "REQ-UI-015",
@@ -2474,7 +2539,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2879
+  "line": 2937
  },
  {
   "id": "REQ-UI-020",
@@ -2489,7 +2554,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2897
+  "line": 2955
  },
  {
   "id": "REQ-UI-021",
@@ -2504,7 +2569,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2908
+  "line": 2966
  },
  {
   "id": "REQ-UI-022",
@@ -2517,7 +2582,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2921
+  "line": 2979
  },
  {
   "id": "REQ-UI-023",
@@ -2532,7 +2597,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2941
+  "line": 2999
  },
  {
   "id": "REQ-UI-024",
@@ -2547,7 +2612,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2959
+  "line": 3017
  },
  {
   "id": "REQ-UI-030",
@@ -2562,7 +2627,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2985
+  "line": 3043
  },
  {
   "id": "REQ-UI-031",
@@ -2577,7 +2642,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3005
+  "line": 3063
  },
  {
   "id": "REQ-UI-032",
@@ -2592,7 +2657,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3016
+  "line": 3074
  },
  {
   "id": "REQ-UI-033",
@@ -2607,7 +2672,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3030
+  "line": 3088
  },
  {
   "id": "REQ-UI-040",
@@ -2620,7 +2685,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3041
+  "line": 3099
  },
  {
   "id": "REQ-UI-041",
@@ -2635,7 +2700,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3064
+  "line": 3122
  },
  {
   "id": "REQ-UI-042",
@@ -2644,13 +2709,13 @@
   "priority": "P0",
   "title": "Clickable annotation (\"hot spots\"). The signature interaction",
   "body": "**`REQ-UI-042` (P0) — Clickable annotation (\"hot spots\"). The signature interaction.**\nMeasurement parameters displayed as trace annotation shall be **directly editable in place**.\nRequired behaviour, verbatim from the reference product: **[V]**\n\n| Interaction | Result |\n|---|---|\n| **Hover** | Cursor changes from arrow to a **hand**, and the value is **underlined** |\n| **Single click** | Pointer changes to indicate a **numeric entry pad**; mouse wheel, arrow keys, or typing adjust the value live |\n| **Double click** | Opens a **data-entry dialog** for value and units |\n| **Right click** | Opens an edit popup menu (copy/paste) |\n\nConfirmed editable hot spots: **Y-axis top scale**, **Y-axis per-division scale**, **Y-axis\nbottom scale**, **trace format**, **resolution bandwidth**, **trigger channel**, **main time\nlength**, **centre frequency**. Additionally: trace context menu (right-click in the grid),\nY-axis and X-axis context menus, a **trace data dropdown** (click the dropdown button or\nright-click), the markers readout, and the tab select/close buttons. **[V]**\n\n> **This is the highest-value single feature to copy, and the easiest to omit.** It collapses\n> the usual dialog round-trip — *find the menu, find the tab, find the field, apply, close* —\n> into a click on the number you are already reading. A reimplementation that puts every\n> parameter behind a dialog will be functionally complete and will feel nothing like the\n> original. Build the hot-spot framework early, in Phase 0, because retrofitting in-place\n> editing onto a finished plot surface is far more expensive than designing for it.\n\n**AC:** Every parameter listed above is editable in place with all four interactions;\nhovering visibly underlines and switches the cursor; wheel and arrow keys adjust the hovered\nvalue without opening a dialog.",
-  "phase": 0,
+  "phase": 1,
   "evidence": [
    "verified"
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3083
+  "line": 3141
  },
  {
   "id": "REQ-UI-050",
@@ -2665,7 +2730,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3113
+  "line": 3171
  },
  {
   "id": "REQ-UI-051",
@@ -2680,7 +2745,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3129
+  "line": 3187
  },
  {
   "id": "REQ-UI-052",
@@ -2695,7 +2760,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3145
+  "line": 3203
  },
  {
   "id": "REQ-UI-053",
@@ -2710,7 +2775,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3168
+  "line": 3226
  },
  {
   "id": "REQ-UI-054",
@@ -2725,7 +2790,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3194
+  "line": 3252
  },
  {
   "id": "REQ-UI-060",
@@ -2738,7 +2803,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3210
+  "line": 3268
  },
  {
   "id": "REQ-UI-061",
@@ -2753,7 +2818,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3228
+  "line": 3286
  },
  {
   "id": "REQ-UI-062",
@@ -2768,7 +2833,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3268
+  "line": 3326
  },
  {
   "id": "REQ-UI-063",
@@ -2783,7 +2848,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3280
+  "line": 3338
  },
  {
   "id": "REQ-UI-064",
@@ -2798,7 +2863,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3302
+  "line": 3360
  },
  {
   "id": "REQ-UI-065",
@@ -2813,7 +2878,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3310
+  "line": 3368
  },
  {
   "id": "REQ-UI-070",
@@ -2828,7 +2893,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3336
+  "line": 3394
  },
  {
   "id": "REQ-UI-071",
@@ -2843,7 +2908,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3348
+  "line": 3406
  },
  {
   "id": "REQ-UI-072",
@@ -2858,7 +2923,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3371
+  "line": 3429
  },
  {
   "id": "REQ-UI-073",
@@ -2873,7 +2938,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3377
+  "line": 3435
  },
  {
   "id": "REQ-UI-080",
@@ -2889,7 +2954,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3388
+  "line": 3446
  },
  {
   "id": "REQ-UI-081",
@@ -2904,7 +2969,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3405
+  "line": 3463
  },
  {
   "id": "REQ-UI-082",
@@ -2919,7 +2984,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3426
+  "line": 3484
  },
  {
   "id": "REQ-UI-083",
@@ -2932,7 +2997,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3441
+  "line": 3499
  },
  {
   "id": "REQ-UI-090",
@@ -2945,7 +3010,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3476
+  "line": 3534
  },
  {
   "id": "REQ-UI-091",
@@ -2958,7 +3023,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3508
+  "line": 3566
  },
  {
   "id": "REQ-STA-001",
@@ -2973,7 +3038,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3572
+  "line": 3630
  },
  {
   "id": "REQ-STA-002",
@@ -2988,7 +3053,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3586
+  "line": 3644
  },
  {
   "id": "REQ-STA-003",
@@ -3003,7 +3068,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3596
+  "line": 3654
  },
  {
   "id": "REQ-STA-004",
@@ -3018,7 +3083,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3604
+  "line": 3662
  },
  {
   "id": "REQ-STA-005",
@@ -3031,7 +3096,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3614
+  "line": 3672
  },
  {
   "id": "REQ-API-001",
@@ -3046,7 +3111,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3626
+  "line": 3684
  },
  {
   "id": "REQ-API-002",
@@ -3059,7 +3124,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3661
+  "line": 3719
  },
  {
   "id": "REQ-API-003",
@@ -3074,7 +3139,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3667
+  "line": 3725
  },
  {
   "id": "REQ-API-004",
@@ -3087,7 +3152,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3680
+  "line": 3738
  },
  {
   "id": "REQ-API-005",
@@ -3102,7 +3167,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3693
+  "line": 3751
  },
  {
   "id": "REQ-API-006",
@@ -3117,7 +3182,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3703
+  "line": 3761
  },
  {
   "id": "REQ-API-007",
@@ -3132,7 +3197,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3714
+  "line": 3772
  },
  {
   "id": "REQ-NFR-030",
@@ -3141,11 +3206,11 @@
   "priority": "P0",
   "title": "Windows 10 21H2 or later, x64; .NET Framework 4.7.2 present",
   "body": "Windows 10 21H2 or later, x64; .NET Framework 4.7.2 present\n\n---\n\n**`REQ-NFR-030`** fixes the platform floor.\n**AC:** The installer and the application both refuse to run below Windows 10 21H2 or on a\nnon-x64 process, with a message naming the unmet requirement rather than failing obscurely.\nA missing .NET Framework 4.7.2 is detected before any managed entry point runs and reported\nthe same way. The build emits x64 only, per `REQ-NFR-001` and the solution's single platform\n— a test fails on an AnyCPU or x86 output, since a 32-bit process cannot hold the buffers\n§6 requires.",
-  "phase": 4,
+  "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3733
+  "line": 3791
  },
  {
   "id": "REQ-NFR-031",
@@ -3158,7 +3223,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3734
+  "line": 3792
  },
  {
   "id": "REQ-NFR-032",
@@ -3167,11 +3232,11 @@
   "priority": "P0",
   "title": "Runs with no hardware and no VISA installed",
   "body": "Application starts and runs usefully with **no** hardware and **no** VISA installed (simulator + file playback only)\n\n---\n\n**`REQ-NFR-032` deserves emphasis.** The ability to run the full analysis stack with no\ninstrument attached is what makes the DSP developable, testable in CI, and demonstrable.\nIt should be treated as an architectural constraint, not a convenience feature.\n**AC:** On a machine with no VISA runtime installed and no instrument attached, the\napplication starts, the simulator and file-playback front ends are available, and a full\ndemodulation measurement runs to an error summary. A test asserts the VISA assemblies are\nnot loaded in that configuration, so the capability cannot regress into \"starts, but only\nbecause VISA happened to be present\". `REQ-NFR-036`'s no-egress rule holds throughout.",
-  "phase": 4,
+  "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3735
+  "line": 3793
  },
  {
   "id": "REQ-NFR-033",
@@ -3184,7 +3249,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3736
+  "line": 3794
  },
  {
   "id": "REQ-NFR-034",
@@ -3193,11 +3258,11 @@
   "priority": "P1",
   "title": "Structured logging with per-subsystem levels; log bundle export for support",
   "body": "Structured logging with per-subsystem levels; log bundle export for support\n\n---\n\n**`REQ-NFR-034`** covers diagnosability in the field.\n**AC:** Log level is settable per subsystem and takes effect without a restart, verified by\nraising one subsystem's level and asserting only its output increases. Entries are\nstructured — machine-parseable fields, not formatted prose — so a support bundle can be\nqueried rather than read. The bundle export gathers logs, configuration and version\ninformation into one file in a single action, and **redacts nothing silently**: whatever it\nomits is listed in the bundle. Writing a log entry never blocks the measurement thread,\nwhich `REQ-NFR-011` and `REQ-NFR-012` make a correctness matter rather than a performance\none.",
-  "phase": 4,
+  "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3737
+  "line": 3795
  },
  {
   "id": "REQ-NFR-035",
@@ -3206,11 +3271,11 @@
   "priority": "P1",
   "title": "Diagnostic report on unhandled exception, without loss to in-progress recordings",
   "body": "Unhandled exceptions produce a diagnostic report without data loss to in-progress recordings\n\n---\n\n**`REQ-NFR-035`** is about not compounding a crash with data loss.\n**AC:** An unhandled exception produces a diagnostic report containing the exception, the\nbuild version and the active measurement configuration. The recording clause is tested\ndirectly rather than assumed: with a recording in progress, an exception is injected and the\nrecording is afterwards found complete and readable up to the point of failure, not\nzero-length or truncated mid-record. The report is written before the process exits, and a\nfailure to write it does not itself prevent the recording being closed cleanly — the\nordering matters, so it is asserted.",
-  "phase": 4,
+  "phase": 3,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3738
+  "line": 3796
  },
  {
   "id": "REQ-NFR-036",
@@ -3218,12 +3283,12 @@
   "num": "036",
   "priority": "P0",
   "title": "No telemetry or network egress without explicit opt-in",
-  "body": "No telemetry or network egress without explicit opt-in\n\n---\n\n**`REQ-NFR-036`** is a privacy guarantee, and is tested as one.\n**AC:** In a default installation the application makes **no outbound network connection of\nany kind** — asserted by running the full start-configure-measure-exit cycle under a network\nmonitor with the simulator as source and failing on any egress, not merely by absence of a\ntelemetry component. There is no update check, no usage reporting and no crash upload\nwithout opt-in; opt-in is off by default and, where offered, states what would be sent\nbefore it is enabled. `REQ-API-004`'s SCPI server is the only listener and is off by\ndefault. Nothing about this depends on a licence or entitlement check, which\n`REQ-LIC-010` removes entirely.",
-  "phase": 4,
+  "body": "No telemetry or network egress without explicit opt-in\n\n---\n\n**`REQ-NFR-036`** is a privacy guarantee, and is tested as one.\n**AC:** In a default installation the application makes **no outbound network connection of\nany kind** — asserted by running the full start-configure-measure-exit cycle under a network\nmonitor with the simulator as source and failing on any egress, not merely by absence of a\ntelemetry component. There is no update check, no usage reporting and no crash upload\nwithout opt-in; opt-in is off by default and, where offered, states what would be sent\nbefore it is enabled. Nothing about this depends on a licence or entitlement check, which\n`REQ-LIC-010` removes entirely. A test asserts the process opens no listening socket, which\nholds trivially until a server exists and keeps holding afterwards.",
+  "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3739
+  "line": 3797
  },
  {
   "id": "REQ-NFR-037",
@@ -3232,11 +3297,11 @@
   "priority": "P1",
   "title": "Bit-for-bit reproducible numeric results",
   "body": "Numeric results reproducible bit-for-bit across runs for identical input and settings on the same machine — **see the qualification below**\n\n---\n\n**`REQ-NFR-037` needs a qualification, or it silently contradicts the threading model.**\nBit-for-bit reproducibility is incompatible with unordered parallel reduction: floating-point\naddition is not associative, so `Parallel.For`-style accumulation at\n`ProcessorCount − 1` parallelism (`REQ-NFR-010`) and runtime-width `Vector<T>` partial sums\nboth give run-to-run variation in the last bits. The requirement shall therefore read:\n\n> Numeric results shall be reproducible bit-for-bit **given a fixed partition schedule**. All\n> accumulating stages shall use fixed-size, index-determined partitions and a deterministic\n> reduction tree, and shall not use unordered `Parallel.ForEach`. Where a stage cannot meet\n> this, it shall be documented and excluded by name.\n\n**AC:** 100 consecutive runs over a fixed recording produce byte-identical result buffers on\nthe same machine, at every supported degree of parallelism.",
-  "phase": 4,
+  "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3740
+  "line": 3798
  },
  {
   "id": "REQ-NFR-040",
@@ -3249,7 +3314,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3741
+  "line": 3799
  },
  {
   "id": "REQ-NFR-041",
@@ -3262,7 +3327,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3742
+  "line": 3800
  },
  {
   "id": "REQ-NFR-042",
@@ -3275,7 +3340,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3743
+  "line": 3801
  },
  {
   "id": "REQ-NFR-038",
@@ -3288,7 +3353,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3744
+  "line": 3802
  },
  {
   "id": "REQ-NFR-039",
@@ -3297,11 +3362,24 @@
   "priority": "P1",
   "title": "Code coverage ≥70 % overall, ≥90 % for OpenVSA.Dsp and OpenVSA.Demod",
   "body": "Code coverage ≥70 % overall, ≥90 % for `OpenVSA.Dsp` and `OpenVSA.Demod`\n\n---\n\n**`REQ-NFR-039`** sets the coverage floor.\n**AC:** CI measures line and branch coverage and fails below 70 % overall, or below 90 % for\n`OpenVSA.Dsp` and `OpenVSA.Demod` individually — the per-project floors are checked\nseparately, since a high overall figure can hide a weak DSP project. Coverage is measured\nover the closed-form and property tests of `REQ-TST-001`, not inflated by tests that execute\ncode without asserting on it; a test with no assertion fails review. The figure is reported\nper project on every run so a decline is visible before it crosses the threshold.",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 3803
+ },
+ {
+  "id": "REQ-NFR-036a",
+  "area": "NFR",
+  "num": "036a",
+  "priority": "P2",
+  "title": "The SCPI server is the only listener",
+  "body": "**`REQ-NFR-036a` (P2) — The SCPI server is the only listener.**\nExtends the privacy guarantee of `REQ-NFR-036` over the one listener the product may have.\n**AC:** `REQ-API-004`'s SCPI server is the only listening socket the product ever opens, and\nit is off by default: enumerate the process's listening sockets in a default installation and\nfind none, enable the server and find exactly one, on the configured port only.\n*Split from `REQ-NFR-036` so the no-egress guarantee can be asserted from the first build\nrather than waiting on a server that Phase 4 delivers.*",
   "phase": 4,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3745
+  "line": 3887
  },
  {
   "id": "REQ-LIC-010",
@@ -3309,12 +3387,25 @@
   "num": "010",
   "priority": "P0",
   "title": "One edition, no feature gating",
-  "body": "**`REQ-LIC-010` (P0) — One edition, no feature gating.**\nEvery feature OpenVSA ships is available to every user, unconditionally. There shall be no\nentitlement check, licence file, licence server, activation step, dongle, trial period,\nfeature flag serving as a paid tier, or build configuration that produces a reduced edition.\nPersonalities and plug-ins are covered too: a personality that loads, runs (`REQ-PER-001`).\n*Rationale:* this is a deliberate product decision, not an unimplemented feature. Anyone who\ndownloads OpenVSA gets all of it. Stating it normatively means a later change of heart has to\nbe argued for and re-specified, rather than arriving one `if` statement at a time.\n**AC:** No entitlement or licence-check type, interface or method exists in any shipped\nassembly, asserted by an architecture test over the public and internal surface that fails on\na member matching entitlement/licence-gating naming, and by the absence of any\nlicensing project from the solution. Every measurement, trace data type, demodulation format\nand personality can be instantiated and run in a default installation with no configuration —\nenumerated over the full catalogues of `REQ-DSP-040`, `REQ-DSP-041` and `REQ-DEM-010`, so a\nnewly added feature cannot quietly arrive gated. Exactly one edition is produced: the build\nemits a single distributable, and a test fails if a build configuration name or an\n`#if` symbol partitions the feature set. The application starts and runs with no network\naccess at all, which `REQ-NFR-036` already requires and which no activation step could\nsatisfy.",
-  "phase": 4,
+  "body": "**`REQ-LIC-010` (P0) — One edition, no feature gating.**\nEvery feature OpenVSA ships is available to every user, unconditionally. There shall be no\nentitlement check, licence file, licence server, activation step, dongle, trial period,\nfeature flag serving as a paid tier, or build configuration that produces a reduced edition.\nPersonalities and plug-ins are covered too: a personality that loads, runs (`REQ-PER-001`).\n*Rationale:* this is a deliberate product decision, not an unimplemented feature. Anyone who\ndownloads OpenVSA gets all of it. Stating it normatively means a later change of heart has to\nbe argued for and re-specified, rather than arriving one `if` statement at a time.\n**AC:** No entitlement or licence-check type, interface or method exists in any shipped\nassembly, asserted by an architecture test over the public and internal surface that fails on\na member matching entitlement/licence-gating naming, and by the absence of any\nlicensing project from the solution. Exactly one edition is produced: the build emits a single\ndistributable, and a test fails if a build configuration name or an `#if` symbol partitions\nthe feature set. The application starts and runs with no network access at all, which\n`REQ-NFR-036` already requires and which no activation step could satisfy.",
+  "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3907
+  "line": 3973
+ },
+ {
+  "id": "REQ-LIC-010a",
+  "area": "LIC",
+  "num": "010a",
+  "priority": "P0",
+  "title": "No feature arrives gated, over the full catalogues",
+  "body": "**`REQ-LIC-010a` (P0) — No feature arrives gated, over the full catalogues.**\nThe guarantee of `REQ-LIC-010` shall be enforced against every feature the product ends up\nhaving, not only against the absence of gating machinery.\n**AC:** Every measurement, trace data type, demodulation format and personality can be\ninstantiated and run in a default installation with no configuration — enumerated over the\nfull catalogues of `REQ-DSP-040`, `REQ-DSP-041` and `REQ-DEM-010`, so a newly added feature\ncannot quietly arrive gated.\n*Split from `REQ-LIC-010`: the absence of gating machinery is provable from the first build\nand is the guarantee that matters most, while enumerating the catalogues cannot run until the\ndemodulation formats of `REQ-DEM-010` exist.*",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 3989
  },
  {
   "id": "REQ-LIC-011",
@@ -3327,7 +3418,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3927
+  "line": 4000
  },
  {
   "id": "REQ-TST-001",
@@ -3336,11 +3427,11 @@
   "priority": "P0",
   "title": "DSP primitives tested against closed-form analytic results",
   "body": "**`REQ-TST-001` (P0)** — Every DSP primitive shall be tested against a closed-form\nanalytic result, not against a previous run of itself.\n\n| Component | Analytic reference |\n|---|---|\n| FFT | Known transform pairs; Parseval's theorem to **1e-12 for the double-precision provider, 1e-5 for single** (`REQ-NFR-004a`) |\n| Windows | ENBW and coherent gain computed from coefficients, against §9.2 table |\n| RRC/RC filters | Cascade identity; analytic values at singular points |\n| Resampler | Pure tone in, pure tone out; measured SFDR against design target |\n| Averaging | Coherent vs incoherent SNR behaviour (`REQ-DSP-030` AC) |\n| CCDF | Rayleigh/Gaussian analytic distribution |\n| Metrics | Closed-form values for deliberately impaired constellations |\n\n**AC:** Every component in the table has at least one test whose expected value is computed\nfrom the analytic reference named beside it, independently of the implementation under test.\nThe prohibition is enforced, not merely stated: no DSP test compares against a stored output\nof a previous run, asserted by a check that fails on a golden-output or approved-file\ncomparison anywhere in the DSP test suite — that pattern is exactly how a wrong result\nbecomes the baseline it is later validated against. A DSP primitive with no closed-form test\nfails the build rather than passing untested, so the table is a floor and not a sample. Where\na primitive genuinely has no closed form, the fallback is a property-based test asserting an\ninvariant (linearity, energy conservation, an inverse round trip), never a recorded output.",
-  "phase": 2,
+  "phase": 0,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3951
+  "line": 4024
  },
  {
   "id": "REQ-TST-002",
@@ -3353,7 +3444,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3976
+  "line": 4049
  },
  {
   "id": "REQ-TST-003",
@@ -3366,7 +3457,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4003
+  "line": 4076
  },
  {
   "id": "REQ-TST-004",
@@ -3379,7 +3470,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4011
+  "line": 4084
  },
  {
   "id": "REQ-TST-004a",
@@ -3392,7 +3483,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4026
+  "line": 4099
  },
  {
   "id": "REQ-TST-005",
@@ -3405,7 +3496,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4043
+  "line": 4116
  },
  {
   "id": "REQ-TST-006",
@@ -3418,7 +3509,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4056
+  "line": 4129
  },
  {
   "id": "REQ-TST-007",
@@ -3426,12 +3517,25 @@
   "num": "007",
   "priority": "P1",
   "title": "Performance regression per REQ-NFR-020–REQ-NFR-026, failing",
-  "body": "**`REQ-TST-007` (P1)** — Performance regression per `REQ-NFR-020`–`REQ-NFR-026`, failing\nthe build on >15 % regression.\n**AC:** All seven targets of `REQ-NFR-020`–`REQ-NFR-026` are measured by the harness those\nrequirements' shared criteria describe, including the rendered ones, and a deliberately\nintroduced 20 % slowdown fails the build while a 5 % one does not — the threshold is tested,\nnot merely configured. Baselines are stored per machine class, since the targets are stated\nfor the reference machine, and a run on unrecognised hardware reports that rather than\ncomparing against an inapplicable baseline. Measurements report variance, and a run too noisy\nto distinguish 15 % is reported as inconclusive rather than passed.",
+  "body": "**`REQ-TST-007` (P1)** — Performance regression per `REQ-NFR-020`–`REQ-NFR-026`, failing\nthe build on >15 % regression.\n**AC:** The harness those requirements' shared criteria describe exists and measures every\ntarget whose feature has been delivered, including the rendered ones, and a deliberately\nintroduced 20 % slowdown fails the build while a 5 % one does not — the threshold is tested,\nnot merely configured. Baselines are stored per machine class, since the targets are stated\nfor the reference machine, and a run on unrecognised hardware reports that rather than\ncomparing against an inapplicable baseline. Measurements report variance, and a run too noisy\nto distinguish 15 % is reported as inconclusive rather than passed. **A target whose feature\ndoes not yet exist is reported as not-yet-measured and fails the run if it is silently\nskipped** — the harness may not quietly shrink to the targets that happen to be implemented.",
+  "phase": 0,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 4150
+ },
+ {
+  "id": "REQ-TST-007a",
+  "area": "TST",
+  "num": "007a",
+  "priority": "P1",
+  "title": "Every performance target actually under the harness",
+  "body": "**`REQ-TST-007a` (P1)** — Every performance target actually under the harness.\n**AC:** All seven targets of `REQ-NFR-020`–`REQ-NFR-026` are measured, none remaining in the\nnot-yet-measured state `REQ-TST-007` requires the harness to report.\n*Split from `REQ-TST-007` because the harness is needed from Phase 0 — every one of the seven\ntargets shares its criteria, so no target could be met until it existed — while the last of\nthe seven targets is a 4 GB recording playback that Phase 3 delivers.*",
   "phase": 3,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4077
+  "line": 4162
  },
  {
   "id": "REQ-TST-008",
@@ -3440,11 +3544,11 @@
   "priority": "P2",
   "title": "UI automation smoke tests covering window creation, trace",
   "body": "**`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace\nconfiguration, state save/recall and marker interaction.\n**AC:** All four areas are exercised through the UI automation layer rather than by calling\nview models directly, so a binding or command-routing break is caught. The suite creates\ntrace and tool windows, configures a trace's data and format, saves and recalls a state and\nasserts the recalled configuration matches per `REQ-STA-001`, and places, moves and couples\nmarkers per `REQ-MKR-004`. It runs headless in CI, and a failure identifies the step and\ncaptures the visual tree at that point rather than reporting only a timeout.",
-  "phase": 3,
+  "phase": 1,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4087
+  "line": 4169
  },
  {
   "id": "REQ-TST-009",
@@ -3453,11 +3557,11 @@
   "priority": "P1",
   "title": "A long-duration soak (≥8 hours) against the simulator asserting",
   "body": "**`REQ-TST-009` (P1)** — A long-duration soak (≥8 hours) against the simulator asserting\nbounded memory, no handle leaks, and no degradation in update rate.\n**AC:** The soak runs at least 8 hours against the simulator with traces updating and the UI\nlive. Managed and unmanaged memory are bounded: measured against a trend line over the run,\nnot merely against a ceiling, so a slow leak that stays under the cap still fails. Handle and\nGDI object counts return to their starting range after windows and traces are created and\ndestroyed repeatedly. Update rate over the final hour is within 5 % of the first hour, which\ncatches degradation that a start-and-end sample would miss. Pooled buffers per `REQ-NFR-011`\nshow no net growth, and the dropped-frame counter of `REQ-NFR-012` is reported at the end\nrather than checked only for boundedness.",
-  "phase": 3,
+  "phase": 1,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4096
+  "line": 4178
  },
  {
   "id": "REQ-PLN-001",
@@ -3470,6 +3574,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 4134
+  "line": 4216
  }
 ]

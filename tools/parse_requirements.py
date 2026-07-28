@@ -81,26 +81,107 @@ RETIRED = {
 }
 
 
-def phase_for(area, num):
-    n = int(re.match(r"\d+", num).group(0))
-    if area == "NFR":
-        if n <= 29:
-            return 0
-        return 4
-    if area == "DSP":
-        return 0 if n < 20 else 1
-    if area == "TST":
-        return 2 if n <= 3 else 3
-    if area == "UI":
-        return 0 if n in (10, 42) else 1
-    return {
-        "ARC": 0, "DAT": 0, "HAL": 0, "SIM": 0, "PLN": 0,
-        "ACQ": 1, "AMP": 1, "TRC": 1, "MKR": 1, "LIM": 1, "CHM": 1, "STA": 1,
-        "DEM": 2,
-        "VISA": 3, "E44": 3, "REC": 3,
-        "API": 4, "LIC": 4,
-        "PER": 5,
-    }.get(area, 1)
+# A requirement's delivery phase is **the earliest phase in which every clause of its
+# acceptance criteria can be executed** — not the phase in which its code gets written.
+#
+# That distinction is the whole point. Assigning by where the work happens produces phases that
+# cannot be closed: Phase 0 held REQ-SIM-001, whose criterion is "demodulates with RMS EVM
+# < 0.1 %", so Phase 0 could not finish until Phase 2 delivered a demodulator, while Phase 1 was
+# declared complete with 37 Phase 0 issues open. Where a requirement's criteria genuinely straddle
+# phases, the requirement is split (`REQ-SIM-001` / `REQ-SIM-001a`) rather than filed under
+# whichever phase happened to be closer.
+#
+# The area defaults below hold for requirements whose criteria need nothing but their own area's
+# code. PHASE_OVERRIDES carries every requirement for which that is untrue, each with the
+# dependency that forced it — a bare number here with no reason beside it is how the previous
+# heuristic went wrong.
+AREA_PHASE = {
+    "ARC": 0, "DAT": 0, "HAL": 0, "SIM": 0, "PLN": 0,
+    "ACQ": 1, "AMP": 1, "TRC": 1, "MKR": 1, "LIM": 1, "CHM": 1, "STA": 1, "UI": 1, "TRG": 1,
+    "DEM": 2,
+    "VISA": 3, "E44": 3, "REC": 3,
+    "API": 4, "LIC": 4,
+    "PER": 5,
+}
+
+# Two areas divide at a boundary the specification itself draws, so the split is structural
+# rather than a guess at a number:
+#   DSP  §9.1-§9.2 is the processing model and the primitives every measurement rests on;
+#        §9.3 onward is measurement-facing work (zoom, trace math, cross-channel).
+#   NFR  §6 is performance and runtime behaviour; §7 onward is operational — installer,
+#        localisation, reporting, signing — which is what Phase 4 packages.
+AREA_SECTION_SPLIT = {
+    "DSP": (20, 0, 1),
+    "NFR": (30, 0, 4),
+}
+
+PHASE_OVERRIDES = {
+    # --- Verifiable only once a demodulator exists (Phase 2) ---------------------------------
+    "REQ-SIM-001a": (2, "criterion is RMS EVM from a demodulator"),
+    "REQ-SIM-002a": (2, "impairments recovered by the demodulator's metrics"),
+    "REQ-DSP-001a": (2, "carrier/timing/phase estimators are the thing under test"),
+    "REQ-ARC-002a": (2, "needs a demod measurement to survive the front-end change"),
+    "REQ-NFR-022": (2, "benchmarks flexible demod at 16-QAM"),
+    "REQ-NFR-023": (2, "benchmarks flexible demod at 1024-QAM with an equaliser"),
+
+    # --- Verifiable only once recording and a real front end exist (Phase 3) ------------------
+    "REQ-NFR-026": (3, "plays back a 4 GB recording; REQ-REC-001 delivers recordings"),
+    "REQ-DSP-040a": (3, "needs phase-coherent two-channel acquisition; see the issue's own "
+                        "note that no planned front end provides it"),
+
+    # --- Verifiable only once a personality exists (Phase 5) ----------------------------------
+    "REQ-SIM-005": (5, "each preset must be decoded by the personality it targets"),
+    # No gating machinery is a property of the code from the first commit, and both REQ-DSP-040
+    # and REQ-NFR-036 rest on it. Only the catalogue enumeration waits.
+    "REQ-LIC-010": (0, "the absence of gating machinery is asserted over every build"),
+    "REQ-LIC-010a": (2, "enumerates REQ-DEM-010's demodulation formats"),
+    "REQ-NFR-036a": (4, "the SCPI listener it bounds is REQ-API-004"),
+    "REQ-E44-006": (4, "the capture must embed in a REQ-NFR-040 report"),
+    "REQ-REC-004": (1, "defines the bound live-block zoom REQ-DSP-023 must apply"),
+
+    # --- Needed EARLIER than its area default -------------------------------------------------
+    # The seven performance targets of REQ-NFR-020..026 share one criterion: the harness. If the
+    # harness itself lands in Phase 3 then no Phase 0 target can be met, which is how six of them
+    # sat open with no way to close.
+    "REQ-TST-007": (0, "delivers the benchmark harness REQ-NFR-020..026 are all measured by"),
+
+    # --- Needs the Phase 1 display and settings surfaces ---------------------------------------
+    "REQ-DSP-012": (1, "replaces the window-type control, so it needs the settings UI"),
+    "REQ-DAT-010": (1, "contexts must own trace windows and markers to be demonstrated"),
+    "REQ-UI-010": (1, "sampling rendered zones needs the rasteriser"),
+    "REQ-NFR-024": (1, "measures 20 simultaneous trace windows"),
+    "REQ-NFR-025": (1, "cold start to first trace *displayed*"),
+
+    # --- §16 test strategy: each suite lands with the thing it tests ---------------------------
+    "REQ-TST-001": (0, "the DSP primitives it tests are Phase 0, and REQ-DSP-010 cites it"),
+    "REQ-TST-007a": (3, "the seventh target is a 4 GB recording playback"),
+    "REQ-TST-002": (2, "injected-impairment recovery matrix needs the metrics engine"),
+    "REQ-TST-003": (2, "cross-impairment isolation needs the metrics engine"),
+    "REQ-TST-004": (3, "compares against the E4406A"),
+    "REQ-TST-004a": (3, "the budget is stated against REQ-TST-004's E4406A comparison"),
+    "REQ-TST-005": (3, "golden recordings need REQ-REC recording"),
+    "REQ-TST-006": (3, "every stored output must carry REQ-TST-005's provenance"),
+    "REQ-TST-008": (1, "UI automation smoke tests over window creation and traces"),
+    "REQ-TST-009": (1, "the 8-hour soak runs against the simulator and the shell"),
+
+    # --- §7 operational NFRs that are nonetheless foundations ----------------------------------
+    "REQ-NFR-030": (0, "the platform floor everything else is built on"),
+    "REQ-NFR-032": (0, "runs with no hardware and no VISA — a Phase 0 architectural property"),
+    "REQ-NFR-034": (0, "structured logging is needed by every later phase's diagnosis"),
+    "REQ-NFR-036": (0, "no egress without opt-in; a property of the code from the start"),
+    "REQ-NFR-037": (0, "bit-for-bit reproducibility constrains the DSP core's arithmetic"),
+    "REQ-NFR-035": (3, "'without loss to in-progress recordings' needs recordings"),
+    "REQ-NFR-039": (2, "the 90 % floor is over OpenVSA.Dsp *and* OpenVSA.Demod"),
+}
+
+
+def phase_for(area, num, req_id=None):
+    if req_id in PHASE_OVERRIDES:
+        return PHASE_OVERRIDES[req_id][0]
+    if area in AREA_SECTION_SPLIT:
+        boundary, before, after = AREA_SECTION_SPLIT[area]
+        return before if int(re.match(r"\d+", num).group(0)) < boundary else after
+    return AREA_PHASE.get(area, 1)
 
 
 def evidence(text):
@@ -212,7 +293,7 @@ def main():
             "priority": pri,
             "title": TITLE_OVERRIDES.get(rid) or short_title(seed),
             "body": body,
-            "phase": phase_for(area, num),
+            "phase": phase_for(area, num, rid),
             "evidence": evidence(body),
             "has_ac": "**AC:**" in body or "AC:" in body,
             "ac_exempt": AC_EXEMPT in body,
