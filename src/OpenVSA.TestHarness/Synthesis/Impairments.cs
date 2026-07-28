@@ -48,6 +48,25 @@ namespace OpenVSA.TestHarness.Synthesis
         /// <summary>Symbol-clock error, in parts per million.</summary>
         public double ClockErrorPpm { get; set; }
 
+        /// <summary>Phase noise, as an RMS phase deviation in degrees.</summary>
+        /// <remarks>
+        /// A single RMS figure rather than a mask. The requirement says "mask-specified", which
+        /// needs a shaped noise process and a mask to specify it with; an RMS deviation is the one
+        /// figure that can be injected and measured back without one, and it is what the residual
+        /// phase scatter of a signal actually shows.
+        /// </remarks>
+        public double PhaseNoiseDegreesRms { get; set; }
+
+        /// <summary>AM/AM compression, in dB of gain lost at full scale.</summary>
+        /// <remarks>
+        /// A soft-limiting characteristic: the gain falls with envelope amplitude, reaching this
+        /// much compression at unit envelope. Zero for none.
+        /// </remarks>
+        public double CompressionDb { get; set; }
+
+        /// <summary>AM/PM conversion, in degrees of phase shift at full scale.</summary>
+        public double AmToPmDegrees { get; set; }
+
         /// <summary>Seed for the noise, so a scenario is reproducible.</summary>
         public int Seed { get; set; } = 20260728;
     }
@@ -192,6 +211,11 @@ namespace OpenVSA.TestHarness.Synthesis
 
             var noise = new DeterministicNormal(wanted.Seed);
 
+            // Its own stream, so turning phase noise on does not change the AWGN sequence. Sharing
+            // one generator would make two impairments interfere through their randomness alone,
+            // which is exactly the coupling this requirement forbids.
+            var phaseNoise = new DeterministicNormal(wanted.Seed ^ 0x2C9F);
+
             double sigma = double.IsPositiveInfinity(wanted.SignalToNoiseDb)
                 ? 0.0
                 : Math.Sqrt(Math.Pow(10.0, -wanted.SignalToNoiseDb / 10.0));
@@ -220,8 +244,36 @@ namespace OpenVSA.TestHarness.Synthesis
                 skewedI += origin * 0.70710678118654752;
                 skewedQ += origin * 0.70710678118654752;
 
+                // AM/AM and AM/PM: both are functions of the envelope, so they are applied
+                // together and before the carrier. Applying them after would make the compression
+                // depend on where the carrier happened to have rotated to, which is not what a
+                // compressing amplifier does.
+                if (wanted.CompressionDb != 0.0 || wanted.AmToPmDegrees != 0.0)
+                {
+                    double envelope = Math.Sqrt(skewedI * skewedI + skewedQ * skewedQ) / Math.Sqrt(2.0);
+
+                    double gain = Math.Pow(10.0, -wanted.CompressionDb * envelope * envelope / 20.0);
+                    double twist = wanted.AmToPmDegrees * envelope * envelope * Math.PI / 180.0;
+
+                    double c = Math.Cos(twist);
+                    double sn = Math.Sin(twist);
+
+                    double ci = skewedI * c - skewedQ * sn;
+                    double cq = skewedI * sn + skewedQ * c;
+
+                    skewedI = ci * gain;
+                    skewedQ = cq * gain;
+                }
+
                 double phase = 2.0 * Math.PI * wanted.CarrierOffsetHz * n / sampleRateHz
                              + wanted.CarrierPhaseDegrees * Math.PI / 180.0;
+
+                // Phase noise rides on the carrier phase, which is what phase noise is. Additive
+                // noise would be AWGN with extra steps and would show up in the SNR instead.
+                if (wanted.PhaseNoiseDegreesRms != 0.0)
+                {
+                    phase += phaseNoise.Next() * wanted.PhaseNoiseDegreesRms * Math.PI / 180.0;
+                }
 
                 double cos = Math.Cos(phase);
                 double sin = Math.Sin(phase);

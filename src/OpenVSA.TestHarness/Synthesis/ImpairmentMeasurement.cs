@@ -269,6 +269,66 @@ namespace OpenVSA.TestHarness.Synthesis
                 : 10.0 * Math.Log10(signalPower / noisePower);
         }
 
+        /// <summary>Phase noise, as an RMS deviation in degrees, from the symbol phase scatter.</summary>
+        /// <param name="signal">The signal.</param>
+        /// <remarks>
+        /// The fourth power removes the modulation; what is left is four times the carrier phase,
+        /// and its scatter about its own mean is four times the phase noise. Dividing by four
+        /// recovers the deviation — and only works while the scatter is small enough not to wrap,
+        /// which is the regime a phase-noise figure is quoted in anyway.
+        /// </remarks>
+        public static double PhaseNoiseDegreesRms(ImpairedSignal signal)
+        {
+            if (signal == null)
+            {
+                throw new ArgumentNullException(nameof(signal));
+            }
+
+            int[] instants = signal.SymbolInstants;
+            double mean = FourthPowerPhase(signal, instants, 0, instants.Length);
+
+            double sum = 0.0;
+
+            foreach (int n in instants)
+            {
+                FourthPower(signal.I[n], signal.Q[n], out double re, out double im);
+
+                double deviation = Unwrap(Math.Atan2(im, re) - mean);
+                sum += deviation * deviation;
+            }
+
+            double rms = Math.Sqrt(sum / instants.Length) / 4.0;
+
+            return rms * 180.0 / Math.PI;
+        }
+
+        /// <summary>AM/AM compression, in dB, from the gain at full envelope.</summary>
+        /// <param name="signal">The signal.</param>
+        /// <remarks>
+        /// Read as the loss of the mean symbol magnitude against the unit constellation the
+        /// generator used. A two-point fit against envelope would be better on a signal with a
+        /// range of amplitudes; QPSK has one amplitude, so there is one point to read.
+        /// </remarks>
+        public static double CompressionDb(ImpairedSignal signal)
+        {
+            if (signal == null)
+            {
+                throw new ArgumentNullException(nameof(signal));
+            }
+
+            double sum = 0.0;
+
+            foreach (int n in signal.SymbolInstants)
+            {
+                sum += Math.Sqrt(signal.I[n] * signal.I[n] + signal.Q[n] * signal.Q[n]);
+            }
+
+            double mean = sum / signal.SymbolInstants.Length;
+
+            // The clean constellation has magnitude sqrt(2) at every point.
+            return -20.0 * Math.Log10(mean / Math.Sqrt(2.0));
+        }
+
         /// <summary>The fourth-power mean phase over a range of symbols.</summary>
         private static double FourthPowerPhase(ImpairedSignal signal, int[] instants, int from, int to)
         {

@@ -151,6 +151,55 @@ namespace OpenVSA.TestHarness.Tests
                 "SNR measured " + measured.ToString("F3") + " dB, requested " + snrDb + ".");
         }
 
+        [Theory]
+        [InlineData(2.0)]
+        [InlineData(5.0)]
+        public void PhaseNoiseIsRecovered(double degreesRms)
+        {
+            ImpairedSignal signal = ImpairedSignal.Generate(
+                new Impairments { PhaseNoiseDegreesRms = degreesRms });
+
+            double measured = ImpairmentMeasurement.PhaseNoiseDegreesRms(signal);
+
+            _output.WriteLine("requested " + degreesRms + "° rms, measured " + measured.ToString("F3"));
+
+            Assert.True(
+                Math.Abs(measured - degreesRms) <= degreesRms * 0.05,
+                "Phase noise measured " + measured.ToString("F3") + "° rms, requested " + degreesRms + "°.");
+        }
+
+        [Theory]
+        [InlineData(0.5)]
+        [InlineData(1.5)]
+        public void CompressionIsRecovered(double compressionDb)
+        {
+            ImpairedSignal signal = ImpairedSignal.Generate(
+                new Impairments { CompressionDb = compressionDb });
+
+            double measured = ImpairmentMeasurement.CompressionDb(signal);
+
+            _output.WriteLine("requested " + compressionDb + " dB, measured " + measured.ToString("F4"));
+
+            Assert.True(
+                Math.Abs(measured - compressionDb) <= compressionDb * 0.01,
+                "Compression measured " + measured.ToString("F4") + " dB, requested " + compressionDb + ".");
+        }
+
+        [Fact]
+        public void PhaseNoiseDoesNotDisturbTheAmplitudeMeasurements()
+        {
+            // Phase noise rides on the carrier phase; if it leaked into amplitude it would be
+            // AWGN wearing a different name, and the SNR and compression figures would move.
+            ImpairedSignal clean = ImpairedSignal.Generate(new Impairments());
+            ImpairedSignal noisy = ImpairedSignal.Generate(
+                new Impairments { PhaseNoiseDegreesRms = 5.0 });
+
+            Assert.True(
+                Math.Abs(ImpairmentMeasurement.CompressionDb(noisy) -
+                         ImpairmentMeasurement.CompressionDb(clean)) < 0.01,
+                "Phase noise changed the measured compression.");
+        }
+
         [Fact]
         public void InjectingOneImpairmentLeavesTheOthersAlone()
         {
