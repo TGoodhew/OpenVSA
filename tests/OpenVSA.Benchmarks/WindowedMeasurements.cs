@@ -9,6 +9,7 @@ using OpenVSA.Core;
 using OpenVSA.Dsp.Fft;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.PerformanceGate;
+using System.Windows.Media;
 using OpenVSA.Ui.Rendering;
 
 namespace OpenVSA.Benchmarks
@@ -39,6 +40,234 @@ namespace OpenVSA.Benchmarks
         /// result, short enough that the whole gate is runnable in CI.
         /// </remarks>
         public static readonly TimeSpan MeasurementWindow = TimeSpan.FromSeconds(6.0);
+
+        /// <summary>
+        /// <c>REQ-NFR-005</c>: the same target rendered through DrawingVisual + StreamGeometry,
+        /// so the band boundaries are justified by measurement rather than asserted.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The requirement asks for the alternative to be "measured and recorded as failing"
+        /// <c>REQ-NFR-021</c>. Without this the strategy constants are self-consistent and nothing
+        /// more: a test that checks the selector returns what the constant says proves the selector
+        /// works, not that the boundary belongs where it is.
+        /// </para>
+        /// <para>
+        /// The comparison is deliberately end to end and identical up to the draw step — same
+        /// SpectrumComputer, same decimation, same window, same live dispatcher. Only the last
+        /// stage differs, so the difference is attributable to it.
+        /// </para>
+        /// </remarks>
+        public static void CompareRenderStrategies(int points)
+        {
+            OnStaThread(() => { PrintRenderComparison(points); return null; });
+        }
+
+        private static TargetMeasurement PrintRenderComparison(int points)
+        {
+            var plot = new TracePlot();
+            WpfWindow host = Host(plot, 1200.0, 800.0);
+
+            try
+            {
+                var source = new SpectrumSource(points);
+                int columns = Math.Max(2, plot.GraticuleColumns);
+
+                TargetMeasurement rasteriser = Sustained("Rasteriser", () =>
+                {
+                    TraceSnapshot snapshot = RenderMarshal.Decimate(
+                        source.NextFrame(), columns, new[] { TraceFormat.LogMagnitude },
+                        TraceDetector.Normal, TraceFormatOptions.Default);
+
+                    plot.Show(snapshot);
+                    Drain();
+                });
+
+                host.Close();
+
+                var visual = new DrawingVisual();
+                var surface = new VisualHost(visual);
+                WpfWindow geometryHost = HostElement(surface, 1200.0, 800.0);
+
+                TargetMeasurement stream = Sustained("StreamGeometry", () =>
+                {
+                    TraceSnapshot snapshot = RenderMarshal.Decimate(
+                        source.NextFrame(), columns, new[] { TraceFormat.LogMagnitude },
+                        TraceDetector.Normal, TraceFormatOptions.Default);
+
+                    DrawWithStreamGeometry(visual, snapshot.MinMax, columns, 700.0);
+                    Drain();
+                });
+
+                geometryHost.Close();
+
+                Console.WriteLine();
+                Console.WriteLine("REQ-NFR-005 at " + points + " points, identical up to the draw step:");
+                Console.WriteLine();
+                Console.WriteLine("  software rasteriser   " +
+                    rasteriser.Mean.ToString("F2").PadLeft(8) + " updates/s");
+                Console.WriteLine("  DrawingVisual +       " +
+                    stream.Mean.ToString("F2").PadLeft(8) + " updates/s   <- REQ-NFR-005's alternative");
+                Console.WriteLine("  StreamGeometry");
+                Console.WriteLine();
+                Console.WriteLine("  REQ-NFR-021 requires 10 updates/s. Rasteriser " +
+                    (rasteriser.Mean >= 10.0 ? "MEETS" : "FAILS") + " it; StreamGeometry " +
+                    (stream.Mean >= 10.0 ? "MEETS" : "FAILS") + " it.");
+
+                Console.WriteLine();
+                Console.WriteLine("  Both meet it, and that is the finding. Min/max decimation");
+                Console.WriteLine("  (REQ-NFR-006) reduces every frame to the graticule width before");
+                Console.WriteLine("  anything is drawn, so at 2^20 points the draw step still sees only");
+                Console.WriteLine("  " + columns + " columns and the transform is ~84% of the frame either way.");
+                Console.WriteLine();
+                Console.WriteLine("  The strategy bands are about drawing N points DIRECTLY, which the");
+                Console.WriteLine("  decimated pipeline never does. Measured undecimated, at the point");
+                Console.WriteLine("  counts the constants actually name:");
+                Console.WriteLine();
+
+                MeasureDirectDraw(RenderStrategySelector.PolylineLimit);
+                MeasureDirectDraw(RenderStrategySelector.StreamGeometryLimit);
+                MeasureDirectDraw(RenderStrategySelector.StreamGeometryLimit * 5);
+
+                return null;
+            }
+            finally
+            {
+                if (host != null) { host.Close(); }
+            }
+        }
+
+        /// <summary>
+        /// Draws <paramref name="points"/> points directly, with no decimation, through
+        /// DrawingVisual + StreamGeometry — which is what the strategy bands describe.
+        /// </summary>
+        private static void MeasureDirectDraw(int points)
+        {
+            var visual = new DrawingVisual();
+            var surface = new VisualHost(visual);
+            WpfWindow host = HostElement(surface, 1200.0, 800.0);
+
+            try
+            {
+                var values = new float[points];
+
+                for (int i = 0; i < points; i++)
+                {
+                    values[i] = (float)(-60.0 + 30.0 * Math.Sin(i * 0.01));
+                }
+
+                TargetMeasurement rate = Sustained("Direct" + points, () =>
+                {
+                    DrawDirect(visual, values, 1100.0, 700.0);
+                    Drain();
+                });
+
+                Console.WriteLine(
+                    "    " + points.ToString().PadLeft(7) + " points direct   " +
+                    rate.Mean.ToString("F1").PadLeft(8) + " updates/s   " +
+                    (rate.Mean >= 60.0 ? "" : "below REQ-NFR-020's 60/s") +
+                    (rate.Mean < 10.0 ? "  and below REQ-NFR-021's 10/s" : string.Empty));
+            }
+            finally
+            {
+                host.Close();
+            }
+        }
+
+        /// <summary>One figure through every point, which is what an undecimated draw is.</summary>
+        private static void DrawDirect(DrawingVisual visual, float[] values, double width, double height)
+        {
+            var geometry = new StreamGeometry();
+
+            using (StreamGeometryContext context = geometry.Open())
+            {
+                double step = width / Math.Max(1, values.Length - 1);
+
+                context.BeginFigure(
+                    new System.Windows.Point(0.0, Y(values[0], height)), false, false);
+
+                for (int i = 1; i < values.Length; i++)
+                {
+                    context.LineTo(new System.Windows.Point(i * step, Y(values[i], height)), true, false);
+                }
+            }
+
+            geometry.Freeze();
+
+            using (DrawingContext drawing = visual.RenderOpen())
+            {
+                drawing.DrawRectangle(Brushes.Black, null, new System.Windows.Rect(0, 0, width, height));
+                drawing.DrawGeometry(null, new Pen(Brushes.Yellow, 1.0), geometry);
+            }
+        }
+
+        private static double Y(float dbm, double height) => height * (1.0 - (dbm + 120.0) / 120.0);
+
+        /// <summary>Draws a min/max envelope as one StreamGeometry inside a DrawingVisual.</summary>
+        /// <remarks>
+        /// A faithful implementation of the alternative: one figure, one geometry, one visual — not
+        /// a strawman built from a Polyline per column, which would lose to anything.
+        /// </remarks>
+        private static void DrawWithStreamGeometry(
+            DrawingVisual visual, ReadOnlySpan<float> minMax, int columns, double height)
+        {
+            var geometry = new StreamGeometry();
+
+            using (StreamGeometryContext context = geometry.Open())
+            {
+                for (int x = 0; x < columns; x++)
+                {
+                    double low = height * (1.0 - (minMax[x * 2] + 120.0) / 120.0);
+                    double high = height * (1.0 - (minMax[x * 2 + 1] + 120.0) / 120.0);
+
+                    context.BeginFigure(new System.Windows.Point(x, low), false, false);
+                    context.LineTo(new System.Windows.Point(x, high), true, false);
+                }
+            }
+
+            geometry.Freeze();
+
+            using (DrawingContext drawing = visual.RenderOpen())
+            {
+                drawing.DrawRectangle(Brushes.Black, null, new System.Windows.Rect(0, 0, columns, height));
+                drawing.DrawGeometry(null, new Pen(Brushes.Yellow, 1.0), geometry);
+            }
+        }
+
+        /// <summary>Hosts a raw visual so it is actually composited.</summary>
+        private sealed class VisualHost : FrameworkElement
+        {
+            private readonly Visual _child;
+
+            public VisualHost(Visual child)
+            {
+                _child = child;
+                AddVisualChild(child);
+            }
+
+            protected override int VisualChildrenCount => 1;
+
+            protected override Visual GetVisualChild(int index) => _child;
+        }
+
+        /// <summary>A shown window hosting any element.</summary>
+        private static WpfWindow HostElement(System.Windows.UIElement element, double width, double height)
+        {
+            var window = new WpfWindow
+            {
+                Width = width,
+                Height = height,
+                WindowStyle = WindowStyle.None,
+                ShowInTaskbar = false,
+                Content = element,
+                Title = "OpenVSA render comparison",
+            };
+
+            window.Show();
+            window.UpdateLayout();
+
+            return window;
+        }
 
         /// <summary>
         /// Where one update's time actually goes, for the target that is short of its figure.

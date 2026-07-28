@@ -32,6 +32,12 @@ namespace OpenVSA.Benchmarks
                 return CompareFftProviders();
             }
 
+            if (Has(args, "--render-compare"))
+            {
+                WindowedMeasurements.CompareRenderStrategies(1 << 20);
+                return 0;
+            }
+
             if (Has(args, "--stages"))
             {
                 WindowedMeasurements.StageBreakdown(1 << 20);
