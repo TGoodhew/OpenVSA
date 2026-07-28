@@ -122,6 +122,8 @@ PHASE_OVERRIDES = {
     "REQ-DSP-001a": (2, "carrier/timing/phase estimators are the thing under test"),
     "REQ-ARC-002a": (2, "needs a demod measurement to survive the front-end change"),
     "REQ-NFR-022": (2, "benchmarks flexible demod at 16-QAM"),
+    "REQ-NFR-032a": (2, "an error summary is the demodulator's output"),
+    "REQ-DAT-002a": (3, "REQ-REC-005's export formats do not exist yet"),
     "REQ-NFR-023": (2, "benchmarks flexible demod at 1024-QAM with an equaliser"),
 
     # --- Verifiable only once recording and a real front end exist (Phase 3) ------------------
