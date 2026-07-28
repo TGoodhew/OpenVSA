@@ -85,6 +85,13 @@ namespace OpenVSA.Ui.Dialogs
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             ShowInTaskbar = false;
 
+            // A settings dialog is chrome, so it follows the chrome theme (REQ-UI-081,
+            // REQ-UI-083). Resource references rather than brushes, so a theme chosen while this
+            // dialog is open reaches it without it being reopened — which matters here more than
+            // anywhere, because the chooser that changes the theme is on one of these pages.
+            SetResourceReference(BackgroundProperty, Theming.ChromeKeys.SurfaceBackground);
+            SetResourceReference(ForegroundProperty, Theming.ChromeKeys.SurfaceForeground);
+
             _mode = options.ModeFor(DialogName);
             _tabsExpanded = !options.TabsCollapsedByDefault;
 
@@ -399,6 +406,11 @@ namespace OpenVSA.Ui.Dialogs
                 TabStripPlacement = _mode == DialogMode.TabsOnLeft ? Dock.Left : Dock.Top,
             };
 
+            // A TabControl paints its own page area, so theming the window alone leaves a white
+            // slab over a dark dialog — which is what the screenshot showed after the window
+            // itself was themed and this was not.
+            Themed(tabs);
+
             bool collapsed = AreTabsCollapsed;
 
             foreach (SettingsPage page in _pages)
@@ -452,7 +464,7 @@ namespace OpenVSA.Ui.Dialogs
                 stack.Children.Add(expander);
             }
 
-            return new ScrollViewer
+            var scroller = new ScrollViewer
             {
                 Content = stack,
                 VerticalScrollBarVisibility =
@@ -460,6 +472,22 @@ namespace OpenVSA.Ui.Dialogs
                 HorizontalScrollBarVisibility =
                     vertical ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto,
             };
+
+            Themed(scroller);
+            return scroller;
+        }
+
+        /// <summary>
+        /// Points a control's background and foreground at the chrome theme (<c>REQ-UI-083</c>).
+        /// </summary>
+        /// <remarks>
+        /// Resource references rather than brushes, so a theme chosen while the dialog is open
+        /// reaches a presentation that is already built.
+        /// </remarks>
+        private static void Themed(Control control)
+        {
+            control.SetResourceReference(BackgroundProperty, Theming.ChromeKeys.SurfaceBackground);
+            control.SetResourceReference(ForegroundProperty, Theming.ChromeKeys.SurfaceForeground);
         }
 
         private object BuildFrame()
