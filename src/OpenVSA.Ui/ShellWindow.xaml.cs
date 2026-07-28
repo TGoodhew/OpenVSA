@@ -669,6 +669,23 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            // Scale X magnifies the display; Scale X and Y does both. Neither touches the
+            // measurement, which is what separates them from Set centre and span (#397).
+            if (_areaAction == Rendering.AreaSelectAction.ScaleX ||
+                _areaAction == Rendering.AreaSelectAction.ScaleBoth)
+            {
+                var plot = sender as TracePlot;
+
+                ScaleXToArea(plot, area);
+
+                if (_areaAction == Rendering.AreaSelectAction.ScaleBoth)
+                {
+                    ScaleYToArea(plot, area);
+                }
+
+                return;
+            }
+
             SpectrumEngine engine = _engine;
 
             if (engine == null || engine.Plan == null)

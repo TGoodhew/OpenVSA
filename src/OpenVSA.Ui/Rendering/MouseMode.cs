@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace OpenVSA.Ui.Rendering
 {
@@ -96,47 +96,29 @@ namespace OpenVSA.Ui.Rendering
         }
 
         /// <summary>
-        /// Why an area action cannot be offered yet, or <c>null</c> when it can.
+        /// Why an area action cannot be offered, or <c>null</c> when it can.
         /// </summary>
         /// <param name="action">The action.</param>
         /// <remarks>
         /// <para>
-        /// Scaling the X axis without changing the measurement means drawing part of a computed
-        /// trace across the whole graticule, and saying so on the axis — the centre and span
-        /// readouts are editable hot spots that set the measurement, so a display that had been
-        /// magnified behind them would make both of them lie. That annotation is the display-range
-        /// work of <c>REQ-UI-054</c>, and it is not built.
+        /// <strong>All four are offered now.</strong> Scale X and Scale X and Y were refused for as
+        /// long as there was no way to say what band was actually drawn: the centre and span
+        /// readouts are editable hot spots that set the measurement, so a display magnified behind
+        /// them would make both of them lie. <c>TracePlot</c>'s display range and its "Disp"
+        /// annotation are that way (#397), so the refusal is gone.
         /// </para>
         /// <para>
-        /// <strong>Setting the centre and span is not a poor substitute for it here.</strong>
-        /// OpenVSA's zoom re-analyses the block it already has — no re-tune, no re-arm — so it
-        /// gives more resolution over the dragged band rather than the same points magnified. The
-        /// two are still different operations, which is why this one is refused rather than
-        /// quietly redirected.
+        /// <strong>Setting the centre and span is still a different operation.</strong> OpenVSA's
+        /// zoom re-analyses the block it already has — no re-tune, no re-arm — so it gives more
+        /// resolution over the dragged band rather than the same points magnified. Scale X
+        /// magnifies what was already computed. Both are useful and they are not substitutes.
+        /// </para>
+        /// <para>
+        /// Kept rather than deleted: the shape is how a later action arrives disabled with a reason
+        /// instead of present and inert, which is the rule the menus and toolbars keep.
         /// </para>
         /// </remarks>
-        public static string ReasonAgainst(AreaSelectAction action)
-        {
-            switch (action)
-            {
-                case AreaSelectAction.ScaleX:
-                case AreaSelectAction.ScaleBoth:
-                    // The cross-reference here used to name REQ-UI-054, which provides no such
-                    // thing — that was a judgement call made when this was written and it did not
-                    // survive REQ-UI-054 being built. What Scale X needs is annotation reporting
-                    // the DISPLAYED frequency range when it differs from the measured one, which
-                    // belongs with REQ-UI-040's annotation positions and is tracked separately.
-                    return "Scaling X without changing the measurement needs annotation that " +
-                           "reports the displayed frequency range when it differs from the " +
-                           "measured one, so that the centre and span readouts do not describe a " +
-                           "band the trace is no longer showing. Set centre and span re-analyses " +
-                           "the dragged band without re-acquiring, which gives more resolution " +
-                           "rather than the same points magnified.";
-
-                default:
-                    return null;
-            }
-        }
+        public static string ReasonAgainst(AreaSelectAction action) => null;
 
         /// <summary>The mode with a given name, or <c>null</c>.</summary>
         /// <param name="name">The name, compared exactly.</param>

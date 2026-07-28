@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -602,6 +602,41 @@ namespace OpenVSA.Ui
         /// from the ladder rather than set to an arbitrary figure, so that the graticule stays
         /// readable — an axis of 3.7 dB per division is a scale nobody can read a level off.
         /// </remarks>
+        /// <summary>
+        /// Magnifies the display into a dragged band, leaving the measurement alone
+        /// (<c>REQ-UI-063</c>'s Scale X, #397).
+        /// </summary>
+        /// <param name="plot">The trace that was dragged over.</param>
+        /// <param name="area">The rectangle.</param>
+        /// <remarks>
+        /// <strong>The display only.</strong> The centre, the span and the resolution bandwidth are
+        /// untouched and go on being annotated as measured; the "Disp" note says what band is
+        /// actually drawn. That is the whole difference between this and Set centre and span, which
+        /// re-analyses the dragged band and gives more resolution rather than the same points
+        /// magnified.
+        /// </remarks>
+        private void ScaleXToArea(TracePlot plot, AreaSelectedEventArgs area)
+        {
+            if (plot == null)
+            {
+                return;
+            }
+
+            if (!plot.SetDisplayRange(area.StartHz, area.StopHz))
+            {
+                StatusText.Content =
+                    "That band holds fewer than two measured points. Magnifying past the " +
+                    "resolution of the data stretches one point across the screen; Set centre " +
+                    "and span re-analyses the band and gives more resolution instead.";
+                return;
+            }
+
+            StatusText.Content =
+                "Display magnified to " + EngineeringText.Frequency(plot.DisplayCentreHz, 6) +
+                " ± " + EngineeringText.Frequency(plot.DisplaySpanHz / 2.0, 4) +
+                " — the measurement is unchanged.";
+        }
+
         private void ScaleYToArea(TracePlot plot, AreaSelectedEventArgs area)
         {
             if (plot == null || !area.HasLevels)
