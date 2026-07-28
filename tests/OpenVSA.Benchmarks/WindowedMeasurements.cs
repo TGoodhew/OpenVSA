@@ -5,6 +5,7 @@ using System.Threading;
 using WpfWindow = System.Windows.Window;
 using System.Windows;
 using System.Windows.Threading;
+using OpenVSA.Core;
 using OpenVSA.Dsp.Fft;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.PerformanceGate;
@@ -38,6 +39,88 @@ namespace OpenVSA.Benchmarks
         /// result, short enough that the whole gate is runnable in CI.
         /// </remarks>
         public static readonly TimeSpan MeasurementWindow = TimeSpan.FromSeconds(6.0);
+
+        /// <summary>
+        /// Where one update's time actually goes, for the target that is short of its figure.
+        /// </summary>
+        /// <remarks>
+        /// Kept rather than done once and thrown away, because "the FFT dominates" is the sort of
+        /// belief that outlives the measurement it came from. Anyone proposing to make
+        /// <c>REQ-NFR-021</c> faster should run this first and find out where the time is now.
+        /// </remarks>
+        public static void StageBreakdown(int points)
+        {
+            // Its own STA thread with a dispatcher, like every other measurement here: a TracePlot
+            // is a Grid, and a Grid cannot be constructed on an MTA thread at all.
+            OnStaThread(() => { PrintStageBreakdown(points); return null; });
+        }
+
+        private static TargetMeasurement PrintStageBreakdown(int points)
+        {
+            var plot = new TracePlot();
+            WpfWindow host = Host(plot, 1200.0, 800.0);
+
+            try
+            {
+                var source = new SpectrumSource(points);
+                int columns = Math.Max(2, plot.GraticuleColumns);
+
+                source.NextFrame();
+
+                var names = new[] { "unused", "SpectrumComputer.Compute", "unused", "decimate", "draw" };
+                var totals = new double[names.Length];
+                const int Passes = 12;
+
+                for (int pass = 0; pass < Passes; pass++)
+                {
+                    double[] stages = source.TimeStages();
+
+                    for (int i = 0; i < stages.Length; i++)
+                    {
+                        totals[i] += stages[i];
+                    }
+
+                    var clock = Stopwatch.StartNew();
+                    TraceSnapshot snapshot = RenderMarshal.Decimate(
+                        source.LastFrame, columns, new[] { TraceFormat.LogMagnitude },
+                        TraceDetector.Normal, TraceFormatOptions.Default);
+                    totals[3] += clock.Elapsed.TotalMilliseconds;
+
+                    clock.Restart();
+                    plot.Show(snapshot);
+                    Drain();
+                    totals[4] += clock.Elapsed.TotalMilliseconds;
+                }
+
+                double whole = 0.0;
+
+                foreach (double t in totals)
+                {
+                    whole += t;
+                }
+
+                Console.WriteLine("  Stage breakdown for " + points + " points, mean of " + Passes + ":");
+
+                for (int i = 0; i < names.Length; i++)
+                {
+                    double ms = totals[i] / Passes;
+
+                    Console.WriteLine(
+                        "    " + names[i].PadRight(18) + ms.ToString("F2").PadLeft(8) + " ms   " +
+                        (100.0 * totals[i] / whole).ToString("F1").PadLeft(5) + "%");
+                }
+
+                Console.WriteLine("    " + "whole update".PadRight(18) +
+                                  (whole / Passes).ToString("F2").PadLeft(8) + " ms   " +
+                                  (Passes * 1000.0 / whole).ToString("F2") + " updates/s");
+
+                return null;
+            }
+            finally
+            {
+                host.Close();
+            }
+        }
 
         /// <summary>Measures every rendered target this build can measure.</summary>
         /// <returns>One measurement per target.</returns>
@@ -283,56 +366,87 @@ namespace OpenVSA.Benchmarks
         /// division a live measurement has: acquisition hands over a block, and everything after
         /// it is what the update rate is measuring.
         /// </remarks>
+        /// <summary>
+        /// A block of samples and the product's own spectrum path from it to a frame.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Calls <see cref="SpectrumComputer"/> rather than reimplementing it.</strong> The
+        /// first version of this class did its own window, transform and magnitude loop, and so
+        /// measured a copy of the pipeline instead of the pipeline. That is not a small
+        /// difference: <c>Compute</c> widens and windows in a single pass, which at 2^20 points
+        /// saves a whole sweep of 16 MB of scratch that the copy was paying for. A performance
+        /// requirement measured against a reimplementation reports a number no user will ever see.
+        /// </para>
+        /// <para>
+        /// The samples are generated once and the transform runs per update, because that is the
+        /// division a live measurement has: acquisition hands over a block, and everything after
+        /// it is what the update rate measures.
+        /// </para>
+        /// </remarks>
         private sealed class SpectrumSource
         {
-            private readonly int _points;
-            private readonly OpenVSA.Dsp.Windowing.Window _window;
-            private readonly IFftProvider _fft;
-            private readonly double[] _samples;
-            private readonly double[] _scratch;
-            private readonly float[] _levels;
+            private readonly SpectrumComputer _computer;
+            private readonly IqBlock _block;
 
             public SpectrumSource(int points)
             {
-                _points = points;
-                _window = OpenVSA.Dsp.Windowing.Window.Get(
-                    OpenVSA.Dsp.Windowing.Window.Default, points);
-                _fft = new ManagedFftProvider();
+                _computer = new SpectrumComputer(
+                    OpenVSA.Dsp.Windowing.WindowType.FlatTop,
+                    new ManagedFftProvider(),
+                    new AmplitudeChain());
 
-                _samples = new double[points * 2];
-                _scratch = new double[points * 2];
-                _levels = new float[points];
+                var metadata = new IqBlockMetadata(
+                    points,
+                    2.0e6,
+                    1.0e9,
+                    false,
+                    1.0,
+                    0.0,
+                    1L,
+                    new DateTime(2026, 7, 28, 0, 0, 0, DateTimeKind.Utc),
+                    0.0,
+                    false,
+                    default(FrontEndId),
+                    null);
+
+                _block = IqBlock.Rent(metadata);
 
                 // A carrier off centre with a little noise, so the trace has structure to draw
                 // rather than a flat line the rasteriser can skip.
+                Span<float> samples = _block.GetSamples();
+
                 for (int n = 0; n < points; n++)
                 {
                     double angle = 2.0 * Math.PI * 0.1 * n;
 
-                    _samples[n * 2] = 0.5 * Math.Cos(angle) + 0.01 * Math.Cos(0.7 * n);
-                    _samples[n * 2 + 1] = 0.5 * Math.Sin(angle) + 0.01 * Math.Sin(0.31 * n);
+                    samples[n * 2] = (float)(0.5 * Math.Cos(angle) + 0.01 * Math.Cos(0.7 * n));
+                    samples[n * 2 + 1] = (float)(0.5 * Math.Sin(angle) + 0.01 * Math.Sin(0.31 * n));
                 }
             }
 
-            /// <summary>Window, transform, magnitude, and a frame — one update's worth.</summary>
+            /// <summary>The frame the last call produced.</summary>
+            public SpectrumFrame LastFrame { get; private set; }
+
+            /// <summary>One update's worth: the product's whole spectrum computation.</summary>
             public SpectrumFrame NextFrame()
             {
-                Array.Copy(_samples, _scratch, _samples.Length);
-                _window.ApplyTo(new Span<double>(_scratch));
-                _fft.Forward(_scratch);
+                LastFrame = _computer.Compute(_block);
+                return LastFrame;
+            }
 
-                for (int k = 0; k < _points; k++)
-                {
-                    double re = _scratch[k * 2];
-                    double im = _scratch[k * 2 + 1];
-                    double power = re * re + im * im;
+            /// <summary>One update, timed as a whole — the computation is not divisible here.</summary>
+            /// <remarks>
+            /// The stage split the first version reported came from reimplementing the pipeline in
+            /// pieces. <c>Compute</c> is one call, and taking it apart again to time its insides
+            /// would mean measuring the copy once more.
+            /// </remarks>
+            public double[] TimeStages()
+            {
+                var clock = Stopwatch.StartNew();
+                NextFrame();
 
-                    _levels[k] = power > 0.0 ? (float)(10.0 * Math.Log10(power)) : -400.0f;
-                }
-
-                return SpectrumFrame.FromLevels(
-                    _levels, 999.0e6, 2.0e6 / _points,
-                    OpenVSA.Dsp.Windowing.WindowType.FlatTop, 3.8194);
+                return new[] { 0.0, clock.Elapsed.TotalMilliseconds, 0.0, 0.0, 0.0 };
             }
         }
 
@@ -371,6 +485,7 @@ namespace OpenVSA.Benchmarks
             {
                 throw new InvalidOperationException("A windowed measurement failed.", failure);
             }
+
 
             return result;
         }
