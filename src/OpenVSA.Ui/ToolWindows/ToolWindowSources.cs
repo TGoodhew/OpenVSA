@@ -281,23 +281,119 @@ namespace OpenVSA.Ui.ToolWindows
         /// <inheritdoc />
         public override bool IsLive => true;
 
+        /// <summary>
+        /// How a two-dimensional IQ reading is spelled here (<c>REQ-UI-032</c>).
+        /// </summary>
+        /// <remarks>
+        /// Both pairs are offered and Mag &amp; Phase is where it starts, which the requirement
+        /// states outright.
+        /// </remarks>
+        public IqReadoutPair IqPair
+        {
+            get { return _iqPair; }
+
+            set
+            {
+                _iqPair = value;
+                Refresh();
+            }
+        }
+
+        private IqReadoutPair _iqPair = MarkerWindowReadouts.DefaultIqPair;
+
+        /// <summary>
+        /// The band and channel readouts, which are computed elsewhere or not yet at all.
+        /// </summary>
+        /// <remarks>
+        /// A value left null shows <c>NAN</c>. <c>REQ-DEM-071</c> puts it plainly: a metric that is
+        /// applicable but not yet computed shows <c>NAN</c> per <c>REQ-UI-032</c> rather than a
+        /// stale value from the previous format — and a blank row would read as "no such
+        /// measurement" rather than "no answer yet".
+        /// </remarks>
+        public IDictionary<string, double?> Readings { get; } =
+            new Dictionary<string, double?>(StringComparer.Ordinal);
+
+        /// <summary>The four fields of <c>REQ-UI-032</c>, by name.</summary>
+        public IDictionary<string, string> Fields { get; } =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+
         /// <inheritdoc />
         public override void Refresh()
         {
             var lines = new List<string>();
 
+            // The per-marker rows first: REQ-UI-032's Mkr N, its delta to the trace reference, and
+            // the frequency counter, each numbered.
             foreach (MarkerReadout readout in _markers.Readouts())
             {
                 lines.Add(
                     (readout.IsActive ? "▶ " : "  ") + readout.TraceLetter + "  " + readout.Text);
             }
 
-            if (lines.Count == 0)
+            if (_markers.Readouts().Count == 0)
             {
                 lines.Add("No markers. Marker → Normal marker at peak.");
             }
 
+            lines.Add(string.Empty);
+
+            // Then the readouts the requirement lists, whether or not anything has computed them.
+            // A row that is absent until it has a value is a row a user cannot find; one showing
+            // NAN says the measurement exists and has no answer yet.
+            foreach (string label in MarkerWindowReadouts.Labels)
+            {
+                if (label == MarkerWindowReadouts.MarkerLabel ||
+                    label == MarkerWindowReadouts.MarkerDeltaTraceLabel ||
+                    label == MarkerWindowReadouts.FrequencyCounterLabel)
+                {
+                    lines.Add(MarkerWindowReadouts.Row(
+                        MarkerWindowReadouts.Numbered(label, ActiveNumber()),
+                        Reading(label)));
+
+                    continue;
+                }
+
+                lines.Add(MarkerWindowReadouts.Row(label, Reading(label)));
+            }
+
+            lines.Add(string.Empty);
+
+            foreach (string field in MarkerWindowReadouts.Fields)
+            {
+                string value;
+
+                lines.Add(MarkerWindowReadouts.Row(
+                    field,
+                    Fields.TryGetValue(field, out value) && !string.IsNullOrEmpty(value)
+                        ? value
+                        : MarkerWindowReadouts.NotANumber));
+            }
+
             _lines = new ReadOnlyCollection<string>(lines);
+        }
+
+        /// <summary>A reading's text, or <c>NAN</c> when nothing has computed it.</summary>
+        private string Reading(string label)
+        {
+            double? value;
+
+            return Readings.TryGetValue(label, out value) && value.HasValue
+                ? MarkerWindowReadouts.Value(value.Value)
+                : MarkerWindowReadouts.NotANumber;
+        }
+
+        /// <summary>The active marker's number, or 1 when there is none.</summary>
+        private int ActiveNumber()
+        {
+            foreach (MarkerReadout readout in _markers.Readouts())
+            {
+                if (readout.IsActive)
+                {
+                    return readout.Marker.Number;
+                }
+            }
+
+            return 1;
         }
 
         /// <inheritdoc />

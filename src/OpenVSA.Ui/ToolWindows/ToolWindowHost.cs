@@ -250,6 +250,65 @@ namespace OpenVSA.Ui.ToolWindows
             }
         }
 
+        /// <summary>
+        /// Gives the Markers window its own background colour (<c>REQ-UI-032</c>).
+        /// </summary>
+        /// <param name="colours">The themed colours.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="colours"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>"A dedicated tool window with its own background colour and its own font
+        /// slot."</strong> <c>Marker Window Background</c> is a themeable element of
+        /// <c>REQ-UI-022</c> in its own right, and this is the surface it exists for; without this
+        /// the entry appeared in the colour picker and changed nothing on screen.
+        /// </para>
+        /// <para>
+        /// The Markers window alone, for the reason <see cref="ApplyFonts"/> gives about the Marker
+        /// slot: an element that quietly restyled all eight panes would make "its own" untestable.
+        /// </para>
+        /// </remarks>
+        public void ApplyColours(ColourPreferences colours)
+        {
+            if (colours == null)
+            {
+                throw new ArgumentNullException(nameof(colours));
+            }
+
+            ContentControl pane;
+
+            if (!_panes.TryGetValue(ToolWindow.Markers, out pane))
+            {
+                return;
+            }
+
+            PlotColor colour = colours.ColourOf("Marker Window Background");
+
+            pane.Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(colour.A, colour.R, colour.G, colour.B));
+        }
+
+        /// <summary>The Markers window's pane, for a test to sample what it is drawn on.</summary>
+        public ContentControl MarkersPane
+        {
+            get
+            {
+                ContentControl pane;
+
+                return _panes.TryGetValue(ToolWindow.Markers, out pane) ? pane : null;
+            }
+        }
+
+        /// <summary>The Markers window's text block, for a test to read what it shows.</summary>
+        public TextBlock MarkersText
+        {
+            get
+            {
+                TextBlock text;
+
+                return _text.TryGetValue(ToolWindow.Markers, out text) ? text : null;
+            }
+        }
+
         private void Create(ToolWindow window)
         {
             var text = new TextBlock
