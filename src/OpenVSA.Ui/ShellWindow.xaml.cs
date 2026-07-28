@@ -17,6 +17,7 @@ using OpenVSA.Hal;
 using OpenVSA.Measurement;
 using System.IO;
 using OpenVSA.Capture.Triggering;
+using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.Dialogs;
@@ -298,6 +299,70 @@ namespace OpenVSA.Ui
 
         /// <summary>The chrome themes on offer (<c>REQ-UI-083</c>).</summary>
         public ThemeCatalogue Themes => _themes;
+
+        private readonly OpenVSA.Api.VsaApplication _automation = new OpenVSA.Api.VsaApplication();
+
+        /// <summary>
+        /// The automation surface over this shell (<c>REQ-API-001</c>, <c>REQ-LIM-003</c>).
+        /// </summary>
+        /// <remarks>
+        /// <strong>The same objects, not a parallel model.</strong> The limit verdicts the API
+        /// reports come from the evaluator this shell feeds and its own display reads, which is
+        /// what makes <c>REQ-LIM-003</c>'s "matches the on-screen pass/fail" true by construction
+        /// rather than by two computations agreeing.
+        /// </remarks>
+        public OpenVSA.Api.VsaApplication Automation => _automation;
+
+        /// <summary>The limit evaluator both the display and the API read (<c>REQ-LIM-003</c>).</summary>
+        public LimitEvaluator Limits => _automation.Measurements[0].Evaluator;
+
+        /// <summary>
+        /// Puts a limit test under evaluation, on screen and in the API together.
+        /// </summary>
+        /// <param name="test">The test, or <c>null</c> to remove it.</param>
+        public void SetLimitTest(LimitTest test)
+        {
+            Limits.Test = test;
+
+            foreach (char letter in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(letter);
+
+                if (plot != null)
+                {
+                    plot.LimitTest = test;
+                }
+            }
+
+            ShowLimitVerdict();
+        }
+
+        /// <summary>
+        /// Puts the standing verdict in the Markers window's <c>Limit</c> row
+        /// (<c>REQ-UI-032</c>, <c>REQ-LIM-003</c>).
+        /// </summary>
+        /// <remarks>
+        /// This is the on-screen pass/fail the API's answer is required to match, and it is read
+        /// from the same evaluator — so the two cannot disagree without one of them failing to
+        /// read at all.
+        /// </remarks>
+        private void ShowLimitVerdict()
+        {
+            var source = _toolWindows?.SourceOf(ToolWindow.Markers) as MarkerWindowSource;
+
+            if (source == null)
+            {
+                return;
+            }
+
+            LimitTestResult result = Limits.Latest;
+
+            source.Fields[MarkerWindowReadouts.LimitLabel] = result == null
+                ? MarkerWindowReadouts.NotANumber
+                : (result.Passed ? "PASS" : "FAIL");
+
+            _toolWindows.Refresh(ToolWindow.Markers);
+        }
 
         private readonly Dictionary<char, TraceWindow> _detached =
             new Dictionary<char, TraceWindow>();
@@ -2857,6 +2922,15 @@ namespace OpenVSA.Ui
             if (_analysis.Accumulator == TraceAccumulator.Spectrogram)
             {
                 _spectrogramHistory.Add(snapshot.Spectrum);
+            }
+
+            // REQ-LIM-003: one evaluation per frame, published whole, read by the display and by
+            // the API. Offered here rather than inside the plot so that a shell with four trace
+            // windows open evaluates once rather than four times.
+            if (Limits.Test != null)
+            {
+                Limits.Offer(snapshot.Spectrum);
+                ShowLimitVerdict();
             }
 
             if (Plot.Show(snapshot))

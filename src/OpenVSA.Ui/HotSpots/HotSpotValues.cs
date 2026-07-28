@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -234,11 +234,16 @@ namespace OpenVSA.Ui.HotSpots
         /// <summary>A hot spot over a frequency in hertz.</summary>
         /// <param name="hertz">The initial frequency.</param>
         /// <param name="step">Step per notch, in hertz.</param>
-        public static NumericHotSpotValue Frequency(double hertz, double step) =>
+        /// <param name="figures">
+        /// Significant figures. Six for a centre frequency, where the last digit is a real hertz
+        /// on a gigahertz carrier; fewer where the annotation band is crowded and the alternative
+        /// is the unit being clipped off the end (#396).
+        /// </param>
+        public static NumericHotSpotValue Frequency(double hertz, double step, int figures = 6) =>
             new NumericHotSpotValue(
                 hertz,
                 step,
-                v => EngineeringText.Frequency(v, 6),
+                v => EngineeringText.Frequency(v, figures),
                 text =>
                 {
                     double parsed;

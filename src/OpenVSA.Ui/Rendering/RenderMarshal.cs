@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using OpenVSA.Core.Threading;
@@ -208,38 +208,7 @@ namespace OpenVSA.Ui.Rendering
             TraceDetector detector = Detector;
             TraceFormatOptions options = FormatOptions;
 
-            // A fresh array per frame rather than a reused scratch, for the reason SpectrumFrame
-            // gives: it is published to another thread and must never be written again. At two
-            // floats per pixel column it is a few kilobytes per format, not a frame buffer.
-            var envelopes = new Dictionary<TraceFormat, float[]>(formats.Length);
-            var formatted = new float[frame.PointCount];
-
-            foreach (TraceFormat format in formats)
-            {
-                var envelope = new float[columns * 2];
-
-                if (format == TraceFormat.LogMagnitude)
-                {
-                    // The one the frame already holds; formatting it again would be the same
-                    // arithmetic twice.
-                    TraceEnvelope.Build(
-                        frame.LevelsDbm, columns, new Span<float>(envelope), detector,
-                        valuesAreDecibels: true);
-                }
-                else
-                {
-                    frame.Format(format, new Span<float>(formatted), options);
-
-                    // Whether the average detector converts to power is a property of the format,
-                    // not a constant. Averaging volts as though they were decibels — or the other
-                    // way round — is the same class of error either way.
-                    TraceEnvelope.Build(
-                        formatted, columns, new Span<float>(envelope), detector,
-                        valuesAreDecibels: false);
-                }
-
-                envelopes[format] = envelope;
-            }
+            TraceSnapshot snapshot = Decimate(frame, columns, formats, detector, options);
 
             lock (_slot)
             {
@@ -248,7 +217,7 @@ namespace OpenVSA.Ui.Rendering
                     Interlocked.Increment(ref _framesDropped);
                 }
 
-                _pending = new TraceSnapshot(frame, envelopes, columns);
+                _pending = snapshot;
             }
 
             if (Interlocked.Increment(ref _outstandingPosts) <= MaximumOutstandingPosts)
@@ -301,5 +270,90 @@ namespace OpenVSA.Ui.Rendering
 
             Interlocked.Exchange(ref _outstandingPosts, 0);
         }
+        /// <summary>
+        /// Decimates a frame to a width, producing a snapshot ready to draw.
+        /// </summary>
+        /// <param name="frame">The full-resolution spectrum.</param>
+        /// <param name="columns">Pixel columns to reduce to; at least one.</param>
+        /// <param name="formats">The formats to build envelopes for.</param>
+        /// <param name="detector">The detector to reduce with.</param>
+        /// <param name="options">Phase and group-delay options for the derived formats.</param>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="columns"/> is not positive.</exception>
+        /// <remarks>
+        /// <para>
+        /// Public and static because a plot has to be able to do this for itself when it is
+        /// resized. The marshal decimates to the width it was told about; a plot that has just
+        /// changed width holds a snapshot built for the old one, and
+        /// <c>TracePlot.Show</c> rightly refuses it — so with a measurement running the next frame
+        /// repairs the display and with nothing running there is no next frame and the trace
+        /// vanishes. That was the defect.
+        /// </para>
+        /// <para>
+        /// The same arithmetic the pump thread runs, called from the UI thread on a resize. That is
+        /// acceptable exactly because a resize is not a per-frame event: the cost this method
+        /// carries is why <c>REQ-NFR-010</c> keeps it off the dispatcher sixty times a second, not
+        /// why it may never be called there at all.
+        /// </para>
+        /// </remarks>
+        public static TraceSnapshot Decimate(
+            SpectrumFrame frame,
+            int columns,
+            TraceFormat[] formats,
+            TraceDetector detector,
+            TraceFormatOptions options)
+        {
+            if (frame == null)
+            {
+                throw new ArgumentNullException(nameof(frame));
+            }
+
+            if (formats == null)
+            {
+                throw new ArgumentNullException(nameof(formats));
+            }
+
+            if (columns < 1)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(columns), columns, "A snapshot is decimated to at least one column.");
+            }
+
+            // A fresh array per frame rather than a reused scratch, for the reason SpectrumFrame
+            // gives: it is published to another thread and must never be written again. At two
+            // floats per pixel column it is a few kilobytes per format, not a frame buffer.
+            var envelopes = new Dictionary<TraceFormat, float[]>(formats.Length);
+            var formatted = new float[frame.PointCount];
+
+            foreach (TraceFormat format in formats)
+            {
+                var envelope = new float[columns * 2];
+
+                if (format == TraceFormat.LogMagnitude)
+                {
+                    // The one the frame already holds; formatting it again would be the same
+                    // arithmetic twice.
+                    TraceEnvelope.Build(
+                        frame.LevelsDbm, columns, new Span<float>(envelope), detector,
+                        valuesAreDecibels: true);
+                }
+                else
+                {
+                    frame.Format(format, new Span<float>(formatted), options);
+
+                    // Whether the average detector converts to power is a property of the format,
+                    // not a constant. Averaging volts as though they were decibels — or the other
+                    // way round — is the same class of error either way.
+                    TraceEnvelope.Build(
+                        formatted, columns, new Span<float>(envelope), detector,
+                        valuesAreDecibels: false);
+                }
+
+                envelopes[format] = envelope;
+            }
+
+            return new TraceSnapshot(frame, envelopes, columns);
+        }
+
     }
 }

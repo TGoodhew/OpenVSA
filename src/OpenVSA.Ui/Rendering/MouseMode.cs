@@ -121,11 +121,17 @@ namespace OpenVSA.Ui.Rendering
             {
                 case AreaSelectAction.ScaleX:
                 case AreaSelectAction.ScaleBoth:
-                    return "Scaling X without changing the measurement needs the display-range " +
-                           "annotation of REQ-UI-054, so that the centre and span readouts do not " +
-                           "describe a band the trace is no longer showing. Set centre and span " +
-                           "re-analyses the dragged band without re-acquiring, which gives more " +
-                           "resolution rather than the same points magnified.";
+                    // The cross-reference here used to name REQ-UI-054, which provides no such
+                    // thing — that was a judgement call made when this was written and it did not
+                    // survive REQ-UI-054 being built. What Scale X needs is annotation reporting
+                    // the DISPLAYED frequency range when it differs from the measured one, which
+                    // belongs with REQ-UI-040's annotation positions and is tracked separately.
+                    return "Scaling X without changing the measurement needs annotation that " +
+                           "reports the displayed frequency range when it differs from the " +
+                           "measured one, so that the centre and span readouts do not describe a " +
+                           "band the trace is no longer showing. Set centre and span re-analyses " +
+                           "the dragged band without re-acquiring, which gives more resolution " +
+                           "rather than the same points magnified.";
 
                 default:
                     return null;

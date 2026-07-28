@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -887,6 +887,18 @@ namespace OpenVSA.Ui.Rendering
         private static int Clamp(int value, int low, int high) =>
             value < low ? low : (value > high ? high : value);
 
+        /// <summary>Whether this plot is holding a frame to draw (#395).</summary>
+        public bool HasTrace => _snapshot != null;
+
+        /// <summary>
+        /// How many columns the held snapshot was decimated to, or zero.
+        /// </summary>
+        /// <remarks>
+        /// A snapshot whose width no longer matches the graticule is one <see cref="Show"/> will
+        /// refuse, so this is what says whether a resize left the plot able to take the next frame.
+        /// </remarks>
+        public int CurrentSnapshotColumns => _snapshot == null ? 0 : _snapshot.Columns;
+
         /// <summary>The format the trace is currently drawn in.</summary>
         public TraceFormat CurrentFormat
         {
@@ -1667,6 +1679,13 @@ namespace OpenVSA.Ui.Rendering
                 FontSize = 11.0,
                 HorizontalAlignment = horizontal,
                 TextAlignment = AlignmentOf(horizontal),
+
+                // Whole words or nothing, never half a unit. A text block arranged narrower than
+                // its text clips silently, and a clipped annotation does not read as truncated —
+                // it reads as a different measurement. "RBW 1.000000 kH" is what this produced,
+                // and kH is not a unit; WordEllipsis drops the unit whole and says so with the
+                // ellipsis rather than inventing one (#396).
+                TextTrimming = TextTrimming.WordEllipsis,
             };
 
             spot.ValueChanged += OnHotSpotChanged;
@@ -1801,7 +1820,12 @@ namespace OpenVSA.Ui.Rendering
 
             _format.Value = new ChoiceHotSpotValue(TraceFormatText.Names, 0);
 
-            var bandwidth = NumericHotSpotValue.Frequency(1e3, 1.0);
+            // Four figures, not six. The upper band carries the format, the RBW and the trigger
+            // channel across one third of the graticule's width, and at six figures the unit was
+            // the part that fell off the end — "RBW 1.000000 kH", which is not a unit (#396). Four
+            // figures resolve a resolution bandwidth to a part in ten thousand, which is finer
+            // than any instrument sets one.
+            var bandwidth = NumericHotSpotValue.Frequency(1e3, 1.0, figures: 4);
             bandwidth.ProportionalStep = 0.1;
             bandwidth.Minimum = 1e-3;
             _resolutionBandwidth.Value = bandwidth;
@@ -2122,7 +2146,14 @@ namespace OpenVSA.Ui.Rendering
 
             _marginPixels = margin;
             BuildLayout();
-            Redraw(null);
+
+            // The last frame re-decimated to the new width, not discarded (REQ-UI-007's
+            // sibling defect, filed as #395). The marshal decimates to the width it was told
+            // about, and Show rightly refuses a snapshot built for a different one — so with a
+            // measurement running the next frame repairs the display, and with nothing running
+            // there is no next frame and the trace disappears on a resize. Redrawing the frame
+            // this plot already holds costs one decimation per resize and nothing per frame.
+            Redraw(Redecimated());
 
             if (GraticuleColumns != previousColumns)
             {
@@ -2132,6 +2163,39 @@ namespace OpenVSA.Ui.Rendering
                     handler(this, EventArgs.Empty);
                 }
             }
+        }
+
+        /// <summary>
+        /// The last frame decimated to the width this plot now has, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// Returns the held snapshot unchanged when the width has not moved, so a rebuild that
+        /// changes only the DPI or the annotation band does no arithmetic it need not.
+        /// </remarks>
+        private TraceSnapshot Redecimated()
+        {
+            TraceSnapshot held = _snapshot;
+
+            if (held == null || _layout == null)
+            {
+                return held;
+            }
+
+            int columns = _layout.Graticule.Width;
+
+            if (columns < 1 || held.Columns == columns)
+            {
+                return held;
+            }
+
+            _snapshot = RenderMarshal.Decimate(
+                held.Spectrum,
+                columns,
+                new[] { CurrentFormat },
+                TraceDetector.Normal,
+                _formatOptions);
+
+            return _snapshot;
         }
 
         private void BuildLayout()
