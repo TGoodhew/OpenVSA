@@ -42,6 +42,34 @@ jobs:
       - name: Test
         run: dotnet test OpenVSA.slnx -c Release --no-build --logger "trx;LogFileName=results.trx"
 
+      # REQ-TST-007, and the shared criterion of every one of REQ-NFR-020..026: the harness runs
+      # in CI and fails the build on a >15 % regression against a stored baseline.
+      #
+      # Two of the targets need a real desktop — twenty top-level windows, and a shell launched and
+      # driven through UI Automation — so this cannot move to a container. It runs Release x64
+      # because a Debug measurement is not a measurement.
+      #
+      # On a runner the machine class will not match any stored baseline, so the gate records the
+      # figures and does not judge them: the targets are stated for the reference machine and
+      # comparing across machine classes fires on the hardware rather than on the change. What CI
+      # still catches, and what nothing else does, is a target that has stopped being measured at
+      # all — the harness may not quietly shrink to whatever happens to work.
+      - name: Performance gate
+        run: |
+          $exe = "tests\OpenVSA.Benchmarks\bin\x64\Release\net472\OpenVSA.Benchmarks.exe"
+          & $exe --gate --measure --measurements "$env:RUNNER_TEMP\measurements.tsv"
+          if ($LASTEXITCODE -ne 0) { throw "the harness could not take its measurements" }
+          & $exe --gate --measurements "$env:RUNNER_TEMP\measurements.tsv"
+          exit $LASTEXITCODE
+
+      - name: Publish performance figures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-measurements
+          path: ${{ runner.temp }}/measurements.tsv
+          if-no-files-found: warn
+
       - name: Publish test results
         if: always()
         uses: actions/upload-artifact@v4
