@@ -56,10 +56,19 @@ jobs:
       # all — the harness may not quietly shrink to whatever happens to work.
       - name: Performance gate
         run: |
-          # ".\" is required: PowerShell's call operator treats a bare relative path as a
-          # command name and reports "the module 'tests' could not be loaded".
-          $exe = ".\tests\OpenVSA.Benchmarks\bin\x64\Release\net472\OpenVSA.Benchmarks.exe"
-          if (-not (Test-Path $exe)) { throw "no benchmark host at $exe" }
+          # Found rather than hard-coded. The output directory is bin\x64\Release\net472 here and
+          # bin\Release\net472 elsewhere depending on how the platform is resolved, and guessing it
+          # produced a step that failed with "no benchmark host at ..." while the binary sat one
+          # directory away. Searching states plainly what it found.
+          $exe = Get-ChildItem -Path .\tests\OpenVSA.Benchmarks -Recurse -Filter OpenVSA.Benchmarks.exe |
+                 Where-Object { $_.FullName -match '\\Release\\' } |
+                 Sort-Object LastWriteTime -Descending |
+                 Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) {
+            Get-ChildItem -Path .\tests\OpenVSA.Benchmarks -Recurse -Filter *.exe | ForEach-Object { $_.FullName }
+            throw "no Release build of the benchmark host"
+          }
+          Write-Output "harness: $exe"
           & $exe --gate --measure --measurements "$env:RUNNER_TEMP\measurements.tsv"
           if ($LASTEXITCODE -ne 0) { throw "the harness could not take its measurements" }
           & $exe --gate --measurements "$env:RUNNER_TEMP\measurements.tsv"
