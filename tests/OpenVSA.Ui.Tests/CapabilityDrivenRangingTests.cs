@@ -30,21 +30,32 @@ namespace OpenVSA.Ui.Tests
     /// capabilities declare.
     /// </para>
     /// </remarks>
+    [Collection("Shell")]
     public class CapabilityDrivenRangingTests
     {
+        private readonly ShellHost _host;
         private readonly ITestOutputHelper _output;
 
-        /// <summary>Takes xunit's output sink.</summary>
+        /// <summary>Takes the shared shell thread and xunit's output sink.</summary>
+        /// <param name="host">The thread every shell in this collection is built on.</param>
         /// <param name="output">Where the two sets of displayed ranges are written.</param>
-        public CapabilityDrivenRangingTests(ITestOutputHelper output)
+        /// <remarks>
+        /// <strong>The shared thread, not one of our own.</strong> Syncfusion's DockingManager keeps
+        /// thread-affine state from the first shell constructed, so building one on a different STA
+        /// thread breaks every other shell test in the run with "the calling thread cannot access
+        /// this object". The first version of this file did exactly that: it passed alone and on
+        /// this machine, and took 71 tests down in CI. ShellHost's own remarks warn about it.
+        /// </remarks>
+        public CapabilityDrivenRangingTests(ShellHost host, ITestOutputHelper output)
         {
+            _host = host;
             _output = output;
         }
 
         [Fact]
         public void SwitchingFrontEndsChangesTheDisplayedRanges()
         {
-            OnStaThread(() =>
+            _host.Run(() =>
             {
                 var shell = new ShellWindow();
 
@@ -93,7 +104,7 @@ namespace OpenVSA.Ui.Tests
         {
             // A pane still showing the previous instrument's limits after a disconnect is worse
             // than a blank one: it invites a setting that nothing can honour.
-            OnStaThread(() =>
+            _host.Run(() =>
             {
                 var shell = new ShellWindow();
 
@@ -141,30 +152,5 @@ namespace OpenVSA.Ui.Tests
             public long MaxPreTriggerSamples => 0L;
         }
 
-        private static void OnStaThread(Action action)
-        {
-            ExceptionDispatchInfo failure = null;
-
-            var thread = new Thread(() =>
-            {
-                try
-                {
-                    action();
-                }
-                catch (Exception e)
-                {
-                    failure = ExceptionDispatchInfo.Capture(e);
-                }
-            });
-
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            thread.Join();
-
-            if (failure != null)
-            {
-                failure.Throw();
-            }
-        }
     }
 }
