@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
@@ -193,6 +193,27 @@ namespace OpenVSA.Measurement.State
     }
 
     /// <summary>
+    /// A trace in a window of its own, and where that window is (<c>REQ-UI-003</c>).
+    /// </summary>
+    public sealed class DetachedTraceState
+    {
+        /// <summary>The trace's letter.</summary>
+        public string Trace { get; set; } = "A";
+
+        /// <summary>Left edge, in device-independent pixels.</summary>
+        public double Left { get; set; }
+
+        /// <summary>Top edge, in device-independent pixels.</summary>
+        public double Top { get; set; }
+
+        /// <summary>Width, in device-independent pixels.</summary>
+        public double Width { get; set; } = 760.0;
+
+        /// <summary>Height, in device-independent pixels.</summary>
+        public double Height { get; set; } = 520.0;
+    }
+
+    /// <summary>
     /// Display preferences, saved apart from the state (<c>REQ-STA-002</c>).
     /// </summary>
     public sealed class DisplayPreferencesState
@@ -296,6 +317,16 @@ namespace OpenVSA.Measurement.State
         /// "dark" as a boolean or as index 1 would have to be migrated the day one arrived.
         /// </remarks>
         public string ChromeTheme { get; set; } = "Dark";
+
+        /// <summary>
+        /// The traces that are in windows of their own, and where (<c>REQ-UI-003</c>).
+        /// </summary>
+        /// <remarks>
+        /// "and is captured in saved layout state" is the criterion's third clause. A layout that
+        /// remembered the docked panes and forgot a window on the second monitor would put the user
+        /// back with one screen's worth of what they left.
+        /// </remarks>
+        public List<DetachedTraceState> DetachedTraces { get; set; } = new List<DetachedTraceState>();
 
         /// <summary>Whether printing forces a white background (<c>REQ-UI-015</c>).</summary>
         public bool ForceWhiteBackgroundOnPrint { get; set; } = true;

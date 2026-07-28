@@ -299,6 +299,89 @@ namespace OpenVSA.Ui
         /// <summary>The chrome themes on offer (<c>REQ-UI-083</c>).</summary>
         public ThemeCatalogue Themes => _themes;
 
+        private readonly Dictionary<char, TraceWindow> _detached =
+            new Dictionary<char, TraceWindow>();
+
+        /// <summary>The traces currently in windows of their own (<c>REQ-UI-003</c>).</summary>
+        public IReadOnlyCollection<char> DetachedTraces => _detached.Keys;
+
+        /// <summary>The detached windows as the sidecar records them (<c>REQ-UI-003</c>).</summary>
+        public List<DetachedTraceState> DetachedTraceStates()
+        {
+            var states = new List<DetachedTraceState>(_detached.Count);
+
+            foreach (KeyValuePair<char, TraceWindow> found in _detached)
+            {
+                Rect where = found.Value.Placement;
+
+                states.Add(new DetachedTraceState
+                {
+                    Trace = found.Key.ToString(),
+                    Left = where.X,
+                    Top = where.Y,
+                    Width = where.Width,
+                    Height = where.Height,
+                });
+            }
+
+            return states;
+        }
+
+        /// <summary>
+        /// Pulls a trace out of the document area into a window of its own (<c>REQ-UI-003</c>).
+        /// </summary>
+        /// <param name="trace">The trace's letter.</param>
+        /// <returns>The window, or <c>null</c> when there is no such trace.</returns>
+        /// <remarks>
+        /// <para>
+        /// The content moves rather than being copied: one trace, in one place. A detached window
+        /// holding a second plot fed from the same snapshot would be two traces that agree until
+        /// one of them is scaled.
+        /// </para>
+        /// <para>
+        /// The last trace cannot be detached, for the reason it cannot be closed — a document area
+        /// with nothing in it is a grey rectangle with no way back.
+        /// </para>
+        /// </remarks>
+        public TraceWindow DetachTrace(char trace)
+        {
+            if (_detached.ContainsKey(trace) || Documents.ContentOf(trace) == null)
+            {
+                return null;
+            }
+
+            if (Documents.Traces.Count <= 1)
+            {
+                StatusText.Content = "The last trace stays in the main window.";
+                return null;
+            }
+
+            FrameworkElement content = Documents.ContentOf(trace);
+
+            Documents.RemoveTrace(trace);
+
+            var detachedFrom = content.Parent as Panel;
+
+            if (detachedFrom != null)
+            {
+                detachedFrom.Children.Remove(content);
+            }
+
+            var window = new TraceWindow(trace, content) { Owner = null };
+
+            window.Closed += (sender, e) => _detached.Remove(trace);
+
+            _detached[trace] = window;
+
+            if (Interactive)
+            {
+                window.Show();
+            }
+
+            SaveToolWindowLayout();
+            return window;
+        }
+
         /// <summary>
         /// The chrome theme in force, by name (<c>REQ-UI-083</c>).
         /// </summary>
@@ -943,6 +1026,7 @@ namespace OpenVSA.Ui
                     SpectrogramUserMap = UserMapEntries(),
                     Toolbars = ToolbarArrangement.ToState(),
                     ChromeTheme = _themeName,
+                    DetachedTraces = DetachedTraceStates(),
                 };
 
                 _colours.SaveInto(preferences);

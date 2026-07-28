@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Windows;
@@ -216,6 +216,61 @@ namespace OpenVSA.Ui.Layout
         /// <summary>The plot drawing the active trace.</summary>
         public TracePlot ActivePlot => PlotOf(_active);
 
+        /// <summary>
+        /// What a document shows: a plot, or another trace-bearing element.
+        /// </summary>
+        /// <param name="trace">The trace letter.</param>
+        /// <returns>The element, or <c>null</c> when no document has that letter.</returns>
+        /// <remarks>
+        /// <c>REQ-UI-001</c> says only trace-bearing windows may be document windows; it does not
+        /// say every document is a spectrum plot. <c>REQ-UI-052</c>'s symbol table and error
+        /// summary are one trace with two portions, and this is how the document area holds one
+        /// without pretending it is a <see cref="TracePlot"/>.
+        /// </remarks>
+        public FrameworkElement ContentOf(char trace)
+        {
+            FrameworkElement content;
+
+            return _contents.TryGetValue(trace, out content) ? content : null;
+        }
+
+        private readonly Dictionary<char, FrameworkElement> _contents =
+            new Dictionary<char, FrameworkElement>();
+
+        /// <summary>
+        /// Opens the symbol table and error summary as one document (<c>REQ-UI-052</c>).
+        /// </summary>
+        /// <param name="trace">The letter to give it.</param>
+        /// <returns>The panel.</returns>
+        /// <exception cref="ArgumentException">That letter is already open.</exception>
+        /// <remarks>
+        /// <strong>One entry in <see cref="Traces"/>, not two.</strong> That is the structural point
+        /// <c>REQ-UI-052</c> makes and warns about — "getting it wrong means building two traces
+        /// where the product has one". The panel carries both portions, so selecting the trace
+        /// selects both because there is only one thing to select.
+        /// </remarks>
+        public Rendering.SymbolTablePanel AddSymbolTable(char trace)
+        {
+            if (_traces.Contains(trace))
+            {
+                throw new ArgumentException("Trace " + trace + " is already open.", nameof(trace));
+            }
+
+            var panel = new Rendering.SymbolTablePanel();
+
+            _traces.Add(trace);
+            _contents[trace] = panel;
+
+            if (_traces.Count == 1)
+            {
+                _active = trace;
+            }
+
+            Rebuild();
+
+            return panel;
+        }
+
         /// <summary>Every open plot, so a display-wide setting can reach all of them.</summary>
         /// <remarks>
         /// A colour applies to the display, not to whichever plot happens to be in front
@@ -275,6 +330,7 @@ namespace OpenVSA.Ui.Layout
 
             _traces.Add(trace);
             _plots[trace] = plot;
+            _contents[trace] = plot;
 
             if (_traces.Count == 1)
             {
@@ -305,6 +361,7 @@ namespace OpenVSA.Ui.Layout
             _traces.Remove(trace);
             _hidden.Remove(trace);
             _plots.Remove(trace);
+            _contents.Remove(trace);
 
             if (_active == trace)
             {
@@ -428,20 +485,20 @@ namespace OpenVSA.Ui.Layout
 
             // Only the tab on top is drawn: the others are in the group and reachable by their
             // tab, which is what a tab group means.
-            TracePlot plot = PlotOf(strip.ActiveTrace);
+            FrameworkElement shown = ContentOf(strip.ActiveTrace);
 
-            if (plot != null)
+            if (shown != null)
             {
-                // A plot can only have one parent, and it moves between cells as the layout
+                // Content can only have one parent, and it moves between cells as the layout
                 // changes, so it is detached from wherever it was before being placed.
-                var previous = plot.Parent as Panel;
+                var previous = shown.Parent as Panel;
 
                 if (previous != null)
                 {
-                    previous.Children.Remove(plot);
+                    previous.Children.Remove(shown);
                 }
 
-                content.Children.Add(plot);
+                content.Children.Add(shown);
             }
 
             var cell = new DockPanel { LastChildFill = true };
