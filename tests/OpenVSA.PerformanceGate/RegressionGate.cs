@@ -65,6 +65,30 @@ namespace OpenVSA.PerformanceGate
         /// </summary>
         public double RelativeChange { get; }
 
+        /// <summary>
+        /// Whether the measurement misses the absolute figure the requirement states.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from a regression, and both are needed. The gate of <c>REQ-TST-007</c> compares
+        /// against a baseline, so a target that has always been too slow passes it for ever: the
+        /// baseline records what the product does, not what it is required to do. The stated figure
+        /// is the requirement's own, and a run that misses it is reported however stable it is.
+        /// </remarks>
+        public bool MissesStatedTarget
+        {
+            get
+            {
+                if (Measurement == null)
+                {
+                    return false;
+                }
+
+                return Target.Better == Better.Higher
+                    ? Measurement.Mean < Target.Stated
+                    : Measurement.Mean > Target.Stated;
+            }
+        }
+
         /// <summary>Whether this verdict should fail the build.</summary>
         /// <remarks>
         /// A regression fails, obviously. <see cref="Verdict.Missing"/> fails too, and that is the
