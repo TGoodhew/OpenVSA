@@ -43,7 +43,6 @@ namespace OpenVSA.Ui.Tests
         {
             var marshal = new RenderMarshal { Columns = 800 };
 
-            long before = GC.GetTotalMemory(forceFullCollection: true);
             long previousDrops = 0;
             int offered = 0;
 
@@ -68,51 +67,33 @@ namespace OpenVSA.Ui.Tests
                 previousDrops = drops;
             }
 
-            // Settled, not merely collected once. A tight offer loop outruns the collector, and a
-            // single forced pass on a small machine leaves garbage the run has already released —
-            // which is not retention and is not what "bounded" means.
-            for (int pass = 0; pass < 3; pass++)
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-            }
-
-            long after = GC.GetTotalMemory(forceFullCollection: true);
-            double grewMib = (after - before) / (1024.0 * 1024.0);
-
             _output.WriteLine(
-                offered + " frames offered, " + marshal.FramesDropped + " dropped, managed heap " +
-                (before / 1048576.0).ToString("F1") + " -> " + (after / 1048576.0).ToString("F1") +
-                " MiB");
+                offered + " frames offered, " + marshal.FramesDropped + " dropped, " +
+                (offered - marshal.FramesDropped) + " accepted");
 
             // Something must have been dropped, or the test proved nothing about back-pressure.
             Assert.True(
                 marshal.FramesDropped > 0,
                 "Nothing was dropped in " + offered + " offers, so no back-pressure was exercised.");
 
-            // **Bounded means "not proportional to the number offered", not "allocation-free".**
-            // Producing garbage that the collector reclaims is fine; retaining a frame per offer is
-            // not. The first draft asserted a fixed 32 MiB ceiling and failed in CI at 115 MiB with
-            // exactly one frame accepted — which was collectable garbage from 28 701 offers on a
-            // two-core runner, not a leak. A fixed ceiling measures the machine's collector.
+            // **The memory clause is deliberately NOT asserted here, and that is a correction.**
             //
-            // So the comparison is against what queueing would have cost. Each frame carries 8 192
-            // levels, so retaining them all would be hundreds of megabytes and rising with the
-            // duration of the run; five per cent of that is far below a queue and far above the
-            // noise of a busy heap.
-            double queuedMib = offered * 8192.0 * 4.0 / (1024.0 * 1024.0);
+            // Two earlier versions of this test compared GC.GetTotalMemory before and after: first
+            // against a fixed 32 MiB ceiling, then against a fraction of what queueing would have
+            // cost. Both failed in CI at 85-115 MiB with exactly one frame accepted, and both times
+            // the response was to move the threshold. That is tuning a check until it is green,
+            // which proves nothing -- the same fault as a guard that cannot fail, wearing different
+            // clothes.
+            //
+            // A heap delta cannot separate retention from garbage the collector has not yet
+            // returned, and on a two-core runner under a tight offer loop the second dominates.
+            // REQ-NFR-002 says what the right instrument is: DSP-attributable allocation "measured
+            // with an allocation profiler attributing by call site", over a ten-minute run. That is
+            // issue #5, and this clause belongs to it rather than to a heap subtraction here.
+            //
+            // What IS asserted above is the part a unit test can settle honestly: frames are
+            // dropped rather than queued, and the count that says so never goes backwards.
 
-            _output.WriteLine(
-                "queueing every frame would have cost " + queuedMib.ToString("F0") +
-                " MiB; the heap moved " + grewMib.ToString("F1") + " MiB");
-
-            Assert.True(
-                grewMib < Math.Max(64.0, queuedMib * 0.05),
-                "The managed heap grew " + grewMib.ToString("F1") + " MiB while " + offered +
-                " frames were offered and only " + (offered - marshal.FramesDropped) +
-                " accepted, against " + queuedMib.ToString("F0") +
-                " MiB if every frame had been queued. That is proportional to the number offered, " +
-                "which is what unbounded buffering looks like.");
         }
 
         [Fact]
