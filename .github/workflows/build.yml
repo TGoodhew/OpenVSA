@@ -56,7 +56,10 @@ jobs:
       # all — the harness may not quietly shrink to whatever happens to work.
       - name: Performance gate
         run: |
-          $exe = "tests\OpenVSA.Benchmarks\bin\x64\Release\net472\OpenVSA.Benchmarks.exe"
+          # ".\" is required: PowerShell's call operator treats a bare relative path as a
+          # command name and reports "the module 'tests' could not be loaded".
+          $exe = ".\tests\OpenVSA.Benchmarks\bin\x64\Release\net472\OpenVSA.Benchmarks.exe"
+          if (-not (Test-Path $exe)) { throw "no benchmark host at $exe" }
           & $exe --gate --measure --measurements "$env:RUNNER_TEMP\measurements.tsv"
           if ($LASTEXITCODE -ne 0) { throw "the harness could not take its measurements" }
           & $exe --gate --measurements "$env:RUNNER_TEMP\measurements.tsv"
