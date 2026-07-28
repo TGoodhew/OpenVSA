@@ -63,6 +63,28 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>IQ mismatch has been compensated out. Renders <c>IQ COMP</c>.</summary>
         IqCompensated,
+
+        /// <summary>
+        /// The external frequency reference is not locked (<c>REQ-UI-007</c>). Renders
+        /// <c>REF UNLOCK</c>.
+        /// </summary>
+        /// <remarks>
+        /// Named by <c>REQ-UI-007</c> among the conditions that invalidate a measurement, and it is
+        /// the one most easily left to the status bar alone: an unlocked reference makes every
+        /// frequency on the trace wrong, so it belongs on the trace as well as in the bar.
+        /// </remarks>
+        ReferenceUnlocked,
+
+        /// <summary>
+        /// Frames were dropped between acquisition and display (<c>REQ-UI-007</c>,
+        /// <c>REQ-NFR-012</c>). Renders <c>DROPPED</c>.
+        /// </summary>
+        /// <remarks>
+        /// A dropped frame means the trace is not the newest acquisition, which matters most
+        /// exactly when a user is watching something change. <c>REQ-NFR-012</c> requires the count
+        /// to be displayed; <c>REQ-UI-007</c> requires the condition to be on the trace.
+        /// </remarks>
+        DroppedFrames,
     }
 
     /// <summary>
@@ -236,6 +258,8 @@ namespace OpenVSA.Ui.Rendering
                 case TraceIndicator.MeasurementOffset: return "MEAS OFFSET?";
                 case TraceIndicator.PulseTooShort: return "PULSE TOO SHORT";
                 case TraceIndicator.IqCompensated: return "IQ COMP";
+                case TraceIndicator.ReferenceUnlocked: return "REF UNLOCK";
+                case TraceIndicator.DroppedFrames: return "DROPPED";
 
                 default:
                     throw new ArgumentOutOfRangeException(

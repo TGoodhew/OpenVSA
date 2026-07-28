@@ -1003,7 +1003,20 @@ namespace OpenVSA.Ui.Rendering
             }
 
             _markerText.Visibility = visibility;
-            _indicatorText.Visibility = visibility;
+
+            // The fault indicators are NOT annotation and are exempt from hiding it
+            // (REQ-UI-007). Every string they carry means the number on screen is wrong — an
+            // overloaded input, an unlocked reference, an uncalibrated state — and the requirement
+            // is explicit that these must not be buried. Hiding them because a user wanted a clean
+            // picture would be a worse burial than the event log it already forbids.
+            _indicatorText.Visibility = Visibility.Visible;
+
+            // Inside the graticule either way, so the offset follows the band that is or is not
+            // there: with the annotation off the graticule starts at the top of the control, and a
+            // margin still allowing for a band would push the indicator into the trace.
+            double inset = _showAnnotation ? AnnotationBandDip + 6.0 : 6.0;
+
+            _indicatorText.Margin = new Thickness(0.0, inset, inset, 0.0);
 
             var band = new GridLength(_showAnnotation ? AnnotationBandDip : 0.0);
 
@@ -1184,6 +1197,15 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>The element holding the trace indicator strings (<c>REQ-UI-041</c>).</summary>
         public FrameworkElement IndicatorElement => _indicatorText;
+
+        /// <summary>
+        /// What the fault indicators currently say (<c>REQ-UI-007</c>).
+        /// </summary>
+        /// <remarks>
+        /// Read from the element the user sees, so a test asserting a condition is "on the trace
+        /// rather than only in the event log" is reading the trace.
+        /// </remarks>
+        public string IndicatorText => _indicatorText.Text ?? string.Empty;
 
         /// <summary>
         /// The brush the trace's annotation is drawn in, which is the trace's own colour

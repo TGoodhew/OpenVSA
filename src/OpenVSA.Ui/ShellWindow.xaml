@@ -63,14 +63,28 @@
             OpenVSA adds dropped-frame count (REQ-NFR-012) and measured front-end transfer
             rate / duty cycle (REQ-NFR-027) to the reference product's status bar contents.
         -->
+        <!--
+            REQ-UI-006's fields, in order. StatusText is FIRST and therefore leftmost, which is the
+            requirement rather than a layout preference: "measurement status messages specifically
+            at the bottom left" is quoted from the reference product, and a test asserts the
+            position rather than only the presence.
+        -->
         <StatusBar DockPanel.Dock="Bottom"
                    Background="{DynamicResource OpenVSA.Chrome.StatusBarBackground}"
                    Foreground="{DynamicResource OpenVSA.Chrome.StatusBarForeground}">
             <StatusBarItem x:Name="StatusText" Content="Ready" />
             <Separator />
+            <StatusBarItem x:Name="CalibrationText" />
+            <Separator />
+            <StatusBarItem x:Name="ReferenceText" />
+            <Separator />
             <StatusBarItem x:Name="RateText" />
             <Separator />
+            <StatusBarItem x:Name="TransferText" />
+            <Separator />
             <StatusBarItem x:Name="DroppedText" />
+            <Separator />
+            <StatusBarItem x:Name="PreviewText" />
         </StatusBar>
 
         <!--

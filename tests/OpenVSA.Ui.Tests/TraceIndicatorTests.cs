@@ -173,6 +173,12 @@ namespace OpenVSA.Ui.Tests
                 TraceIndicator.MeasurementOffset,
                 TraceIndicator.PulseTooShort,
                 TraceIndicator.IqCompensated,
+
+                // REQ-UI-007's own list names two the reference product's does not, and they come
+                // last because they are additions rather than reorderings: an unlocked reference
+                // and dropped frames both invalidate the number on screen.
+                TraceIndicator.ReferenceUnlocked,
+                TraceIndicator.DroppedFrames,
             };
 
             for (int i = 0; i < expected.Count; i++)
