@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenVSA.Core.Threading;
 using OpenVSA.Dsp.Spectrum;
+using OpenVSA.Demod.Results;
 using OpenVSA.Measurement.Limits;
 using OpenVSA.Ui.HotSpots;
 
@@ -94,6 +95,12 @@ namespace OpenVSA.Ui.Rendering
         private bool _suppressParameterEvents;
         private LimitTest _limitTest;
         private LimitColours _limitColours = new LimitColours();
+
+        private ResultTraceKind _resultKind = ResultTraceKind.None;
+        private SymbolTrace _result;
+        private IdealStateOverlay _idealStates = IdealStateOverlay.Crosshair;
+        private EyeComponent _eyeComponent = EyeComponent.InPhase;
+        private double _eyeLength = EyeRasterizer.DefaultLengthSymbols;
 
         private TraceAccumulator _accumulator = TraceAccumulator.None;
         private Spectrogram _history;
@@ -522,6 +529,133 @@ namespace OpenVSA.Ui.Rendering
                 {
                     UpdateAnnotation(_snapshot.Spectrum);
                 }
+            }
+        }
+
+        // ---- Demodulation result displays (REQ-UI-050, REQ-UI-051) --------------------------------
+
+        /// <summary>
+        /// Which demodulation result this plot draws, if any (<c>REQ-DEM-080</c>'s catalogue).
+        /// </summary>
+        /// <remarks>
+        /// Separate from <see cref="CurrentFormat"/> and from <see cref="Accumulator"/>, because it
+        /// is a different kind of thing again: a format is a view of one spectrum, an accumulator
+        /// builds across acquisitions, and a result trace draws something a demodulator produced.
+        /// Folding it into <see cref="TraceFormat"/> would break that enumeration's own rule that
+        /// every member is a pure function of the same calibrated spectrum.
+        /// </remarks>
+        public ResultTraceKind ResultKind
+        {
+            get { return _resultKind; }
+
+            set
+            {
+                if (_resultKind == value)
+                {
+                    return;
+                }
+
+                _resultKind = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>The demodulated result this plot draws, or <c>null</c>.</summary>
+        public SymbolTrace Result
+        {
+            get { return _result; }
+
+            set
+            {
+                _result = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>How the ideal states are overlaid (<c>REQ-UI-050</c>).</summary>
+        public IdealStateOverlay IdealStates
+        {
+            get { return _idealStates; }
+            set { _idealStates = value; Redraw(_snapshot); }
+        }
+
+        /// <summary>The colours a constellation draws with.</summary>
+        public ConstellationColours ConstellationColours { get; } = new ConstellationColours();
+
+        /// <summary>The colours an eye draws with.</summary>
+        public EyeColours EyeColours { get; } = new EyeColours();
+
+        /// <summary>Which component an eye shows.</summary>
+        public EyeComponent EyeComponent
+        {
+            get { return _eyeComponent; }
+            set { _eyeComponent = value; Redraw(_snapshot); }
+        }
+
+        /// <summary>
+        /// How many symbols an eye spans (<c>REQ-UI-051</c>: 0.1 to 10).
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">Outside the allowed range.</exception>
+        public double EyeLengthSymbols
+        {
+            get { return _eyeLength; }
+
+            set
+            {
+                if (!EyeRasterizer.IsLengthAllowed(value))
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value), value,
+                        "REQ-UI-051 allows an eye of " + EyeRasterizer.MinimumLengthSymbols +
+                        " to " + EyeRasterizer.MaximumLengthSymbols + " symbols.");
+                }
+
+                _eyeLength = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>Whether this plot is drawing a demodulation result rather than a spectrum.</summary>
+        public bool IsShowingResult =>
+            _resultKind != ResultTraceKind.None && _result != null && _result.SymbolCount > 0;
+
+        /// <summary>What the last result render drew (<c>REQ-UI-050</c>'s primitive count).</summary>
+        public ConstellationRender LastConstellationRender { get; private set; }
+
+        /// <summary>What the last eye render drew (<c>REQ-UI-051</c>'s folds).</summary>
+        public EyeRender LastEyeRender { get; private set; }
+
+        /// <summary>
+        /// Draws a demodulation result over the graticule.
+        /// </summary>
+        /// <remarks>
+        /// <strong>The eye is not cleared between acquisitions and the constellation is.</strong>
+        /// <c>REQ-UI-051</c> makes accumulation the eye's defining behaviour — "the VSA draws the
+        /// first trace, then overlays the second trace, the third trace, and so on" —
+        /// while a constellation shows the symbols of the result in front of it. The rasteriser
+        /// leaves that decision here because it is a property of the display, not of the drawing.
+        /// </remarks>
+        private void DrawResult()
+        {
+            PixelRect graticule = _layout.Graticule;
+
+            switch (_resultKind)
+            {
+                case ResultTraceKind.Constellation:
+                case ResultTraceKind.IqVector:
+                    LastConstellationRender = ConstellationRasterizer.Render(
+                        _surface,
+                        graticule,
+                        _result,
+                        ConstellationColours,
+                        _idealStates,
+                        _resultKind == ResultTraceKind.IqVector);
+                    break;
+
+                case ResultTraceKind.Eye:
+                    LastEyeRender = EyeRasterizer.Render(
+                        _surface, graticule, _result, _eyeComponent, _eyeLength, EyeColours);
+                    break;
             }
         }
 
@@ -2017,7 +2151,11 @@ namespace OpenVSA.Ui.Rendering
                 ColumnColours(snapshot),
                 _showGridLines);
 
-            if (IsShowingSpectrogram)
+            if (IsShowingResult)
+            {
+                DrawResult();
+            }
+            else if (IsShowingSpectrogram)
             {
                 DrawSpectrogram();
             }
