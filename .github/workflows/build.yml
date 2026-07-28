@@ -24,6 +24,15 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # The backlog's phases must stay workable in order. A requirement whose acceptance
+      # criteria depend on a later phase makes its own phase unclosable, which is how Phase 1
+      # came to be declared complete with 37 Phase 0 issues open. Cheap to check, and it only
+      # ever regresses through a specification edit, so it runs before the build.
+      - name: Check delivery phases are self-contained
+        run: |
+          python tools/parse_requirements.py
+          python tools/check_phase_atomicity.py
+
       - name: Restore
         run: msbuild OpenVSA.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
 

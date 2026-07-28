@@ -313,10 +313,21 @@ any L3+ → L0/L1 reference.
 The active front end shall be selectable at runtime without restarting the application, and
 a measurement configuration shall survive a front-end change wherever the new front end
 can satisfy its parameters.
-**AC:** With a spectrum and a demod measurement configured and running against the
-simulator, switching to file playback and then to the E4406A retains measurement setup,
-trace layout, markers and limit lines; only parameters the new source cannot honour are
-coerced, and each coercion raises a user-visible event-log entry.
+**AC:** With a spectrum measurement configured and running against the simulator, switching to
+file playback and then to the E4406A retains measurement setup, trace layout, markers and
+limit lines; only parameters the new source cannot honour are coerced, and each coercion
+raises a user-visible event-log entry. The E4406A leg is exercised against the instrument on
+the bench, not a mock, because coercion is precisely where a real front end's limits differ
+from a simulated one's.
+
+**`REQ-ARC-002a` (P0) — A demod measurement survives a front-end change.**
+`REQ-ARC-002` shall hold for a demodulation measurement as well as a spectrum one.
+**AC:** As `REQ-ARC-002`, with a demod measurement configured and running in addition to the
+spectrum one; the demodulator's format, symbol rate and filter survive the change, and a
+front end that cannot supply the sample rate the demodulator needs coerces it and says so.
+*Split from `REQ-ARC-002`: the spectrum leg is provable now and the demod leg cannot be until
+a demodulator exists. Tracked in the Needs Verification epic against the closed
+implementation.*
 
 **`REQ-ARC-003` (P1) — Personalities are plug-ins, not core code.**
 Standard-specific measurements shall be delivered as discoverable plug-in assemblies
@@ -386,13 +397,15 @@ The application shall build and ship as **x64 only** (`<PlatformTarget>x64`), an
 *Rationale:* a 30-second capture at 25.6 MS/s of `Complex32` is 6.1 GB. 32-bit is
 categorically unusable, and even on x64 the default 2 GB single-array ceiling is hit by a
 single long recording.
-**AC:** `new float[2_000_000_000]` (≈8 GB) succeeds on a machine with adequate RAM; the build
-produces no AnyCPU or x86 output.
 *Ceiling, and it must be designed around:* even with `gcAllowVeryLargeObjects`, the maximum
 element count for a non-`byte` array is **2 146 435 071** (0x7FEFFFFF). A single `float[]`
 therefore holds at most ~1.07 G complex samples (≈8.6 GB). Captures above that **must** be
 chunked across multiple arrays — `REQ-DAT-001`'s `SampleCount` is an `int` for exactly this
-reason, and `REQ-REC-001` recordings must segment.
+reason, and `REQ-REC-001` recordings must segment. *(Stated as rationale and not as
+acceptance criteria: it is a consequence later phases must honour, and putting it inside the
+criteria made this requirement unprovable until recordings existed.)*
+**AC:** `new float[2_000_000_000]` (≈8 GB) succeeds on a machine with adequate RAM; the build
+produces no AnyCPU or x86 output.
 
 **`REQ-NFR-002` (P0) — Buffer pooling; bounded steady-state allocation.**
 All IQ sample buffers on the acquisition and DSP hot paths shall be rented from a pool and
@@ -1262,9 +1275,18 @@ the source span, matching the reference product's documented playback bound. **[
 **This bound applies identically to live-block zoom (`REQ-DSP-023`) and to playback** — the
 two must not disagree, since both perform the same DDC on the same captured samples. Where
 `REQ-DSP-023` speaks of "arbitrarily narrow" analysis, it means arbitrary within this bound.
-**AC:** A recording made at 10 MHz span analyses correctly at spans down to 39.0625 kHz;
-narrower requests are rejected with an explanatory message naming the bound; the same limit
-and the same message apply to live zoom.
+**AC:** A live block captured at 10 MHz span analyses correctly at spans down to 39.0625 kHz;
+narrower requests are rejected with an explanatory message naming the bound and the span that
+was asked for.
+
+**`REQ-REC-004a` (P1) — The bound holds identically on playback.**
+**AC:** A recording made at 10 MHz span analyses correctly at spans down to 39.0625 kHz, and
+a narrower request is rejected with the same bound and the same message as live zoom — the
+message text is compared between the two paths, not merely asserted to exist in each, since
+two independently worded messages are how the two bounds drift apart.
+*Split from `REQ-REC-004`: the bound is defined here but first used by live-block zoom
+(`REQ-DSP-023`) in Phase 1, and a Phase 1 requirement cannot depend on a Phase 3 one for the
+message it must produce.*
 
 **`REQ-REC-005` (P1) — Import and export format support.**
 The following formats shall be supported for import (I) and/or export (E), matching the
@@ -1345,8 +1367,20 @@ exception dialog.
 `SimulatedFrontEnd` shall generate IQ for any modulation format supported by the
 demodulator (§11.2), with settable symbol rate, pulse-shaping filter and roll-off, carrier
 offset, and amplitude.
+**AC:** For every supported format, the generated waveform is checked back against the
+parameters it was asked for, from its own samples and without demodulating: the symbol
+sequence recovered at the known symbol instants matches the constellation the format
+declares, the symbol rate and carrier offset are recovered to within 1e-6 relative, and the
+pulse-shaping filter's roll-off is recovered from the spectrum to within 1 %.
+
+**`REQ-SIM-001a` (P0) — The synthetic source proven by demodulation.**
+The source of `REQ-SIM-001` shall be correct to the standard the metrics engine needs, which
+only a demodulator can establish.
 **AC:** For every supported format, a clean generated signal demodulates with RMS EVM
 < 0.1 % — the residual being numerical only.
+*Split from `REQ-SIM-001` because that criterion cannot run until a demodulator exists.
+Keeping the two together made a requirement whose implementation belonged to one phase and
+whose proof belonged to another, so neither phase could be closed honestly.*
 
 **`REQ-SIM-002` (P0) — Controllable impairments.**
 The generator shall inject, independently and quantitatively: AWGN (specified SNR),
@@ -1354,9 +1388,23 @@ carrier frequency offset (Hz), carrier phase offset, IQ gain imbalance (dB), qua
 (degrees), IQ origin offset (dB), amplitude droop (dB/symbol), timing offset (fraction of a
 symbol), symbol-clock error (ppm), phase noise (mask-specified), AM/AM and AM/PM
 compression, and multipath (tapped-delay-line channel).
+**AC:** Each impairment is measured back from the generated samples — not from a
+demodulator — and matches the magnitude requested to within 1 %: SNR from the noise power in
+a signal-free band, carrier offset and phase from the complex mean at the symbol instants,
+gain imbalance and quadrature skew from the I and Q second moments, origin offset from the
+mean, droop from a fit to the symbol magnitudes, timing offset and clock error from the
+recovered symbol instants. **Independence is the harder half and is tested explicitly:**
+injecting one impairment leaves every other's measured value unchanged to within its own
+tolerance, so a generator that couples two of them fails.
+
+**`REQ-SIM-002a` (P0) — Impairments recovered by the metrics engine.**
+Every impairment of `REQ-SIM-002` shall be recovered by the measurement that reports it.
 **AC:** Each impairment injected at a known magnitude is recovered by the demodulator's
 corresponding metric to within 5 % or 0.1 dB, whichever is looser. **This is the primary
 correctness proof for the entire metrics engine** and is elaborated in §17.2.
+*Split from `REQ-SIM-002` for the reason given under `REQ-SIM-001a`. The generator can be
+proved correct without a demodulator; the metrics engine cannot, and it is the metrics engine
+this criterion actually tests.*
 
 **`REQ-SIM-003` (P1) — Deterministic, seeded generation.**
 All stochastic elements shall derive from an explicit seed so that any generated scenario is
@@ -1394,10 +1442,20 @@ causal tracking loops, and it is why the reference product can lock reliably on 
 bursts. It is a deliberate architectural choice, not a compromise.
 **AC:** An architecture test over the public DSP surface fails if any analysis entry point
 takes an incremental or push-style form — a per-sample `Process`, a `Push`, or a stateful
-accumulator that survives between calls — rather than a complete block. The estimation
-consequence is tested directly: carrier, timing and phase estimates for a short burst are
-invariant, to the tolerances of `REQ-SIM-002`, to where in the block the burst sits. A causal
-tracking implementation cannot satisfy that, so the test discriminates.
+accumulator that survives between calls — rather than a complete block. Block-position
+invariance is tested with what the DSP layer already estimates: the spectrum of a short burst,
+and the burst's own measured position and power, are invariant to where in the block the burst
+sits, to within the numerical tolerance of the transform.
+
+**`REQ-DSP-001a` (P0) — Block-based estimation proven on the estimators.**
+The estimation advantage claimed for whole-block analysis shall be demonstrated on the
+estimators that claim it.
+**AC:** Carrier, timing and phase estimates for a short burst are invariant, to the tolerances
+of `REQ-SIM-002a`, to where in the block the burst sits. A causal tracking implementation
+cannot satisfy that, so the test discriminates.
+*Split from `REQ-DSP-001` because there are no carrier, timing or phase estimators until the
+demodulator exists. The architectural rule — no push-style entry point — is enforceable from
+the first commit and stays where it belongs.*
 
 **`REQ-DSP-002` (P0) — Double-precision accumulation.**
 Sample storage may be single precision, but all accumulations (averaging, correlation, sums
@@ -3822,9 +3880,17 @@ any kind** — asserted by running the full start-configure-measure-exit cycle u
 monitor with the simulator as source and failing on any egress, not merely by absence of a
 telemetry component. There is no update check, no usage reporting and no crash upload
 without opt-in; opt-in is off by default and, where offered, states what would be sent
-before it is enabled. `REQ-API-004`'s SCPI server is the only listener and is off by
-default. Nothing about this depends on a licence or entitlement check, which
-`REQ-LIC-010` removes entirely.
+before it is enabled. Nothing about this depends on a licence or entitlement check, which
+`REQ-LIC-010` removes entirely. A test asserts the process opens no listening socket, which
+holds trivially until a server exists and keeps holding afterwards.
+
+**`REQ-NFR-036a` (P2) — The SCPI server is the only listener.**
+Extends the privacy guarantee of `REQ-NFR-036` over the one listener the product may have.
+**AC:** `REQ-API-004`'s SCPI server is the only listening socket the product ever opens, and
+it is off by default: enumerate the process's listening sockets in a default installation and
+find none, enable the server and find exactly one, on the configured port only.
+*Split from `REQ-NFR-036` so the no-egress guarantee can be asserted from the first build
+rather than waiting on a server that Phase 4 delivers.*
 
 **`REQ-NFR-040`** covers report output.
 **AC:** A report generated from a measurement contains its traces, settings, error summary
@@ -3915,14 +3981,21 @@ be argued for and re-specified, rather than arriving one `if` statement at a tim
 **AC:** No entitlement or licence-check type, interface or method exists in any shipped
 assembly, asserted by an architecture test over the public and internal surface that fails on
 a member matching entitlement/licence-gating naming, and by the absence of any
-licensing project from the solution. Every measurement, trace data type, demodulation format
-and personality can be instantiated and run in a default installation with no configuration —
-enumerated over the full catalogues of `REQ-DSP-040`, `REQ-DSP-041` and `REQ-DEM-010`, so a
-newly added feature cannot quietly arrive gated. Exactly one edition is produced: the build
-emits a single distributable, and a test fails if a build configuration name or an
-`#if` symbol partitions the feature set. The application starts and runs with no network
-access at all, which `REQ-NFR-036` already requires and which no activation step could
-satisfy.
+licensing project from the solution. Exactly one edition is produced: the build emits a single
+distributable, and a test fails if a build configuration name or an `#if` symbol partitions
+the feature set. The application starts and runs with no network access at all, which
+`REQ-NFR-036` already requires and which no activation step could satisfy.
+
+**`REQ-LIC-010a` (P0) — No feature arrives gated, over the full catalogues.**
+The guarantee of `REQ-LIC-010` shall be enforced against every feature the product ends up
+having, not only against the absence of gating machinery.
+**AC:** Every measurement, trace data type, demodulation format and personality can be
+instantiated and run in a default installation with no configuration — enumerated over the
+full catalogues of `REQ-DSP-040`, `REQ-DSP-041` and `REQ-DEM-010`, so a newly added feature
+cannot quietly arrive gated.
+*Split from `REQ-LIC-010`: the absence of gating machinery is provable from the first build
+and is the guarantee that matters most, while enumerating the catalogues cannot run until the
+demodulation formats of `REQ-DEM-010` exist.*
 
 **`REQ-LIC-011` (P1) — Distribution terms.**
 OpenVSA shall be distributed under a permissive open-source licence (currently **MIT**, see
@@ -4076,13 +4149,22 @@ values with their difference expressed against the tolerance.
 
 **`REQ-TST-007` (P1)** — Performance regression per `REQ-NFR-020`–`REQ-NFR-026`, failing
 the build on >15 % regression.
-**AC:** All seven targets of `REQ-NFR-020`–`REQ-NFR-026` are measured by the harness those
-requirements' shared criteria describe, including the rendered ones, and a deliberately
+**AC:** The harness those requirements' shared criteria describe exists and measures every
+target whose feature has been delivered, including the rendered ones, and a deliberately
 introduced 20 % slowdown fails the build while a 5 % one does not — the threshold is tested,
 not merely configured. Baselines are stored per machine class, since the targets are stated
 for the reference machine, and a run on unrecognised hardware reports that rather than
 comparing against an inapplicable baseline. Measurements report variance, and a run too noisy
-to distinguish 15 % is reported as inconclusive rather than passed.
+to distinguish 15 % is reported as inconclusive rather than passed. **A target whose feature
+does not yet exist is reported as not-yet-measured and fails the run if it is silently
+skipped** — the harness may not quietly shrink to the targets that happen to be implemented.
+
+**`REQ-TST-007a` (P1)** — Every performance target actually under the harness.
+**AC:** All seven targets of `REQ-NFR-020`–`REQ-NFR-026` are measured, none remaining in the
+not-yet-measured state `REQ-TST-007` requires the harness to report.
+*Split from `REQ-TST-007` because the harness is needed from Phase 0 — every one of the seven
+targets shares its criteria, so no target could be met until it existed — while the last of
+the seven targets is a 4 GB recording playback that Phase 3 delivers.*
 
 **`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace
 configuration, state save/recall and marker interaction.
