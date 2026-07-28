@@ -19,6 +19,17 @@ namespace OpenVSA.Benchmarks
         /// <returns>Zero on success.</returns>
         public static int Main(string[] args)
         {
+            // --gate judges a run rather than taking one. Measuring and deciding are separate
+            // processes on purpose: BenchmarkDotNet launches its own optimised child to measure
+            // in, so the deciding cannot live inside the measuring.
+            foreach (string arg in args)
+            {
+                if (string.Equals(arg, "--gate", StringComparison.OrdinalIgnoreCase))
+                {
+                    return GateCommand.Run(args);
+                }
+            }
+
             BenchmarkSwitcher
                 .FromAssembly(typeof(Program).Assembly)
                 .Run(args, DefaultConfig.Instance.WithOptions(ConfigOptions.DisableOptimizationsValidator));
