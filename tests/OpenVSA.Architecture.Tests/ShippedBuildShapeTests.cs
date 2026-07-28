@@ -198,21 +198,44 @@ namespace OpenVSA.Architecture.Tests
             throw new InvalidOperationException("Could not find the repository root.");
         }
 
-        /// <summary>A built tool in its own output directory, matching this test's configuration.</summary>
+        /// <summary>A built tool, found rather than computed.</summary>
+        /// <remarks>
+        /// Searched for, because computing "the same bin tail as this test" assumes there is only
+        /// one output tree and there are two, one platform-qualified and one not. A test that
+        /// computes the path fails whenever the tool was last built the other way, which is what
+        /// happened on a working tree where the duplicate trees had just been cleaned up.
+        /// </remarks>
         private static string SiblingTool(string fileName)
         {
-            string shell = ShellPath();
-            string configurationTail = Path.GetDirectoryName(shell);
-            int bin = configurationTail.IndexOf("bin", StringComparison.OrdinalIgnoreCase);
+            var directory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
 
-            string root = Path.GetFullPath(Path.Combine(configurationTail.Substring(0, bin), "..", ".."));
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "OpenVSA.slnx")))
+                {
+                    string project = Path.Combine(
+                        directory.FullName, "src", Path.GetFileNameWithoutExtension(fileName));
 
-            string tool = Path.Combine(
-                root, "src", Path.GetFileNameWithoutExtension(fileName),
-                configurationTail.Substring(bin), fileName);
+                    Assert.True(Directory.Exists(project), "No such project: " + project);
 
-            Assert.True(File.Exists(tool), "No built tool at " + tool);
-            return tool;
+                    // Newest wins: with two trees present, the one just built is the one to run.
+                    string[] candidates = Directory
+                        .GetFiles(project, fileName, SearchOption.AllDirectories)
+                        .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
+                        .ToArray();
+
+                    Assert.True(
+                        candidates.Length > 0,
+                        "No built " + fileName + " anywhere under " + project +
+                        ". Build the solution before running this test.");
+
+                    return candidates[0];
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new InvalidOperationException("Could not find the repository root.");
         }
 
         /// <summary>Every OpenVSA assembly beside the built shell.</summary>
