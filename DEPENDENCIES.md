@@ -13,6 +13,7 @@ restrictive terms.
 | Package | Version | Licence | Justification |
 |---|---|---|---|
 | `System.Memory` | 4.6.0 | MIT | `Span<T>`/`Memory<T>` for API shape. Note this is the **portable ("slow") span** on .NET Framework — no JIT intrinsic, no bounds-check elision — so hot loops use raw arrays instead (`REQ-NFR-003`). |
+| `System.Numerics.Vectors` | 4.6.0 | MIT | `Vector<float>` for `REQ-NFR-003`'s kernels. Without it the type resolves to the non-accelerated fallback in mscorlib and every measurement would compare scalar code against scalar code wearing a vector's name. Measured 8 lanes on the reference machine. |
 | `xunit` | 2.9.2 | Apache-2.0 | Test framework. Test-only, not shipped. |
 | `xunit.runner.visualstudio` | 2.8.2 | Apache-2.0 | Test runner. Test-only, not shipped. |
 | `Microsoft.NET.Test.Sdk` | 17.11.1 | MIT | Test host. Test-only, not shipped. |

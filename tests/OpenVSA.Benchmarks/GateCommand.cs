@@ -27,6 +27,11 @@ namespace OpenVSA.Benchmarks
         /// <returns>0 when the gate passes, 1 on a regression or a skipped target, 2 on misuse.</returns>
         public static int Run(string[] args)
         {
+            if (Has(args, "--kernels"))
+            {
+                return CompareKernels();
+            }
+
             if (Has(args, "--fft-compare"))
             {
                 return CompareFftProviders();
@@ -99,6 +104,72 @@ namespace OpenVSA.Benchmarks
             }
 
             return report.ExitCode;
+        }
+
+        /// <summary>
+        /// REQ-NFR-003: the vector kernels against the scalar ones they replace.
+        /// </summary>
+        /// <remarks>
+        /// The requirement asks for a factor, and its alternative branch turns on
+        /// Vector&lt;float&gt;.Count, so both are printed. A ratio with no lane count beside it
+        /// cannot be read against the requirement at all.
+        /// </remarks>
+        private static int CompareKernels()
+        {
+            const int Samples = 1 << 20;
+            const int Repetitions = 200;
+
+            Console.WriteLine(
+                "REQ-NFR-003: Vector<float>.Count = " + OpenVSA.Dsp.Kernels.Lanes +
+                ", hardware accelerated = " + OpenVSA.Dsp.Kernels.IsAccelerated);
+            Console.WriteLine();
+
+            var interleaved = new float[Samples * 2];
+            var window = new float[Samples];
+            var magnitudes = new float[Samples];
+
+            for (int n = 0; n < Samples; n++)
+            {
+                interleaved[n * 2] = (float)Math.Cos(0.1 * n);
+                interleaved[n * 2 + 1] = (float)Math.Sin(0.17 * n);
+                window[n] = (float)(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * n / Samples));
+            }
+
+            Report("window multiply",
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyScalar(interleaved, window)),
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyVector(interleaved, window)));
+
+            Report("magnitude squared",
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredScalar(interleaved, magnitudes)),
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredVector(interleaved, magnitudes)));
+
+            return 0;
+        }
+
+        private static double Time(int repetitions, Action work)
+        {
+            work();
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            for (int r = 0; r < repetitions; r++)
+            {
+                work();
+            }
+
+            return clock.Elapsed.TotalMilliseconds / repetitions;
+        }
+
+        private static void Report(string name, double scalarMs, double vectorMs)
+        {
+            double factor = scalarMs / vectorMs;
+
+            Console.WriteLine(
+                "  " + name.PadRight(20) +
+                "scalar " + scalarMs.ToString("F3").PadLeft(8) + " ms   " +
+                "vector " + vectorMs.ToString("F3").PadLeft(8) + " ms   " +
+                factor.ToString("F2") + "x   " +
+                (factor >= 2.5 ? "meets the 2.5x target" : "BELOW the 2.5x target"));
         }
 
         /// <summary>
