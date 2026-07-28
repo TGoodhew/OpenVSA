@@ -29,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
     <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
+    <ProjectReference Include="..\OpenVSA.PerformanceGate\OpenVSA.PerformanceGate.csproj" />
   </ItemGroup>
 
 </Project>

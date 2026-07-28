@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.PerformanceGate</RootNamespace>
+    <AssemblyName>OpenVSA.PerformanceGate</AssemblyName>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      Under tests\ but not a test project: this is the library the benchmark runner and the
+      gate's own tests both reference. IsTestProject would have `dotnet test` try to run it.
+    -->
+    <IsTestProject>false</IsTestProject>
+    <AppConfig />
+  </PropertyGroup>
+
+  <!--
+    Deliberately no package references and no reference to any OpenVSA assembly. Everything
+    here is arithmetic over recorded numbers, so it can be exercised by the unit suite in
+    milliseconds without BenchmarkDotNet, without WPF, and without measuring anything. The
+    measuring lives in OpenVSA.Benchmarks; the deciding lives here.
+  -->
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+</Project>
