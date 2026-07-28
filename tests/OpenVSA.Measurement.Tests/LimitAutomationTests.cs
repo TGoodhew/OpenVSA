@@ -163,10 +163,22 @@ namespace OpenVSA.Measurement.Tests
 
             int answers = 0;
             int wholeVerdicts = 0;
+            double slowestReadMs = 0.0;
+
+            var readClock = new System.Diagnostics.Stopwatch();
 
             while (!stop.IsCancellationRequested)
             {
+                // Time the read itself, not the loop. "Answerable while a measurement is running"
+                // is a statement about how long a query waits, and that is what gets measured.
+                readClock.Restart();
                 LimitTestResult result = measurement.LimitTests.Result;
+                double readMs = readClock.Elapsed.TotalMilliseconds;
+
+                if (readMs > slowestReadMs)
+                {
+                    slowestReadMs = readMs;
+                }
 
                 answers++;
 
@@ -204,13 +216,30 @@ namespace OpenVSA.Measurement.Tests
 
             _output.WriteLine(
                 answers + " queries during " + measurement.LimitTests.EvaluationCount +
-                " evaluations; " + wholeVerdicts + " whole verdicts, 0 partial");
+                " evaluations; " + wholeVerdicts + " whole verdicts, 0 partial; slowest read " +
+                slowestReadMs.ToString("F3") + " ms");
 
-            Assert.True(answers > 100, "The reader was answered only " + answers + " times.");
+            // The writer must actually have been running, or nothing concurrent was demonstrated.
             Assert.True(
-                measurement.LimitTests.EvaluationCount > 0,
-                "The writer completed no evaluations, so nothing about concurrent reading was shown.");
+                measurement.LimitTests.EvaluationCount > 1000L,
+                "The writer completed only " + measurement.LimitTests.EvaluationCount +
+                " evaluations, so the reads did not overlap a busy writer.");
+
+            // Every read returned a whole verdict. The writer had already evaluated before the
+            // window opened, so there is no legitimate null in here — a mismatch would mean the
+            // published reference went briefly back to nothing.
             Assert.True(wholeVerdicts > 0, "No verdict was ever observed.");
+            Assert.Equal(answers, wholeVerdicts);
+
+            // **This is the claim, not the query count.** An earlier version asserted more than a
+            // hundred reads, which is a proxy for "never blocked out" that depends on how many
+            // cores the machine has: a two-core CI runner managed 43 reads against 66 831
+            // evaluations and failed, having demonstrated exactly the property it was meant to.
+            // What matters is that no single read waited, and reading takes a volatile load and no
+            // lock, so the bound is generous only to absorb scheduling.
+            Assert.True(
+                slowestReadMs < 50.0,
+                "A query took " + slowestReadMs.ToString("F1") + " ms, so reading is blocked by writing.");
         }
 
         [Fact]
