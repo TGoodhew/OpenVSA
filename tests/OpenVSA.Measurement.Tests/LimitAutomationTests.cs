@@ -112,7 +112,7 @@ namespace OpenVSA.Measurement.Tests
         }
 
         [Fact]
-        public async Task TheQueryIsAnswerableWhileAMeasurementIsRunning()
+        public void TheQueryIsAnswerableWhileAMeasurementIsRunning()
         {
             // "The query is answerable while a measurement is running, and reports the state of a
             // completed evaluation rather than a partially updated one."
@@ -124,20 +124,42 @@ namespace OpenVSA.Measurement.Tests
 
             measurement.Evaluator.Test = Test(-40.0);
 
-            var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(400.0));
+            var stop = new CancellationTokenSource();
 
             SpectrumFrame passing = Trace(-60.0);
             SpectrumFrame failing = Trace(-20.0);
 
-            Task writer = Task.Run(() =>
+            // **A dedicated thread, not Task.Run.** The pool hands out threads grudgingly — roughly
+            // one new one per half-second once its initial count is busy — and on a two-core CI
+            // runner with xUnit running other collections in parallel the writer simply never
+            // started inside the window. That produced "22 queries during 0 evaluations": not the
+            // race this test is about, just a writer that had not run yet.
+            var running = new ManualResetEventSlim(false);
+
+            var writer = new Thread(() =>
             {
                 long n = 0;
 
                 while (!stop.IsCancellationRequested)
                 {
                     measurement.Evaluator.Offer((n++ & 1) == 0 ? passing : failing);
+                    running.Set();
                 }
-            });
+            })
+            {
+                IsBackground = true,
+            };
+
+            writer.Start();
+
+            // The timed window opens only once the writer has actually evaluated something.
+            // Otherwise the test measures how long the scheduler took to start it, and asserts
+            // about concurrency that never happened.
+            Assert.True(
+                running.Wait(TimeSpan.FromSeconds(10.0)),
+                "The writer never completed an evaluation, so no concurrent read was ever attempted.");
+
+            stop.CancelAfter(TimeSpan.FromMilliseconds(400.0));
 
             int answers = 0;
             int wholeVerdicts = 0;
@@ -178,7 +200,7 @@ namespace OpenVSA.Measurement.Tests
                 }
             }
 
-            await writer.ConfigureAwait(false);
+            Assert.True(writer.Join(TimeSpan.FromSeconds(10.0)), "The writer did not stop.");
 
             _output.WriteLine(
                 answers + " queries during " + measurement.LimitTests.EvaluationCount +
