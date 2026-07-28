@@ -38,6 +38,12 @@ jobs:
       - name: Check the dependency register
         run: python tools/check_dependencies.py
 
+      # Build-file mistakes that have each already cost a red CI run: a pinned C++ toolset, a
+      # .vcxproj in the solution the dotnet CLI cannot evaluate, and two output trees for one
+      # project. None is visible in review unless the reviewer knows the rule.
+      - name: Check the project files
+        run: python tools/check_project_files.py
+
       - name: Restore
         run: msbuild OpenVSA.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
 
