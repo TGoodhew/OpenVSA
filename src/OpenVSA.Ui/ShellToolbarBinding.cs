@@ -49,6 +49,8 @@ namespace OpenVSA.Ui
         private ComboBox _layoutBox;
         private ComboBox _mapBox;
         private ToggleButton _blockDiagramToggle;
+        private ToggleButton _enhanceToggle;
+        private ComboBox _thresholdBox;
 
         private MouseMode _mouseMode = MouseMode.Marker;
         private AreaSelectAction _areaAction = AreaSelectAction.CentreAndSpan;
@@ -153,6 +155,8 @@ namespace OpenVSA.Ui
             _layoutBox = null;
             _mapBox = null;
             _blockDiagramToggle = null;
+            _enhanceToggle = null;
+            _thresholdBox = null;
 
             ShellToolbarBuilder.Build(Toolbars, this, _toolbarLayout);
 
@@ -201,8 +205,10 @@ namespace OpenVSA.Ui
 
                 case "Control > Single Sweep":
                     _singleSweepToggle = (ToggleButton)created;
-                    _singleSweepToggle.Click += (sender, e) => ChooseSweepMode(
-                        _singleSweepToggle.IsChecked == true ? SweepMode.Single : SweepMode.Continuous);
+                    WhenToggled(
+                        _singleSweepToggle,
+                        () => ChooseSweepMode(SweepMode.Single),
+                        () => ChooseSweepMode(SweepMode.Continuous));
                     return true;
 
                 case "Control > Auto-range":
@@ -246,8 +252,10 @@ namespace OpenVSA.Ui
                     _blockDiagramToggle.IsChecked =
                         _toolWindows != null && _toolWindows.Layout.IsOpen(ToolWindow.BlockDiagram);
 
-                    _blockDiagramToggle.Click += (sender, e) => _toolWindows.SetOpen(
-                        ToolWindow.BlockDiagram, _blockDiagramToggle.IsChecked == true);
+                    WhenToggled(
+                        _blockDiagramToggle,
+                        () => _toolWindows.SetOpen(ToolWindow.BlockDiagram, true),
+                        () => _toolWindows.SetOpen(ToolWindow.BlockDiagram, false));
                     return true;
 
                 // ---- Spectrogram / Colour Map -------------------------------------------------
@@ -261,6 +269,19 @@ namespace OpenVSA.Ui
 
                 case "Spectrogram / Colour Map > Cumulative History":
                     BindAccumulator(TraceAccumulator.CumulativeHistory, (ToggleButton)created);
+                    return true;
+
+                case "Spectrogram / Colour Map > Enhance":
+                    _enhanceToggle = (ToggleButton)created;
+                    _enhanceToggle.IsChecked = _spectrogramEnhance;
+                    WhenToggled(
+                        _enhanceToggle, () => ChooseEnhance(true), () => ChooseEnhance(false));
+                    return true;
+
+                case "Spectrogram / Colour Map > Threshold":
+                    _thresholdBox = (ComboBox)created;
+                    FillThresholdBox();
+                    _thresholdBox.SelectionChanged += OnThresholdChosen;
                     return true;
 
                 case "Spectrogram / Colour Map > Map Colour Scheme":
@@ -416,6 +437,49 @@ namespace OpenVSA.Ui
 
         // ---- Marker Tools ------------------------------------------------------------------------
 
+        /// <summary>
+        /// Answers a toggle being turned on or off, however it was turned.
+        /// </summary>
+        /// <param name="button">The toggle.</param>
+        /// <param name="on">What to do when it goes in.</param>
+        /// <param name="off">What to do when it comes out.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong><see cref="System.Windows.Controls.Primitives.ButtonBase.Click"/> is the wrong
+        /// event for a toggle, and the difference is not academic.</strong> WPF's automation peer
+        /// for a <see cref="ToggleButton"/> implements <c>IToggleProvider.Toggle</c> by changing
+        /// <see cref="ToggleButton.IsChecked"/> — it raises <c>Checked</c> and <c>Unchecked</c> and
+        /// never raises <c>Click</c>. A control bound to <c>Click</c> therefore lights up and does
+        /// nothing when it is operated by a screen reader, by UI Automation, or by anything else
+        /// that is not a mouse. Every toggle on <c>REQ-UI-063</c>'s toolbars was bound that way
+        /// until a screenshot of the running application showed the Spectrogram button lit with the
+        /// accumulator still at None.
+        /// </para>
+        /// <para>
+        /// Guarded by <see cref="_followingToolbar"/>, because the shell also sets
+        /// <c>IsChecked</c> to bring a toolbar into line with a setting changed elsewhere — and
+        /// that must not be mistaken for a user pressing it.
+        /// </para>
+        /// </remarks>
+        private void WhenToggled(ToggleButton button, Action on, Action off)
+        {
+            button.Checked += (sender, e) =>
+            {
+                if (!_followingToolbar)
+                {
+                    on();
+                }
+            };
+
+            button.Unchecked += (sender, e) =>
+            {
+                if (!_followingToolbar)
+                {
+                    off();
+                }
+            };
+        }
+
         private void BindMouseMode(string name, ToggleButton button)
         {
             MouseMode? mode = MouseModes.ByName(name);
@@ -430,7 +494,19 @@ namespace OpenVSA.Ui
             _mouseModeButtons[captured] = button;
             button.IsChecked = _mouseMode == captured;
 
-            button.Click += (sender, e) => ChooseMouseMode(captured);
+            // Unchecking re-selects: exactly one mouse mode is in force at all times, and Pointer
+            // is the one that means "a click does nothing". A toggle left out with the mode
+            // unchanged would be a toolbar disagreeing with the plots it drives.
+            WhenToggled(
+                button,
+                () => ChooseMouseMode(captured),
+                () =>
+                {
+                    if (_mouseMode == captured)
+                    {
+                        ChooseMouseMode(captured);
+                    }
+                });
 
             if (captured == MouseMode.AreaSelect)
             {
@@ -620,8 +696,20 @@ namespace OpenVSA.Ui
             _accumulatorButtons[accumulator] = button;
             button.IsChecked = _analysis.Accumulator == accumulator;
 
-            button.Click += (sender, e) => ChooseAccumulator(
-                button.IsChecked == true ? accumulator : TraceAccumulator.None);
+            // Unchecking turns the accumulator off only if this is the one that is on. The builder
+            // couples the group by unchecking the others when one goes in, and without the guard
+            // that coupling would immediately set the accumulator back to None — the mode would
+            // light up and be cancelled in the same gesture.
+            WhenToggled(
+                button,
+                () => ChooseAccumulator(accumulator),
+                () =>
+                {
+                    if (_analysis.Accumulator == accumulator)
+                    {
+                        ChooseAccumulator(TraceAccumulator.None);
+                    }
+                });
         }
 
         /// <summary>
@@ -661,6 +749,120 @@ namespace OpenVSA.Ui
             }
         }
 
+        /// <summary>
+        /// The levels the Threshold dropdown offers, in decibels below the top of the map.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>A ladder relative to the map's top, not a typed absolute level.</strong> A
+        /// spectrogram's useful range moves with the signal and with Enhance, so an absolute
+        /// threshold typed once is wrong the moment either changes; "hide everything more than 40 dB
+        /// below the loudest thing here" keeps meaning what it meant. The same argument the
+        /// per-division ladder makes for the vertical axis — a readable set of steps beats an
+        /// arbitrary number.
+        /// </para>
+        /// <para>
+        /// Zero is not offered. A threshold at the top of the map hides everything, which is a
+        /// setting with no use and one click away from a display a user would report as broken.
+        /// </para>
+        /// </remarks>
+        public static readonly double[] ThresholdStepsDb = { 10.0, 20.0, 30.0, 40.0, 50.0, 60.0 };
+
+        /// <summary>What the Threshold dropdown shows when nothing is hidden.</summary>
+        public const string ThresholdOff = "No threshold";
+
+        /// <summary>
+        /// Whether the colour map is stretched about the busiest levels (<c>REQ-UI-054</c>).
+        /// </summary>
+        public bool SpectrogramEnhance
+        {
+            get { return _spectrogramEnhance; }
+            set { ChooseEnhance(value); }
+        }
+
+        /// <summary>
+        /// How far below the loudest cell the display stops drawing, or NaN for no threshold.
+        /// </summary>
+        public double SpectrogramThresholdBelowTopDb => _spectrogramThresholdBelowTopDb;
+
+        /// <summary>
+        /// Chooses the enhancement (<c>REQ-UI-054</c>).
+        /// </summary>
+        private void ChooseEnhance(bool enhance)
+        {
+            _spectrogramEnhance = enhance;
+
+            if (_enhanceToggle != null)
+            {
+                _followingToolbar = true;
+
+                try
+                {
+                    _enhanceToggle.IsChecked = enhance;
+                }
+                finally
+                {
+                    _followingToolbar = false;
+                }
+            }
+
+            ApplyAccumulator();
+
+            StatusText.Content = enhance
+                ? "Enhance on: the colour map is stretched about the levels the history holds."
+                : "Enhance off: the colour map spans the whole range of the history.";
+        }
+
+        /// <summary>
+        /// Chooses the threshold (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <param name="belowTopDb">Decibels below the loudest cell, or NaN for none.</param>
+        /// <remarks>
+        /// Carried to the plots as a relative figure and resolved there against the loudest cell in
+        /// the history, so that the number the user chose means the same thing whether or not
+        /// Enhance is on.
+        /// </remarks>
+        public void ChooseThreshold(double belowTopDb)
+        {
+            _spectrogramThresholdBelowTopDb = belowTopDb;
+
+            ApplyAccumulator();
+
+            StatusText.Content = double.IsNaN(belowTopDb)
+                ? "Threshold off: every cell is drawn."
+                : "Threshold: cells more than " +
+                  belowTopDb.ToString("0", System.Globalization.CultureInfo.CurrentCulture) +
+                  " dB below the loudest are hidden.";
+        }
+
+        private void FillThresholdBox()
+        {
+            _thresholdBox.Items.Clear();
+            _thresholdBox.Items.Add(ThresholdOff);
+
+            foreach (double step in ThresholdStepsDb)
+            {
+                _thresholdBox.Items.Add(
+                    "−" + step.ToString("0", System.Globalization.CultureInfo.CurrentCulture) + " dB");
+            }
+
+            _thresholdBox.SelectedIndex = 0;
+        }
+
+        private void OnThresholdChosen(object sender, SelectionChangedEventArgs e)
+        {
+            if (_followingToolbar || _thresholdBox.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            LastToolbarCommand = "Spectrogram / Colour Map > Threshold";
+
+            ChooseThreshold(_thresholdBox.SelectedIndex == 0
+                ? double.NaN
+                : ThresholdStepsDb[_thresholdBox.SelectedIndex - 1]);
+        }
+
         private void FillMapBox()
         {
             _mapBox.Items.Clear();
@@ -693,6 +895,7 @@ namespace OpenVSA.Ui
 
                     _spectrogramMap = SpectrogramColourMap.Of(kind);
                     BuildSpectrogramMapMenu();
+                    ApplyAccumulator();
 
                     StatusText.Content = "Colour map: " + name;
                     return;
@@ -700,9 +903,19 @@ namespace OpenVSA.Ui
             }
         }
 
-        /// <summary>Brings the colour-map box into line with the map the menu chose.</summary>
+        /// <summary>
+        /// Brings the colour-map box and every spectrogram into line with the chosen map.
+        /// </summary>
+        /// <remarks>
+        /// Both, from one call, because they are two views of one setting: a map chosen from the
+        /// Trace menu that reached the dropdown but not the display would be the defect
+        /// <c>REQ-UI-054</c>'s "Map Colour Scheme switches between the REQ-UI-024 maps" criterion
+        /// is there to catch.
+        /// </remarks>
         private void FollowSpectrogramMap()
         {
+            ApplyAccumulator();
+
             if (_mapBox == null)
             {
                 return;

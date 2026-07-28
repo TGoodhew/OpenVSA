@@ -124,5 +124,82 @@ namespace OpenVSA.Ui.Rendering
         /// <param name="y">Data point's row.</param>
         public static PixelRect CrossBounds(int x, int y) =>
             new PixelRect(x - HalfSize, y - HalfSize, HalfSize * 2 + 1, HalfSize * 2 + 1);
+
+        /// <summary>
+        /// How many pixels of a marker rule are drawn out of every <see cref="RulePeriod"/>.
+        /// </summary>
+        /// <remarks>
+        /// A spectrogram marker crosses the whole display, and every pixel it covers is a cell it
+        /// hides. Dashed rather than solid so that the data under the line can still be read —
+        /// which matters most exactly where a user has put the marker.
+        /// </remarks>
+        public const int RuleDashLength = 3;
+
+        /// <summary>The repeat of a marker rule's dashes, in pixels.</summary>
+        public const int RulePeriod = 5;
+
+        /// <summary>
+        /// Draws a spectrogram marker as a vertical rule (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <param name="surface">The surface to draw on.</param>
+        /// <param name="x">The column to draw down.</param>
+        /// <param name="area">The rectangle to stay inside.</param>
+        /// <param name="color">The rule's colour.</param>
+        /// <returns>Whether anything was drawn.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="surface"/> is null.</exception>
+        public static bool DrawVerticalRule(PixelSurface surface, int x, PixelRect area, PlotColor color)
+        {
+            if (surface == null)
+            {
+                throw new ArgumentNullException(nameof(surface));
+            }
+
+            if (x < area.X || x >= area.Right)
+            {
+                return false;
+            }
+
+            for (int y = area.Y; y < area.Bottom; y++)
+            {
+                if ((y - area.Y) % RulePeriod < RuleDashLength)
+                {
+                    surface.SetPixel(x, y, color);
+                }
+            }
+
+            return area.Height > 0;
+        }
+
+        /// <summary>
+        /// Draws a trace-select marker as a horizontal rule (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <param name="surface">The surface to draw on.</param>
+        /// <param name="y">The row to draw across.</param>
+        /// <param name="area">The rectangle to stay inside.</param>
+        /// <param name="color">The rule's colour.</param>
+        /// <returns>Whether anything was drawn.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="surface"/> is null.</exception>
+        public static bool DrawHorizontalRule(PixelSurface surface, int y, PixelRect area, PlotColor color)
+        {
+            if (surface == null)
+            {
+                throw new ArgumentNullException(nameof(surface));
+            }
+
+            if (y < area.Y || y >= area.Bottom)
+            {
+                return false;
+            }
+
+            for (int x = area.X; x < area.Right; x++)
+            {
+                if ((x - area.X) % RulePeriod < RuleDashLength)
+                {
+                    surface.SetPixel(x, y, color);
+                }
+            }
+
+            return area.Width > 0;
+        }
     }
 }

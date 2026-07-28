@@ -2586,6 +2586,126 @@ namespace OpenVSA.TestHarness
                     Hz(placed[wanted]));
             });
 
+            Step("REQ-UI-054", "Raising the threshold removes cells from a real spectrogram", () =>
+            {
+                // Against a history of real acquisitions, where the levels are a measured noise
+                // floor with a carrier standing in it rather than a distribution chosen to make
+                // the arithmetic work. The criterion is monotone: every step up removes cells and
+                // none adds any.
+                Spectrogram history = trace.Spectrogram;
+
+                if (history.RowCount == 0)
+                {
+                    return Failed<long>("no history to threshold");
+                }
+
+                long everything = SpectrogramScaling.DrawableCellCount(
+                    history, SpectrogramLevels.NoThresholdDbm);
+
+                SpectrogramLevels window = SpectrogramScaling.Window(
+                    history, SpectrogramLevels.NoThresholdDbm, false,
+                    new SpectrogramLevels(-120.0, 0.0));
+
+                long previous = everything;
+                bool monotone = true;
+                var counted = new List<string>();
+
+                foreach (double below in new[] { 60.0, 40.0, 20.0, 10.0 })
+                {
+                    long drawn = SpectrogramScaling.DrawableCellCount(
+                        history, window.HighDbm - below);
+
+                    monotone &= drawn <= previous;
+                    previous = drawn;
+
+                    counted.Add(
+                        "−" + below.ToString("0", CultureInfo.CurrentCulture) + " dB: " + drawn);
+                }
+
+                bool ok = monotone && everything > 0 && previous < everything;
+
+                return new Outcome<long>(
+                    ok, previous,
+                    everything + " cells over " + history.RowCount + " rows; " +
+                    string.Join(", ", counted) + "; window " + window);
+            });
+
+            Step("REQ-UI-054", "Enhance narrows the map onto the levels a real floor occupies", () =>
+            {
+                // The measured justification for the control. A real floor is 20-odd decibels of
+                // shape with a carrier 90 dB above it, so a window taken from the extremes spends
+                // most of the colour map on a range nothing occupies.
+                Spectrogram history = trace.Spectrogram;
+
+                if (history.RowCount == 0)
+                {
+                    return Failed<double>("no history to enhance");
+                }
+
+                var fallback = new SpectrogramLevels(-120.0, 0.0);
+
+                SpectrogramLevels plain = SpectrogramScaling.Window(
+                    history, SpectrogramLevels.NoThresholdDbm, false, fallback);
+
+                SpectrogramLevels enhanced = SpectrogramScaling.Window(
+                    history, SpectrogramLevels.NoThresholdDbm, true, fallback);
+
+                bool ok = enhanced.RangeDb < plain.RangeDb &&
+                          enhanced.LowDbm >= plain.LowDbm &&
+                          enhanced.HighDbm <= plain.HighDbm;
+
+                return new Outcome<double>(
+                    ok, plain.RangeDb - enhanced.RangeDb,
+                    "plain " + plain + " (" +
+                    plain.RangeDb.ToString("0.0", CultureInfo.CurrentCulture) + " dB), enhanced " +
+                    enhanced + " (" +
+                    enhanced.RangeDb.ToString("0.0", CultureInfo.CurrentCulture) + " dB)");
+            });
+
+            Step("REQ-UI-054", "The two spectrogram markers move only along their own axes", () =>
+            {
+                // Over a real history, so the frequency the marker holds is resolved against an
+                // axis an instrument produced rather than one this test made up.
+                Spectrogram history = trace.Spectrogram;
+
+                if (history.RowCount < 3)
+                {
+                    return Failed<double>("not enough history to mark");
+                }
+
+                var markers = new SpectrogramMarkers(history);
+
+                markers.MoveTo(SpectrogramMarkerKind.Spectrogram, 0, 0);
+                markers.MoveTo(SpectrogramMarkerKind.TraceSelect, 0, 0);
+
+                int bins = history.Newest.PointCount;
+
+                // Diagonal drags: each marker must take one coordinate and discard the other.
+                markers.MoveTo(SpectrogramMarkerKind.Spectrogram, bins - 1, history.RowCount - 1);
+
+                bool rowHeld = markers.RowIndex == 0;
+                int movedBin = markers.BinIndex;
+
+                markers.MoveTo(SpectrogramMarkerKind.TraceSelect, 0, history.RowCount - 1);
+
+                bool binHeld = markers.BinIndex == movedBin;
+                bool rowMoved = markers.RowIndex == history.RowCount - 1;
+
+                bool perpendicular =
+                    SpectrogramMarkers.IsVertical(SpectrogramMarkerKind.Spectrogram) &&
+                    SpectrogramMarkers.IsHorizontal(SpectrogramMarkerKind.TraceSelect);
+
+                bool ok = rowHeld && binHeld && rowMoved && perpendicular &&
+                          ReferenceEquals(markers.SelectedRow, history.Newest);
+
+                return new Outcome<double>(
+                    ok, markers.FrequencyHz,
+                    "spectrogram marker (vertical) dragged to " + Hz(markers.FrequencyHz) +
+                    " left the row at 0: " + rowHeld +
+                    "; trace select (horizontal) dragged to row " + markers.RowIndex + " of " +
+                    (history.RowCount - 1) + " left the bin at " + movedBin + ": " + binHeld);
+            });
+
             Step("REQ-TRC-001a", "A format change keeps the history; an accumulator change drops it", () =>
             {
                 int before = trace.Spectrogram.RowCount;

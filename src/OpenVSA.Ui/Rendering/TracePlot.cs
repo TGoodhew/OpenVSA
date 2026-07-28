@@ -95,6 +95,17 @@ namespace OpenVSA.Ui.Rendering
         private LimitTest _limitTest;
         private LimitColours _limitColours = new LimitColours();
 
+        private TraceAccumulator _accumulator = TraceAccumulator.None;
+        private Spectrogram _history;
+        private SpectrogramMarkers _spectrogramMarkers;
+        private SpectrogramColourMap _spectrogramMap = SpectrogramColourMap.Default;
+        private SpectrogramLevels _spectrogramLevels = new SpectrogramLevels(-100.0, 0.0);
+        private double _spectrogramThresholdBelowTopDb = double.NaN;
+        private double _spectrogramThresholdDbm = SpectrogramLevels.NoThresholdDbm;
+        private bool _spectrogramEnhance;
+        private PlotColor _spectrogramMarkerColour = new PlotColor(0xFF, 0x40, 0x40);
+        private PlotColor _traceSelectColour = new PlotColor(0x40, 0xC0, 0xFF);
+
         /// <summary>Creates an empty plot.</summary>
         public TracePlot()
         {
@@ -513,6 +524,234 @@ namespace OpenVSA.Ui.Rendering
                 }
             }
         }
+
+        // ---- Spectrogram (REQ-UI-054) -------------------------------------------------------------
+
+        /// <summary>
+        /// What this plot accumulates, and so what it draws (<c>REQ-TRC-001a</c>).
+        /// </summary>
+        /// <remarks>
+        /// Separate from <see cref="CurrentFormat"/> and reached through
+        /// <see cref="TraceAccumulator"/> rather than the format list, which is
+        /// <c>REQ-UI-054</c>'s criterion and <c>REQ-TRC-001a</c>'s reason for existing. Setting it
+        /// redraws; it does not clear the history, because deciding what to keep is
+        /// <see cref="AccumulatingTrace"/>'s job and this is a display.
+        /// </remarks>
+        public TraceAccumulator Accumulator
+        {
+            get { return _accumulator; }
+
+            set
+            {
+                if (_accumulator == value)
+                {
+                    return;
+                }
+
+                _accumulator = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// The accumulated rows this plot draws when <see cref="Accumulator"/> is
+        /// <see cref="TraceAccumulator.Spectrogram"/>.
+        /// </summary>
+        /// <remarks>
+        /// Held by reference and read as it grows: the shell adds a row per sweep and the plot
+        /// draws whatever is there when it next redraws. Copying it per frame would double the
+        /// memory of the one structure in the display path whose size is measured in hundreds of
+        /// megabytes.
+        /// </remarks>
+        public Spectrogram History
+        {
+            get { return _history; }
+
+            set
+            {
+                if (ReferenceEquals(_history, value))
+                {
+                    return;
+                }
+
+                _history = value;
+                _spectrogramMarkers = value == null ? null : new SpectrogramMarkers(value);
+
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// The two markers of <c>REQ-UI-054</c>, or <c>null</c> when there is no history.
+        /// </summary>
+        public SpectrogramMarkers SpectrogramMarkers => _spectrogramMarkers;
+
+        /// <summary>The colour map the spectrogram is drawn with (<c>REQ-UI-024</c>).</summary>
+        /// <exception cref="ArgumentNullException">The value is null.</exception>
+        public SpectrogramColourMap SpectrogramMap
+        {
+            get { return _spectrogramMap; }
+
+            set
+            {
+                if (value == null)
+                {
+                    throw new ArgumentNullException(nameof(value));
+                }
+
+                if (ReferenceEquals(_spectrogramMap, value))
+                {
+                    return;
+                }
+
+                _spectrogramMap = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// How far below the loudest cell the display stops drawing (<c>REQ-UI-054</c>, Threshold).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// NaN draws every cell, which is where it starts. Raising it removes cells, which is the
+        /// criterion.
+        /// </para>
+        /// <para>
+        /// <strong>Relative to the loudest cell in the history, not to the top of the window
+        /// Enhance produced.</strong> Enhance narrows the window onto the busiest levels — on a
+        /// flat noise floor to about a decibel — so a threshold measured from that top would be
+        /// below every cell and remove nothing. The screenshot showed precisely that: Enhance on,
+        /// the ladder set to −40 dB, and the display unchanged.
+        /// </para>
+        /// </remarks>
+        public double SpectrogramThresholdBelowTopDb
+        {
+            get { return _spectrogramThresholdBelowTopDb; }
+
+            set
+            {
+                if (_spectrogramThresholdBelowTopDb.Equals(value))
+                {
+                    return;
+                }
+
+                _spectrogramThresholdBelowTopDb = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// The level the last drawn spectrogram actually cut at, in dBm.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="SpectrogramLevels.NoThresholdDbm"/> when nothing is being hidden. Reported
+        /// rather than recomputed, like <see cref="SpectrogramLevels"/>, so a reader can check what
+        /// was drawn rather than what would be drawn now.
+        /// </remarks>
+        public double SpectrogramThresholdDbm => _spectrogramThresholdDbm;
+
+        /// <summary>
+        /// Whether the colour map is stretched about the busiest levels (<c>REQ-UI-054</c>,
+        /// Enhance).
+        /// </summary>
+        public bool SpectrogramEnhance
+        {
+            get { return _spectrogramEnhance; }
+
+            set
+            {
+                if (_spectrogramEnhance == value)
+                {
+                    return;
+                }
+
+                _spectrogramEnhance = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>The spectrogram marker's colour (<c>REQ-UI-022</c>, per trace).</summary>
+        public PlotColor SpectrogramMarkerColour
+        {
+            get { return _spectrogramMarkerColour; }
+            set { _spectrogramMarkerColour = value; Redraw(_snapshot); }
+        }
+
+        /// <summary>The trace-select marker's colour (<c>REQ-UI-022</c>, per trace).</summary>
+        public PlotColor TraceSelectColour
+        {
+            get { return _traceSelectColour; }
+            set { _traceSelectColour = value; Redraw(_snapshot); }
+        }
+
+        /// <summary>
+        /// The level window the last spectrogram was drawn with.
+        /// </summary>
+        /// <remarks>
+        /// Reported rather than recomputed on demand, for the reason
+        /// <c>SettingsDialog.FixedContentSize</c> is: a property that measured would answer a
+        /// different question from the one the display answered, and Enhance is exactly the setting
+        /// whose effect a reader wants to check against what was actually drawn.
+        /// </remarks>
+        public SpectrogramLevels SpectrogramLevels => _spectrogramLevels;
+
+        /// <summary>
+        /// How many pixels the last spectrogram painted with a cell's colour.
+        /// </summary>
+        /// <remarks>
+        /// What makes "raising Threshold removes cells below it" assertable against the rendering
+        /// rather than against the model alone.
+        /// </remarks>
+        public int SpectrogramCellsDrawn { get; private set; }
+
+        /// <summary>Whether this plot is drawing a spectrogram rather than a trace.</summary>
+        public bool IsShowingSpectrogram =>
+            _accumulator == TraceAccumulator.Spectrogram && _history != null && _history.RowCount > 0;
+
+        /// <summary>
+        /// Moves one of the spectrogram markers to a point on the plot (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <param name="which">Which marker.</param>
+        /// <param name="point">Where the gesture landed, in this element's coordinates.</param>
+        /// <returns>Whether the marker moved.</returns>
+        /// <remarks>
+        /// Both coordinates of the point reach <see cref="SpectrogramMarkers.MoveTo"/>, which
+        /// discards the one that is not on the marker's own axis. Filtering here instead would put
+        /// the criterion in the view rather than in the thing the criterion is about.
+        /// </remarks>
+        public bool MoveSpectrogramMarker(SpectrogramMarkerKind which, Point point)
+        {
+            if (!IsShowingSpectrogram || _layout == null || _surface == null)
+            {
+                return false;
+            }
+
+            DpiScale dpi = VisualTreeHelper.GetDpi(this);
+            PixelRect graticule = _layout.Graticule;
+
+            int x = (int)Math.Round(point.X * dpi.DpiScaleX) - graticule.X;
+            int y = (int)Math.Round(point.Y * dpi.DpiScaleY) - graticule.Y;
+
+            SpectrumFrame newest = _history.Newest;
+
+            int bin = TraceEnvelope.IndexFor(
+                Clamp(x, 0, graticule.Width - 1), newest.PointCount, graticule.Width);
+
+            int row = SpectrogramRasterizer.RowForY(
+                Clamp(y, 0, graticule.Height - 1), graticule.Height, _history.RowCount);
+
+            if (!_spectrogramMarkers.MoveTo(which, bin, row))
+            {
+                return false;
+            }
+
+            Redraw(_snapshot);
+            return true;
+        }
+
+        private static int Clamp(int value, int low, int high) =>
+            value < low ? low : (value > high ? high : value);
 
         /// <summary>The format the trace is currently drawn in.</summary>
         public TraceFormat CurrentFormat
@@ -1778,7 +2017,11 @@ namespace OpenVSA.Ui.Rendering
                 ColumnColours(snapshot),
                 _showGridLines);
 
-            if (snapshot != null)
+            if (IsShowingSpectrogram)
+            {
+                DrawSpectrogram();
+            }
+            else if (snapshot != null)
             {
                 DrawMarkers(snapshot);
             }
@@ -1817,6 +2060,74 @@ namespace OpenVSA.Ui.Rendering
                 LimitShading.Classify(snapshot.Spectrum, test), _layout.Graticule.Width);
 
             return LimitShading.ShadeTrace(standings, _limitColours, _palette.Trace);
+        }
+
+        /// <summary>
+        /// Draws the accumulated history as a map, with its two markers (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Over the graticule the rasteriser has already drawn, so the border, the annotation band
+        /// and the background all stay as they are. <strong>The graticule's own lines are covered by
+        /// the map, deliberately</strong> — a grid drawn over a spectrogram hides one cell in every
+        /// ten columns and rows, and those cells are data rather than blank space.
+        /// </para>
+        /// <para>
+        /// The markers are drawn last and perpendicular: the spectrogram marker down the column its
+        /// frequency falls in, the trace-select marker across the row its instant selects. Both use
+        /// <see cref="SpectrogramRasterizer"/>'s own mapping rather than a second copy of the
+        /// arithmetic, so a marker cannot land beside the cell it names.
+        /// </para>
+        /// </remarks>
+        private void DrawSpectrogram()
+        {
+            PixelRect graticule = _layout.Graticule;
+
+            // The threshold first, from the loudest cell rather than from the window: Enhance moves
+            // the window and must not move what the ladder means. Then the window, over the cells
+            // the threshold leaves — so the two controls compose, which is what a user turning both
+            // on expects.
+            double peak = double.IsNaN(_spectrogramThresholdBelowTopDb)
+                ? double.NaN
+                : SpectrogramScaling.PeakLevelDbm(_history);
+
+            _spectrogramThresholdDbm = double.IsNaN(peak)
+                ? SpectrogramLevels.NoThresholdDbm
+                : peak - _spectrogramThresholdBelowTopDb;
+
+            _spectrogramLevels = SpectrogramScaling.Window(
+                _history, _spectrogramThresholdDbm, _spectrogramEnhance, _spectrogramLevels);
+
+            SpectrogramCellsDrawn = SpectrogramRasterizer.Render(
+                _surface,
+                graticule,
+                _history,
+                _spectrogramMap,
+                _spectrogramLevels,
+                _spectrogramThresholdDbm,
+                _palette.TraceBackground);
+
+            SpectrogramMarkers markers = _spectrogramMarkers;
+
+            if (markers == null || !markers.HasRows)
+            {
+                return;
+            }
+
+            int column = SpectrogramRasterizer.ColumnForBin(
+                markers.BinIndex, graticule.Width, _history.Newest.PointCount);
+
+            MarkerGlyph.DrawVerticalRule(
+                _surface, graticule.X + column, graticule, _spectrogramMarkerColour);
+
+            int row = SpectrogramRasterizer.YForRow(
+                markers.RowIndex, graticule.Height, _history.RowCount);
+
+            if (row >= 0)
+            {
+                MarkerGlyph.DrawHorizontalRule(
+                    _surface, graticule.Y + row, graticule, _traceSelectColour);
+            }
         }
 
         /// <summary>

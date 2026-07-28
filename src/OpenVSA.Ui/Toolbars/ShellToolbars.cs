@@ -283,14 +283,14 @@ namespace OpenVSA.Ui.Toolbars
 
             Rule(),
 
-            Off("Enhance",
-                "Stretches the colour map about the busiest levels so that faint detail in a " +
-                "spectrogram becomes visible. It needs the histogram of the accumulated rows, " +
-                "which REQ-UI-054's display work builds."),
+            Toggle("Enhance",
+                "Stretch the colour map about the levels the history actually holds, so that " +
+                "faint detail becomes visible instead of the whole map being spent on a range " +
+                "nothing occupies."),
 
-            Off("Threshold",
-                "Hides rows below a chosen level so that a spectrogram shows only what is above " +
-                "the noise. Follows Enhance: both are adjustments to a map that REQ-UI-054 draws."),
+            Dropdown("Threshold",
+                "Hide cells below a chosen level, so that a spectrogram shows only what is above " +
+                "the noise."),
 
             Dropdown("Map Colour Scheme", "Which colour map the spectrogram is drawn with."),
         };

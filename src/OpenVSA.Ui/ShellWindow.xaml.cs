@@ -145,6 +145,21 @@ namespace OpenVSA.Ui
 
         private ToolbarCustomiserDialog _customiser;
 
+        /// <summary>
+        /// The rows a spectrogram draws (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <remarks>
+        /// One history for the shell rather than one per trace window: the accumulator is a
+        /// measurement setting, not a per-window one, so four windows set to Spectrogram show four
+        /// views of the same accumulation rather than four independent ones started at different
+        /// moments.
+        /// </remarks>
+        private readonly Spectrogram _spectrogramHistory = new Spectrogram();
+
+        private double _spectrogramThresholdBelowTopDb = double.NaN;
+        private bool _spectrogramEnhance;
+        private TraceAccumulator _appliedAccumulator = TraceAccumulator.None;
+
         /// <summary>The spectrogram colour map in force (<c>REQ-UI-024</c>).</summary>
         private SpectrogramColourMap _spectrogramMap = SpectrogramColourMap.Default;
 
@@ -244,6 +259,10 @@ namespace OpenVSA.Ui
             // sits behind each control.
             BuildToolbars();
             ApplyMouseMode();
+
+            // After the toolbars, because the accumulator's controls are on one of them, and after
+            // the document area, because this is what hands every plot the history it draws.
+            ApplyAccumulator();
 
             // REQ-UI-065. Installed on the window so the gestures reach from anywhere in it, with
             // the unmodified ones routed through a focus check - see ShellShortcuts.
@@ -564,6 +583,12 @@ namespace OpenVSA.Ui
 
             plot.PreviewMouseLeftButtonDown += (sender, e) =>
             {
+                if (MoveSpectrogramMarker(plot, e))
+                {
+                    e.Handled = true;
+                    return;
+                }
+
                 if (plot.BeginSelectArea(e.GetPosition(plot)))
                 {
                     plot.CaptureMouse();
@@ -593,6 +618,66 @@ namespace OpenVSA.Ui
                     e.Handled = true;
                 }
             };
+        }
+
+        /// <summary>
+        /// Moves one of a spectrogram's two markers, if that is what the click meant
+        /// (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <param name="plot">The plot that was clicked.</param>
+        /// <param name="e">The click.</param>
+        /// <returns>Whether a marker moved.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>One gesture, two markers, and the modifier chooses.</strong> A plain click moves
+        /// the spectrogram marker along the frequency axis; Shift moves the trace-select marker
+        /// along the time axis. Two markers on perpendicular axes cannot both follow one
+        /// unqualified click, and making the plain click move the frequency marker matches what the
+        /// same click does on a spectrum trace.
+        /// </para>
+        /// <para>
+        /// In Marker mode only, like every other click that changes something
+        /// (<c>REQ-UI-063</c>'s Marker Tools). Pointer exists so that a click can mean nothing, and
+        /// Area Select still gets its drag on a spectrogram.
+        /// </para>
+        /// </remarks>
+        private bool MoveSpectrogramMarker(TracePlot plot, MouseButtonEventArgs e)
+        {
+            if (_mouseMode != Rendering.MouseMode.Marker || !plot.IsShowingSpectrogram)
+            {
+                return false;
+            }
+
+            bool traceSelect = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+            SpectrogramMarkerKind which = traceSelect
+                ? SpectrogramMarkerKind.TraceSelect
+                : SpectrogramMarkerKind.Spectrogram;
+
+            if (!plot.MoveSpectrogramMarker(which, e.GetPosition(plot)))
+            {
+                return false;
+            }
+
+            ShowSpectrogramMarkers(plot);
+            return true;
+        }
+
+        /// <summary>Says where the two spectrogram markers are (<c>REQ-UI-054</c>).</summary>
+        private void ShowSpectrogramMarkers(TracePlot plot)
+        {
+            SpectrogramMarkers markers = plot.SpectrogramMarkers;
+
+            if (markers == null || !markers.HasRows)
+            {
+                return;
+            }
+
+            StatusText.Content =
+                "Spectrogram marker " + EngineeringText.Frequency(markers.FrequencyHz, 6) +
+                "; trace select " +
+                EngineeringText.Time(markers.SecondsBeforeNewest) + " before the newest sweep " +
+                "(row " + markers.RowIndex + " of " + _spectrogramHistory.RowCount + ").";
         }
 
         /// <summary>
@@ -1340,6 +1425,8 @@ namespace OpenVSA.Ui
         {
             _marshal.Detector = _analysis.Detector;
 
+            ApplyAccumulator();
+
             if (_applyingFromPane)
             {
                 return;
@@ -1499,6 +1586,7 @@ namespace OpenVSA.Ui
             {
                 _spectrogramMap = dialog.SpectrogramMap;
                 BuildSpectrogramMapMenu();
+                FollowSpectrogramMap();
             };
 
             dialog.Closed += (s, args) =>
@@ -1514,6 +1602,61 @@ namespace OpenVSA.Ui
 
             _preferences = dialog;
             dialog.ShowModeless(this);
+        }
+
+        /// <summary>
+        /// Brings every plot into line with the chosen accumulator (<c>REQ-UI-054</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Changing the accumulator discards the history, and that is
+        /// <c>REQ-TRC-001a</c>'s rule rather than housekeeping</strong> — rows of spectra are not
+        /// rows of a persistence map, and carrying them across would present one mode's data under
+        /// another mode's name. Changing the <em>format</em> discards nothing, which is why the
+        /// two settings are separate in the first place.
+        /// </para>
+        /// <para>
+        /// The threshold, the enhancement and the colour map are pushed on every call rather than
+        /// only when the accumulator changes: they are display settings over the same history, and
+        /// a plot opened after one was set would otherwise draw the map the others have stopped
+        /// using.
+        /// </para>
+        /// </remarks>
+        private void ApplyAccumulator()
+        {
+            TraceAccumulator chosen = _analysis.Accumulator;
+
+            bool changed = chosen != _appliedAccumulator;
+
+            if (changed)
+            {
+                _appliedAccumulator = chosen;
+                _spectrogramHistory.Clear();
+            }
+
+            foreach (char letter in Documents.Traces)
+            {
+                TracePlot plot = Documents.PlotOf(letter);
+
+                if (plot == null)
+                {
+                    continue;
+                }
+
+                plot.History = _spectrogramHistory;
+                plot.SpectrogramMap = _spectrogramMap;
+                plot.SpectrogramThresholdBelowTopDb = _spectrogramThresholdBelowTopDb;
+                plot.SpectrogramEnhance = _spectrogramEnhance;
+                plot.Accumulator = chosen;
+
+                // Per trace, because REQ-UI-022 makes both markers per-trace colours and so
+                // per-trace things. A frequency held from a discarded history would place the
+                // marker against an axis that no longer exists.
+                if (changed && plot.SpectrogramMarkers != null)
+                {
+                    plot.SpectrogramMarkers.Clear();
+                }
+            }
         }
 
         /// <summary>
@@ -1620,7 +1763,30 @@ namespace OpenVSA.Ui
                     _colours.ColourOf("Indicator"));
 
                 plot.LimitColours = limits;
+
+                // REQ-UI-022 lists both spectrogram markers among the per-trace elements, so they
+                // are looked up per trace like the trace colour itself rather than taken from the
+                // palette, which carries the global ones.
+                plot.SpectrogramMarkerColour = PerTraceColourOf("SpectrogramMarker", trace);
+                plot.TraceSelectColour = PerTraceColourOf("TraceSelect", trace);
             }
+        }
+
+        /// <summary>
+        /// One per-trace themed colour, or the plot's own default when the picker has no entry.
+        /// </summary>
+        /// <remarks>
+        /// The same fall-through <see cref="TraceColourOf"/> makes, and for the same reason: the
+        /// picker covers the trace table's twenty letters, and a twenty-first trace has no entry of
+        /// its own rather than being an error.
+        /// </remarks>
+        private PlotColor PerTraceColourOf(string element, char trace)
+        {
+            string key = "OpenVSA." + element + "." + trace;
+
+            return _colours.Find(key) != null
+                ? _colours.Colour(key)
+                : TraceColours.ForTrace(trace);
         }
 
         /// <summary>
@@ -2466,6 +2632,16 @@ namespace OpenVSA.Ui
             }
 
             _frame = snapshot.Spectrum;
+
+            // REQ-UI-054: the history a spectrogram draws is the sweeps that reached the display.
+            // Accumulating on the pump thread instead would record the ones the marshal coalesced
+            // away as well, and would put a lock between the acquisition and the rasteriser — a
+            // display's history is what was displayed, and REQ-NFR-012's dropped-frame count is
+            // what says when the two differ.
+            if (_analysis.Accumulator == TraceAccumulator.Spectrogram)
+            {
+                _spectrogramHistory.Add(snapshot.Spectrum);
+            }
 
             if (Plot.Show(snapshot))
             {
