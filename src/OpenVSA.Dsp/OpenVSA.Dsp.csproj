@@ -62,19 +62,38 @@
              ContinueOnError="true" />
   </Target>
 
+  <!--
+    A build that cannot produce the native library says so here, rather than leaving one test to
+    report it as "Unable to load DLL OpenVSA.Fft.Native.dll" three minutes later.
+
+    REQ-NFR-004 requires two providers, so a managed-only build is not a lesser configuration of the
+    product — it is a build that does not meet the requirement. The trap this closes is that
+    "dotnet test OpenVSA.slnx" is a natural thing to type, rebuilds everything under the Core
+    MSBuild, drops the native library that a previous full-MSBuild build had put there, and fails a
+    single unrelated-looking test. I did exactly that and spent the time working out why.
+
+    Not fired when the library is already present: build once with MSBuild and "dotnet test" then
+    works for the rest of the day, which is the flow worth keeping.
+  -->
+  <Target Name="RequireNativeFft" BeforeTargets="BeforeBuild"
+          Condition="'$(MSBuildRuntimeType)' == 'Core' And !Exists('$(OpenVsaNativeFft)')">
+    <Error Text="OpenVSA.Fft.Native.dll has not been built, and the dotnet CLI cannot build it: its MSBuild has no C++ targets, so OpenVSA.Dsp.Native.vcxproj fails to evaluate (MSB4278). REQ-NFR-004 requires a native FFT provider alongside the managed one, so this build would not meet the requirement. Build once with full MSBuild — msbuild OpenVSA.slnx /p:Configuration=$(Configuration) /p:Platform=x64 — after which 'dotnet test --no-build' and plain 'dotnet test' both work." />
+  </Target>
+
   <ItemGroup>
     <!--
-      Conditioned on the runtime, NOT on Exists(). Item conditions are evaluated before any target
-      runs, so on a clean checkout Exists() is false at evaluation time, because BuildNativeFft has
-      not produced the library yet. The item is dropped and the copy silently never happens. That
-      is what made CI report "Unable to load DLL OpenVSA.Fft.Native.dll" from a build that had
-      compiled it moments earlier.
+      Under full MSBuild the item is unconditional, NOT conditioned on Exists(). Item conditions are
+      evaluated before any target runs, so on a clean checkout Exists() is false at evaluation time,
+      because BuildNativeFft has not produced the library yet. The item is dropped and the copy
+      silently never happens. That is what made CI report "Unable to load DLL
+      OpenVSA.Fft.Native.dll" from a build that had compiled it moments earlier.
 
-      Under full MSBuild the item is always present and BuildNativeFft has run by the time the copy
-      does. Under the dotnet CLI the native project cannot be built at all, so the item is absent
-      and the managed default carries the product.
+      Under the dotnet CLI nothing can build it, so Exists() is then exactly the right question:
+      either an earlier MSBuild build left it there and it is copied, or RequireNativeFft above has
+      already stopped the build.
     -->
-    <Content Include="$(OpenVsaNativeFft)" Condition="'$(MSBuildRuntimeType)' != 'Core'">
+    <Content Include="$(OpenVsaNativeFft)"
+             Condition="'$(MSBuildRuntimeType)' != 'Core' Or Exists('$(OpenVsaNativeFft)')">
       <Link>OpenVSA.Fft.Native.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

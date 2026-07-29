@@ -24,6 +24,17 @@ namespace OpenVSA.TestHarness.Synthesis
     /// </remarks>
     public static class ImpairmentMeasurement
     {
+        /// <summary>
+        /// The identifiability below which a tap estimate is refused rather than reported.
+        /// </summary>
+        /// <remarks>
+        /// A conditional variance of one part in ten thousand means the delayed copy carries almost
+        /// no information the others do not already carry, and the tap solved for it is arithmetic
+        /// noise amplified by ten thousand. Published rather than buried, so the reason a channel
+        /// was refused can be read off against the number.
+        /// </remarks>
+        public const double MinimumIdentifiability = 1e-4;
+
         /// <summary>Carrier frequency offset, in hertz, from the phase advance between symbols.</summary>
         /// <param name="signal">The signal.</param>
         /// <remarks>
@@ -327,6 +338,207 @@ namespace OpenVSA.TestHarness.Synthesis
 
             // The clean constellation has magnitude sqrt(2) at every point.
             return -20.0 * Math.Log10(mean / Math.Sqrt(2.0));
+        }
+
+        /// <summary>
+        /// The tapped-delay-line channel, recovered by least squares against the pre-channel signal.
+        /// </summary>
+        /// <param name="signal">The signal.</param>
+        /// <param name="delaySamples">The delays to solve for.</param>
+        /// <returns>The estimate, including whether this reference could identify it at all.</returns>
+        /// <remarks>
+        /// <para>
+        /// The other eleven impairments are read from a moment or a fit. A channel is not a number,
+        /// so this solves for one: minimise the residual between the received samples and a weighted
+        /// sum of delayed copies of what went in, which is the normal equations for the taps.
+        /// </para>
+        /// <para>
+        /// <strong>The reference sequence cannot identify every delay set, and this says so rather
+        /// than answering anyway.</strong> The generator uses a fixed cyclic QPSK pattern, chosen so
+        /// the moment-based measurements are exact rather than accurate to one part in root-N. The
+        /// cost is paid here: that pattern repeats every four symbols, its four-point transform has
+        /// a null at DC, and the eight-sample hold puts further nulls at every fourth bin. Delayed
+        /// copies of a sequence with nulls in its spectrum are linearly dependent, and a solver
+        /// handed a singular system returns a confident answer built out of arithmetic noise.
+        /// </para>
+        /// <para>
+        /// So the normalised system's smallest elimination pivot is reported as
+        /// <see cref="ChannelEstimate.Identifiability"/>. For a Hermitian positive-semidefinite
+        /// system those pivots are conditional variances: one near zero means a delay whose copy is
+        /// already a combination of the others, and the estimate is refused rather than believed.
+        /// </para>
+        /// </remarks>
+        public static ChannelEstimate MultipathTaps(ImpairedSignal signal, params int[] delaySamples)
+        {
+            if (signal == null)
+            {
+                throw new ArgumentNullException(nameof(signal));
+            }
+
+            if (delaySamples == null || delaySamples.Length == 0)
+            {
+                throw new ArgumentException("No delays to solve for.", nameof(delaySamples));
+            }
+
+            int k = delaySamples.Length;
+            int longest = 0;
+
+            foreach (int d in delaySamples)
+            {
+                longest = Math.Max(longest, d);
+            }
+
+            double[] x = signal.PreChannelI, xq = signal.PreChannelQ;
+            double[] y = signal.I, yq = signal.Q;
+
+            var re = new double[k, k];
+            var im = new double[k, k];
+            var pRe = new double[k];
+            var pIm = new double[k];
+
+            // From the longest delay onwards, so every shifted copy is fully present. The
+            // zero-padded head would otherwise bias the tap it belongs to towards zero.
+            for (int j = 0; j < k; j++)
+            {
+                for (int c = 0; c < k; c++)
+                {
+                    double sumRe = 0.0, sumIm = 0.0;
+
+                    for (int n = longest; n < x.Length; n++)
+                    {
+                        int a = n - delaySamples[j];
+                        int b = n - delaySamples[c];
+
+                        // conj(x[a]) * x[b]
+                        sumRe += x[a] * x[b] + xq[a] * xq[b];
+                        sumIm += x[a] * xq[b] - xq[a] * x[b];
+                    }
+
+                    re[j, c] = sumRe;
+                    im[j, c] = sumIm;
+                }
+
+                double rhsRe = 0.0, rhsIm = 0.0;
+
+                for (int n = longest; n < x.Length; n++)
+                {
+                    int a = n - delaySamples[j];
+
+                    rhsRe += x[a] * y[n] + xq[a] * yq[n];
+                    rhsIm += x[a] * yq[n] - xq[a] * y[n];
+                }
+
+                pRe[j] = rhsRe;
+                pIm[j] = rhsIm;
+            }
+
+            // Normalised to unit diagonal, so the identifiability figure is a correlation and does
+            // not move when the signal level does.
+            var scale = new double[k];
+
+            for (int j = 0; j < k; j++)
+            {
+                scale[j] = Math.Sqrt(re[j, j]);
+            }
+
+            for (int j = 0; j < k; j++)
+            {
+                for (int c = 0; c < k; c++)
+                {
+                    re[j, c] /= scale[j] * scale[c];
+                    im[j, c] /= scale[j] * scale[c];
+                }
+
+                pRe[j] /= scale[j];
+                pIm[j] /= scale[j];
+            }
+
+            double identifiability = Solve(re, im, pRe, pIm, k);
+
+            var taps = new MultipathTap[k];
+
+            for (int j = 0; j < k; j++)
+            {
+                double tapRe = pRe[j] / scale[j];
+                double tapIm = pIm[j] / scale[j];
+
+                double magnitude = Math.Sqrt(tapRe * tapRe + tapIm * tapIm);
+
+                taps[j] = new MultipathTap(
+                    delaySamples[j],
+                    magnitude <= 0.0 ? double.NegativeInfinity : 20.0 * Math.Log10(magnitude),
+                    Math.Atan2(tapIm, tapRe) * 180.0 / Math.PI);
+            }
+
+            return new ChannelEstimate(taps, identifiability);
+        }
+
+        /// <summary>
+        /// Gaussian elimination on a Hermitian system, returning the smallest pivot magnitude.
+        /// </summary>
+        /// <remarks>
+        /// No pivoting: the matrix is a Gram matrix and so positive semi-definite, where the natural
+        /// pivots are already the largest available and a small one is information rather than an
+        /// accident of ordering. Row-swapping would hide exactly what this returns.
+        /// </remarks>
+        private static double Solve(double[,] re, double[,] im, double[] pRe, double[] pIm, int k)
+        {
+            double smallest = double.PositiveInfinity;
+
+            for (int c = 0; c < k; c++)
+            {
+                double pivotRe = re[c, c];
+                double pivotIm = im[c, c];
+                double pivot = Math.Sqrt(pivotRe * pivotRe + pivotIm * pivotIm);
+
+                smallest = Math.Min(smallest, pivot);
+
+                if (pivot < 1e-12)
+                {
+                    return smallest;
+                }
+
+                for (int r = c + 1; r < k; r++)
+                {
+                    Divide(re[r, c], im[r, c], pivotRe, pivotIm, out double fRe, out double fIm);
+
+                    for (int j = c; j < k; j++)
+                    {
+                        re[r, j] -= fRe * re[c, j] - fIm * im[c, j];
+                        im[r, j] -= fRe * im[c, j] + fIm * re[c, j];
+                    }
+
+                    pRe[r] -= fRe * pRe[c] - fIm * pIm[c];
+                    pIm[r] -= fRe * pIm[c] + fIm * pRe[c];
+                }
+            }
+
+            for (int r = k - 1; r >= 0; r--)
+            {
+                double sumRe = pRe[r], sumIm = pIm[r];
+
+                for (int j = r + 1; j < k; j++)
+                {
+                    sumRe -= re[r, j] * pRe[j] - im[r, j] * pIm[j];
+                    sumIm -= re[r, j] * pIm[j] + im[r, j] * pRe[j];
+                }
+
+                Divide(sumRe, sumIm, re[r, r], im[r, r], out double vRe, out double vIm);
+
+                pRe[r] = vRe;
+                pIm[r] = vIm;
+            }
+
+            return smallest;
+        }
+
+        private static void Divide(
+            double aRe, double aIm, double bRe, double bIm, out double re, out double im)
+        {
+            double denominator = bRe * bRe + bIm * bIm;
+
+            re = (aRe * bRe + aIm * bIm) / denominator;
+            im = (aIm * bRe - aRe * bIm) / denominator;
         }
 
         /// <summary>The fourth-power mean phase over a range of symbols.</summary>
