@@ -35,6 +35,23 @@ namespace OpenVSA.Ui
         /// <summary>The git-ignored file that <c>App.config</c> merges into <c>appSettings</c>.</summary>
         public const string SecretsFileName = "local.secrets.config";
 
+        /// <summary>Whether this build carries a key embedded at build time.</summary>
+        /// <remarks>
+        /// <para>
+        /// A release or installer build passes <c>/p:EmbedSyncfusionLicenseKey=true</c> and the
+        /// build writes the key from its own environment into a generated file under <c>obj\</c>,
+        /// which is git-ignored. The key is therefore **injected by the build and never
+        /// committed**, and an end user needs no Syncfusion account of their own — which is what
+        /// makes Syncfusion a development and build dependency rather than a runtime one for
+        /// anybody but a contributor.
+        /// </para>
+        /// <para>
+        /// It is the **last** source tried, behind the environment variable and
+        /// <c>local.secrets.config</c>, so a developer's own key still wins on their own machine.
+        /// </para>
+        /// </remarks>
+        public static bool HasEmbeddedKey => !string.IsNullOrWhiteSpace(SyncfusionEmbeddedKey.Value);
+
         /// <summary>Whether a key was found and registered.</summary>
         public static bool IsRegistered { get; private set; }
 
@@ -127,12 +144,21 @@ namespace OpenVSA.Ui
             try
             {
                 string fromConfiguration = ConfigurationManager.AppSettings[AppSettingsKeyName];
-                return string.IsNullOrWhiteSpace(fromConfiguration) ? null : fromConfiguration.Trim();
+
+                if (!string.IsNullOrWhiteSpace(fromConfiguration))
+                {
+                    return fromConfiguration.Trim();
+                }
             }
             catch (ConfigurationErrorsException)
             {
-                return null;
+                // Fall through to the embedded key: a malformed configuration file must not stop
+                // the application launching over what is at worst a cosmetic banner.
             }
+
+            return string.IsNullOrWhiteSpace(SyncfusionEmbeddedKey.Value)
+                ? null
+                : SyncfusionEmbeddedKey.Value.Trim();
         }
 
         /// <summary>A short description of the licensing state, for the shell.</summary>
