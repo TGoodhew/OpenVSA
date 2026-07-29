@@ -235,32 +235,87 @@ namespace OpenVSA.Benchmarks
         /// </remarks>
         private static int CompareKernels()
         {
-            const int Samples = 1 << 20;
-            const int Repetitions = 200;
-
             Console.WriteLine(
                 "REQ-NFR-003: Vector<float>.Count = " + OpenVSA.Dsp.Kernels.Lanes +
                 ", hardware accelerated = " + OpenVSA.Dsp.Kernels.IsAccelerated);
             Console.WriteLine();
 
-            var interleaved = new float[Samples * 2];
-            var window = new float[Samples];
-            var magnitudes = new float[Samples];
+            // Swept across the cache hierarchy rather than measured at one size, because a single
+            // ratio cannot distinguish a kernel that does not vectorise from one that vectorises
+            // perfectly well and is waiting for memory. The two want opposite responses -- fix the
+            // kernel, or stop expecting arithmetic width to help -- and at 2^20 alone they look
+            // identical. The working set is printed so the reading can be placed against the
+            // machine's own cache sizes instead of against an assumption about them.
+            int[] sizes = { 1 << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18, 1 << 20 };
+
+            Console.WriteLine(
+                "  " + "samples".PadLeft(9) + "  " + "working set".PadLeft(11) + "  " +
+                "window multiply".PadLeft(16) + "  " + "magnitude squared".PadLeft(18));
+            Console.WriteLine();
+
+            foreach (int samples in sizes)
+            {
+                // Enough repetitions that the smallest size is still timed over milliseconds, or
+                // the stopwatch resolution is the measurement.
+                int repetitions = (int)Math.Max(20, (1L << 28) / samples);
+
+                var interleaved = new float[samples * 2];
+                var window = new float[samples];
+                var magnitudes = new float[samples];
+
+                for (int n = 0; n < samples; n++)
+                {
+                    interleaved[n * 2] = (float)Math.Cos(0.1 * n);
+                    interleaved[n * 2 + 1] = (float)Math.Sin(0.17 * n);
+                    window[n] = (float)(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * n / samples));
+                }
+
+                double windowScalar = Time(
+                    repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyScalar(interleaved, window));
+                double windowVector = Time(
+                    repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyVector(interleaved, window));
+
+                double magnitudeScalar = Time(
+                    repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredScalar(interleaved, magnitudes));
+                double magnitudeVector = Time(
+                    repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredVector(interleaved, magnitudes));
+
+                // The interleaved buffer dominates: 8 bytes a sample against 4 for the window and
+                // 4 for the magnitudes.
+                long workingSet = ((long)samples * 8) + ((long)samples * 4) + ((long)samples * 4);
+
+                Console.WriteLine(
+                    "  " + samples.ToString().PadLeft(9) + "  " +
+                    ((workingSet / 1024.0).ToString("F0") + " KiB").PadLeft(11) + "  " +
+                    ((windowScalar / windowVector).ToString("F2") + "x").PadLeft(16) + "  " +
+                    ((magnitudeScalar / magnitudeVector).ToString("F2") + "x").PadLeft(18));
+            }
+
+            Console.WriteLine();
+
+            // The figures the requirement is stated against, kept at the size the DSP pipeline
+            // actually runs at so the sweep above cannot be read as replacing them.
+            const int Samples = 1 << 20;
+            const int Repetitions = 200;
+
+            var full = new float[Samples * 2];
+            var fullWindow = new float[Samples];
+            var fullMagnitudes = new float[Samples];
 
             for (int n = 0; n < Samples; n++)
             {
-                interleaved[n * 2] = (float)Math.Cos(0.1 * n);
-                interleaved[n * 2 + 1] = (float)Math.Sin(0.17 * n);
-                window[n] = (float)(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * n / Samples));
+                full[n * 2] = (float)Math.Cos(0.1 * n);
+                full[n * 2 + 1] = (float)Math.Sin(0.17 * n);
+                fullWindow[n] = (float)(0.5 - 0.5 * Math.Cos(2.0 * Math.PI * n / Samples));
             }
 
             Report("window multiply",
-                Time(Repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyScalar(interleaved, window)),
-                Time(Repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyVector(interleaved, window)));
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyScalar(full, fullWindow)),
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.WindowMultiplyVector(full, fullWindow)));
 
             Report("magnitude squared",
-                Time(Repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredScalar(interleaved, magnitudes)),
-                Time(Repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredVector(interleaved, magnitudes)));
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredScalar(full, fullMagnitudes)),
+                Time(Repetitions, () => OpenVSA.Dsp.Kernels.MagnitudeSquaredVector(full, fullMagnitudes)));
 
             return 0;
         }
