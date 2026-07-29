@@ -42,15 +42,24 @@ namespace OpenVSA.Core
         /// <param name="metadata">Acquisition metadata; every field is required.</param>
         /// <returns>A block whose sample buffer is zero-filled and ready to be written.</returns>
         /// <remarks>
-        /// The rented array is normally larger than <c>2 × SampleCount</c> — <see
-        /// cref="ArrayPool{T}.Rent"/> returns at least the requested size. That surplus is not
-        /// observable through any member of this class, so the extra elements cannot be mistaken
-        /// for data.
+        /// <para>
+        /// The rented array is normally larger than <c>2 × SampleCount</c> — the pool rounds up to
+        /// a bucket. That surplus is not observable through any member of this class, so the extra
+        /// elements cannot be mistaken for data.
+        /// </para>
+        /// <para>
+        /// <strong><see cref="SampleBufferPool"/>, not <c>ArrayPool&lt;float&gt;.Shared</c>.</strong>
+        /// <c>REQ-NFR-002</c> forbids the latter for IQ buffers by name: its <c>MaxBufferSize</c> is
+        /// 2²⁰ elements, and a 2²⁰-sample complex block needs 2²¹ floats — so every acquisition at
+        /// the top of the range was allocated fresh and silently dropped on return, defeating the
+        /// requirement precisely for the buffers it exists for. It measured 30 gen-2 collections in
+        /// a 30-second run.
+        /// </para>
         /// </remarks>
         public static IqBlock Rent(in IqBlockMetadata metadata)
         {
             int floats = checked(metadata.SampleCount * 2);
-            float[] buffer = ArrayPool<float>.Shared.Rent(floats);
+            float[] buffer = SampleBufferPool.Instance.Rent(floats);
 
             // A pooled array arrives holding the previous tenant's data. Clearing only the region
             // this block exposes is sufficient and avoids touching the surplus.
@@ -161,7 +170,7 @@ namespace OpenVSA.Core
 
             if (buffer != null)
             {
-                ArrayPool<float>.Shared.Return(buffer);
+                SampleBufferPool.Instance.Return(buffer);
             }
         }
 
