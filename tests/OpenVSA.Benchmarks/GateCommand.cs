@@ -136,28 +136,42 @@ namespace OpenVSA.Benchmarks
             // burst-versus-sustained gap pointed at.
             foreach (int points in new[] { 8192, 1 << 20 })
             {
-                if (MeasureAllocationAt(points) != 0)
+                // The product path is what the requirement is about, and its verdict is the one
+                // that decides the exit code. The pooled path is measured beside it because
+                // SpectrumComputer.PoolFrames exists but the consumers have not been migrated to
+                // the lease protocol yet -- reporting only the pooled figure would credit the
+                // product with an allocation profile it does not have.
+                if (MeasureAllocationAt(points, pooled: false) != 0)
                 {
+                    MeasureAllocationAt(points, pooled: true);
                     return 1;
                 }
+
+                MeasureAllocationAt(points, pooled: true);
             }
 
             return 0;
         }
 
-        private static int MeasureAllocationAt(int Points)
+        private static int MeasureAllocationAt(int Points, bool pooled)
         {
             const double FramesPerSecond = 20.0;
 
             TimeSpan window = TimeSpan.FromSeconds(30.0);
 
             Console.WriteLine("REQ-NFR-002: allocation over a sustained run at " +
-                              FramesPerSecond + " frames/s, " + Points + "-point frames.");
+                              FramesPerSecond + " frames/s, " + Points + "-point frames" +
+                              (pooled
+                                  ? " -- POOLED path (mechanism only; consumers not yet migrated)."
+                                  : " -- product path."));
             Console.WriteLine("  Attributed by isolation: nothing else runs in this process.");
             Console.WriteLine();
 
             var computer = new OpenVSA.Dsp.Spectrum.SpectrumComputer(
-                OpenVSA.Dsp.Windowing.WindowType.FlatTop, null, null);
+                OpenVSA.Dsp.Windowing.WindowType.FlatTop, null, null)
+            {
+                PoolFrames = pooled,
+            };
 
             var metadata = new OpenVSA.Core.IqBlockMetadata(
                 Points, 2.0e6, 1.0e9, false, 1.0, 0.0, 1L,
@@ -176,7 +190,7 @@ namespace OpenVSA.Benchmarks
             // Settle before counting, so start-up allocation is not attributed to the loop.
             for (int i = 0; i < 20; i++)
             {
-                computer.Compute(block);
+                computer.Compute(block).Release();
             }
 
             GC.Collect();
@@ -194,7 +208,8 @@ namespace OpenVSA.Benchmarks
 
             while (clock.Elapsed < window)
             {
-                computer.Compute(block);
+                // Release is a no-op on an unpooled frame, so the two paths run the same loop.
+                computer.Compute(block).Release();
                 frames++;
 
                 TimeSpan due = TimeSpan.FromTicks((long)(frames * period.Ticks));
@@ -220,7 +235,10 @@ namespace OpenVSA.Benchmarks
                               ", gen2 " + gen2Delta);
             Console.WriteLine();
             Console.WriteLine("  gen-2 collections attributable to the DSP pipeline: " + gen2Delta +
-                              (gen2Delta == 0 ? "  (meets REQ-NFR-002)" : "  (REQ-NFR-002 requires none)"));
+                              (gen2Delta == 0
+                                  ? (pooled ? "  (the pooled mechanism reaches it)" : "  (meets REQ-NFR-002)")
+                                  : "  (REQ-NFR-002 requires none)"));
+            Console.WriteLine();
 
             return gen2Delta == 0 ? 0 : 1;
         }

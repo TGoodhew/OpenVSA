@@ -143,6 +143,20 @@ namespace OpenVSA.Core
         }
 
         /// <summary>
+        /// Rents a buffer as a reference-counted lease.
+        /// </summary>
+        /// <param name="minimumLength">Elements required; must not be negative.</param>
+        /// <returns>A lease holding one reference, which the caller owns.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="minimumLength"/> is negative.</exception>
+        /// <remarks>
+        /// The route for buffers whose lifetime outlives the call that produced them — the
+        /// per-frame spectrum buffer above all. See <see cref="BufferLease"/> for why a bare
+        /// <see cref="Rent"/> is not safe for those.
+        /// </remarks>
+        public BufferLease RentLease(int minimumLength) =>
+            new BufferLease(this, Rent(minimumLength));
+
+        /// <summary>
         /// Returns a buffer to the pool.
         /// </summary>
         /// <param name="buffer">The buffer; <c>null</c> is ignored.</param>

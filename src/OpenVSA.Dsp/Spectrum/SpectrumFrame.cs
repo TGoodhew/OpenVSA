@@ -16,13 +16,20 @@ namespace OpenVSA.Dsp.Spectrum
     /// frame — the same reasoning <c>REQ-DAT-001a</c> applies to <see cref="IqBlock"/>.
     /// </para>
     /// <para>
-    /// <strong>One array per published frame.</strong> The buffer is not pooled, because pooling it
-    /// would need a lifetime protocol saying when the UI has finished reading — and a frame that
-    /// can be recycled while it is still on screen is precisely the torn frame the requirement
-    /// forbids. The cost is bounded and known: one array of <see cref="PointCount"/> floats per
-    /// update, which at the 2²⁰-point, 10 updates/s corner of <c>REQ-NFR-021</c> is 40 MB/s of
-    /// gen-2 traffic. Recycling behind an explicit release is a later optimisation with a real
-    /// invariant to state; guessing at it now would be the cheap kind of fast.
+    /// <strong>The buffer may be pooled, behind an explicit lease.</strong> This used to read "the
+    /// buffer is not pooled, because pooling it would need a lifetime protocol saying when the UI
+    /// has finished reading — and a frame that can be recycled while it is still on screen is
+    /// precisely the torn frame the requirement forbids". That was right about the danger and
+    /// wrong about the conclusion: at the 2²⁰-point, 10 updates/s corner of <c>REQ-NFR-021</c> one
+    /// array per update is 40 MB/s of large-object traffic, which <c>REQ-NFR-002</c> forbids, and
+    /// it measured 30 gen-2 collections in 30 seconds.
+    /// </para>
+    /// <para>
+    /// The protocol is <see cref="BufferLease"/>, and what makes it safe to have is that a frame
+    /// read after release throws <see cref="ObjectDisposedException"/> rather than returning a
+    /// later frame's numbers. <see cref="Retain"/> before storing a frame past the call that
+    /// produced it, <see cref="Release"/> when finished. Frames built from stored data through
+    /// <see cref="FromLevels"/> own their array outright and need neither.
     /// </para>
     /// <para>
     /// Levels are in ascending frequency order — index 0 is <see cref="StartFrequencyHz"/> — not in
@@ -36,10 +43,35 @@ namespace OpenVSA.Dsp.Spectrum
         private readonly AmplitudeScale _scale;
         private readonly object _gate = new object();
 
+        /// <summary>
+        /// Displayed points, stated rather than derived from the buffer length.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-NFR-002</c>: a pooled buffer is rounded up to a bucket, so it is normally longer
+        /// than the frame needs. <c>_complex.Length / 2</c> was the point count until pooling
+        /// arrived and would now report the bucket size — a spectrum with thousands of extra bins
+        /// of whatever the previous tenant left.
+        /// </remarks>
+        private readonly int _points;
+
+        /// <summary>The lease on <see cref="_complex"/>, or null when the array is owned outright.</summary>
+        /// <remarks>
+        /// Null is the ordinary case for frames built from stored data through
+        /// <see cref="FromLevels"/>. Only the measurement path pools, so only it pays for the
+        /// lifetime discipline.
+        /// </remarks>
+        private readonly BufferLease _lease;
+
         private float[] _levelsDbm;
+        private BufferLease _levelsLease;
+
+        /// <summary>Owners of a pooled frame; unused when the array is owned outright.</summary>
+        private int _references = 1;
 
         private SpectrumFrame(
             float[] complex,
+            int points,
+            BufferLease lease,
             AmplitudeScale scale,
             double startFrequencyHz,
             double binWidthHz,
@@ -54,12 +86,14 @@ namespace OpenVSA.Dsp.Spectrum
             FrontEndId source)
         {
             _complex = complex;
+            _points = points;
+            _lease = lease;
             _scale = scale;
 
             // The point count, until a producer that knows better says otherwise. A frame assembled
             // from stored levels has no transform behind it, and reporting zero there would make
             // TransformLength a value every consumer had to test before using.
-            TransformLength = complex.Length / 2;
+            TransformLength = points;
             StartFrequencyHz = startFrequencyHz;
             BinWidthHz = binWidthHz;
             CenterFrequencyHz = centerFrequencyHz;
@@ -83,6 +117,8 @@ namespace OpenVSA.Dsp.Spectrum
         /// </remarks>
         internal static SpectrumFrame Adopt(
             float[] complex,
+            int points,
+            BufferLease lease,
             AmplitudeScale scale,
             double startFrequencyHz,
             double binWidthHz,
@@ -98,8 +134,8 @@ namespace OpenVSA.Dsp.Spectrum
             int transformLength,
             bool transformWasCapped) =>
             new SpectrumFrame(
-                complex, scale, startFrequencyHz, binWidthHz, centerFrequencyHz, sampleRateHz,
-                isBaseband, window, equivalentNoiseBandwidthBins, referenceLevelDbm,
+                complex, points, lease, scale, startFrequencyHz, binWidthHz, centerFrequencyHz,
+                sampleRateHz, isBaseband, window, equivalentNoiseBandwidthBins, referenceLevelDbm,
                 sequenceNumber, acquiredUtc, source)
             {
                 TransformLength = transformLength,
@@ -164,6 +200,8 @@ namespace OpenVSA.Dsp.Spectrum
 
             return new SpectrumFrame(
                 complex,
+                levelsDbm.Length,
+                null,
                 scale,
                 startFrequencyHz,
                 binWidthHz,
@@ -228,6 +266,8 @@ namespace OpenVSA.Dsp.Spectrum
 
             return new SpectrumFrame(
                 copy,
+                points,
+                null,
                 scale,
                 startFrequencyHz,
                 binWidthHz,
@@ -258,13 +298,30 @@ namespace OpenVSA.Dsp.Spectrum
                 {
                     if (_levelsDbm == null)
                     {
-                        _levelsDbm = new float[PointCount];
+                        // Pooled alongside the complex buffer when that one is: at 2^20 points this
+                        // cache is another 4 MiB per frame, and pooling one of the two and not the
+                        // other would leave half the churn in place.
+                        if (_lease != null)
+                        {
+                            _levelsLease = SampleBufferPool.Instance.RentLease(_points);
+                            _levelsDbm = _levelsLease.Array;
+                        }
+                        else
+                        {
+                            _levelsDbm = new float[_points];
+                        }
+
                         TraceFormatter.Format(
-                            new ReadOnlySpan<float>(_complex), TraceFormat.LogMagnitude,
-                            _scale, BinWidthHz, new Span<float>(_levelsDbm));
+                            ComplexValues, TraceFormat.LogMagnitude,
+                            _scale, BinWidthHz, new Span<float>(_levelsDbm, 0, _points));
                     }
 
-                    return new ReadOnlySpan<float>(_levelsDbm);
+                    // Through the lease, not the cached field: after release the field would still
+                    // reference an array that now belongs to another frame, and reading it would
+                    // hand back a plausible spectrum that is not this one.
+                    float[] levels = _levelsLease == null ? _levelsDbm : _levelsLease.Array;
+
+                    return new ReadOnlySpan<float>(levels, 0, _points);
                 }
             }
         }
@@ -277,7 +334,25 @@ namespace OpenVSA.Dsp.Spectrum
         /// (<c>REQ-TRC-001</c>). Referred to the instrument input with the amplitude chain of
         /// <c>REQ-AMP-001</c> already applied.
         /// </remarks>
-        public ReadOnlySpan<float> Complex => new ReadOnlySpan<float>(_complex);
+        public ReadOnlySpan<float> Complex => ComplexValues;
+
+        /// <summary>
+        /// The complex buffer, checked for lease validity and trimmed to the frame's own points.
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">The frame's pooled buffer has been released.</exception>
+        /// <remarks>
+        /// Every read of the buffer goes through here, which is what turns a missed
+        /// <see cref="Retain"/> into a prompt exception in the consumer that made the mistake
+        /// rather than a plausible spectrum belonging to a later frame.
+        /// </remarks>
+        private ReadOnlySpan<float> ComplexValues
+        {
+            get
+            {
+                float[] complex = _lease == null ? _complex : _lease.Array;
+                return new ReadOnlySpan<float>(complex, 0, _points * 2);
+            }
+        }
 
         /// <summary>The amplitude scale these values were calibrated with.</summary>
         public AmplitudeScale Scale => _scale;
@@ -356,17 +431,19 @@ namespace OpenVSA.Dsp.Spectrum
                 throw new ArgumentNullException(nameof(complex));
             }
 
-            if (complex.Length != _complex.Length)
+            if (complex.Length != _points * 2)
             {
                 throw new ArgumentException(
-                    "Expected " + _complex.Length + " values to match this frame's axis, got " +
+                    "Expected " + (_points * 2) + " values to match this frame's axis, got " +
                     complex.Length + ".",
                     nameof(complex));
             }
 
+            // The derived frame owns its own array outright: the caller passed one in, so there is
+            // no lease to share. A derived frame does not extend the life of this frame's buffer.
             return new SpectrumFrame(
-                complex, _scale, StartFrequencyHz, BinWidthHz, CenterFrequencyHz, SampleRateHz,
-                IsBaseband, Window, EquivalentNoiseBandwidthBins, ReferenceLevelDbm,
+                complex, _points, null, _scale, StartFrequencyHz, BinWidthHz, CenterFrequencyHz,
+                SampleRateHz, IsBaseband, Window, EquivalentNoiseBandwidthBins, ReferenceLevelDbm,
                 SequenceNumber, AcquiredUtc, Source)
             {
                 HasPhase = hasPhase,
@@ -403,7 +480,74 @@ namespace OpenVSA.Dsp.Spectrum
         }
 
         /// <summary>Number of displayed frequency points.</summary>
-        public int PointCount => _complex.Length / 2;
+        public int PointCount => _points;
+
+        /// <summary>
+        /// Whether this frame's buffer is pooled and therefore has a lifetime to respect.
+        /// </summary>
+        /// <remarks>
+        /// False for frames built from stored data, which own their array outright.
+        /// <see cref="Retain"/> and <see cref="Release"/> are no-ops on those, so a consumer that
+        /// respects the protocol works with either kind and does not have to ask.
+        /// </remarks>
+        public bool IsPooled => _lease != null;
+
+        /// <summary>
+        /// Claims a share of this frame's buffer, for a consumer storing it past the call that
+        /// produced it (<c>REQ-NFR-002</c>).
+        /// </summary>
+        /// <exception cref="ObjectDisposedException">The buffer has already been released.</exception>
+        /// <remarks>
+        /// Anything that puts a frame in a field, an array or a collection must call this — the
+        /// trace registers, the spectrogram history, the marker frames, the render snapshot. A
+        /// consumer that does not will read an exception rather than another frame's spectrum,
+        /// which is the trade this design exists to make.
+        /// </remarks>
+        public void Retain()
+        {
+            if (_lease == null)
+            {
+                return;
+            }
+
+            if (System.Threading.Interlocked.Increment(ref _references) <= 1)
+            {
+                throw new ObjectDisposedException(
+                    nameof(SpectrumFrame), "Cannot retain a frame whose buffer has been released.");
+            }
+        }
+
+        /// <summary>Gives up a share of this frame's buffer.</summary>
+        /// <remarks>
+        /// Safe on an unpooled frame, and safe to call once per <see cref="Retain"/> plus once for
+        /// the reference the producer handed over.
+        /// </remarks>
+        public void Release()
+        {
+            if (_lease == null)
+            {
+                return;
+            }
+
+            if (System.Threading.Interlocked.Decrement(ref _references) > 0)
+            {
+                return;
+            }
+
+            // Both buffers go back together at the frame's last reference. Counting here rather
+            // than delegating to the two leases is deliberate: the levels cache is filled lazily,
+            // so a lease created after the first Retain could never have the right count, and the
+            // mismatch would return the levels buffer while an owner still held the frame -- the
+            // silent-wrong-numbers failure this whole design exists to prevent.
+            lock (_gate)
+            {
+                _levelsLease?.Release();
+                _levelsLease = null;
+                _levelsDbm = null;
+            }
+
+            _lease.Release();
+        }
 
         /// <summary>
         /// Renders this frame in a display format, without recomputing the transform.
@@ -430,7 +574,7 @@ namespace OpenVSA.Dsp.Spectrum
         /// <exception cref="ArgumentException">The destination is the wrong length.</exception>
         public void Format(TraceFormat format, Span<float> destination, TraceFormatOptions options) =>
             TraceFormatter.Format(
-                new ReadOnlySpan<float>(_complex), format, _scale, BinWidthHz, destination, options);
+                ComplexValues, format, _scale, BinWidthHz, destination, options);
 
         /// <summary>Frequency of point 0, in hertz.</summary>
         public double StartFrequencyHz { get; }
