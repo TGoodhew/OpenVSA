@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 
 namespace OpenVSA.Hal
 {
@@ -110,6 +111,7 @@ namespace OpenVSA.Hal
         public const string PluginSearchPattern = "OpenVSA.Hal.*.dll";
 
         private readonly List<FrontEndDescriptor> _providers = new List<FrontEndDescriptor>();
+        private readonly List<Type> _enumerators = new List<Type>();
         private readonly List<FrontEndDiscoveryFailure> _failures = new List<FrontEndDiscoveryFailure>();
         private readonly HashSet<string> _seenAssemblies =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -208,6 +210,16 @@ namespace OpenVSA.Hal
 
             foreach (Type type in AssemblyTypes.Loadable(assembly, name, _failures))
             {
+                if (typeof(IResourceEnumerator).IsAssignableFrom(type) &&
+                    !type.IsAbstract && !type.IsInterface &&
+                    type.GetConstructor(Type.EmptyTypes) != null)
+                {
+                    // A transport's bus enumerator, found by the same scan and the same
+                    // parameterless-constructor rule as a front end. Not counted in the return
+                    // value, which is documented as the number of front ends.
+                    _enumerators.Add(type);
+                }
+
                 var attribute = type.GetCustomAttribute<FrontEndProviderAttribute>();
                 if (attribute == null)
                 {
@@ -243,6 +255,100 @@ namespace OpenVSA.Hal
             }
 
             return added;
+        }
+
+        /// <summary>Whether any discovered transport can enumerate a bus.</summary>
+        /// <remarks>
+        /// False on a machine with no VISA, which is <c>REQ-NFR-032</c>'s normal case rather than a
+        /// fault. The connection dialog says so instead of showing an empty grid.
+        /// </remarks>
+        public bool CanEnumerateResources => _enumerators.Count > 0;
+
+        /// <summary>
+        /// Lists every resource every discovered transport can reach (<c>REQ-HAL-003</c>).
+        /// </summary>
+        /// <param name="cancel">Cancels a long enumeration.</param>
+        /// <returns>
+        /// One entry per resource, each marked with the driver that recognises it, or an empty list
+        /// when no transport can enumerate.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// The registry does the driver mapping because the registry is the only thing that knows
+        /// every driver. Each front end answers <see cref="IInstrumentRecogniser.Recognises"/> for
+        /// itself, and a driver that does not implement it simply never claims a resource —
+        /// the simulator and file playback do not, correctly.
+        /// </para>
+        /// <para>
+        /// Every failure here is recorded and swallowed. An enumerator that throws is one transport
+        /// misbehaving; letting it through would empty a dialog that the other transports could
+        /// still have filled.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<DiscoveredResource> DiscoverResources(
+            CancellationToken cancel = default(CancellationToken))
+        {
+            var found = new List<DiscoveredResource>();
+
+            foreach (Type type in _enumerators)
+            {
+                cancel.ThrowIfCancellationRequested();
+
+                try
+                {
+                    var enumerator = (IResourceEnumerator)Activator.CreateInstance(type);
+
+                    IReadOnlyList<DiscoveredResource> reported =
+                        enumerator.Discover(DriverFor, cancel);
+
+                    if (reported != null)
+                    {
+                        found.AddRange(reported);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception e)
+                {
+                    _failures.Add(new FrontEndDiscoveryFailure(
+                        type.FullName, "could not enumerate resources: " + e.Message));
+                }
+            }
+
+            return new ReadOnlyCollection<DiscoveredResource>(found);
+        }
+
+        /// <summary>The display name of the first driver that recognises this identity, or empty.</summary>
+        /// <param name="identity">An <c>*IDN?</c> response.</param>
+        public string DriverFor(string identity)
+        {
+            if (string.IsNullOrEmpty(identity))
+            {
+                return string.Empty;
+            }
+
+            foreach (FrontEndDescriptor descriptor in _providers)
+            {
+                try
+                {
+                    if (descriptor.Create() is IInstrumentRecogniser recogniser &&
+                        recogniser.Recognises(identity))
+                    {
+                        return descriptor.DisplayName;
+                    }
+                }
+                catch (Exception e)
+                {
+                    // A driver that cannot be constructed cannot claim an instrument, and saying
+                    // so once here is better than the dialog showing nothing and not explaining.
+                    _failures.Add(new FrontEndDiscoveryFailure(
+                        descriptor.TypeName, "could not be asked what it drives: " + e.Message));
+                }
+            }
+
+            return string.Empty;
         }
 
         /// <summary>Finds a provider by display name, case-insensitively.</summary>

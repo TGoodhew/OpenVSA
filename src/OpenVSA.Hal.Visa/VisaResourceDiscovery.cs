@@ -6,54 +6,6 @@ using System.Threading;
 
 namespace OpenVSA.Hal.Visa
 {
-    /// <summary>What a VISA resource turned out to be.</summary>
-    public sealed class DiscoveredResource
-    {
-        /// <summary>Records a discovered resource.</summary>
-        /// <param name="resourceName">The VISA resource string.</param>
-        /// <param name="identity">The <c>*IDN?</c> response, or empty when it did not answer.</param>
-        /// <param name="failure">Why it did not answer, or empty when it did.</param>
-        /// <param name="driver">The driver's display name, or empty when none matches.</param>
-        /// <exception cref="ArgumentNullException"><paramref name="resourceName"/> is null.</exception>
-        public DiscoveredResource(string resourceName, string identity, string failure, string driver)
-        {
-            ResourceName = resourceName ?? throw new ArgumentNullException(nameof(resourceName));
-            Identity = identity ?? string.Empty;
-            Failure = failure ?? string.Empty;
-            Driver = driver ?? string.Empty;
-        }
-
-        /// <summary>The VISA resource string.</summary>
-        public string ResourceName { get; }
-
-        /// <summary>The <c>*IDN?</c> response, or empty.</summary>
-        public string Identity { get; }
-
-        /// <summary>Why identification failed, or empty when it succeeded.</summary>
-        public string Failure { get; }
-
-        /// <summary>The matching driver's display name, or empty.</summary>
-        public string Driver { get; }
-
-        /// <summary>Whether something answered at this address.</summary>
-        /// <remarks>
-        /// The distinction that makes a listing usable on this bench. An HP-IB extender reports
-        /// every one of its thirty addresses as present whether an instrument is there or not, so
-        /// "the resource manager returned it" means very little and "it answered <c>*IDN?</c>"
-        /// means a great deal.
-        /// </remarks>
-        public bool Answered => Identity.Length > 0;
-
-        /// <summary>Whether a driver exists for what answered.</summary>
-        public bool HasDriver => Driver.Length > 0;
-
-        /// <inheritdoc />
-        public override string ToString() =>
-            ResourceName + " — " +
-            (Answered ? Identity : "no answer (" + Failure + ")") +
-            (HasDriver ? " [" + Driver + "]" : string.Empty);
-    }
-
     /// <summary>
     /// Enumerates VISA resources and says what each one is (<c>REQ-HAL-003</c>).
     /// </summary>
@@ -78,7 +30,7 @@ namespace OpenVSA.Hal.Visa
     /// the rest of the shell keeps, and the reason this can be tested without a window.
     /// </para>
     /// </remarks>
-    public sealed class VisaResourceDiscovery
+    public sealed class VisaResourceDiscovery : IResourceEnumerator
     {
         /// <summary>How long to wait for <c>*IDN?</c> before giving up on an address.</summary>
         /// <remarks>
@@ -166,7 +118,7 @@ namespace OpenVSA.Hal.Visa
                 if (IsUnsafeToProbe(resource))
                 {
                     found.Add(new DiscoveredResource(
-                        resource, null, "not identified: writing to this kind of resource is not safe", null));
+                        resource, null, "not probed: writing here is not safe", null));
                     continue;
                 }
 
@@ -180,7 +132,7 @@ namespace OpenVSA.Hal.Visa
                 {
                     // The common case on a bus with an extender: the address is reported present
                     // and nothing answers. Recorded, listed, and not treated as an error.
-                    found.Add(new DiscoveredResource(resource, null, Shorten(e.Message), null));
+                    found.Add(new DiscoveredResource(resource, null, Explain(e), null));
                     continue;
                 }
 
@@ -206,6 +158,46 @@ namespace OpenVSA.Hal.Visa
         }
 
         /// <summary>A message short enough for a list cell.</summary>
+        /// <summary>Why an address did not answer, in words rather than in a type name.</summary>
+        /// <param name="failure">What identification threw.</param>
+        /// <remarks>
+        /// A live run against this bench printed "Exception of type 'Ivi.Visa.IOTimeoutException'
+        /// was thrown." against twenty-eight addresses. That is the .NET default message for an
+        /// exception carrying no text of its own, and it is the whole of what a user reads in the
+        /// Status column — it names the class that was thrown and says nothing about the bus. The
+        /// timeout is the ordinary and expected answer on an extender that reports all thirty
+        /// addresses regardless, so it gets the clearest sentence here.
+        /// </remarks>
+        private static string Explain(Exception failure)
+        {
+            if (failure == null)
+            {
+                return "no answer";
+            }
+
+            string message = Shorten(failure.Message);
+
+            // A message that says something is always kept. The first version of this substituted
+            // its own wording for every timeout, and threw away "no listener at this address" —
+            // which is more specific than anything that could be written here.
+            bool saysNothing =
+                message.Length == 0 ||
+                message == "no answer" ||
+                message.StartsWith("Exception of type", StringComparison.Ordinal);
+
+            if (!saysNothing)
+            {
+                return message;
+            }
+
+            // Matched on the type name, because the message is the thing that was empty. A timeout
+            // is the ordinary and expected answer on an extender that reports all thirty addresses
+            // whether or not anything is plugged in, so it gets the clearest sentence available.
+            return failure.GetType().Name.IndexOf("Timeout", StringComparison.OrdinalIgnoreCase) >= 0
+                ? "no answer within " + IdentifyTimeoutMilliseconds + " ms"
+                : "did not answer: " + failure.GetType().Name;
+        }
+
         private static string Shorten(string message)
         {
             if (string.IsNullOrEmpty(message))

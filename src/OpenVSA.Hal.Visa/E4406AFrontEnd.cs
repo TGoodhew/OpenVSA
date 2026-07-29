@@ -34,7 +34,7 @@ namespace OpenVSA.Hal.Visa
     /// </para>
     /// </remarks>
     [FrontEndProvider("Agilent E4406A (VSA, I/Q over VISA)")]
-    public sealed class E4406AFrontEnd : IFrontEnd
+    public sealed class E4406AFrontEnd : IFrontEnd, IInstrumentRecogniser, IRequiresResource
     {
         /// <summary>Resource used when configuration names none.</summary>
         /// <remarks>
@@ -90,7 +90,7 @@ namespace OpenVSA.Hal.Visa
         private const int ThroughputProbeSamples = 1024;
 
         private readonly Func<string, IInstrumentSession> _openSession;
-        private readonly string _resourceName;
+        private string _resourceName;
         private readonly List<string> _sent = new List<string>();
 
         private IInstrumentSession _session;
@@ -131,7 +131,7 @@ namespace OpenVSA.Hal.Visa
         }
 
         /// <inheritdoc />
-        public FrontEndId Id { get; }
+        public FrontEndId Id { get; private set; }
 
         /// <inheritdoc />
         public string DisplayName { get; private set; } = "Agilent E4406A";
@@ -830,7 +830,7 @@ namespace OpenVSA.Hal.Visa
         /// </remarks>
         private static void RequireModel(string identity)
         {
-            if (identity != null && identity.IndexOf("E4406A", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (Drives(identity))
             {
                 return;
             }
@@ -838,6 +838,47 @@ namespace OpenVSA.Hal.Visa
             throw new InvalidOperationException(
                 "The instrument at this address identifies itself as '" + identity +
                 "', which is not an E4406A. Check the configured VISA resource.");
+        }
+
+        /// <summary>Whether an <c>*IDN?</c> response names the model this driver speaks to.</summary>
+        /// <param name="identity">An <c>*IDN?</c> response.</param>
+        /// <remarks>
+        /// The one place the model name is matched. <see cref="RequireModel"/> and
+        /// <see cref="Recognises"/> ask the same question at opposite ends of the same decision —
+        /// which resource to offer, and whether the one that was chosen is what it claimed — and
+        /// two spellings of it would eventually disagree.
+        /// </remarks>
+        private static bool Drives(string identity) =>
+            identity != null &&
+            identity.IndexOf("E4406A", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        /// <inheritdoc />
+        public bool Recognises(string identity) => Drives(identity);
+
+        /// <inheritdoc />
+        public string ResourceName => _resourceName;
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// The address is part of the identity of a front end, so pointing it at a different one
+        /// re-issues the <see cref="Id"/>. A stale id would let a saved state or a log entry name
+        /// an instrument that is no longer the one being talked to.
+        /// </remarks>
+        public void UseResource(string resourceName)
+        {
+            if (string.IsNullOrEmpty(resourceName))
+            {
+                throw new ArgumentException("A VISA resource name is required.", nameof(resourceName));
+            }
+
+            if (_session != null)
+            {
+                throw new InvalidOperationException(
+                    "The address cannot be changed while connected. Disconnect first.");
+            }
+
+            _resourceName = resourceName;
+            Id = new FrontEndId("e4406a:" + resourceName);
         }
 
         /// <summary>Parses the quoted, comma-separated option list of <c>*OPT?</c>.</summary>

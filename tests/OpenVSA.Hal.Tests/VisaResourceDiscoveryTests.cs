@@ -147,6 +147,77 @@ namespace OpenVSA.Hal.Tests
         }
 
         [Fact]
+        public void ATimeoutSaysSoInWordsRatherThanNamingAnExceptionClass()
+        {
+            // From a live run against the bench: twenty-eight of thirty-seven resources reported
+            // "Exception of type 'Ivi.Visa.IOTimeoutException' was thrown." — the .NET default text
+            // for an exception carrying no message of its own. That string is the whole of what a
+            // user reads in the Status column, and it names a class rather than saying anything
+            // about the bus.
+            //
+            // The timeout is the ordinary answer on an extender that reports all thirty addresses
+            // whether or not anything is plugged in, so it gets the clearest sentence available.
+            //
+            // The stand-in carries no message, as Ivi.Visa.IOTimeoutException does not.
+            // System.TimeoutException would NOT exercise this: it has a message of its own ("The
+            // operation has timed out.") and the rule keeps any message that says something.
+            var discovery = new VisaResourceDiscovery(
+                () => new[] { "GPIB0::9::INSTR" },
+                (resource, timeout) => throw new SilentTimeout());
+
+            IReadOnlyList<DiscoveredResource> found = discovery.Discover(idn => string.Empty);
+
+            Assert.Contains(
+                VisaResourceDiscovery.IdentifyTimeoutMilliseconds.ToString(), found[0].Failure);
+            Assert.Contains("no answer", found[0].Failure);
+            Assert.DoesNotContain("Exception of type", found[0].Failure);
+        }
+
+        [Fact]
+        public void AnExceptionWithNoMessageOfItsOwnIsNamedRatherThanQuoted()
+        {
+            // The general case behind the one above. Anything whose message is the framework's
+            // "Exception of type 'X' was thrown." tells a reader nothing the type does not, so the
+            // type is reported directly and the boilerplate dropped.
+            var discovery = new VisaResourceDiscovery(
+                () => new[] { "GPIB0::9::INSTR" },
+                (resource, timeout) => throw new SilentFailure());
+
+            IReadOnlyList<DiscoveredResource> found = discovery.Discover(idn => string.Empty);
+
+            Assert.Contains("SilentFailure", found[0].Failure);
+            Assert.DoesNotContain("Exception of type", found[0].Failure);
+        }
+
+        [Fact]
+        public void ATimeoutThatDoesCarryAMessageKeepsIt()
+        {
+            // The bug in the first version of the wording above: it substituted "no answer within
+            // 700 ms" for EVERY timeout, including ones whose own message was more specific. A
+            // driver that says "no listener at this address" is telling the user something the
+            // clock cannot.
+            var discovery = new VisaResourceDiscovery(
+                () => new[] { "GPIB0::9::INSTR" },
+                (resource, timeout) => throw new TimeoutException("no listener at this address"));
+
+            IReadOnlyList<DiscoveredResource> found = discovery.Discover(idn => string.Empty);
+
+            Assert.Equal("no listener at this address", found[0].Failure);
+        }
+
+        [Fact]
+        public void AFailureThatDoesSayWhatWentWrongIsShownAsItIs()
+        {
+            var discovery = new VisaResourceDiscovery(
+                () => new[] { "GPIB0::9::INSTR" },
+                (resource, timeout) => throw new InvalidOperationException("the cable is unplugged"));
+
+            IReadOnlyList<DiscoveredResource> found = discovery.Discover(idn => string.Empty);
+
+            Assert.Equal("the cable is unplugged", found[0].Failure);
+        }
+
+        [Fact]
         public void TheIdentifyTimeoutIsShortEnoughForAFullBus()
         {
             // Thirty GPIB addresses at the ten-second session default is five minutes of a dialog
@@ -154,5 +225,15 @@ namespace OpenVSA.Hal.Tests
             Assert.True(VisaResourceDiscovery.IdentifyTimeoutMilliseconds <= 1000);
             Assert.True(VisaResourceDiscovery.IdentifyTimeoutMilliseconds * 30 < 30000);
         }
+    }
+
+    /// <summary>An exception with no message of its own, as several VISA ones have.</summary>
+    public sealed class SilentFailure : Exception
+    {
+    }
+
+    /// <summary>A timeout with no message of its own, as <c>Ivi.Visa.IOTimeoutException</c> is.</summary>
+    public sealed class SilentTimeout : Exception
+    {
     }
 }
