@@ -61,7 +61,14 @@ def package_references():
             # references every project shares — the test framework lives there — and a checker
             # that read project files alone reported xunit as recorded-but-unreferenced while
             # every test project used it.
+            #
+            # .wixproj too: the installer is a real consumer of third-party packages (the WiX
+            # SDK and its UI extension) and REQ-NFR-008's register is about every dependency the
+            # product is built from, not only the ones that ship inside it. Left out, the two WiX
+            # packages would be recorded-but-unreferenced and the register would have to lie in
+            # one direction or the other.
             if not (name.endswith(".csproj") or
+                    name.endswith(".wixproj") or
                     name.endswith(".props") or
                     name.endswith(".targets")):
                 continue

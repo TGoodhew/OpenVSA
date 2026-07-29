@@ -133,6 +133,34 @@ copy src\OpenVSA.Ui\local.secrets.config.example src\OpenVSA.Ui\local.secrets.co
 > are git-ignored; only the `.example` template is tracked. Do not put the key in `App.config`,
 > which *is* tracked.
 
+### Building the installer
+
+```powershell
+.\tools\build_installer.ps1 -Version 0.1.0 -EmbedLicenseKey
+```
+
+Produces `installer\OpenVSA.Installer\bin\x64\Release\OpenVSA.msi`: a per-machine MSI with a
+Start Menu entry, a proper uninstall, and upgrade handling that replaces rather than accumulates.
+
+- **`-EmbedLicenseKey`** reads `SYNCFUSION_LICENSE_KEY` from the build environment and embeds it,
+  so the installed application shows no Syncfusion banner and **an end user needs no Syncfusion
+  account**. The key is written only into `obj\`, which is git-ignored; it is never committed and
+  never placed in the MSI as a file. Omit the switch and the build warns and produces an installer
+  that runs in evaluation mode.
+- **NI-VISA is not bundled.** It is a pre-installed dependency: its implementation is placed in the
+  GAC by NI's own installer, and only a reference assembly exists in the package feed. The
+  installer detects it and, if it is absent, **says so on the final page and installs anyway** —
+  `REQ-NFR-032` requires OpenVSA to run with no VISA at all, against the simulated source and file
+  playback, so refusing to install would contradict the software being installed.
+- The script checks the MSI's own file table before it finishes, and fails if a
+  `local.secrets.config`, an `Ivi.Visa` or a `NationalInstruments` file got in. A developer machine
+  may have a real secrets file sitting in the payload directory, and a leaked key is not something
+  to discover after publishing.
+
+The installer project is **not** a member of `OpenVSA.slnx`, for the same reason the C++ FFT
+project is not: the dotnet CLI cannot evaluate every project type, and `dotnet test OpenVSA.slnx`
+has to keep working. The script builds both.
+
 ## Verification
 
 DSP defects are quiet: the software produces a plausible number that is wrong, and nobody

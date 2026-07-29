@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenVSA's installer.
+
+  What it bundles: the shell, the analysis assemblies, the native FFT, the front-end plug-ins
+  (simulated source, file playback, VISA) and the Syncfusion runtime assemblies.
+
+  What it does NOT bundle, and why each is deliberate:
+
+    * NI-VISA. A pre-installed dependency. Ivi.Visa's implementation is installed into the GAC by
+      NI's own installer and only a reference assembly exists in the package feed, so there is
+      nothing here that could legally or usefully be redistributed. Detected below and warned
+      about, never blocked — REQ-NFR-032 requires OpenVSA to run with no VISA installed at all.
+
+    * Any Syncfusion licence key. The key is a build-time credential injected by
+      /p:EmbedSyncfusionLicenseKey=true and it never reaches source control or an installer input.
+      local.secrets.config is excluded by name below, because a developer machine may well have
+      one sitting in the payload directory and harvesting it would ship that developer's key.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="OpenVSA"
+           Manufacturer="OpenVSA"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="7c1f2a52-9b3e-4d61-8f0a-6a4c2d9e5b17"
+           Scope="perMachine"
+           Compressed="true">
+
+    <!--
+      Upgrades replace rather than accumulate, and a downgrade is refused with a sentence that
+      says what happened. Without this every version installs alongside the last and the Start
+      Menu fills with entries that all launch something different.
+    -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of OpenVSA is already installed. Uninstall it first if you mean to go back to this one." />
+
+    <MediaTemplate EmbedCab="true" />
+
+    <!--
+      NI-VISA, detected and NOT required. REQ-NFR-032: "the application runs with no hardware and
+      no VISA installed", against the simulated source and file playback — that is an
+      architectural constraint, not a convenience, so an installer that refused to proceed would
+      contradict the requirement it is packaging.
+    -->
+    <Property Id="NIVISAPRESENT">
+      <RegistrySearch Id="NiVisaVersion"
+                      Root="HKLM"
+                      Key="SOFTWARE\National Instruments\NI-VISA"
+                      Name="CurrentVersion"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
+
+    <!--
+      The warning, shown on the final dialog so it is read after a successful install rather than
+      standing between the user and one. Conditioned on the search finding nothing.
+    -->
+    <SetProperty Id="WIXUI_EXITDIALOGOPTIONALTEXT"
+                 Value="NI-VISA was not found on this machine. OpenVSA is installed and will run: the simulated source and file playback need no VISA. Hardware front ends will not appear in Hardware &gt; Instruments until NI-VISA is installed."
+                 Before="ExecuteAction"
+                 Sequence="ui"
+                 Condition="NOT NIVISAPRESENT" />
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="OpenVSA" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="OpenVSA" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="OpenVSA" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentGroupRef Id="FrontEndPlugins" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <!--
+        Harvested rather than listed, so an assembly added to the shell is not silently left out
+        of the installer. The exclusions are the point of interest:
+
+          local.secrets.config  - a developer's own Syncfusion key. Never ship it.
+          *.example             - the contributor template; meaningless to an end user.
+          Ivi.Visa.dll          - NI's, GAC-installed, not ours to redistribute. Excluded by name
+                                  as well as by the build not copying it, because "it is not in
+                                  the payload today" is not a guarantee about tomorrow.
+      -->
+      <Files Include="$(var.PayloadDirectory)\*">
+        <Exclude Files="$(var.PayloadDirectory)\local.secrets.config" />
+        <Exclude Files="$(var.PayloadDirectory)\*.example" />
+        <Exclude Files="$(var.PayloadDirectory)\Ivi.Visa.dll" />
+        <Exclude Files="$(var.PayloadDirectory)\NationalInstruments.*" />
+      </Files>
+    </ComponentGroup>
+
+    <!--
+      The plug-in directory is part of the contract, not an implementation detail:
+      FrontEndRegistry probes FrontEnds\ and PersonalityRegistry probes Personalities\, so the
+      layout on disk has to survive installation.
+    -->
+    <ComponentGroup Id="FrontEndPlugins" Directory="FrontEndsFolder">
+      <Files Include="$(var.PayloadDirectory)\FrontEnds\*">
+        <Exclude Files="$(var.PayloadDirectory)\FrontEnds\Ivi.Visa.dll" />
+      </Files>
+    </ComponentGroup>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Directory Id="FrontEndsFolder" Name="FrontEnds" />
+
+      <!--
+        Created empty, because REQ-ARC-003's whole claim is that a personality assembly dropped in
+        here is discovered with no rebuild of the host. A directory the user has to create first
+        makes that a worse story than it is.
+      -->
+      <Component Id="PersonalitiesFolder" Guid="3d5b8e14-27a6-4c0f-9e83-1b7d4a6f2c98">
+        <CreateFolder Directory="PersonalitiesDir" />
+        <RegistryValue Root="HKLM" Key="SOFTWARE\OpenVSA" Name="Personalities" Type="string" Value="[INSTALLFOLDER]Personalities" KeyPath="yes" />
+      </Component>
+
+      <Directory Id="PersonalitiesDir" Name="Personalities" />
+    </DirectoryRef>
+
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="b2e07f39-5c48-4a1d-9f6b-8c3e1a75d420">
+        <Shortcut Id="OpenVSAStartMenuShortcut"
+                  Name="OpenVSA"
+                  Description="Vector signal analyser"
+                  Target="[INSTALLFOLDER]OpenVSA.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\OpenVSA" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Personalities" Title="Personality folder" Level="1">
+      <ComponentRef Id="PersonalitiesFolder" />
+    </Feature>
+
+  </Package>
+</Wix>
