@@ -359,13 +359,26 @@ namespace OpenVSA.Hal.Visa
                 refLevel = honoured;
             }
 
-            // REQ-NFR-027: GPIB moves roughly a megabyte a second at best, and one block of
-            // complex float32 is 8 bytes a sample. Whether that keeps up is a property of the plan,
-            // computed here rather than asserted per instrument.
-            bool gapFree = samples * 8.0 / (samples / sampleRate) <= GpibBytesPerSecond;
+            // REQ-NFR-027: the MEASURED rate when there is one, and the conservative nominal
+            // figure only until the instrument has been probed.
+            //
+            // This matters more than it reads. The nominal megabyte a second is what a GPIB link
+            // can do in principle; through an HP-IB extender this instrument has been measured at
+            // around 2 300 samples a second, which is 18 kB/s -- fifty times slower. A plan judged
+            // gap-free against the headline figure and run against the real link is not slightly
+            // optimistic, it is wrong by nearly two orders of magnitude, and the user finds out by
+            // watching the trace fall behind.
+            double measuredBytesPerSecond =
+                _capabilities != null && _capabilities.SamplesPerSecond > 0.0
+                    ? _capabilities.SamplesPerSecond * 8.0
+                    : 0.0;
+
+            double budget = measuredBytesPerSecond > 0.0 ? measuredBytesPerSecond : GpibBytesPerSecond;
+            bool gapFree = samples * 8.0 / (samples / sampleRate) <= budget;
 
             return new AcquisitionPlan(
-                centre, span, sampleRate, samples, refLevel, gapFree, coercions, path);
+                centre, span, sampleRate, samples, refLevel, gapFree, coercions, path,
+                measuredBytesPerSecond);
         }
 
         /// <summary>Nominal GPIB throughput, in bytes per second, for the gap-free estimate.</summary>

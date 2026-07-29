@@ -93,8 +93,10 @@ namespace OpenVSA.Hal
             double referenceLevelDbm,
             bool supportsGapFreeStreaming,
             IEnumerable<ParameterCoercion> coercions,
-            AnalysisPath path = AnalysisPath.ComplexZoom)
+            AnalysisPath path = AnalysisPath.ComplexZoom,
+            double measuredBytesPerSecond = 0.0)
         {
+            MeasuredBytesPerSecond = measuredBytesPerSecond;
             CenterFrequencyHz = centerFrequencyHz;
             SpanHz = spanHz;
             SampleRateHz = sampleRateHz;
@@ -127,6 +129,43 @@ namespace OpenVSA.Hal
         /// Whether this plan can be acquired gap-free, computed per plan (<c>REQ-NFR-027</c>).
         /// </summary>
         public bool SupportsGapFreeStreaming { get; }
+
+        /// <summary>
+        /// The transport's measured throughput in bytes per second, or 0 when unmeasured.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-NFR-027</c> asks for honest expectations, and the honest figure is the one the
+        /// link actually achieved rather than a bus headline. A GPIB interface advertising HS488
+        /// says nothing about what an instrument and an extender manage between them, and the gap
+        /// between the two is large enough to change whether a measurement is sustainable.
+        /// </remarks>
+        public double MeasuredBytesPerSecond { get; }
+
+        /// <summary>
+        /// The fraction of real time this plan spends transferring, or <see cref="double.NaN"/>
+        /// when the throughput has not been measured.
+        /// </summary>
+        /// <remarks>
+        /// Above 1 the transport cannot keep up and the acquisition has gaps. Reported as a number
+        /// rather than only as the <see cref="SupportsGapFreeStreaming"/> flag, because "0.98" and
+        /// "12.4" are both "not gap-free" and mean very different things to somebody deciding what
+        /// to change.
+        /// </remarks>
+        public double DutyCycle
+        {
+            get
+            {
+                if (!(MeasuredBytesPerSecond > 0.0) || !(SampleRateHz > 0.0) || SamplesPerBlock <= 0)
+                {
+                    return double.NaN;
+                }
+
+                double blockSeconds = SamplesPerBlock / SampleRateHz;
+                double bytes = SamplesPerBlock * 8.0;
+
+                return bytes / MeasuredBytesPerSecond / blockSeconds;
+            }
+        }
 
         /// <summary>Parameters that could not be honoured as requested. Never <c>null</c>.</summary>
         public IReadOnlyList<ParameterCoercion> Coercions { get; }
