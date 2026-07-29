@@ -39,6 +39,17 @@ namespace OpenVSA.Architecture.Tests
             _output = output;
         }
 
+        /// <summary>How many looks at the process's TCP table constitute evidence.</summary>
+        /// <remarks>
+        /// A count rather than a duration, so the evidence does not depend on machine speed. At
+        /// <see cref="SampleInterval"/> apart these span a couple of seconds on any machine, which
+        /// covers start-up -- when an update check or a licence call would happen.
+        /// </remarks>
+        private const int WantedSamples = 8;
+
+        /// <summary>Milliseconds between looks.</summary>
+        private const int SampleInterval = 250;
+
         [Fact]
         public void TheShellOpensNoListeningSocketAndConnectsNowhere()
         {
@@ -56,29 +67,49 @@ namespace OpenVSA.Architecture.Tests
 
             var offenders = new List<string>();
             int samples = 0;
+            string stopped = "the sample count was reached";
 
             try
             {
                 process.WaitForInputIdle((int)Patience.TotalMilliseconds);
 
-                // Sampled over several seconds rather than once. A connection opened during
-                // start-up and closed again would be invisible to a single look, and start-up is
-                // exactly when an update check or a licence call would happen.
-                var clock = Stopwatch.StartNew();
+                // Sampled repeatedly rather than once. A connection opened during start-up and
+                // closed again would be invisible to a single look, and start-up is exactly when
+                // an update check or a licence call would happen.
+                //
+                // **A fixed COUNT, not a fixed duration** (#416). Sampling for six seconds and
+                // hoping enough fit made the evidence a function of how fast the machine
+                // enumerates TCP tables: on a loaded two-core runner it managed four samples and
+                // the test failed having found nothing wrong with the shell. The requirement is
+                // about what the shell connects to, not about the runner's throughput, so the loop
+                // now takes its samples and the deadline is only a backstop against a hang.
+                var deadline = Stopwatch.StartNew();
 
-                while (clock.Elapsed < TimeSpan.FromSeconds(6.0))
+                while (samples < WantedSamples)
                 {
                     process.Refresh();
 
                     if (process.HasExited)
                     {
+                        // Said explicitly, because it is a different fault entirely. The old
+                        // message reported this as a sampling shortfall -- a symptom two steps
+                        // from a shell that died at start-up.
+                        stopped = "the shell exited after " + samples + " samples with exit code " +
+                                  process.ExitCode;
                         break;
                     }
 
                     offenders.AddRange(SocketsOf(process.Id));
                     samples++;
 
-                    Thread.Sleep(250);
+                    if (deadline.Elapsed > Patience)
+                    {
+                        stopped = "the " + Patience.TotalSeconds.ToString("F0") +
+                                  " s backstop elapsed after " + samples + " samples";
+                        break;
+                    }
+
+                    Thread.Sleep(SampleInterval);
                 }
             }
             finally
@@ -86,14 +117,20 @@ namespace OpenVSA.Architecture.Tests
                 Close(process);
             }
 
-            _output.WriteLine(samples + " samples of the process's TCP table");
+            _output.WriteLine(
+                samples + " samples of the process's TCP table; " + stopped);
 
             foreach (string offender in offenders.Distinct())
             {
                 _output.WriteLine("  " + offender);
             }
 
-            Assert.True(samples > 5, "The process was sampled only " + samples + " times.");
+            // Kept, and not loosened. It is what stops this passing vacuously: finding no sockets
+            // is evidence only if the process was looked at enough times to have seen one.
+            Assert.True(
+                samples >= WantedSamples,
+                "Only " + samples + " of " + WantedSamples + " samples were taken -- " + stopped +
+                ". No conclusion about network egress can be drawn from that.");
 
             Assert.False(
                 offenders.Any(),

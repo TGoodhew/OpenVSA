@@ -105,21 +105,51 @@ namespace OpenVSA.Core.Tests
             // wait for anything, which is why the requirement calls this a correctness matter
             // rather than a performance one.
             //
-            // **Measured on the mean and the 99th percentile, NOT the maximum.** The first version
-            // asserted the maximum and failed in CI at 32 ms — which was a garbage collection or a
-            // scheduler preemption on a two-core runner, not the log waiting for anything. The
-            // maximum of any timed call on a shared machine measures the machine. Changing the
-            // threshold would have been tuning a check until it passed; changing the instrument is
-            // measuring the thing the requirement is about.
+            // **Both bounds are ratios, and neither is a time.** Two earlier versions were absolute
+            // and both failed in CI without the log ever waiting for anything: first the maximum at
+            // 32 ms, then the mean at 0.05 ms (#415). A duration threshold on a shared two-core
+            // runner measures who else is running, and raising it each time is tuning a check until
+            // it passes. What the requirement is about is whether the call *waits*, and waiting is
+            // visible without a clock in absolute terms:
             //
-            // A genuinely blocking implementation — a lock held by a slow sink, a synchronous file
-            // write — shows up in the mean and the 99th, not in one outlier.
+            //   1. Against a baseline of the same work done non-blockingly, on this machine, in
+            //      this run. A slow machine scales both and the ratio holds.
+            //   2. Against this same distribution's own median. Occasional blocking is a heavy
+            //      tail; uniform blocking is caught by (1).
+            //
+            // A lock held by a slow sink or a synchronous file write is three to five orders of
+            // magnitude above a lock-free store, so the bounds below are loose by design and still
+            // discriminate by a wide margin. They are not the smallest numbers that pass.
             var log = new Log { DefaultLevel = LogLevel.Debug };
 
             const int Writes = Log.Capacity * 3;
 
+            // The baseline: the irreducible non-blocking work a lock-free log must do -- claim a
+            // slot and store into it. Never waits, by construction.
+            var slots = new object[Writes];
+            long claimed = 0;
+
             var times = new double[Writes];
+            var baseline = new double[Writes];
             var clock = new Stopwatch();
+
+            // Both loops run warm, so neither pays for a first-call JIT that the other does not.
+            log.Write("Dsp", LogLevel.Debug, "warm");
+            slots[(int)(Interlocked.Increment(ref claimed) % Writes)] = this;
+            claimed = 0;
+
+            var baselineClock = Stopwatch.StartNew();
+
+            for (int i = 0; i < Writes; i++)
+            {
+                clock.Restart();
+                slots[(int)(Interlocked.Increment(ref claimed) % Writes)] = this;
+                baseline[i] = clock.Elapsed.TotalMilliseconds;
+            }
+
+            double baselineTotal = baselineClock.Elapsed.TotalMilliseconds;
+
+            var writeClock = Stopwatch.StartNew();
 
             for (int i = 0; i < Writes; i++)
             {
@@ -128,25 +158,95 @@ namespace OpenVSA.Core.Tests
                 times[i] = clock.Elapsed.TotalMilliseconds;
             }
 
+            double writeTotal = writeClock.Elapsed.TotalMilliseconds;
+
             Array.Sort(times);
 
-            double mean = times.Average();
+            double median = times[Writes / 2];
             double ninetyNinth = times[(int)(Writes * 0.99)];
 
+            // Totals rather than per-call means: one Stopwatch reading of a lock-free store is
+            // mostly the stopwatch, and a ratio of two such readings is mostly noise. Over the
+            // whole loop both are milliseconds and the quantisation washes out.
+            double workRatio = baselineTotal > 0.0 ? writeTotal / baselineTotal : double.NaN;
+            double tailRatio = median > 0.0 ? ninetyNinth / median : 1.0;
+
             _output.WriteLine(
-                Writes + " writes: mean " + mean.ToString("F5") + " ms, 99th " +
-                ninetyNinth.ToString("F4") + " ms, max " + times[Writes - 1].ToString("F3") +
-                " ms; " + log.Dropped + " dropped");
+                Writes + " writes in " + writeTotal.ToString("F2") + " ms against a " +
+                baselineTotal.ToString("F2") + " ms non-blocking baseline (" +
+                workRatio.ToString("F1") + "x); median " + median.ToString("F5") +
+                " ms, 99th " + ninetyNinth.ToString("F4") + " ms (" + tailRatio.ToString("F1") +
+                "x median), max " + times[Writes - 1].ToString("F3") + " ms; " +
+                log.Dropped + " dropped");
 
             Assert.True(
-                mean < 0.05,
-                "The mean write took " + mean.ToString("F5") +
-                " ms. On the measurement thread that is a dropped frame.");
+                workRatio < 500.0,
+                "Writing cost " + workRatio.ToString("F1") + " times a non-blocking store on this " +
+                "machine (" + writeTotal.ToString("F2") + " ms against " +
+                baselineTotal.ToString("F2") + " ms). That is the shape of a call that waits.");
 
             Assert.True(
-                ninetyNinth < 1.0,
-                "The 99th-percentile write took " + ninetyNinth.ToString("F4") +
-                " ms, which is a wait rather than an outlier.");
+                tailRatio < 200.0,
+                "The 99th-percentile write took " + tailRatio.ToString("F1") +
+                " times the median (" + ninetyNinth.ToString("F4") + " ms against " +
+                median.ToString("F5") + " ms), which is a wait rather than an outlier.");
+        }
+
+        [Fact]
+        public void TheNonBlockingCheckRejectsACallThatWaits()
+        {
+            // WritingNeverBlocksTheCaller passes by finding a small ratio, so it has to be shown to
+            // reject a large one -- otherwise "the log never blocks" and "the instrument cannot
+            // tell" look identical. Same arithmetic, applied to a call that unmistakably waits.
+            //
+            // Thread.Sleep(1) rather than a contended lock or a file write: those depend on a
+            // second thread being scheduled or on the state of a disk, and a discriminating test
+            // that is itself flaky proves nothing. A sleep waits, deterministically, on every
+            // machine.
+            const int Iterations = 100;
+
+            var slots = new object[Iterations];
+            long claimed = 0;
+
+            var clock = new Stopwatch();
+            var times = new double[Iterations];
+
+            var baselineClock = Stopwatch.StartNew();
+
+            for (int i = 0; i < Iterations; i++)
+            {
+                slots[(int)(Interlocked.Increment(ref claimed) % Iterations)] = this;
+            }
+
+            double baselineTotal = baselineClock.Elapsed.TotalMilliseconds;
+
+            var waitingClock = Stopwatch.StartNew();
+
+            for (int i = 0; i < Iterations; i++)
+            {
+                clock.Restart();
+                Thread.Sleep(1);
+                times[i] = clock.Elapsed.TotalMilliseconds;
+            }
+
+            double waitingTotal = waitingClock.Elapsed.TotalMilliseconds;
+
+            Array.Sort(times);
+
+            double workRatio = baselineTotal > 0.0 ? waitingTotal / baselineTotal : double.PositiveInfinity;
+
+            _output.WriteLine(
+                Iterations + " waiting calls in " + waitingTotal.ToString("F2") + " ms against a " +
+                baselineTotal.ToString("F4") + " ms non-blocking baseline (" +
+                workRatio.ToString("F0") + "x)");
+
+            // The same bound WritingNeverBlocksTheCaller applies. A call that waits is orders of
+            // magnitude past it, which is why that bound can be loose and still discriminate.
+            Assert.True(
+                workRatio >= 500.0,
+                "A call that sleeps 1 ms each time measured only " + workRatio.ToString("F0") +
+                " times a non-blocking store, so the bound in WritingNeverBlocksTheCaller would " +
+                "not catch a log that waits. The instrument needs revisiting, not the bound.");
         }
 
         [Fact]
