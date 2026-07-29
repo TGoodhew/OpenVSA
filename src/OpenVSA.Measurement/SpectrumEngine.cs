@@ -425,8 +425,9 @@ namespace OpenVSA.Measurement
         }
 
         private void Publish(
-            SpectrumFrame frame, int recordSamples, Stopwatch clock, ref long previousTicks)
+            SpectrumFrame computed, int recordSamples, Stopwatch clock, ref long previousTicks)
         {
+            SpectrumFrame frame = computed;
             TraceAverager averager = Averager;
 
             if (averager != null)
@@ -443,9 +444,34 @@ namespace OpenVSA.Measurement
             UpdateRate(clock, ref previousTicks);
 
             EventHandler<SpectrumFrame> handler = FrameComputed;
-            if (handler != null)
+
+            try
             {
-                handler(this, frame);
+                if (handler != null)
+                {
+                    handler(this, frame);
+                }
+            }
+            finally
+            {
+                // REQ-NFR-002: the pump holds the reference the computer handed it, and gives it up
+                // here. A handler that stores the frame past this call must Retain() -- and if it
+                // does not, its next read throws rather than returning a later frame's spectrum.
+                //
+                // In the finally, so a throwing handler does not leak the buffer: the pump treats a
+                // handler fault as fatal and stops, and a stopped pump that had also lost its
+                // buffers would make the fault harder to diagnose than it already is.
+                //
+                // Two frames, because an averager returns a DIFFERENT frame from the one it was
+                // given -- one that owns its own array -- and the computed frame's pooled buffer
+                // would otherwise never come back. Release is a no-op on an unpooled frame, so the
+                // averaging-off case, where the two are the same object, releases exactly once.
+                if (!ReferenceEquals(frame, computed))
+                {
+                    frame.Release();
+                }
+
+                computed.Release();
             }
         }
 

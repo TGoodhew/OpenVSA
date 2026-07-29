@@ -92,6 +92,29 @@ namespace OpenVSA.Dsp.Spectrum
         public bool TrimToAnalysisSpan { get; set; }
 
         /// <summary>
+        /// Whether computed frames carry a pooled buffer behind a lease (<c>REQ-NFR-002</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Off by default, and deliberately.</strong> A pooled frame must be
+        /// <see cref="SpectrumFrame.Retain"/>ed by anything that stores it past the call that
+        /// produced it, and <see cref="SpectrumFrame.Release"/>d when finished. Every consumer in
+        /// the tree has to honour that before the measurement path can turn it on: the render
+        /// marshal's pending snapshot, the shell's held frame, each open trace plot, the
+        /// spectrogram history, the trace registers, the marker frames.
+        /// </para>
+        /// <para>
+        /// <strong>Half a migration is worse than none.</strong> With the pump releasing and one
+        /// consumer not retaining, that consumer reads a buffer belonging to a later frame. The
+        /// lease turns that into an <see cref="ObjectDisposedException"/> rather than a wrong
+        /// trace — which is what makes the migration safe to do, but not a reason to do it
+        /// piecemeal in a running product. The flag is how the mechanism ships proven and inert
+        /// until the consumers are ready.
+        /// </para>
+        /// </remarks>
+        public bool PoolFrames { get; set; }
+
+        /// <summary>
         /// The transform length used for a block of the given size: the largest power of two that
         /// fits.
         /// </summary>
@@ -344,7 +367,13 @@ namespace OpenVSA.Dsp.Spectrum
             int points = trimmed > 0 ? trimmed : n;
             int m = (points - 1) / 2;
             int first = trimmed > 0 ? half - m : 0;
-            var levels = new float[points * 2];
+            // REQ-NFR-002: pooled when asked, because at 2^20 points this is 8 MiB per frame
+            // straight to the large object heap -- 30 gen-2 collections in a 30-second run.
+            // The lease travels with the frame and is what makes a read after release throw.
+            BufferLease lease = PoolFrames
+                ? SampleBufferPool.Instance.RentLease(points * 2)
+                : null;
+            float[] levels = lease != null ? lease.Array : new float[points * 2];
             double volts = scale.VoltsPerUnit;
 
             for (int i = 0; i < points; i++)
@@ -361,6 +390,8 @@ namespace OpenVSA.Dsp.Spectrum
 
             return SpectrumFrame.Adopt(
                 levels,
+                points,
+                lease,
                 scale,
                 startFrequencyHz: block.CenterFrequencyHz + (first - half) * binWidth,
                 binWidthHz: binWidth,
@@ -394,7 +425,13 @@ namespace OpenVSA.Dsp.Spectrum
             int trimmed = DisplayPointsFor(n, AnalysisPath.RealBaseband, usableBandwidthHz, binWidth);
             int points = trimmed > 0 ? trimmed : n / 2 + 1;
 
-            var levels = new float[points * 2];
+            // REQ-NFR-002: pooled when asked, because at 2^20 points this is 8 MiB per frame
+            // straight to the large object heap -- 30 gen-2 collections in a 30-second run.
+            // The lease travels with the frame and is what makes a read after release throw.
+            BufferLease lease = PoolFrames
+                ? SampleBufferPool.Instance.RentLease(points * 2)
+                : null;
+            float[] levels = lease != null ? lease.Array : new float[points * 2];
             double single = scale.VoltsPerUnit;
             double doubled = scale.WithLinearGain(2.0).VoltsPerUnit;
 
@@ -407,6 +444,8 @@ namespace OpenVSA.Dsp.Spectrum
 
             return SpectrumFrame.Adopt(
                 levels,
+                points,
+                lease,
                 scale,
                 startFrequencyHz: 0.0,
                 binWidthHz: binWidth,
