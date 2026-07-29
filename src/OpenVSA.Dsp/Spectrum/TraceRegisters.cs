@@ -63,7 +63,15 @@ namespace OpenVSA.Dsp.Spectrum
         public void Store(int register, SpectrumFrame frame)
         {
             Validate(register);
+            // REQ-NFR-002: a register holds a frame indefinitely -- that is what a register is --
+            // so it takes its own share, and the frame it displaces gives one back.
+            frame?.Retain();
+
+            SpectrumFrame displaced = _registers[register - 1];
+
             _registers[register - 1] = frame;
+
+            displaced?.Release();
         }
 
         /// <summary>
@@ -92,6 +100,7 @@ namespace OpenVSA.Dsp.Spectrum
         {
             for (int i = 0; i < _registers.Length; i++)
             {
+                _registers[i]?.Release();
                 _registers[i] = null;
             }
         }

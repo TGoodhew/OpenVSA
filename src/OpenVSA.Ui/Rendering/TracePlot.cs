@@ -905,6 +905,36 @@ namespace OpenVSA.Ui.Rendering
         private SpectrumFrame _measuredFrame;
 
         /// <summary>
+        /// Takes ownership of the frame this plot will keep redrawing (<c>REQ-NFR-002</c>).
+        /// </summary>
+        /// <param name="frame">The newly measured frame, or null to let go of the last one.</param>
+        /// <remarks>
+        /// <para>
+        /// A plot redraws from the frame it was last shown -- on resize, on a format change, on a
+        /// magnification -- long after the pump callback that produced it returned. It therefore
+        /// holds a share of the pooled buffer rather than borrowing one, and gives up the previous
+        /// share as it takes the new one.
+        /// </para>
+        /// <para>
+        /// The re-decimated snapshot built by <c>SnapshotFor</c> needs no share of its own: it is
+        /// built from this same frame, or from a windowed derivative that owns its own array.
+        /// </para>
+        /// </remarks>
+        private void HoldMeasured(SpectrumFrame frame)
+        {
+            if (ReferenceEquals(_measuredFrame, frame))
+            {
+                return;
+            }
+
+            SpectrumFrame previous = _measuredFrame;
+
+            frame?.Retain();
+            _measuredFrame = frame;
+            previous?.Release();
+        }
+
+        /// <summary>
         /// Whether the display is magnified into part of the measured span (#397).
         /// </summary>
         /// <remarks>
@@ -1480,7 +1510,7 @@ namespace OpenVSA.Ui.Rendering
             }
 
             _snapshot = snapshot;
-            _measuredFrame = snapshot.Spectrum;
+            HoldMeasured(snapshot.Spectrum);
 
             // A new acquisition at a different span cannot keep a magnification into the old one.
             if (IsMagnified &&
@@ -1746,6 +1776,7 @@ namespace OpenVSA.Ui.Rendering
             ThreadAffinity.AssertOnUiThread("Clearing a trace");
 
             _snapshot = null;
+            HoldMeasured(null);
             Redraw(null);
 
             _analysisText.Text = string.Empty;

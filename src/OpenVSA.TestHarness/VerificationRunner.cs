@@ -175,18 +175,27 @@ namespace OpenVSA.TestHarness
                         scenario, false, expected, double.NaN, "no frame was produced");
                 }
 
-                int peak = frame.IndexOfPeak();
-
-                if (peak < 0)
+                try
                 {
-                    return new VerificationResult(
-                        scenario, false, expected, double.NaN, "the spectrum had no peak");
+                    int peak = frame.IndexOfPeak();
+
+                    if (peak < 0)
+                    {
+                        return new VerificationResult(
+                            scenario, false, expected, double.NaN, "the spectrum had no peak");
+                    }
+
+                    double measured = Measure(scenario, frame, peak);
+                    bool passed = Math.Abs(measured - expected) <= scenario.Tolerance;
+
+                    return new VerificationResult(scenario, passed, expected, measured, string.Empty);
                 }
-
-                double measured = Measure(scenario, frame, peak);
-                bool passed = Math.Abs(measured - expected) <= scenario.Tolerance;
-
-                return new VerificationResult(scenario, passed, expected, measured, string.Empty);
+                finally
+                {
+                    // The share MeasureAsync handed over (REQ-NFR-002). Everything read from the
+                    // frame is read above; nothing here keeps it.
+                    frame.Release();
+                }
             }
             catch (Exception failure)
             {
@@ -234,6 +243,10 @@ namespace OpenVSA.TestHarness
                             return;
                         }
 
+                        // REQ-NFR-002: the pump gives up its share the moment this handler
+                        // returns, and these frames are read after the run finishes. Retained
+                        // here, released in the finally below.
+                        frame.Retain();
                         frames.Add(frame);
 
                         if (frames.Count == SettlingFrames + ReadingFrames)
@@ -258,14 +271,25 @@ namespace OpenVSA.TestHarness
 
                 lock (frames)
                 {
-                    if (!settled || frames.Count <= SettlingFrames)
+                    if (frames.Count == 0)
                     {
-                        return frames.Count > 0 ? frames[frames.Count - 1] : null;
+                        return null;
                     }
 
                     // The last settled frame. Averaging across frames would need the peak to sit
                     // in the same bin in each, which is exactly what a drifting source does not do.
-                    return frames[frames.Count - 1];
+                    SpectrumFrame chosen = frames[frames.Count - 1];
+
+                    // Every frame this run retained except the one being returned. The caller
+                    // inherits the chosen frame's share and releases it when it has read what it
+                    // needs (REQ-NFR-002); the settling frames are of no further use and their
+                    // buffers go back now rather than at the next collection.
+                    for (int i = 0; i < frames.Count - 1; i++)
+                    {
+                        frames[i].Release();
+                    }
+
+                    return chosen;
                 }
             }
         }

@@ -111,6 +111,10 @@ namespace OpenVSA.Measurement.Tests
                 {
                     if (first == null)
                     {
+                        // REQ-NFR-002: the pump gives up its share when this handler returns, and
+                        // this test reads the frame afterwards. Not released -- the test process
+                        // ends and the pool is not the thing under test here.
+                        frame.Retain();
                         first = frame;
                         arrived.Set();
                     }
@@ -330,7 +334,13 @@ namespace OpenVSA.Measurement.Tests
                 var completed = new ManualResetEventSlim();
 
                 engine.TargetUpdatesPerSecond = 0.0;
-                engine.FrameComputed += (sender, frame) => held = frame;
+                engine.FrameComputed += (sender, frame) =>
+                {
+                    // Read after the run, so it needs a share of its own (REQ-NFR-002).
+                    frame.Retain();
+                    held?.Release();
+                    held = frame;
+                };
                 engine.Completed += (sender, e) => completed.Set();
 
                 await engine.StartAsync(Request, CancellationToken.None);
@@ -388,6 +398,7 @@ namespace OpenVSA.Measurement.Tests
                 {
                     lock (frames)
                     {
+                        frame.Retain();
                         frames.Add(frame);
                     }
                 };

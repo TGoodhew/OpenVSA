@@ -3104,7 +3104,20 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            // REQ-NFR-002: the shell keeps the newest frame for markers, limits and annotation
+            // until the next one replaces it, so it holds a share of its own and gives up the
+            // previous one. Every other holder below -- the plots, the spectrogram history, the
+            // marker collection -- takes its own share as it stores, so none of them depends on
+            // this one outliving them.
+            SpectrumFrame previousFrame = _frame;
+
+            snapshot.Spectrum?.Retain();
             _frame = snapshot.Spectrum;
+
+            if (!ReferenceEquals(previousFrame, _frame))
+            {
+                previousFrame?.Release();
+            }
 
             // REQ-UI-054: the history a spectrogram draws is the sweeps that reached the display.
             // Accumulating on the pump thread instead would record the ones the marshal coalesced
@@ -3144,6 +3157,12 @@ namespace OpenVSA.Ui
             }
 
             UpdateIndicators(snapshot);
+
+            // The share TakeForRender handed over. Given up last, after every holder above has
+            // taken its own -- releasing earlier would hand the buffer back while the plots were
+            // still reading it, which the lease would report as an ObjectDisposedException rather
+            // than a wrong trace, but a fault either way.
+            snapshot.Release();
         }
 
         /// <summary>

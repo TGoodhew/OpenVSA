@@ -94,6 +94,13 @@ namespace OpenVSA.Dsp.Spectrum
                 int keep = _count < value ? _count : value;
                 var resized = new SpectrumFrame[value];
 
+                // The oldest rows that no longer fit give their share back before they are lost:
+                // shrinking the depth must not strand pooled buffers (REQ-NFR-002).
+                for (int i = 0; i < _count - keep; i++)
+                {
+                    Row(i)?.Release();
+                }
+
                 // Oldest first into the new store, dropping any that no longer fit.
                 for (int i = 0; i < keep; i++)
                 {
@@ -137,8 +144,18 @@ namespace OpenVSA.Dsp.Spectrum
                 throw new ArgumentNullException(nameof(frame));
             }
 
+            // REQ-NFR-002: the history keeps a frame for as long as it is on screen, which is far
+            // beyond the callback that produced it, so it takes its own share of the buffer. The
+            // row being overwritten is one nothing can reach any more, and its share goes back --
+            // a ring that only ever retained would hold `depth` buffers out of the pool for ever.
+            frame.Retain();
+
+            SpectrumFrame evicted = _rows[_next];
+
             _rows[_next] = frame;
             _next = (_next + 1) % _rows.Length;
+
+            evicted?.Release();
 
             if (_count < _rows.Length)
             {
@@ -175,7 +192,14 @@ namespace OpenVSA.Dsp.Spectrum
         public void Clear()
         {
             // Released, not merely forgotten: a stale reference to a full-depth history of
-            // 2^20-point frames is most of a gigabyte the collector cannot reach.
+            // 2^20-point frames is most of a gigabyte the collector cannot reach. And with
+            // REQ-NFR-002's pooling, each row also holds a share of a pooled buffer that has to go
+            // back -- forgetting them would drain the pool one clear at a time.
+            for (int i = 0; i < _rows.Length; i++)
+            {
+                _rows[i]?.Release();
+            }
+
             Array.Clear(_rows, 0, _rows.Length);
 
             _count = 0;
