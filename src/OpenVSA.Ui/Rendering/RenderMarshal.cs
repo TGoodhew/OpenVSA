@@ -73,6 +73,20 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>The full-resolution spectrum.</summary>
         public SpectrumFrame Spectrum { get; }
 
+        /// <summary>
+        /// Claims a share of the spectrum this snapshot carries (<c>REQ-NFR-002</c>).
+        /// </summary>
+        /// <remarks>
+        /// A snapshot outlives the pump callback that produced it — that is its whole purpose —
+        /// so it holds a reference to the frame rather than borrowing one. Anything that stores
+        /// the snapshot beyond the call it was handed to must take its own share, and give it back
+        /// with <see cref="Release"/>. No-ops on an unpooled frame.
+        /// </remarks>
+        public void Retain() => Spectrum?.Retain();
+
+        /// <summary>Gives up a share of the spectrum this snapshot carries.</summary>
+        public void Release() => Spectrum?.Release();
+
         /// <summary>Number of pixel columns the envelope was reduced to.</summary>
         public int Columns { get; }
 
@@ -253,15 +267,28 @@ namespace OpenVSA.Ui.Rendering
 
             TraceSnapshot snapshot = Decimate(frame, columns, formats, detector, options);
 
+            // REQ-NFR-002: the snapshot outlives this callback and crosses to the UI thread, so it
+            // takes its own share of the frame rather than borrowing the pump's -- which the pump
+            // gives up the moment every handler returns.
+            snapshot.Retain();
+
+            TraceSnapshot superseded;
+
             lock (_slot)
             {
-                if (_pending != null)
+                superseded = _pending;
+
+                if (superseded != null)
                 {
                     Interlocked.Increment(ref _framesDropped);
                 }
 
                 _pending = snapshot;
             }
+
+            // Released outside the lock: a coalesced frame is one nothing will ever draw, and its
+            // buffer has to go back or the pool drains at exactly the rate frames are dropped.
+            superseded?.Release();
 
             if (Interlocked.Increment(ref _outstandingPosts) <= MaximumOutstandingPosts)
             {
@@ -306,10 +333,17 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>Discards any pending frame and resets the post count. For stopping a measurement.</summary>
         public void Reset()
         {
+            TraceSnapshot discarded;
+
             lock (_slot)
             {
+                discarded = _pending;
                 _pending = null;
             }
+
+            // Stopping a measurement must not strand the last frame's buffer in a snapshot nobody
+            // will collect.
+            discarded?.Release();
 
             Interlocked.Exchange(ref _outstandingPosts, 0);
         }

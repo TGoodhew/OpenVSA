@@ -63,6 +63,18 @@ namespace OpenVSA.Measurement
 
             _frontEnd = frontEnd;
             _computer = computer ?? new SpectrumComputer();
+
+            // REQ-NFR-002. The pump is the one producer whose frames are published at rate, and
+            // every consumer downstream of it now takes its own share of the buffer: the render
+            // marshal's pending snapshot, the shell's held frame, each trace plot, the spectrogram
+            // history, the trace registers, the marker collection. A consumer that missed the
+            // protocol reads an ObjectDisposedException rather than a later frame's spectrum, so a
+            // mistake here is loud and attributable instead of being a wrong trace nobody notices.
+            //
+            // Set on whatever computer was supplied as well as the default one: a caller passing a
+            // configured computer is still driving this pump, and the pump's release discipline is
+            // what makes pooling correct.
+            _computer.PoolFrames = true;
         }
 
         /// <summary>Raised on the pump thread for every computed frame.</summary>

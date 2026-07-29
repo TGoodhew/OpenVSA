@@ -136,41 +136,57 @@ namespace OpenVSA.Benchmarks
             // burst-versus-sustained gap pointed at.
             foreach (int points in new[] { 8192, 1 << 20 })
             {
-                // The product path is what the requirement is about, and its verdict is the one
-                // that decides the exit code. The pooled path is measured beside it because
-                // SpectrumComputer.PoolFrames exists but the consumers have not been migrated to
-                // the lease protocol yet -- reporting only the pooled figure would credit the
-                // product with an allocation profile it does not have.
-                if (MeasureAllocationAt(points, pooled: false) != 0)
+                // One measurement, of what the product does. SpectrumEngine sets PoolFrames on
+                // the computer it pumps, so the pooled path IS the product path now that every
+                // consumer honours the lease; measuring an unpooled variant beside it would be
+                // reporting a configuration nothing runs.
+                if (MeasureAllocationAt(points) != 0)
                 {
-                    MeasureAllocationAt(points, pooled: true);
                     return 1;
                 }
-
-                MeasureAllocationAt(points, pooled: true);
             }
 
             return 0;
         }
 
-        private static int MeasureAllocationAt(int Points, bool pooled)
+        private static int MeasureAllocationAt(int Points)
         {
             const double FramesPerSecond = 20.0;
 
-            TimeSpan window = TimeSpan.FromSeconds(30.0);
+            // REQ-NFR-002 states ten minutes. That is the figure the requirement is closed
+            // against and it is run at least once per change to this path; CI exercises the shape
+            // at 30 s, because twenty minutes of waiting on every build buys nothing a shorter run
+            // does not already show -- the same arrangement REQ-NFR-011's soak uses, and for the
+            // same reason. OPENVSA_ALLOCATION_SECONDS selects it.
+            double seconds = 30.0;
+            string configured = Environment.GetEnvironmentVariable("OPENVSA_ALLOCATION_SECONDS");
+
+            if (!string.IsNullOrEmpty(configured))
+            {
+                double parsed;
+
+                if (double.TryParse(
+                        configured, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out parsed) &&
+                    parsed > 0.0)
+                {
+                    seconds = parsed;
+                }
+            }
+
+            TimeSpan window = TimeSpan.FromSeconds(seconds);
 
             Console.WriteLine("REQ-NFR-002: allocation over a sustained run at " +
-                              FramesPerSecond + " frames/s, " + Points + "-point frames" +
-                              (pooled
-                                  ? " -- POOLED path (mechanism only; consumers not yet migrated)."
-                                  : " -- product path."));
+                              FramesPerSecond + " frames/s, " + Points +
+                              "-point frames, pooled as SpectrumEngine pumps them.");
             Console.WriteLine("  Attributed by isolation: nothing else runs in this process.");
             Console.WriteLine();
 
             var computer = new OpenVSA.Dsp.Spectrum.SpectrumComputer(
                 OpenVSA.Dsp.Windowing.WindowType.FlatTop, null, null)
             {
-                PoolFrames = pooled,
+                // As SpectrumEngine configures the computer it pumps.
+                PoolFrames = true,
             };
 
             var metadata = new OpenVSA.Core.IqBlockMetadata(
@@ -235,9 +251,7 @@ namespace OpenVSA.Benchmarks
                               ", gen2 " + gen2Delta);
             Console.WriteLine();
             Console.WriteLine("  gen-2 collections attributable to the DSP pipeline: " + gen2Delta +
-                              (gen2Delta == 0
-                                  ? (pooled ? "  (the pooled mechanism reaches it)" : "  (meets REQ-NFR-002)")
-                                  : "  (REQ-NFR-002 requires none)"));
+                              (gen2Delta == 0 ? "  (meets REQ-NFR-002)" : "  (REQ-NFR-002 requires none)"));
             Console.WriteLine();
 
             return gen2Delta == 0 ? 0 : 1;

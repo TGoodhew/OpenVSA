@@ -178,7 +178,20 @@ namespace OpenVSA.Measurement.Markers
                 throw new ArgumentNullException(nameof(frame));
             }
 
+            // REQ-NFR-002: markers read the full-resolution frame long after it was published --
+            // a peak search against decimated data returns a pixel column, not a signal -- so the
+            // collection holds a share and the frame it replaces gives one back.
+            frame?.Retain();
+
+            SpectrumFrame replaced;
+            _frames.TryGetValue(traceLetter, out replaced);
+
             _frames[traceLetter] = frame;
+
+            if (!ReferenceEquals(replaced, frame))
+            {
+                replaced?.Release();
+            }
             _axes[traceLetter] = axis;
             Register(traceLetter);
 
