@@ -438,10 +438,49 @@ shall use `System.Numerics.Vector<T>` where profiling shows benefit.
 > `Vector<T>.Count` is not guaranteed to be 8 for `float` on this runtime.
 > **Use `Span<T>` for API shape and safety, raw arrays with local bounds hoisting for hot loops.**
 
-**AC:** Window-multiply and magnitude kernels demonstrate ≥2.5× throughput over the scalar
-reference on the target machine, measured by BenchmarkDotNet — **or**, where
-`Vector<float>.Count == 4` on the target runtime, a documented lower factor with the measured
-value recorded and a native-kernel fallback raised as a decision item.
+*(AC amended 2026-07-29 on measurement. The original read: "Window-multiply and magnitude
+kernels demonstrate ≥2.5× throughput over the scalar reference on the target machine, measured
+by BenchmarkDotNet — **or**, where `Vector<float>.Count == 4` on the target runtime, a
+documented lower factor with the measured value recorded and a native-kernel fallback raised as
+a decision item." It is retained here because what it got wrong is instructive.)*
+
+**Why a single throughput ratio was the wrong instrument.** The original criterion asked for one
+number at one size, and offered an escape clause conditioned on the **lane count**. Measured on
+the reference machine at `Vector<float>.Count = 8` with hardware acceleration on, the escape
+clause's condition is false and the target is missed anyway — but the lane count was never the
+cause, and the two named kernels miss it in **opposite directions**:
+
+| Working set | window multiply | magnitude squared |
+|---:|---:|---:|
+| 16 KiB | 5.37× | 0.93× |
+| 64 KiB | 5.31× | 0.95× |
+| 256 KiB | 4.90× | 1.02× |
+| 1 MiB | 4.20× | 1.20× |
+| 4 MiB | 3.07× | 1.43× |
+| 16 MiB | 1.42× | 1.92× |
+
+**Window multiply** vectorises extremely well — 5.37× where the data is cache-resident — and
+decays to 1.42× as the working set leaves cache. Arithmetic width cannot help a loop waiting on
+memory, and at 2²⁰ complex samples the interleaved buffer is 8 MB. **Magnitude squared** is
+*slower than scalar* while cache-resident, because `REQ-DAT-003`'s interleaved layout forces
+every vector to be squared and then folded pairwise across adjacent lanes; it only overtakes
+scalar once both are memory-bound. A single figure at either end of that table misrepresents
+both kernels, and a figure at 2²⁰ alone cannot distinguish a kernel that fails to vectorise from
+one that vectorises perfectly and is waiting for memory — which want opposite responses.
+
+**AC:** Each named kernel has a scalar and a `Vector<T>` form; they agree **exactly**, asserted
+at sizes that straddle the lane count, because a vector kernel that is faster and wrong in its
+tail is worse than none. The two forms are compared across a **working-set sweep spanning
+cache-resident to memory-resident**, every figure recorded, re-runnable in one command
+(`OpenVSA.Benchmarks --gate --kernels`). Selection between the forms is **driven by that sweep
+and not asserted**: a kernel is vectorised in the product only where the sweep shows the vector
+form faster at the working-set sizes the DSP pipeline actually runs at, and a kernel where it is
+not is left scalar with its measured figures recorded. A vectorised kernel that the sweep shows
+to be slower at pipeline sizes fails this criterion. A single-size comparison does not satisfy
+it. No fixed speed-up ratio is required, because the achievable factor is a property of the
+machine's memory system at these buffer sizes rather than of the code — where a ratio is wanted
+for regression purposes it belongs in `REQ-TST-007`'s gate against a stored baseline, which is
+what that gate exists for.
 
 **`REQ-NFR-004` (P0) — FFT implementation choice.** **[DESIGN CHOICE]**
 The FFT shall sit behind an `IFftProvider` interface with at least two implementations: a
@@ -468,34 +507,69 @@ already ≈5e-7). Provider selection is configuration-driven; the shipped defaul
 copyleft obligation.
 
 **`REQ-NFR-005` (P0) — WPF rendering strategy for large traces.**
-Trace rendering shall **not** use WPF `Polyline`/`Path` elements with per-point geometry
-above ~2 000 points. Permitted strategies, by point count:
+*(Amended 2026-07-29 on measurement; see "What the measurement changed" below. The original
+band table and its `D3DImage` interop clause are retained there rather than deleted, because
+the reasoning that produced them is sound and only its premise turned out to be false.)*
 
-| Points | Strategy |
+Trace rendering shall **not** use WPF `Polyline`/`Path` elements with per-point geometry
+above ~2 000 points. Drawn geometry shall be produced only after `REQ-NFR-006`'s min/max
+pixel-column decimation, and the strategy for the geometry that survives decimation shall be:
+
+| Drawn points | Strategy |
 |---|---|
 | ≤ 2 000 | `Polyline`/`Path` acceptable |
 | ≤ ~20 000 | `DrawingVisual` + `StreamGeometry` |
-| > ~20 000 | `WriteableBitmap` + software rasteriser, **or** `D3DImage` + shared-surface interop |
+| > ~20 000 | `WriteableBitmap` + software rasteriser |
 
 *Rationale, stated precisely because the usual folk explanation is wrong:* the cost at high
 point counts is **MilCore's anti-aliased geometry tessellation on the render thread, plus
 per-`Point` managed→native marshalling** — not the visual tree as such. `StreamGeometry`
 inside a `DrawingVisual` removes the per-*element* overhead but goes through the **same
-tessellator**, so it does **not** scale to 500 k points and is not on its own a solution for
-`REQ-NFR-021`.
+tessellator**.
 
-*Interop caveat that will otherwise be discovered late:* `D3DImage` accepts only an
-`IDirect3DSurface9` (D3D9Ex). A Direct2D 1.1 / D3D11 back end therefore requires a
-shared-surface bridge (`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture`
-opened shared), and `D3DImage` degrades to software rendering under RDP or without WDDM.
-This is the single largest technical risk in using WPF for this application (§19, RISK-03).
-**AC:** The strategy selected for a trace is observable and tested at each band boundary
-(2 000 and ~20 000 points); selecting per-point `Polyline`/`Path` geometry above 2 000 points
-fails the test. The >20 000-point path meets `REQ-NFR-021` on the reference machine, and a
-`DrawingVisual` + `StreamGeometry` implementation of that same target is measured and
-recorded as failing it — the band boundaries are justified by measurement, not asserted.
-Under RDP, or with the shared-surface bridge unavailable, the surface falls back to the
-`WriteableBitmap` rasteriser and still renders correctly at reduced rate rather than failing.
+**What the measurement changed.** This requirement was written to defend against a cost that
+`REQ-NFR-006` prevents, and the defence was more expensive than the threat.
+
+- **Decimation runs first and bounds the drawn point count by the pixel width** — roughly twice
+  it, so ~1 600 points at 800 px and ~7 700 on a 4K-wide window. A 2²⁰-point trace is drawn
+  from at most a few thousand spans. The >20 000-point band is therefore unreachable in any
+  window that fits on a display.
+- **Rendering is 1.4 % of a frame and is invariant in point count** — 1.00 ms to rasterise a
+  2²⁰-point frame against 924 µs for an 8 192-point one, because both have been decimated to
+  one span per graticule column first. The whole 2²⁰ frame is 72.2 ms against `REQ-NFR-021`'s
+  100 ms, of which **the FFT is 60.96 ms (84.4 %)**.
+
+The original top band therefore offered `D3DImage` + a D3D9Ex shared-surface bridge
+(`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture` opened shared) as an
+alternative to the software rasteriser, and §19 carried RISK-03 against it. **That alternative
+is withdrawn, not merely deprioritised.** `D3DImage` degrades to software rendering under RDP
+and without WDDM, so a design resting on it has no path in exactly the environments a bench
+instrument is operated from — and it would be buying back 1.4 % of a frame. The software
+rasteriser is the strategy, not the fallback, which also means the degraded case is the tested
+case rather than an untested branch.
+
+The original acceptance criterion also asked for a `DrawingVisual` + `StreamGeometry`
+implementation to be **measured and recorded as failing** `REQ-NFR-021`. That clause is
+withdrawn: `StreamGeometry` measures 95.8 updates/s at 100 000 points and does not fail as the
+requirement assumed, and measuring it at a point count decimation makes unreachable would be
+measuring a case that cannot occur. The band boundaries stand as engineering limits on drawn
+geometry, and are honest about being limits rather than measured cliffs.
+
+**AC:** The strategy selected for a trace is observable — a value a test can assert on, not a
+branch inside a drawing method — and is tested either side of each band boundary (1 999/2 000/
+2 001 and 19 999/20 000/20 001). Selecting per-point `Polyline`/`Path` geometry above 2 000
+points fails the test, stated as a prohibition. Dropping to a *more* expensive strategy is
+permitted at any size and dropping up to per-point geometry never is, so the asymmetry is
+asserted in both directions. The product renders through the `WriteableBitmap` software
+rasteriser, and no `D3DImage`, `HwndHost` or D3D9Ex shared-surface path is present — asserted
+by a test over the shell's source, so reintroducing one is a deliberate act that fails the
+build rather than a drift. The invariance that makes the top band unreachable is asserted
+**structurally rather than by stopwatch** — at a fixed surface width the count of drawn spans is
+identical for an 8 192-point and a 2²⁰-point trace, and is bounded by twice the pixel width —
+because a timing ratio asserted in CI measures the runner's load as much as the code, while the
+span count is the mechanism itself and is deterministic. The corresponding *timings* are
+recorded by `REQ-TST-007`'s harness, where a stored baseline and a machine-class check make a
+measurement meaningful.
 
 **`REQ-NFR-006` (P0) — Pixel-column decimation.** Traces with more points than available
 horizontal pixels shall be reduced by **min/max envelope decimation per pixel column**
@@ -514,9 +588,14 @@ Framework 4.6.2 via `app.manifest` plus the
 > **Do not specify PerMonitorV2 on this stack.** PMv2 is a Windows 10 1703+ awareness context
 > whose behaviours (non-client-area scaling, child-HWND `WM_DPICHANGED` propagation, dialog
 > scaling) WPF on .NET Framework does not implement — full PMv2 support arrived with .NET
-> Core 3.0. This interacts directly with `REQ-NFR-005`: an `HwndHost`/`D3DImage` plot surface
-> will **not** receive child-window DPI-change notifications and must be recreated on DPI
-> change. Budget for that.
+> Core 3.0.
+>
+> *This note originally continued: "This interacts directly with `REQ-NFR-005`: an
+> `HwndHost`/`D3DImage` plot surface will **not** receive child-window DPI-change notifications
+> and must be recreated on DPI change. Budget for that." **That interaction no longer exists** —
+> `REQ-NFR-005` was amended on 2026-07-29 to withdraw the `D3DImage` path, and the plot surface
+> is a `WriteableBitmap` inside the WPF visual tree, which scales with it. The budget is
+> released.*
 
 **AC:** `app.manifest` declares per-monitor awareness V1 and does **not** declare PMv2, and
 the `Switch.System.Windows.DoNotScaleForDpiChanges=false` switch is present — both asserted
@@ -667,8 +746,15 @@ These are targets for the reference development machine (an 8-core x64 workstati
 
 *Note on `REQ-NFR-020`/`021`:* these are deliberately set **end-to-end including render**, not
 FFT-only. An 8 192-point FFT is ~2 ms and a 1 M-point FFT ~50 ms even in managed code, so
-compute-only versions of these targets would pass on day one and gate nothing. The real risk
-is rendering (RISK-03), so the targets are written to exercise it.
+compute-only versions of these targets would pass on day one and gate nothing.
+
+*This note originally continued "The real risk is rendering (RISK-03), so the targets are
+written to exercise it." **The measurement reversed that.** In a 2²⁰-point frame of 72.2 ms the
+FFT is 60.96 ms (84.4 %) and rasterising is 1.00 ms (1.4 %), invariant in point count because
+`REQ-NFR-006`'s decimation runs first. End-to-end remains the right shape for these targets —
+a compute-only target would still gate nothing, and the render path must stay measured or it
+stops being measured at all — but the budget they are defending is the transform. See
+`REQ-NFR-005` and §19 RISK-03, both amended 2026-07-29.*
 
 **AC (all):** An automated benchmark harness (BenchmarkDotNet plus a headless measurement
 driver, and a windowed harness for the rendered targets) runs in CI and fails the build on a
@@ -4244,7 +4330,7 @@ that `needs-ac` continues to mean "criteria are owed", not "criteria are impossi
 | ~~RISK-01~~ | ~~E4406A SCPI for raw IQ retrieval is unconfirmed.~~ **CLOSED** — verified on the instrument 25 July 2026 (`REQ-E44-002`). | — | — |
 | **RISK-01a** | **Silent acquisition truncation at 950 000 samples** (E4406A error 22). A caller trusting its own sweep-time setting analyses a shorter record than it believes it has, with no failed query. | Wrong results, silently | `REQ-E44-002c`: poll `:SYSTem:ERRor?` after every acquisition, `*CLS` beforehand, and independently verify returned $N$ against the request. |
 | **RISK-02** | **GPIB throughput** makes continuous capture impossible (§6.3). | User expectation mismatch | Declare `SupportsGapFreeStreaming = false`; show duty cycle; design UI around block capture from the start. |
-| **RISK-03** | **WPF rendering performance** at high point counts and update rates. | Core UX failure | Prototype the plot surface in Phase 0 against `REQ-NFR-020/021/024` before committing to the rendering approach; keep `D3DImage`/Direct2D as a designed-for fallback. |
+| **RISK-03** | ~~**WPF rendering performance** at high point counts and update rates.~~ **Retired 2026-07-29 — the prototype was built and the risk did not materialise.** Rasterising a 2²⁰-point frame costs 1.00 ms of a 72.2 ms frame (1.4 %) and is invariant in point count, because `REQ-NFR-006`'s decimation bounds drawn geometry by the pixel width before anything is drawn. The remaining budget risk is the **transform** at 60.96 ms (84.4 %). | ~~Core UX failure~~ Retired | ~~keep `D3DImage`/Direct2D as a designed-for fallback~~ — **withdrawn**: `D3DImage` degrades to software under RDP and without WDDM, so it has no path in the environments a bench instrument is operated from, and it would buy back 1.4 % of a frame. The software rasteriser is the strategy, not the fallback. See `REQ-NFR-005`, amended the same day. |
 | **RISK-04** | **DSP correctness defects are silent.** | Wrong results trusted | The impairment matrix (`REQ-TST-002`) and E4406A cross-validation (`REQ-TST-004`) as gating CI. |
 | **RISK-05** | **Confirmed fixed constraint: .NET Framework 4.7.2 / C# 7.3**, required for the NI-VISA assemblies — no longer a question, now a permanent design boundary. Portable-only `Span<T>` (no JIT intrinsic, no bounds-check elision), no `System.Runtime.Intrinsics`/`Vector128`, no `MathF`, no `FusedMultiplyAdd`, no async streams, older JIT, no ongoing Microsoft performance work, constrained library choice. | Permanent performance ceiling; fixes the §7.2 contract shape; recruitment | Accept and design around it: native kernels behind `IFftProvider`/SIMD interfaces where managed code cannot reach the target (`REQ-NFR-003`, `REQ-NFR-004`); raw arrays not `Span<T>` in hot loops; benchmark early so the ceiling is known, not discovered at Phase 2. |
 | **RISK-06** | **Personality scope is effectively unbounded.** Full parity is a multi-year programme. | Never-finished project | Wave structure; each wave shippable; MVP explicitly at Phase 4. |
