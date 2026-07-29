@@ -2803,8 +2803,69 @@ namespace OpenVSA.Ui
                 ? "Some settings were coerced — see the negotiated plan."
                 : "Res BW " + EngineeringText.Frequency(planned.ResolutionBandwidthHz) +
                   ", time record " + EngineeringText.Time(planned.MaxTimeSeconds);
+
+            LogCoercions(plan, planned);
             PlanText.Text = PlanSummary.Describe(plan, planned, _activeFrontEnd.Capabilities);
             _statusTimer.Start();
+        }
+
+        /// <summary>
+        /// Writes every coercion to the event log, one entry each.
+        /// </summary>
+        /// <param name="plan">The negotiated plan.</param>
+        /// <param name="planned">The planned acquisition.</param>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-ARC-002</c>: "each coercion raises a user-visible event-log entry". One entry per
+        /// coercion, not a summary — the settings pane already says <em>that</em> something was
+        /// coerced, and a reader who wants to know <em>what</em> should not have to reconstruct it
+        /// from a plan readout that changes on the next Apply.
+        /// </para>
+        /// <para>
+        /// This matters most on a front-end change, which is what the requirement is about: a
+        /// recording cannot be retuned and an instrument has its own limits, so switching source
+        /// silently rewrites settings the user chose. The event log is where that becomes
+        /// answerable afterwards rather than only visible at the moment it happens.
+        /// </para>
+        /// </remarks>
+        private void LogCoercions(AcquisitionPlan plan, PlannedAcquisition planned)
+        {
+            if (plan != null)
+            {
+                foreach (ParameterCoercion coercion in plan.Coercions)
+                {
+                    _eventLog.Append(Describe(coercion, _activeFrontEnd?.DisplayName));
+                }
+            }
+
+            if (planned != null)
+            {
+                foreach (ParameterCoercion coercion in planned.Coercions)
+                {
+                    _eventLog.Append(Describe(coercion, _activeFrontEnd?.DisplayName));
+                }
+            }
+        }
+
+        /// <summary>Test seam for <see cref="Describe"/>.</summary>
+        /// <param name="coercion">The coercion.</param>
+        /// <param name="source">The front end that imposed it, or null.</param>
+        /// <remarks>
+        /// Internal rather than making Describe itself internal: the wording is what the
+        /// requirement is about, and it should be assertable without constructing a plan, a front
+        /// end and a running measurement to get one produced.
+        /// </remarks>
+        internal static string DescribeCoercionForTest(ParameterCoercion coercion, string source) =>
+            Describe(coercion, source);
+
+        /// <summary>One coercion, in words that name the source that imposed it.</summary>
+        private static string Describe(ParameterCoercion coercion, string source)
+        {
+            return (string.IsNullOrEmpty(source) ? "The source" : source) +
+                " coerced " + coercion.Parameter + ": requested " +
+                coercion.Requested.ToString("G6", CultureInfo.CurrentCulture) + ", honoured " +
+                coercion.Honoured.ToString("G6", CultureInfo.CurrentCulture) +
+                " — " + coercion.Reason;
         }
 
         /// <summary>
