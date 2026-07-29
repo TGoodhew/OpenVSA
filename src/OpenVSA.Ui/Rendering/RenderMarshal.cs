@@ -19,12 +19,55 @@ namespace OpenVSA.Ui.Rendering
     {
         private readonly Dictionary<TraceFormat, float[]> _envelopes;
 
+        private readonly Dictionary<TraceFormat, ulong> _seals;
+
         internal TraceSnapshot(
             SpectrumFrame spectrum, Dictionary<TraceFormat, float[]> envelopes, int columns)
         {
             Spectrum = spectrum;
             _envelopes = envelopes;
             Columns = columns;
+
+            if (ContentSeal.Enabled)
+            {
+                _seals = new Dictionary<TraceFormat, ulong>(envelopes.Count);
+
+                foreach (KeyValuePair<TraceFormat, float[]> envelope in envelopes)
+                {
+                    _seals[envelope.Key] = ContentSeal.Of(new ReadOnlySpan<float>(envelope.Value));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether every envelope still holds what it held when this snapshot was published
+        /// (<c>REQ-NFR-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// Always true when <see cref="ContentSeal.Enabled"/> is false, which it is outside the
+        /// soak — there is nothing to compare against. False means something wrote to a buffer it
+        /// had already handed to the UI, which is the torn frame the requirement forbids.
+        /// </remarks>
+        public bool SealIntact
+        {
+            get
+            {
+                if (_seals == null)
+                {
+                    return true;
+                }
+
+                foreach (KeyValuePair<TraceFormat, float[]> envelope in _envelopes)
+                {
+                    if (ContentSeal.Of(new ReadOnlySpan<float>(envelope.Value)) !=
+                        _seals[envelope.Key])
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
 
         /// <summary>The full-resolution spectrum.</summary>
