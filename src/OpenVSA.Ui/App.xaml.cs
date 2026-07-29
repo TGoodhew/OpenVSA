@@ -53,13 +53,11 @@ namespace OpenVSA.Ui
             // builds only - the call compiles away in Release.
             ThreadAffinity.MarkUiThread();
 
-            string key = SyncfusionLicense.ResolveKey();
-
-            if (!string.IsNullOrEmpty(key))
-            {
-                SyncfusionLicenseProvider.RegisterLicense(key);
-                SyncfusionLicense.IsRegistered = true;
-            }
+            // The policy itself lives in SyncfusionLicense.Register so that the paths which do not
+            // go through App -- the test host builds a ShellWindow on its own STA thread -- can
+            // reach it too. This call stays here, and stays in the constructor, for the reason the
+            // remarks above give: it must run before InitializeComponent loads App.xaml.
+            SyncfusionLicense.Register();
         }
     }
 }

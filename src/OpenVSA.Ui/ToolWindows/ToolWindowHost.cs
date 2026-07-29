@@ -58,6 +58,10 @@ namespace OpenVSA.Ui.ToolWindows
         /// <exception cref="ArgumentNullException">An argument is null.</exception>
         public ToolWindowHost(DockingManager docking, ToolWindowLayout layout)
         {
+            // This type manipulates Syncfusion controls, so it registers too rather than relying on
+            // whoever built the DockingManager having done it. Idempotent; see SyncfusionLicense.
+            SyncfusionLicense.Register();
+
             if (docking == null)
             {
                 throw new ArgumentNullException(nameof(docking));

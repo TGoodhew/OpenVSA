@@ -40,6 +40,15 @@ namespace OpenVSA.Ui.Tests
         {
             _thread = new Thread(() =>
             {
+                // Before the dispatcher is advertised as ready, so no test body can begin building
+                // a shell first. An unlicensed Syncfusion control raises a MODAL trial dialog as it
+                // is constructed, and a modal dialog on this thread stops the dispatcher pumping:
+                // the snapshot soak rendered 1 frame in 49 s instead of thousands and failed with a
+                // message about tearing, which is a long way from the cause. ShellWindow registers
+                // too, so this is belt and braces -- but this is the thread the tests own, and it
+                // is where the guarantee belongs.
+                SyncfusionLicense.Register();
+
                 _dispatcher = Dispatcher.CurrentDispatcher;
                 _ready.Set();
 
