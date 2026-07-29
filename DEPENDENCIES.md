@@ -18,6 +18,7 @@ restrictive terms.
 | `xunit.runner.visualstudio` | 2.8.2 | Apache-2.0 | Test runner. Test-only, not shipped. |
 | `Microsoft.NET.Test.Sdk` | 17.11.1 | MIT | Test host. Test-only, not shipped. |
 | `BenchmarkDotNet` | 0.15.8 | MIT | The performance gates of `REQ-NFR-020`–`026`. Test-only, not shipped. |
+| `WixToolset.UI.wixext` | 5.0.2 | MS-RL | The installer's `WixUI_InstallDir` dialogue set. **Build-time only, not shipped** — it authors the MSI, nothing from it is installed. The MSI bundles the shell, the analysis assemblies, the native FFT, the front-end plug-ins and the Syncfusion runtime; it deliberately carries no NI-VISA component (pre-installed dependency, GAC-resident) and no licence key of any kind. |
 | `Syncfusion.Licensing` | 34.1.32 | Syncfusion Community (free, royalty-free) | Registers the Syncfusion key so the controls below do not render a trial banner. Pulled in transitively by the three packages that follow, and referenced explicitly because `App` calls `SyncfusionLicenseProvider.RegisterLicense` directly. |
 | `Syncfusion.Tools.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | `DockingManager` and Ribbon for the shell furniture of `REQ-UI-001`/`REQ-UI-060`. See the decision below. |
 | `Syncfusion.SfGrid.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Marker, limit-line and demod error-summary tables. |

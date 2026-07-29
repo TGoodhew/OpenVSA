@@ -1,0 +1,39 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!--
+    NOT a member of OpenVSA.slnx, and deliberately. The same rule the C++ FFT project follows:
+    the dotnet CLI cannot evaluate every project type, and `dotnet test OpenVSA.slnx` must keep
+    working. This is built by tools\build_installer.ps1, which builds the shell first.
+  -->
+  <PropertyGroup>
+    <OutputName>OpenVSA</OutputName>
+    <OutputType>Package</OutputType>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+
+    <!--
+      Where the harvested payload comes from. Passed by the build script so the installer is
+      always built from a payload somebody just produced, rather than from whatever happens to be
+      in a bin directory.
+    -->
+    <PayloadDirectory Condition="'$(PayloadDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\src\OpenVSA.Ui\bin\$(Configuration)\net472\</PayloadDirectory>
+
+    <ProductVersion Condition="'$(ProductVersion)' == ''">0.1.0</ProductVersion>
+  </PropertyGroup>
+
+  <!--
+    An MSBuild property is not a WiX preprocessor variable; DefineConstants is what carries one
+    across. The payload path has its trailing separator trimmed here so that Package.wxs can
+    write $(var.PayloadDirectory)\* and read as an ordinary path, rather than the two-separator
+    string that a directory property normally ends with.
+  -->
+  <PropertyGroup>
+    <PayloadDirectoryTrimmed>$(PayloadDirectory.TrimEnd('\'))</PayloadDirectoryTrimmed>
+    <DefineConstants>ProductVersion=$(ProductVersion);PayloadDirectory=$(PayloadDirectoryTrimmed)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+</Project>
