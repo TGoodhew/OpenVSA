@@ -8,6 +8,7 @@ using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
 using OpenVSA.Measurement.Markers;
+using OpenVSA.Personality;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.HotSpots;
 using OpenVSA.Ui.Menus;
@@ -52,6 +53,8 @@ namespace OpenVSA.Ui
         private MenuItem _indicateFailuresItem;
         private MenuItem _indicateMarginItem;
         private MenuItem _spectrumTypeItem;
+        private MenuItem _typeMenu;
+        private readonly List<MenuItem> _personalityItems = new List<MenuItem>();
 
         private ComboBox _traceChooser;
         private ComboBox _markerChooser;
@@ -214,6 +217,9 @@ namespace OpenVSA.Ui
                     return Runs((sender, e) => RestartMeasurement());
 
                 // ---- Analysis -----------------------------------------------------------------
+                case "Analysis > Type":
+                    return _typeMenu = new MenuItem();
+
                 case "Analysis > Type > Spectrum":
                     return _spectrumTypeItem = Ticked(
                         true, (sender, e) => ChooseMeasurementKind(MeasurementKind.Spectrum));
@@ -1138,7 +1144,180 @@ namespace OpenVSA.Ui
                 _spectrumTypeItem.IsChecked = kind == MeasurementKind.Spectrum;
             }
 
+            SelectPersonality(null);
+
             StatusText.Content = "Measurement type: " + kind;
+        }
+
+        /// <summary>
+        /// Appends every discovered personality to Analysis ▸ Type (<c>REQ-ARC-003</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The criterion is that a personality assembly dropped into <c>Personalities\</c> "is
+        /// discovered on next launch, <strong>appears in the measurement-type selector</strong>,
+        /// and runs — with no rebuild of the host". Analysis ▸ Type is that selector, and it is
+        /// already in <c>REQ-UI-061</c>'s list, so nothing is added to the menu bar: the four
+        /// built-in types keep their places and the discovered ones follow them.
+        /// </para>
+        /// <para>
+        /// Nothing here names a personality, a standard or an assembly. The shell learns what
+        /// exists by asking the registry, which is the whole of what "no modification of L2–L4
+        /// code" means in practice.
+        /// </para>
+        /// </remarks>
+        private void AddDiscoveredPersonalities()
+        {
+            if (_personalities == null || _typeMenu == null)
+            {
+                return;
+            }
+
+            if (_personalities.Personalities.Count == 0)
+            {
+                return;
+            }
+
+            _typeMenu.Items.Add(new Separator());
+
+            foreach (IMeasurementPersonality personality in _personalities.Personalities)
+            {
+                IMeasurementPersonality captured = personality;
+
+                var item = new MenuItem
+                {
+                    Header = personality.DisplayName,
+                    IsCheckable = true,
+                    ToolTip = personality.Standard +
+                        (string.IsNullOrEmpty(personality.StandardRevision)
+                            ? string.Empty
+                            : " " + personality.StandardRevision),
+                };
+
+                item.Click += (sender, e) => SelectPersonality(captured);
+
+                _typeMenu.Items.Add(item);
+                _personalityItems.Add(item);
+            }
+        }
+
+        private void OnBlockAcquired(object sender, IqBlock block) => MeasureWithPersonality(block);
+
+        /// <summary>Runs an action on the UI thread, immediately when already there.</summary>
+        /// <param name="action">What to run.</param>
+        /// <remarks>
+        /// <see cref="System.Windows.Threading.Dispatcher.BeginInvoke(Delegate, object[])"/>
+        /// unconditionally would leave the
+        /// work queued when the caller is already the UI thread, and anything that then waited for
+        /// it to be applied would have to pump the dispatcher to get it — which, from the dispatcher
+        /// thread itself, is a nested frame that does not always come back. A test doing exactly
+        /// that hung.
+        /// </remarks>
+        private void OnUi(Action action)
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+
+            Dispatcher.BeginInvoke(action);
+        }
+
+        /// <summary>Shows what the active personality last measured.</summary>
+        private void ShowResults()
+        {
+            ResultsHeading.Text = _results.Summary;
+            ResultsList.ItemsSource = _results.Lines;
+        }
+
+        /// <summary>
+        /// Runs the active personality over a block, on the pump thread (<c>REQ-ARC-003</c>).
+        /// </summary>
+        /// <param name="block">The acquisition, valid only for this call.</param>
+        /// <remarks>
+        /// <para>
+        /// The readings are computed here and marshalled to the UI, because the block is disposed
+        /// the moment this returns — <see cref="OpenVSA.Measurement.SpectrumEngine.BlockAcquired"/>
+        /// says so. Posting the
+        /// block to the dispatcher and measuring it there would read a buffer that had gone back to
+        /// whoever owns it.
+        /// </para>
+        /// <para>
+        /// A personality that refuses the block leaves the previous readings alone rather than
+        /// blanking them. A measurement type that cannot use this acquisition has not produced a
+        /// result of "nothing"; it has not produced a result.
+        /// </para>
+        /// </remarks>
+        private void MeasureWithPersonality(IqBlock block)
+        {
+            IMeasurementPersonality personality = _activePersonality;
+
+            if (personality == null || block == null || !personality.CanMeasure(block))
+            {
+                return;
+            }
+
+            IReadOnlyList<PersonalityReading> readings;
+
+            try
+            {
+                readings = personality.Measure(block);
+            }
+            catch (Exception e)
+            {
+                // Reported and the personality dropped, rather than left throwing on every block
+                // for the rest of the session. REQ-ARC-003 makes personalities third-party code;
+                // one that faults must not take the measurement down with it.
+                OnUi(() =>
+                {
+                    StatusText.Content = personality.DisplayName + " faulted and was deselected";
+                    CapabilitiesText.Text = e.Message;
+                    SelectPersonality(null);
+                });
+
+                return;
+            }
+
+            OnUi(() =>
+            {
+                if (!ReferenceEquals(_activePersonality, personality))
+                {
+                    // The type changed while this was in flight. Showing these would put one
+                    // personality's readings under another's name.
+                    return;
+                }
+
+                _results.Update(readings);
+                ShowResults();
+            });
+        }
+
+        /// <summary>Makes a personality the active measurement type, or none.</summary>
+        /// <param name="personality">The personality, or <c>null</c> for plain spectrum.</param>
+        private void SelectPersonality(IMeasurementPersonality personality)
+        {
+            _activePersonality = personality;
+
+            foreach (MenuItem item in _personalityItems)
+            {
+                item.IsChecked = personality != null &&
+                    string.Equals(
+                        item.Header as string, personality.DisplayName, StringComparison.Ordinal);
+            }
+
+            if (_spectrumTypeItem != null && personality != null)
+            {
+                _spectrumTypeItem.IsChecked = false;
+            }
+
+            _results.Select(personality);
+            ShowResults();
+
+            if (personality != null)
+            {
+                StatusText.Content = "Measurement type: " + personality.DisplayName;
+            }
         }
 
         private void ChooseFormat(TraceFormat format)

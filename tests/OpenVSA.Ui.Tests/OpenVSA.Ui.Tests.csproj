@@ -25,4 +25,35 @@
     <ProjectReference Include="..\..\src\OpenVSA.TestHarness\OpenVSA.TestHarness.csproj" />
   </ItemGroup>
 
+  <!--
+    REQ-ARC-003's criterion end to end: "a new personality assembly dropped into Personalities\ is
+    discovered on next launch, appears in the measurement-type selector, and runs - with no rebuild
+    of the host".
+
+    The example is built BEFORE these tests and deliberately NOT referenced. ReferenceOutputAssembly
+    is false, so nothing here compiles against it and the shell cannot have been built with any
+    knowledge of it; the file is then copied into Personalities\ beside the test host, which is the
+    folder PersonalityRegistry.CreateDefault probes. A shell constructed afterwards finds it the
+    same way a launched application would.
+
+    Referencing it instead would put the type in the test's own output and prove only that
+    reflection can find something the compiler already loaded.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Personality.Example\OpenVSA.Personality.Example.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OpenVsaExamplePersonality>$(MSBuildThisFileDirectory)..\OpenVSA.Personality.Example\bin\$(Configuration)\$(TargetFramework)\OpenVSA.Personality.Example.dll</OpenVsaExamplePersonality>
+  </PropertyGroup>
+
+  <Target Name="DeployExamplePersonality" AfterTargets="Build"
+          Condition="Exists('$(OpenVsaExamplePersonality)')">
+    <Copy SourceFiles="$(OpenVsaExamplePersonality)"
+          DestinationFolder="$(OutDir)Personalities"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

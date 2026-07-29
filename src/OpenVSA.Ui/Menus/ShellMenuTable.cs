@@ -351,7 +351,12 @@ namespace OpenVSA.Ui.Menus
             // In this order, which the requirement states and its criterion checks. The seven
             // dialogs in the middle are REQ-UI-072's tab set, and they are built from the dialog's
             // own tab names rather than written out again here.
-            Menu(
+            // Live, not Menu: REQ-ARC-003 makes the measurement-type selector the place a
+            // discovered personality appears, and a personality assembly dropped into
+            // Personalities\ is by definition not in any list written here. The four built-in
+            // types keep their places and their order — the exactness walk still checks them —
+            // and discovery may only add past the end of them.
+            Live(
                 "Type",
                 Tick("Spectrum"),
                 Off("Vector Analysis",
