@@ -3970,9 +3970,7 @@ namespace OpenVSA.Ui
                   " updates/s";
 
             // REQ-NFR-012: the dropped-frame count is displayed, not merely counted.
-            DroppedText.Content = _marshal.FramesDropped == 0
-                ? string.Empty
-                : _marshal.FramesDropped.ToString(CultureInfo.CurrentCulture) + " frames dropped";
+            DroppedText.Content = MeasurementStatusText.DroppedFramesText(_marshal.FramesDropped);
 
             ShowMeasurementStatus();
             ShowStatusFields();

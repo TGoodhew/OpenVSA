@@ -1,3 +1,4 @@
+using System.Globalization;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -100,6 +101,32 @@ namespace OpenVSA.Measurement
         /// record because nothing is being filled yet.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// What the status bar says about dropped frames (<c>REQ-NFR-012</c>).
+        /// </summary>
+        /// <param name="dropped">How many frames the render marshal has dropped.</param>
+        /// <remarks>
+        /// <para>
+        /// Empty at zero, deliberately. A permanent "0 frames dropped" is noise that a reader stops
+        /// seeing, and the whole value of this readout is that it appears when something has
+        /// changed. The count is monotonic, so once it is there it stays.
+        /// </para>
+        /// <para>
+        /// Here rather than in the shell so the wording can be asserted without a window — the same
+        /// division the rest of this file keeps.
+        /// </para>
+        /// </remarks>
+        public static string DroppedFramesText(long dropped)
+        {
+            if (dropped <= 0L)
+            {
+                return string.Empty;
+            }
+
+            return dropped.ToString(CultureInfo.CurrentCulture) +
+                (dropped == 1L ? " frame dropped" : " frames dropped");
+        }
+
         public static MeasurementStatus For(
             bool isMeasuring,
             bool isArmed,
