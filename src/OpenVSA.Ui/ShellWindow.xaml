@@ -239,6 +239,23 @@
                     -->
                     <TextBlock x:Name="PlanText" Margin="0,16,0,0" TextWrapping="Wrap"
                                FontFamily="Consolas" FontSize="11" />
+
+                    <!--
+                        REQ-ARC-003: where a measurement personality's readings appear. A
+                        personality returns names, values and units and no formatting; the
+                        arrangement of them is PersonalityResults', and is asserted without a
+                        window.
+                    -->
+                    <TextBlock x:Name="ResultsHeading" Margin="0,16,0,0" TextWrapping="Wrap"
+                               FontWeight="SemiBold" />
+                    <ItemsControl x:Name="ResultsList" Margin="0,4,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="11"
+                                           Margin="0,1" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </ScrollViewer>
 

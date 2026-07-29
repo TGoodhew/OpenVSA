@@ -15,6 +15,7 @@ using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
+using OpenVSA.Personality;
 using System.IO;
 using OpenVSA.Capture.Triggering;
 using OpenVSA.Measurement.Limits;
@@ -72,6 +73,9 @@ namespace OpenVSA.Ui
         private const double DefaultReferenceLevelDbm = 20.0;
 
         private FrontEndRegistry _registry;
+        private PersonalityRegistry _personalities;
+        private IMeasurementPersonality _activePersonality;
+        private readonly PersonalityResults _results = new PersonalityResults();
         private readonly RenderMarshal _marshal = new RenderMarshal();
         private readonly DispatcherTimer _statusTimer;
 
@@ -196,6 +200,11 @@ namespace OpenVSA.Ui
             InitializeComponent();
 
             _registry = FrontEndRegistry.CreateDefault();
+
+            // REQ-ARC-003: "discovered on NEXT LAUNCH". Once, here, and never re-probed — a
+            // personality that appeared halfway through a session would change what the running
+            // measurement means without the user having asked for anything.
+            _personalities = PersonalityRegistry.CreateDefault();
             ShowDiscoveryResults();
 
             Plot.GraticuleColumnsChanged += (sender, e) => _marshal.Columns = Plot.GraticuleColumns;
@@ -247,6 +256,11 @@ namespace OpenVSA.Ui
             // format and trace-list submenus the document area then fills. REQ-UI-061's contents
             // come from ShellMenuTable; see ShellMenuBinding.cs for what sits behind each item.
             BuildMenuBar();
+
+            // After the bar, because this appends to the Analysis > Type submenu the table just
+            // built. REQ-UI-061 fixes that menu's own items as an exact list; its children are the
+            // measurement types, and a discovered personality IS a measurement type.
+            AddDiscoveredPersonalities();
 
             BuildDocumentArea();
 
@@ -514,6 +528,26 @@ namespace OpenVSA.Ui
         /// that someone wrote the same thing twice.
         /// </remarks>
         public Menu MenuBar => MainMenu;
+
+        /// <summary>The personalities this shell discovered at launch (<c>REQ-ARC-003</c>).</summary>
+        internal PersonalityRegistry Personalities => _personalities;
+
+        /// <summary>What the results panel is showing.</summary>
+        internal PersonalityResults Results => _results;
+
+        /// <summary>Whether the Spectrum measurement type is ticked.</summary>
+        internal bool SpectrumTypeIsChecked => _spectrumTypeItem != null && _spectrumTypeItem.IsChecked;
+
+        /// <summary>
+        /// Runs the active personality over a block, as the pump would.
+        /// </summary>
+        /// <param name="block">The acquisition.</param>
+        /// <remarks>
+        /// The seam a shell test needs: acquiring a real block means a front end, a plan and a
+        /// running pump, none of which the criterion is about. The path from here on is the pump's
+        /// own — the same method <c>BlockAcquired</c> calls.
+        /// </remarks>
+        internal void MeasureForTest(IqBlock block) => MeasureWithPersonality(block);
 
         /// <summary>The front-end registry this shell discovered with.</summary>
         /// <remarks>
@@ -2840,6 +2874,7 @@ namespace OpenVSA.Ui
                 };
 
             engine.FrameComputed += OnFrameComputed;
+            engine.BlockAcquired += OnBlockAcquired;
             engine.Faulted += OnEngineFaulted;
             engine.Completed += OnEngineCompleted;
 
@@ -4018,6 +4053,7 @@ namespace OpenVSA.Ui
             _statusTimer.Stop();
 
             engine.FrameComputed -= OnFrameComputed;
+            engine.BlockAcquired -= OnBlockAcquired;
             engine.Faulted -= OnEngineFaulted;
             engine.Completed -= OnEngineCompleted;
 
@@ -4219,6 +4255,7 @@ namespace OpenVSA.Ui
                 // Not awaited: the window is gone and there is nothing left to marshal back to.
                 // Dispose cancels the pump, and the front end is disposed below either way.
                 engine.FrameComputed -= OnFrameComputed;
+                engine.BlockAcquired -= OnBlockAcquired;
                 engine.Dispose();
             }
 

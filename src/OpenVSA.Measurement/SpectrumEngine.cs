@@ -81,6 +81,29 @@ namespace OpenVSA.Measurement
         /// <summary>Raised on the pump thread when the source reports itself exhausted.</summary>
         public event EventHandler Completed;
 
+        /// <summary>
+        /// Raised on the pump thread for every acquired block, before it is analysed
+        /// (<c>REQ-ARC-003</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// What a measurement personality consumes. Personalities work from samples rather than
+        /// from a spectrum, because a demodulator that was handed a spectrum would have to invert
+        /// the analysis to get back what it needed — and a personality that could only see what the
+        /// spectrum path happened to compute would not be a plug-in in any useful sense.
+        /// </para>
+        /// <para>
+        /// <strong>The block is disposed as soon as every handler returns.</strong> A handler that
+        /// keeps it is reading a buffer that has gone back to whoever owns it. Copy what is needed.
+        /// </para>
+        /// <para>
+        /// A handler that throws stops the pump, in the same way that a fault in analysis does. A
+        /// personality that cannot process a block is a fault worth reporting, not one worth
+        /// continuing through at whatever rate the exceptions allow.
+        /// </para>
+        /// </remarks>
+        public event EventHandler<IqBlock> BlockAcquired;
+
         /// <summary>The plan the front end honoured, or <c>null</c> before the first start.</summary>
         /// <remarks>
         /// Kept because <c>REQ-HAL-001</c> requires the coercions it carries to be shown, not just
@@ -308,6 +331,7 @@ namespace OpenVSA.Measurement
 
                     using (block)
                     {
+                        RaiseBlockAcquired(block);
                         AnalyseAndPublish(block, clock, ref previousTicks);
                     }
 
@@ -327,6 +351,25 @@ namespace OpenVSA.Measurement
                 }
 
                 handler(this, e);
+            }
+        }
+
+        /// <summary>
+        /// Offers a block to whatever is listening, before it is analysed (<c>REQ-ARC-003</c>).
+        /// </summary>
+        /// <param name="block">The block, owned by the caller and disposed when this returns.</param>
+        /// <remarks>
+        /// Read into a local first: <see cref="BlockAcquired"/> may be unsubscribed between the
+        /// null check and the call, and the field read would then be a null invocation on the pump
+        /// thread. Not wrapped in a catch, deliberately — see the event's own remarks.
+        /// </remarks>
+        private void RaiseBlockAcquired(IqBlock block)
+        {
+            EventHandler<IqBlock> handler = BlockAcquired;
+
+            if (handler != null)
+            {
+                handler(this, block);
             }
         }
 
