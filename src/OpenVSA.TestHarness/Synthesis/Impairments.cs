@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace OpenVSA.TestHarness.Synthesis
 {
@@ -18,6 +19,61 @@ namespace OpenVSA.TestHarness.Synthesis
     /// and each step is written so that it changes only its own observable.
     /// </para>
     /// </remarks>
+    /// <summary>One path of a tapped-delay-line channel (<c>REQ-SIM-002</c>).</summary>
+    /// <remarks>
+    /// The delay is in samples rather than seconds so a tap lands exactly where it is asked to. A
+    /// fractional delay would need an interpolating filter, and the filter's own response would be
+    /// mixed into every tap estimate made afterwards — the channel under test would include the
+    /// apparatus used to build it.
+    /// </remarks>
+    public sealed class MultipathTap
+    {
+        /// <summary>Creates a tap.</summary>
+        /// <param name="delaySamples">Delay, in samples; zero for the direct path.</param>
+        /// <param name="gainDb">Gain, in dB, relative to the direct path at unity.</param>
+        /// <param name="phaseDegrees">Phase rotation, in degrees.</param>
+        public MultipathTap(int delaySamples, double gainDb, double phaseDegrees = 0.0)
+        {
+            if (delaySamples < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(delaySamples), "A tap cannot arrive before the signal that produced it.");
+            }
+
+            DelaySamples = delaySamples;
+            GainDb = gainDb;
+            PhaseDegrees = phaseDegrees;
+        }
+
+        /// <summary>Delay, in samples.</summary>
+        public int DelaySamples { get; }
+
+        /// <summary>Gain, in dB.</summary>
+        public double GainDb { get; }
+
+        /// <summary>Phase, in degrees.</summary>
+        public double PhaseDegrees { get; }
+
+        /// <summary>The tap as a complex weight.</summary>
+        /// <param name="re">Real part.</param>
+        /// <param name="im">Imaginary part.</param>
+        public void ToComplex(out double re, out double im)
+        {
+            double magnitude = Math.Pow(10.0, GainDb / 20.0);
+            double radians = PhaseDegrees * Math.PI / 180.0;
+
+            re = magnitude * Math.Cos(radians);
+            im = magnitude * Math.Sin(radians);
+        }
+
+        /// <inheritdoc />
+        public override string ToString()
+        {
+            return DelaySamples + " samples, " + GainDb.ToString("F1") + " dB, " +
+                PhaseDegrees.ToString("F1") + Char.ConvertFromUtf32(0x00B0);
+        }
+    }
+
     public sealed class Impairments
     {
         /// <summary>Signal-to-noise ratio in dB; infinity for none.</summary>
@@ -68,6 +124,18 @@ namespace OpenVSA.TestHarness.Synthesis
         public double AmToPmDegrees { get; set; }
 
         /// <summary>Seed for the noise, so a scenario is reproducible.</summary>
+        /// <summary>
+        /// The tapped-delay-line channel, empty for a clean path.
+        /// </summary>
+        /// <remarks>
+        /// A list rather than a scalar because a channel has no single magnitude to request: two
+        /// taps at the same delay with opposite phases are a notch, and the same two a symbol apart
+        /// are frequency-selective fading. The other eleven impairments each have one number; this
+        /// one is a response.
+        /// </remarks>
+        public IList<MultipathTap> Multipath { get; } = new List<MultipathTap>();
+
+        /// <summary>Seed for every random stream.</summary>
         public int Seed { get; set; } = 20260728;
     }
 
@@ -84,11 +152,16 @@ namespace OpenVSA.TestHarness.Synthesis
         private readonly double[] _i;
         private readonly double[] _q;
 
+        private readonly double[] _preChannelI;
+        private readonly double[] _preChannelQ;
+
         private ImpairedSignal(double[] i, double[] q, int[] instants, Impairments requested,
-            double symbolRateHz, double sampleRateHz)
+            double symbolRateHz, double sampleRateHz, double[] preChannelI, double[] preChannelQ)
         {
             _i = i;
             _q = q;
+            _preChannelI = preChannelI;
+            _preChannelQ = preChannelQ;
             SymbolInstants = instants;
             Requested = requested;
             SymbolRateHz = symbolRateHz;
@@ -103,6 +176,19 @@ namespace OpenVSA.TestHarness.Synthesis
 
         /// <summary>The quadrature samples.</summary>
         public double[] Q => _q;
+
+        /// <summary>The in-phase samples as they entered the channel.</summary>
+        /// <remarks>
+        /// The reference a tap estimate is made against. Keeping it is the same licence
+        /// <see cref="ImpairmentMeasurement.SignalToNoiseDb"/> takes in knowing where the
+        /// constellation points are: this measures the generator, so the generator's own reference
+        /// is admissible. A channel estimator in the product would have to earn its reference from
+        /// a training sequence, and would be a different piece of code with a different test.
+        /// </remarks>
+        public double[] PreChannelI => _preChannelI;
+
+        /// <summary>The quadrature samples as they entered the channel.</summary>
+        public double[] PreChannelQ => _preChannelQ;
 
         /// <summary>
         /// The sample index of each symbol's decision instant, as the generator placed them.
@@ -184,9 +270,13 @@ namespace OpenVSA.TestHarness.Synthesis
                 q[n] = symbolQ[index];
             }
 
-            Apply(wanted, i, q, samplesPerSymbol, SampleRateHz);
+            double[] preChannelI;
+            double[] preChannelQ;
 
-            return new ImpairedSignal(i, q, instants, wanted, symbolRate, SampleRateHz);
+            Apply(wanted, i, q, samplesPerSymbol, SampleRateHz, out preChannelI, out preChannelQ);
+
+            return new ImpairedSignal(
+                i, q, instants, wanted, symbolRate, SampleRateHz, preChannelI, preChannelQ);
         }
 
         /// <summary>
@@ -199,7 +289,8 @@ namespace OpenVSA.TestHarness.Synthesis
         /// not move a mean. Reordering these is what couples two impairments together.
         /// </remarks>
         private static void Apply(
-            Impairments wanted, double[] i, double[] q, int samplesPerSymbol, double sampleRateHz)
+            Impairments wanted, double[] i, double[] q, int samplesPerSymbol, double sampleRateHz,
+            out double[] preChannelI, out double[] preChannelQ)
         {
             double skew = wanted.QuadratureSkewDegrees * Math.PI / 180.0;
             double gainI = Math.Pow(10.0, wanted.GainImbalanceDb / 40.0);
@@ -278,9 +369,63 @@ namespace OpenVSA.TestHarness.Synthesis
                 double cos = Math.Cos(phase);
                 double sin = Math.Sin(phase);
 
-                i[n] = skewedI * cos - skewedQ * sin + sigma * noise.Next();
-                q[n] = skewedI * sin + skewedQ * cos + sigma * noise.Next();
+                i[n] = skewedI * cos - skewedQ * sin;
+                q[n] = skewedI * sin + skewedQ * cos;
             }
+
+            // The channel comes after the transmitter and before the receiver's noise, because that
+            // is where it is. Putting AWGN before it would make the requested SNR a property of the
+            // transmitter, and a channel that attenuated the signal would then appear to improve it.
+            preChannelI = (double[])i.Clone();
+            preChannelQ = (double[])q.Clone();
+
+            Convolve(wanted.Multipath, i, q);
+
+            // Noise last, and in a separate pass. It draws I then Q per sample exactly as the loop
+            // above did, so every existing measurement sees the same sequence it always did.
+            if (sigma > 0.0)
+            {
+                for (int n = 0; n < i.Length; n++)
+                {
+                    i[n] += sigma * noise.Next();
+                    q[n] += sigma * noise.Next();
+                }
+            }
+        }
+
+        /// <summary>Convolves the signal with the tapped-delay-line channel, in place.</summary>
+        /// <remarks>
+        /// Samples before the record began are taken as zero rather than wrapped. A wrap would make
+        /// the first symbols carry energy from the last, which is a circular channel and not a
+        /// physical one; the affected span is the longest delay, and every measurement here reads
+        /// thousands of symbols.
+        /// </remarks>
+        private static void Convolve(IList<MultipathTap> taps, double[] i, double[] q)
+        {
+            if (taps == null || taps.Count == 0)
+            {
+                return;
+            }
+
+            var outputI = new double[i.Length];
+            var outputQ = new double[q.Length];
+
+            foreach (MultipathTap tap in taps)
+            {
+                tap.ToComplex(out double re, out double im);
+
+                for (int n = tap.DelaySamples; n < i.Length; n++)
+                {
+                    double sourceI = i[n - tap.DelaySamples];
+                    double sourceQ = q[n - tap.DelaySamples];
+
+                    outputI[n] += sourceI * re - sourceQ * im;
+                    outputQ[n] += sourceI * im + sourceQ * re;
+                }
+            }
+
+            Array.Copy(outputI, i, i.Length);
+            Array.Copy(outputQ, q, q.Length);
         }
 
         /// <summary>A uniform stream from a seed, stable across framework versions.</summary>
