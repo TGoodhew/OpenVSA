@@ -1,5 +1,6 @@
 using System;
 using System.Configuration;
+using Syncfusion.Licensing;
 
 namespace OpenVSA.Ui
 {
@@ -35,7 +36,77 @@ namespace OpenVSA.Ui
         public const string SecretsFileName = "local.secrets.config";
 
         /// <summary>Whether a key was found and registered.</summary>
-        public static bool IsRegistered { get; internal set; }
+        public static bool IsRegistered { get; private set; }
+
+        /// <summary>
+        /// Whether <see cref="Register"/> has run, whether or not it found a key.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from <see cref="IsRegistered"/> on purpose, and the two answer different
+        /// questions. "Did this process try?" is the one a test can assert on a machine with no key
+        /// — CI has none — whereas asserting <see cref="IsRegistered"/> would pass on a developer's
+        /// machine and fail on the build server for a reason that has nothing to do with the change.
+        /// </remarks>
+        public static bool RegistrationAttempted { get; private set; }
+
+        /// <summary>
+        /// Registers the licence key with Syncfusion, once per process.
+        /// </summary>
+        /// <returns>Whether a key was found and registered.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>Every path that constructs a Syncfusion control must call this first.</strong>
+        /// Registration used to live inline in <c>App</c>'s constructor, which meant it happened
+        /// only for paths that went through <c>App</c> — and the test host does not: it starts its
+        /// own STA thread and builds a <c>ShellWindow</c> directly. The result was a **modal** trial
+        /// dialog inside the test run, which blocked the dispatcher; the snapshot soak rendered 1
+        /// frame instead of thousands and failed, 49 s after a run that should take seconds.
+        /// A licensing mistake surfacing as a hang in an unrelated test is exactly the sort of
+        /// thing worth making structurally impossible, so the policy lives here and
+        /// <c>NoUnregisteredSyncfusionHostsTests</c> enforces that every such path calls it.
+        /// </para>
+        /// <para>
+        /// <strong>Idempotent and never throws.</strong> Called from several constructors, on
+        /// whichever thread gets there first. A second call is a no-op; a failure to resolve a key
+        /// leaves the application in trial mode rather than stopping it, which is the same choice
+        /// <see cref="ResolveKey"/> makes and for the same reason.
+        /// </para>
+        /// </remarks>
+        public static bool Register()
+        {
+            lock (Gate)
+            {
+                if (RegistrationAttempted)
+                {
+                    return IsRegistered;
+                }
+
+                RegistrationAttempted = true;
+
+                string key = ResolveKey();
+
+                if (string.IsNullOrEmpty(key))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    SyncfusionLicenseProvider.RegisterLicense(key);
+                    IsRegistered = true;
+                }
+                catch (Exception)
+                {
+                    // A malformed or wrong-version key must not stop the application launching.
+                    // The banner is the consequence, and StatusMessage says what to do about it.
+                    IsRegistered = false;
+                }
+
+                return IsRegistered;
+            }
+        }
+
+        private static readonly object Gate = new object();
 
         /// <summary>
         /// Resolves the licence key from the environment, then from <c>appSettings</c>.

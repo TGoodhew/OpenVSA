@@ -197,6 +197,14 @@ namespace OpenVSA.Ui
         /// <summary>Creates the shell window.</summary>
         public ShellWindow()
         {
+            // Before InitializeComponent, because ShellWindow.xaml constructs a Syncfusion
+            // DockingManager and an unlicensed control puts up a MODAL trial dialog as it is
+            // created. App's constructor already registers, but not every path goes through App --
+            // the test host builds a shell on its own STA thread -- and there the dialog blocked
+            // the dispatcher and failed the snapshot soak. Idempotent, so the ordinary path pays
+            // nothing for this.
+            SyncfusionLicense.Register();
+
             InitializeComponent();
 
             _registry = FrontEndRegistry.CreateDefault();
