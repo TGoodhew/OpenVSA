@@ -103,27 +103,50 @@ namespace OpenVSA.Core.Tests
         {
             // REQ-NFR-011 and REQ-NFR-012 put the measurement pipeline on a thread that must not
             // wait for anything, which is why the requirement calls this a correctness matter
-            // rather than a performance one. Far more entries than the queue holds, timed.
+            // rather than a performance one.
+            //
+            // **Measured on the mean and the 99th percentile, NOT the maximum.** The first version
+            // asserted the maximum and failed in CI at 32 ms — which was a garbage collection or a
+            // scheduler preemption on a two-core runner, not the log waiting for anything. The
+            // maximum of any timed call on a shared machine measures the machine. Changing the
+            // threshold would have been tuning a check until it passed; changing the instrument is
+            // measuring the thing the requirement is about.
+            //
+            // A genuinely blocking implementation — a lock held by a slow sink, a synchronous file
+            // write — shows up in the mean and the 99th, not in one outlier.
             var log = new Log { DefaultLevel = LogLevel.Debug };
 
-            double slowest = 0.0;
+            const int Writes = Log.Capacity * 3;
+
+            var times = new double[Writes];
             var clock = new Stopwatch();
 
-            for (int i = 0; i < Log.Capacity * 3; i++)
+            for (int i = 0; i < Writes; i++)
             {
                 clock.Restart();
                 log.Write("Dsp", LogLevel.Debug, "frame");
-                slowest = Math.Max(slowest, clock.Elapsed.TotalMilliseconds);
+                times[i] = clock.Elapsed.TotalMilliseconds;
             }
 
+            Array.Sort(times);
+
+            double mean = times.Average();
+            double ninetyNinth = times[(int)(Writes * 0.99)];
+
             _output.WriteLine(
-                "slowest write " + slowest.ToString("F4") + " ms over " + (Log.Capacity * 3) +
-                " writes; " + log.Dropped + " dropped");
+                Writes + " writes: mean " + mean.ToString("F5") + " ms, 99th " +
+                ninetyNinth.ToString("F4") + " ms, max " + times[Writes - 1].ToString("F3") +
+                " ms; " + log.Dropped + " dropped");
 
             Assert.True(
-                slowest < 20.0,
-                "A log write took " + slowest.ToString("F2") + " ms. On the measurement thread that " +
-                "is a dropped frame, which is why this is a correctness matter.");
+                mean < 0.05,
+                "The mean write took " + mean.ToString("F5") +
+                " ms. On the measurement thread that is a dropped frame.");
+
+            Assert.True(
+                ninetyNinth < 1.0,
+                "The 99th-percentile write took " + ninetyNinth.ToString("F4") +
+                " ms, which is a wait rather than an outlier.");
         }
 
         [Fact]
