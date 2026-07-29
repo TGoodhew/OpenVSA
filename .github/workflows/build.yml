@@ -44,6 +44,12 @@ jobs:
       - name: Check the project files
         run: python tools/check_project_files.py
 
+      # REQ-TST-001: "a DSP primitive with no closed-form test fails the build rather than passing
+      # untested, so the table is a floor and not a sample". The table lives in the specification
+      # and is read from it, so a component added there without a test fails here.
+      - name: Check REQ-TST-001's primitive coverage
+        run: python tools/check_primitive_coverage.py
+
       - name: Restore
         run: msbuild OpenVSA.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
 
