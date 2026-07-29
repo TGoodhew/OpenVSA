@@ -172,6 +172,7 @@ namespace OpenVSA.TestHarness
                     ExerciseBandMeasurements(frame, actualToneHz);
                     ExerciseMarkers(frame, actualToneHz);
                     ExerciseLimits(frame);
+                    ExerciseFrontEndInterchange();
                     ExerciseUnits(frame);
                     ExerciseCorrections(frame);
                 }
@@ -1959,6 +1960,81 @@ namespace OpenVSA.TestHarness
                     delta.WindowLabel + " reads " +
                     reading.YDbm.ToString("+0.00;-0.00", CultureInfo.CurrentCulture) +
                     " dB at " + Signed(reading.XHz) + " Hz");
+            });
+        }
+
+        /// <summary>
+        /// <c>REQ-ARC-002</c>: a measurement setup survives a front-end change, and only what the
+        /// new source cannot honour is coerced.
+        /// </summary>
+        /// <remarks>
+        /// Run here rather than in the unit suite because the criterion is explicit that the
+        /// E4406A leg is exercised against the instrument and not a mock — and it is right to be.
+        /// Coercion is precisely where a real front end differs from a simulated one: the
+        /// simulator honours whatever it is asked for, so a test built only on it would assert that
+        /// nothing is ever coerced and would pass against a front end that coerced silently.
+        /// </remarks>
+        private void ExerciseFrontEndInterchange()
+        {
+            Step("REQ-ARC-002", "One setup, planned against this instrument, survives unchanged", () =>
+            {
+                // A request the simulator would honour outright and this instrument may not.
+                var request = new AcquisitionRequest(
+                    centerFrequencyHz: 1.0e9,
+                    spanHz: 40.0e6,
+                    samplesPerBlock: 65536,
+                    referenceLevelDbm: 0.0);
+
+                double centreBefore = request.CenterFrequencyHz;
+                double spanBefore = request.SpanHz;
+                int samplesBefore = request.SamplesPerBlock;
+                double levelBefore = request.ReferenceLevelDbm;
+
+                AcquisitionPlan plan = _frontEnd.Negotiate(request);
+
+                // The request is the setup. It must come back unchanged: a front end that mutated
+                // what it was handed would leave the previous instrument's setup unrecoverable
+                // after a switch, which is exactly what this requirement forbids.
+                bool untouched =
+                    request.CenterFrequencyHz == centreBefore &&
+                    request.SpanHz == spanBefore &&
+                    request.SamplesPerBlock == samplesBefore &&
+                    request.ReferenceLevelDbm == levelBefore;
+
+                // Every difference between what was asked and what was planned must be named.
+                var unreported = new List<string>();
+
+                if (plan.SpanHz != spanBefore && !plan.Coercions.Any(c => c.Parameter == "Span"))
+                {
+                    unreported.Add("Span");
+                }
+
+                if (plan.SamplesPerBlock != samplesBefore &&
+                    !plan.Coercions.Any(c => c.Parameter == "SamplesPerBlock" || c.Parameter == "BlockSize"))
+                {
+                    unreported.Add("SamplesPerBlock");
+                }
+
+                if (plan.ReferenceLevelDbm != levelBefore &&
+                    !plan.Coercions.Any(c => c.Parameter == "ReferenceLevel"))
+                {
+                    unreported.Add("ReferenceLevel");
+                }
+
+                bool ok = untouched && unreported.Count == 0;
+
+                string described = plan.Coercions.Count == 0
+                    ? "nothing coerced"
+                    : string.Join("; ", plan.Coercions.Select(
+                        c => c.Parameter + " " + c.Requested.ToString("G4", CultureInfo.CurrentCulture) +
+                             " -> " + c.Honoured.ToString("G4", CultureInfo.CurrentCulture)));
+
+                return new Outcome<double>(
+                    ok, plan.Coercions.Count,
+                    "setup unchanged after negotiation; " + described +
+                    (unreported.Count == 0
+                        ? "; every difference reported"
+                        : "; UNREPORTED: " + string.Join(", ", unreported)));
             });
         }
 
