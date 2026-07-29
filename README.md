@@ -88,7 +88,32 @@ says so. Nothing is gated: OpenVSA ships as one free edition with everything inc
 key is a build-time step for contributors, never a gate on anything a user receives.
 
 To remove the banner, get your own key — a **free Community licence** is available from
-Syncfusion for qualifying individuals and organisations — and supply it either way:
+Syncfusion for qualifying individuals and organisations — and supply it either way.
+
+#### Getting a key
+
+The licence is yours, not the project's: OpenVSA cannot supply one, and a key committed here
+would be a leaked credential (see the warning below).
+
+1. **Check you qualify.** At the time of writing Syncfusion's
+   [Community License](https://www.syncfusion.com/products/communitylicense) is free for
+   individuals, and for organisations with **under $1M USD annual gross revenue, 5 or fewer
+   developers, and 10 or fewer total employees**, that have never taken more than $3M USD from
+   an outside source such as private equity or venture capital. Non-profits under a $1M USD
+   annual budget also qualify. **These terms are Syncfusion's and they change — read the linked
+   page rather than this paragraph**, which is a signpost and not the licence.
+2. **Register.** Create a Syncfusion account from that page. Registering through the Community
+   License link routes you to the request form automatically. Syncfusion raises a ticket to
+   verify eligibility; a LinkedIn or Xing profile speeds that up.
+3. **Generate the key** once approved, from **License & Downloads** in your Syncfusion account
+   (**Trial & Downloads** if you are on a trial). Pick the edition and generate against it.
+4. **Match the version.** Keys are **version- and edition-specific**. This repository pins
+   Syncfusion at the version recorded in [DEPENDENCIES.md](DEPENDENCIES.md) — generate the key
+   for that major version, or registration succeeds and the banner appears anyway. From v31.1.17
+   Syncfusion moved from per-platform to per-edition keys, so a key generated for an older
+   release under the previous scheme will not do.
+
+Then supply it either way:
 
 **Environment variable** (takes precedence):
 
