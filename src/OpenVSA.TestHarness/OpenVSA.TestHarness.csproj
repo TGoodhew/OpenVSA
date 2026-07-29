@@ -21,6 +21,13 @@
     <ProjectReference Include="..\OpenVSA.Capture\OpenVSA.Capture.csproj" />
     <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
     <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
+
+    <!--
+      REQ-ARC-003's SDK, so the exercise can run a personality over a real acquisition. The
+      interface assembly only - not any personality implementation, and certainly not the example
+      one, whose whole evidential value is that nothing references it.
+    -->
+    <ProjectReference Include="..\OpenVSA.Personality\OpenVSA.Personality.csproj" />
   </ItemGroup>
 
 </Project>

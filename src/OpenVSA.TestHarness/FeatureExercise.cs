@@ -17,6 +17,7 @@ using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Demod.Results;
+using OpenVSA.Personality;
 using OpenVSA.TestHarness.Synthesis;
 
 namespace OpenVSA.TestHarness
@@ -171,6 +172,7 @@ namespace OpenVSA.TestHarness
                     ExerciseRegisters(frame);
                     ExerciseBandMeasurements(frame, actualToneHz);
                     ExerciseMarkers(frame, actualToneHz);
+                    ExercisePersonality(block, frame, actualToneHz);
                     ExerciseLimits(frame);
                     ExerciseFrontEndInterchange();
                     ExerciseUnits(frame);
@@ -1905,6 +1907,101 @@ namespace OpenVSA.TestHarness
                     ok, bandwidth.BandwidthHz,
                     "3 dB bandwidth " + Hz(bandwidth.BandwidthHz) + " over a " +
                     Hz(frame.BinWidthHz) + " bin");
+            });
+        }
+
+        /// <summary>
+        /// <c>REQ-ARC-003</c>: a personality measures the block that was acquired, and reaches the
+        /// analysis path's answer by its own route.
+        /// </summary>
+        /// <param name="block">The real acquisition, as the personality receives it.</param>
+        /// <param name="frame">The analysis path's spectrum of that same block.</param>
+        /// <param name="toneHz">Where the generator was told to put the carrier.</param>
+        /// <remarks>
+        /// Run here rather than only in the unit suite because a simulated block is scaled by
+        /// whatever produced it. What is being checked is that the samples handed to a plug-in by a
+        /// real front end carry the calibration their metadata claims — and no mock can disagree
+        /// about that, because a mock is where the claim came from.
+        /// </remarks>
+        private void ExercisePersonality(IqBlock block, SpectrumFrame frame, double toneHz)
+        {
+            var personality = new BenchPersonality();
+
+            Step("REQ-ARC-003", "A personality measures the real block the analysis path measured", () =>
+            {
+                if (!personality.CanMeasure(block))
+                {
+                    return Failed<double>(
+                        "the personality refused the acquired block: " + block.SampleCount +
+                        " samples, full scale " +
+                        block.FullScaleVolts.ToString("G4", CultureInfo.CurrentCulture) + " V");
+                }
+
+                IReadOnlyList<PersonalityReading> readings = personality.Measure(block);
+
+                PersonalityReading power = readings.FirstOrDefault(r => r.Name == "Total power");
+                PersonalityReading count = readings.FirstOrDefault(r => r.Name == "Samples");
+
+                if (power == null || count == null)
+                {
+                    return Failed<double>("the personality did not return the readings it declares");
+                }
+
+                // The analysis path's own answer for the same block. A band wide enough to hold a
+                // flat-top main lobe, for the same reason REQ-MKR-003's step gives.
+                double half = 10.0 * frame.BinWidthHz;
+                BandPower band = BandMeasurements.Power(frame, toneHz - half, toneHz + half);
+
+                double error = power.Value - band.TotalDbm;
+
+                // A decibel and a half, matching what REQ-MKR-003 allows between two readings of
+                // the same carrier. The two routes differ in what they include - the time-domain
+                // sum carries the whole span's noise, the band carries twenty bins of it - so they
+                // are not required to agree exactly, only to agree as measurements of one signal.
+                bool ok = Math.Abs(error) <= 1.5 &&
+                          (int)count.Value == block.SampleCount &&
+                          power.Unit == "dBm";
+
+                return new Outcome<double>(
+                    ok, power.Value,
+                    "personality reads " + Db(power.Value) + " over " + block.SampleCount +
+                    " samples against the analysis path's " + Db(band.TotalDbm) + " (" +
+                    Signed(error) + " dB), and declares " + personality.Standard + " " +
+                    personality.StandardRevision);
+            });
+
+            Step("REQ-ARC-003", "A personality refuses what it cannot measure, rather than reading zero", () =>
+            {
+                // The refusal a real acquisition can produce: a front end that declares no full
+                // scale. Asked anyway, the measurement would come back at the amplitude floor - a
+                // number that sits at the bottom of the graticule and reads as a very weak signal
+                // rather than as no answer, which is the more dangerous of the two mistakes.
+                // The instrument's own metadata with one field changed, so the refusal is
+                // attributable to the full scale and to nothing else about the block.
+                using (IqBlock unscaled = IqBlock.Rent(new IqBlockMetadata(
+                    sampleCount: block.SampleCount,
+                    sampleRateHz: block.SampleRateHz,
+                    centerFrequencyHz: block.CenterFrequencyHz,
+                    isBaseband: block.IsBaseband,
+                    fullScaleVolts: 0.0,
+                    referenceLevelDbm: block.ReferenceLevelDbm,
+                    sequenceNumber: block.SequenceNumber,
+                    acquiredUtc: block.AcquiredUtc,
+                    triggerOffsetSeconds: block.TriggerOffsetSeconds,
+                    triggerCorrectionsApplied: block.TriggerCorrectionsApplied,
+                    source: block.Source,
+                    extended: block.Extended)))
+                {
+                    bool refusedUnscaled = !personality.CanMeasure(unscaled);
+                    bool acceptedReal = personality.CanMeasure(block);
+
+                    // Both halves, or the step passes by refusing everything.
+                    return new Outcome<bool>(
+                        refusedUnscaled && acceptedReal,
+                        refusedUnscaled,
+                        "a block with no declared full scale is refused: " + refusedUnscaled +
+                        "; the instrument's own block is accepted: " + acceptedReal);
+                }
             });
         }
 
