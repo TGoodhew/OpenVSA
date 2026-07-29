@@ -56,7 +56,21 @@ namespace OpenVSA.Ui
             Append(text, "Path", plan.Path == AnalysisPath.RealBaseband ? "real baseband" : "complex zoom");
             Append(text, "Block size", plan.SamplesPerBlock.ToString(CultureInfo.CurrentCulture) + " samples");
             Append(text, "Reference level", plan.ReferenceLevelDbm.ToString("0.##", CultureInfo.CurrentCulture) + " dBm");
-            Append(text, "Gap-free", plan.SupportsGapFreeStreaming ? "yes" : "no");
+            // REQ-NFR-027: the measured rate and the duty cycle, beside the verdict they produced.
+            // The verdict alone loses the magnitude — "0.98" and "12.4" are both "no" and mean very
+            // different things to somebody deciding what to change — and it also hides whether the
+            // judgement rests on a measurement at all.
+            Append(text, "Gap-free", DescribeGapFree(plan));
+
+            if (plan.MeasuredBytesPerSecond > 0.0)
+            {
+                Append(text, "Measured transfer", Rate(plan.MeasuredBytesPerSecond));
+                Append(text, "Duty cycle", plan.DutyCycle.ToString("0.###", CultureInfo.CurrentCulture));
+            }
+            else
+            {
+                Append(text, "Measured transfer", "not measured");
+            }
 
             if (planned != null)
             {
@@ -142,6 +156,44 @@ namespace OpenVSA.Ui
             }
 
             return (seconds * 1e9).ToString("0.###", CultureInfo.CurrentCulture) + " ns";
+        }
+
+        /// <summary>The gap-free verdict, saying whether it rests on a measurement.</summary>
+        /// <param name="plan">The plan.</param>
+        /// <remarks>
+        /// <c>REQ-NFR-027</c>: "no UI affordance implies gap-free capture when the computed value
+        /// is false". A bare "yes" against an unmeasured link is exactly such an affordance — it
+        /// reads as a promise and rests on a nominal bus figure that this instrument, through an
+        /// extender, misses by nearly two orders of magnitude.
+        /// </remarks>
+        private static string DescribeGapFree(AcquisitionPlan plan)
+        {
+            if (!plan.SupportsGapFreeStreaming)
+            {
+                return plan.MeasuredBytesPerSecond > 0.0
+                    ? "no — the link cannot keep up with this plan"
+                    : "no";
+            }
+
+            return plan.MeasuredBytesPerSecond > 0.0
+                ? "yes"
+                : "yes, estimated — the transfer rate has not been measured";
+        }
+
+        /// <summary>A byte rate in engineering units.</summary>
+        private static string Rate(double bytesPerSecond)
+        {
+            if (bytesPerSecond >= 1.0e6)
+            {
+                return (bytesPerSecond / 1.0e6).ToString("0.##", CultureInfo.CurrentCulture) + " MB/s";
+            }
+
+            if (bytesPerSecond >= 1.0e3)
+            {
+                return (bytesPerSecond / 1.0e3).ToString("0.##", CultureInfo.CurrentCulture) + " kB/s";
+            }
+
+            return bytesPerSecond.ToString("0", CultureInfo.CurrentCulture) + " B/s";
         }
 
         private static void Append(StringBuilder text, string label, string value) =>
