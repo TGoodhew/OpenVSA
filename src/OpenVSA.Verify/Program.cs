@@ -109,6 +109,59 @@ namespace OpenVSA.Verify
             }
         }
 
+        /// <summary>
+        /// Lists what the bus reports, through the same path the connection dialog uses
+        /// (<c>REQ-HAL-003</c>).
+        /// </summary>
+        /// <returns>0 if anything answered, 3 if nothing did.</returns>
+        /// <remarks>
+        /// Through <see cref="FrontEndRegistry.DiscoverResources"/> and not through
+        /// <c>VisaResourceDiscovery</c> directly, so what is printed here is what the dialog shows —
+        /// including the driver mapping, which is the registry's and not the transport's. A check
+        /// that took a shorter path would confirm the transport and leave the assembled behaviour
+        /// unverified, which is the state this was in.
+        /// </remarks>
+        private static int ListResources()
+        {
+            FrontEndRegistry registry = FrontEndRegistry.CreateDefault();
+
+            Console.WriteLine("OpenVSA resource discovery");
+            Console.WriteLine("  " + registry.Providers.Count + " front end(s), " +
+                (registry.CanEnumerateResources ? "a transport that can enumerate" : "no transport that can enumerate"));
+            Console.WriteLine();
+
+            IReadOnlyList<DiscoveredResource> found = registry.DiscoverResources(CancellationToken.None);
+
+            foreach (DiscoveredResource resource in found)
+            {
+                // A separator rather than padding alone. The resource manager on this bench
+                // reports remote addresses as "visa://host.localdomain/GPIB0::9::INSTR", which is
+                // longer than any column width worth choosing, and PadRight then runs the identity
+                // straight onto the end of the name with nothing between them.
+                Console.WriteLine(
+                    "  " + resource.ResourceName.PadRight(30) + "  " +
+                    (resource.Answered ? resource.Identity : "— " + resource.Failure));
+
+                if (resource.HasDriver)
+                {
+                    Console.WriteLine("  " + new string(' ', 32) + "DRIVER: " + resource.Driver);
+                }
+            }
+
+            Console.WriteLine();
+            Console.WriteLine(
+                "  " + found.Count + " resource(s), " +
+                found.Count(r => r.Answered) + " answered, " +
+                found.Count(r => r.HasDriver) + " with a driver");
+
+            foreach (FrontEndDiscoveryFailure failure in registry.Failures)
+            {
+                Console.WriteLine("  ! " + failure);
+            }
+
+            return found.Any(r => r.Answered) ? 0 : 3;
+        }
+
         private static async Task<int> RunAsync(string[] args)
         {
             var options = Options.Parse(args);
@@ -117,6 +170,11 @@ namespace OpenVSA.Verify
             {
                 Options.WriteUsage();
                 return 0;
+            }
+
+            if (options.ListResources)
+            {
+                return ListResources();
             }
 
             Console.WriteLine("OpenVSA cross-validation");
@@ -276,6 +334,9 @@ namespace OpenVSA.Verify
 
             public bool Exercise { get; private set; }
 
+            /// <summary>Whether to list what is on the bus and stop.</summary>
+            public bool ListResources { get; private set; }
+
             public string ResultFile { get; private set; }
 
             public bool UseSimulatedStimulus { get; private set; }
@@ -325,6 +386,10 @@ namespace OpenVSA.Verify
                             options.Exercise = true;
                             break;
 
+                        case "--resources":
+                            options.ListResources = true;
+                            break;
+
                         case "--simulated-stimulus":
                             options.UseSimulatedStimulus = true;
                             break;
@@ -351,6 +416,8 @@ namespace OpenVSA.Verify
                 Console.WriteLine("  --centre <hz>           analysis centre frequency (default 1e9)");
                 Console.WriteLine("  --level <dbm>           generator level (default -20)");
                 Console.WriteLine("  --span <hz>             analysis span (default 10e6)");
+                Console.WriteLine("  --resources             list what the resource manager reports,");
+                Console.WriteLine("                          identified where safe, and stop");
                 Console.WriteLine("  --exercise              drive every feature against one real");
                 Console.WriteLine("                          acquisition instead of cross-validating");
                 Console.WriteLine("  --results <path>        write tab-separated results here");

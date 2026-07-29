@@ -1,0 +1,81 @@
+<Window x:Class="OpenVSA.Ui.ConnectionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Connect to an instrument"
+        Height="440" Width="960"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+
+    <!--
+        REQ-HAL-003's connection dialog. Every string in the grid comes from ConnectionListing, so
+        what is shown here is what is asserted in ConnectionListingTests without a window.
+
+        Sizes are in device-independent units and the columns star-size, per REQ-NFR-007: a listing
+        of resource strings and *IDN? responses is the sort of content that overflows first when the
+        display scaling is not 100%.
+    -->
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="SummaryText"
+                   Grid.Row="0"
+                   Margin="0,0,0,8"
+                   TextWrapping="Wrap" />
+
+        <ListView x:Name="Resources"
+                  Grid.Row="1"
+                  SelectionMode="Single"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto">
+            <!--
+                The whole row as a tooltip. A resource string or a failure can be longer than any
+                column width worth choosing, and the alternative to this is a reader scrolling
+                sideways to find out why an address is not offered.
+            -->
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="ToolTip">
+                        <Setter.Value>
+                            <TextBlock Text="{Binding}" />
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.View>
+                <GridView>
+                    <!--
+                        These four add up to less than the window's client width on purpose. A live
+                        run showed the Status column running off the right-hand edge, and Status is
+                        the column a reader needs most: it is the one that distinguishes an address
+                        that stayed silent from one that was never probed. Resource is the widest
+                        because a remote resource string reads
+                        "visa://host.localdomain/GPIB0::9::INSTR".
+                    -->
+                    <GridViewColumn Header="Resource" Width="280"
+                                    DisplayMemberBinding="{Binding Resource}" />
+                    <GridViewColumn Header="Identity" Width="250"
+                                    DisplayMemberBinding="{Binding Identity}" />
+                    <GridViewColumn Header="Driver" Width="110"
+                                    DisplayMemberBinding="{Binding Driver}" />
+                    <GridViewColumn Header="Status" Width="280"
+                                    DisplayMemberBinding="{Binding Status}" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,10,0,0">
+            <Button x:Name="RefreshButton" Content="_Refresh" Width="90" Margin="0,0,8,0" />
+            <Button x:Name="ConnectButton" Content="_Connect" Width="90" Margin="0,0,8,0"
+                    IsDefault="True" IsEnabled="False" />
+            <Button x:Name="CancelButton" Content="Cancel" Width="90" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

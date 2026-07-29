@@ -515,6 +515,13 @@ namespace OpenVSA.Ui
         /// </remarks>
         public Menu MenuBar => MainMenu;
 
+        /// <summary>The front-end registry this shell discovered with.</summary>
+        /// <remarks>
+        /// Exposed so a test can ask which discovered providers need an address without
+        /// duplicating the discovery. Read-only: the shell owns when discovery happens.
+        /// </remarks>
+        internal FrontEndRegistry Registry => _registry;
+
         /// <summary>
         /// Hands the shell's plot to the document area as trace A and builds the layout menu.
         /// </summary>
@@ -2199,6 +2206,58 @@ namespace OpenVSA.Ui
         /// <summary>The running measurement, or null if none is running.</summary>
         public SpectrumEngine Engine => _engine;
 
+        /// <summary>
+        /// Opens the connection dialog for a front end that needs an address (<c>REQ-HAL-003</c>).
+        /// </summary>
+        /// <param name="frontEnd">The front end to point at an address.</param>
+        /// <returns>Whether an address was chosen.</returns>
+        /// <remarks>
+        /// Replaceable so that shell tests can drive the choice without a modal window; the default
+        /// shows <see cref="ConnectionDialog"/>. A modal dialog in an automated run blocks the
+        /// dispatcher until something dismisses it, and nothing will.
+        /// </remarks>
+        internal Func<IRequiresResource, bool> ChooseResourceForTest { get; set; }
+
+        private Task<bool> ChooseResourceAsync(IRequiresResource frontEnd)
+        {
+            if (ChooseResourceForTest != null)
+            {
+                return Task.FromResult(ChooseResourceForTest(frontEnd));
+            }
+
+            var dialog = new ConnectionDialog(
+                () => _registry.DiscoverResources(CancellationToken.None),
+                _registry.CanEnumerateResources)
+            {
+                Owner = this,
+            };
+
+            // The address it already has, pre-selected. Usually the configured one, and usually
+            // right — reopening the dialog to change something else should not lose it.
+            dialog.Select(frontEnd.ResourceName);
+
+            var chosen = new TaskCompletionSource<bool>();
+
+            // Modeless, per REQ-UI-070: nothing the shell puts up may stop the measurement
+            // updating, and a bus scan is the worst thing to freeze it behind — thirty GPIB
+            // addresses at 700 ms each is twenty seconds of a window that appears to have hung.
+            // Awaiting the close keeps this method reading like the modal version it replaces
+            // without any of the blocking.
+            dialog.Closed += (sender, e) =>
+            {
+                if (dialog.ChosenResource != null)
+                {
+                    frontEnd.UseResource(dialog.ChosenResource);
+                }
+
+                chosen.TrySetResult(dialog.ChosenResource != null);
+            };
+
+            dialog.Show();
+
+            return chosen.Task;
+        }
+
         private async void SelectFrontEnd(FrontEndDescriptor descriptor, MenuItem clicked)
         {
             IFrontEnd created;
@@ -2214,6 +2273,18 @@ namespace OpenVSA.Ui
                 clicked.IsChecked = false;
                 StatusText.Content = "Could not open " + descriptor.DisplayName;
                 CapabilitiesText.Text = e.Message;
+                return;
+            }
+
+            // REQ-HAL-003: a front end that needs an address asks for one, through the connection
+            // dialog, before anything is connected or the previous front end is torn down. Asking
+            // first means Cancel leaves the shell exactly as it was rather than disconnected from
+            // what it had.
+            if (created is IRequiresResource needsResource &&
+                !await ChooseResourceAsync(needsResource).ConfigureAwait(true))
+            {
+                created.Dispose();
+                clicked.IsChecked = false;
                 return;
             }
 
