@@ -161,6 +161,60 @@ The installer project is **not** a member of `OpenVSA.slnx`, for the same reason
 project is not: the dotnet CLI cannot evaluate every project type, and `dotnet test OpenVSA.slnx`
 has to keep working. The script builds both.
 
+## Releases
+
+Every release is a **prerelease** until the final phase of the requirements is complete; only
+then does OpenVSA take a major version number. A release is cut at each phase boundary, when that
+phase's milestone reaches zero open issues, CI is green and the full bench verification has run.
+
+Newest first.
+
+### v0.1.0 — Phase 0, Foundations (2026-07-29)
+
+**The first release. There is no previous version to compare against**, so what follows is what
+the release contains rather than what changed.
+
+An installable, runnable vector signal analyser with the foundations proved: 49 requirements
+closed, 1 952 unit tests, 94 of 94 bench features exercised against real hardware, 6 of 6
+cross-validation scenarios.
+
+**Architecture** — strict acquisition/analysis separation with the analysis stack buildable with
+every transport absent (`REQ-ARC-001`); front ends interchangeable at run time and discovered
+rather than referenced (`REQ-ARC-002`, `REQ-HAL-003`); measurement personalities as plug-ins
+dropped into `Personalities\` with no rebuild of the host (`REQ-ARC-003`).
+
+**DSP** — block-based analysis, double-precision accumulation, the window set with periodic
+definitions and gain correction, a managed FFT and a native one behind one interface, min/max
+pixel-column decimation, and bit-for-bit reproducible results.
+
+**Signal generation** — a synthetic modulated source with deterministic seeding, twelve
+controllable impairments, and burst/pulse scenarios.
+
+**Shell** — docking layout, trace windows, the three-zone plot surface with in-place hot-spot
+editing, a software rasteriser for trace geometry, per-monitor DPI awareness and a content scale
+factor.
+
+**Non-functional** — x64 with large-object support, bounded steady-state allocation with **zero
+gen-2 collections over a ten-minute run at 2²⁰ points**, immutable snapshot hand-off to the UI,
+back-pressure rather than unbounded buffering, a defined thread topology, structured logging with
+support-bundle export, no telemetry or network egress, and a performance regression gate in CI.
+
+**Known limitations, stated rather than omitted:**
+
+- **Demodulation is not in this release.** `Phase 2` is where it arrives. The constellation, eye
+  and symbol-table displays exist and are verified against generated signals, but nothing yet
+  produces a live demodulated result from a hardware acquisition.
+- **`REQ-NFR-007a` (window scale factor) is deferred**, not done: its acceptance criterion needs
+  two monitors at different DPI scalings. The feature is implemented and unit-tested; the
+  verification is not. Closed under `deferred:revisit`.
+- **Two requirements were amended on measurement rather than implemented as written** —
+  `REQ-NFR-005` withdrew the `D3DImage` rendering path (decimation makes the cost it defended
+  against unreachable, and it degrades to software under RDP), and `REQ-NFR-003` replaced a fixed
+  SIMD throughput ratio with a measured working-set sweep. Both retain the original text and the
+  reasoning in the specification.
+- **NI-VISA is a prerequisite for hardware**, not bundled. Without it OpenVSA still runs against
+  the simulated source and file playback.
+
 ## Verification
 
 DSP defects are quiet: the software produces a plausible number that is wrong, and nobody
