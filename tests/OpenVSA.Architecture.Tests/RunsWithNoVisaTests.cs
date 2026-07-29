@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using OpenVSA.Hal;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -101,22 +102,33 @@ namespace OpenVSA.Architecture.Tests
         }
 
         [Fact]
-        public void TheSimulatorAndFilePlaybackPluginsAreDeployedBesideTheShell()
+        public void TheSimulatorAndFilePlaybackFrontEndsAreActuallyDiscovered()
         {
-            // "The simulator and file-playback front ends are available." Available means present
-            // where the registry probes, which is a property of the build rather than of a run.
+            // "The simulator and file-playback front ends are available."
+            //
+            // **Asked of the registry, not of the file system.** The first version of this test
+            // checked that OpenVSA.Hal.File.dll sat in the FrontEnds folder — and it did, while
+            // being an empty project containing no front end at all. The registry found two
+            // providers where the product claimed three, and this test passed anyway. A
+            // present-but-empty assembly is exactly the case the distinction exists to catch.
             string plugins = Path.Combine(Path.GetDirectoryName(ShellPath()), "FrontEnds");
 
             Assert.True(Directory.Exists(plugins), "No FrontEnds directory at " + plugins);
 
-            string[] present = Directory.GetFiles(plugins, "*.dll")
-                .Select(Path.GetFileName)
-                .ToArray();
+            var registry = new FrontEndRegistry();
+            registry.ProbeDirectory(plugins);
 
-            _output.WriteLine(string.Join(Environment.NewLine, present));
+            string[] names = registry.Providers.Select(p => p.DisplayName).ToArray();
 
-            Assert.Contains("OpenVSA.Hal.Sim.dll", present);
-            Assert.Contains("OpenVSA.Hal.File.dll", present);
+            _output.WriteLine("discovered: " + string.Join(", ", names));
+
+            foreach (FrontEndDiscoveryFailure failure in registry.Failures)
+            {
+                _output.WriteLine("failure: " + failure);
+            }
+
+            Assert.Contains(names, n => n.IndexOf("Simulated", StringComparison.OrdinalIgnoreCase) >= 0);
+            Assert.Contains(names, n => n.IndexOf("File playback", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         [Fact]

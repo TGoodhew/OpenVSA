@@ -134,7 +134,7 @@ namespace OpenVSA.Hal.Tests
         public void AFileThatIsNotAnAssemblyIsRecordedAndSkipped()
         {
             string junk = Path.Combine(_scratch, "OpenVSA.Hal.Junk.dll");
-            File.WriteAllText(junk, "this is not a portable executable");
+            System.IO.File.WriteAllText(junk, "this is not a portable executable");
 
             var registry = new FrontEndRegistry();
             registry.ProbeDirectory(_scratch);
@@ -150,8 +150,8 @@ namespace OpenVSA.Hal.Tests
             // This is REQ-NFR-032 in miniature. A folder containing a broken plug-in alongside a
             // good one must still yield the good one - otherwise a machine with no VISA runtime
             // loses the simulator too, and the application has nothing to run with at all.
-            File.WriteAllText(Path.Combine(_scratch, "OpenVSA.Hal.Broken.dll"), "not an assembly");
-            File.Copy(
+            System.IO.File.WriteAllText(Path.Combine(_scratch, "OpenVSA.Hal.Broken.dll"), "not an assembly");
+            System.IO.File.Copy(
                 new Uri(typeof(SimulatedFrontEnd).Assembly.CodeBase).LocalPath,
                 Path.Combine(_scratch, "OpenVSA.Hal.Sim.dll"));
 
