@@ -3717,6 +3717,26 @@ namespace OpenVSA.Ui
             }
         }
 
+        /// <summary>
+        /// Where a non-interactive Save Setup writes and Recall Setup reads, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-TST-008</c> asks for state save and recall to be driven "through the UI automation
+        /// layer rather than by calling view models directly". Invoking the menu item is what
+        /// exercises the routing; the file <em>picker</em> cannot be driven from inside the process
+        /// that is showing it, because it is modal and blocks the dispatcher the automation is
+        /// running on. So the routing runs and the path is nominated here.
+        /// </para>
+        /// <para>
+        /// Internal rather than public: no caller outside this assembly needs it, and putting a test
+        /// hook in the product's surface is the thing it is meant to avoid. The same trade
+        /// <see cref="RangeSettingsFor"/> and <see cref="ReadPaneIntoAnalysis"/> make. It does
+        /// nothing while <see cref="Interactive"/> is true, so a shipped shell always asks.
+        /// </para>
+        /// </remarks>
+        internal string NonInteractiveStatePath { get; set; }
+
         private void OnSaveState(object sender, RoutedEventArgs e)
         {
             if (!Interactive)
@@ -3724,6 +3744,12 @@ namespace OpenVSA.Ui
                 // The picker belongs to the user, not to a test run. See ShellWindow.Interactive:
                 // what is skipped is the dialog, never the routing.
                 StatusText.Content = "Save setup";
+
+                if (NonInteractiveStatePath != null)
+                {
+                    SaveStateTo(NonInteractiveStatePath);
+                }
+
                 return;
             }
 
@@ -3734,9 +3760,18 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            SaveStateTo(dialog.Path);
+        }
+
+        /// <summary>
+        /// Writes the session's state to a path, reporting a failure rather than throwing.
+        /// </summary>
+        /// <param name="path">Where to write.</param>
+        private void SaveStateTo(string path)
+        {
             try
             {
-                StateFile.Save(CaptureState(), dialog.Path);
+                StateFile.Save(CaptureState(), path);
                 StatusText.Content = "State saved";
             }
             catch (IOException failure)
@@ -3758,6 +3793,12 @@ namespace OpenVSA.Ui
                 // The picker belongs to the user, not to a test run. See ShellWindow.Interactive:
                 // what is skipped is the dialog, never the routing.
                 StatusText.Content = "Recall setup";
+
+                if (NonInteractiveStatePath != null)
+                {
+                    RecallStateFrom(NonInteractiveStatePath);
+                }
+
                 return;
             }
 
@@ -3772,9 +3813,18 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            RecallStateFrom(picker.FileName);
+        }
+
+        /// <summary>
+        /// Reads a state from a path and applies it, reporting a failure rather than throwing.
+        /// </summary>
+        /// <param name="path">Where to read from.</param>
+        private void RecallStateFrom(string path)
+        {
             try
             {
-                Recall(StateFile.Load(picker.FileName));
+                Recall(StateFile.Load(path));
                 StatusText.Content = "State recalled";
             }
             catch (StateFormatException failure)
