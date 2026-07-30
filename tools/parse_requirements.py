@@ -125,6 +125,7 @@ PHASE_OVERRIDES = {
     "REQ-NFR-032a": (2, "an error summary is the demodulator's output"),
     "REQ-DAT-002a": (3, "REQ-REC-005's export formats do not exist yet"),
     "REQ-DSP-012a": (3, "REQ-REC-005's export formats do not exist yet"),
+    "REQ-TST-008a": (2, "Trace > Data and Couple Markers are inert until Phase 2"),
     "REQ-NFR-023": (2, "benchmarks flexible demod at 1024-QAM with an equaliser"),
 
     # --- Verifiable only once a personality exists (Phase 5) ----------------------------------

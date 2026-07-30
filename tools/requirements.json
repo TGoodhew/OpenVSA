@@ -3597,12 +3597,25 @@
   "num": "008",
   "priority": "P2",
   "title": "UI automation smoke tests covering window creation, trace",
-  "body": "**`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace\nconfiguration, state save/recall and marker interaction.\n**AC:** All four areas are exercised through the UI automation layer rather than by calling\nview models directly, so a binding or command-routing break is caught. The suite creates\ntrace and tool windows, configures a trace's data and format, saves and recalls a state and\nasserts the recalled configuration matches per `REQ-STA-001`, and places, moves and couples\nmarkers per `REQ-MKR-004`. It runs headless in CI, and a failure identifies the step and\ncaptures the visual tree at that point rather than reporting only a timeout.",
+  "body": "**`REQ-TST-008` (P2)** — UI automation smoke tests covering window creation, trace\nconfiguration, state save/recall and marker interaction.\n**AC:** All four areas are exercised through the UI automation layer rather than by calling\nview models directly, so a binding or command-routing break is caught. The suite creates\ntrace and tool windows, configures a trace's format, saves and recalls a state and\nasserts the recalled configuration matches per `REQ-STA-001`, and places and moves\nmarkers. It runs headless in CI, and a failure identifies the step and\ncaptures the visual tree at that point rather than reporting only a timeout.",
   "phase": 1,
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
   "line": 4305
+ },
+ {
+  "id": "REQ-TST-008a",
+  "area": "TST",
+  "num": "008a",
+  "priority": "P2",
+  "title": "The smoke suite drives trace data selection and marker coupling",
+  "body": "**`REQ-TST-008a` (P2)** — The smoke suite drives trace data selection and marker coupling.\n**AC:** The suite selects a trace's **data** — not only its format — and couples markers\nacross two traces per `REQ-MKR-004`, both through the UI automation layer.\n*Split from `REQ-TST-008`: both clauses name shell controls that are deliberately inert in\nPhase 1 and say so in `ShellMenuTable` — Trace ▸ Data, because the only live data source is the\nspectrum until `REQ-DSP-046`'s registers and the demodulation results of Phase 2 exist, and\nMarker ▸ Couple Markers, because a marker belongs to one trace until Copy Marker To does. The\ncoupling arithmetic of `REQ-MKR-004` is built and tested below the UI; what is missing is a\nsecond trace's markers to couple it to. Tracked in the Needs Verification epic.*",
+  "phase": 2,
+  "evidence": [],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 4314
  },
  {
   "id": "REQ-TST-009",
@@ -3615,7 +3628,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4314
+  "line": 4324
  },
  {
   "id": "REQ-PLN-001",
@@ -3628,6 +3641,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 4352
+  "line": 4362
  }
 ]

@@ -4306,10 +4306,20 @@ the seven targets is a 4 GB recording playback that Phase 3 delivers.*
 configuration, state save/recall and marker interaction.
 **AC:** All four areas are exercised through the UI automation layer rather than by calling
 view models directly, so a binding or command-routing break is caught. The suite creates
-trace and tool windows, configures a trace's data and format, saves and recalls a state and
-asserts the recalled configuration matches per `REQ-STA-001`, and places, moves and couples
-markers per `REQ-MKR-004`. It runs headless in CI, and a failure identifies the step and
+trace and tool windows, configures a trace's format, saves and recalls a state and
+asserts the recalled configuration matches per `REQ-STA-001`, and places and moves
+markers. It runs headless in CI, and a failure identifies the step and
 captures the visual tree at that point rather than reporting only a timeout.
+
+**`REQ-TST-008a` (P2)** — The smoke suite drives trace data selection and marker coupling.
+**AC:** The suite selects a trace's **data** — not only its format — and couples markers
+across two traces per `REQ-MKR-004`, both through the UI automation layer.
+*Split from `REQ-TST-008`: both clauses name shell controls that are deliberately inert in
+Phase 1 and say so in `ShellMenuTable` — Trace ▸ Data, because the only live data source is the
+spectrum until `REQ-DSP-046`'s registers and the demodulation results of Phase 2 exist, and
+Marker ▸ Couple Markers, because a marker belongs to one trace until Copy Marker To does. The
+coupling arithmetic of `REQ-MKR-004` is built and tested below the UI; what is missing is a
+second trace's markers to couple it to. Tracked in the Needs Verification epic.*
 
 **`REQ-TST-009` (P1)** — A long-duration soak (≥8 hours) against the simulator asserting
 bounded memory, no handle leaks, and no degradation in update rate.

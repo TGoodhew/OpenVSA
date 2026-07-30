@@ -674,7 +674,12 @@ namespace OpenVSA.Ui
                 ToolTip = "Take the active trace's window off the arrangement, keeping the trace.",
             };
 
-            _hideTraceButton.Click += (sender, e) => HideActiveTrace();
+            // Checked and Unchecked, not Click. A ToggleButton driven through the automation layer
+            // has its IsChecked set by the peer, which raises those two and never raises Click -- so
+            // bound to Click this button lit up for a screen reader and did nothing, which is what
+            // REQ-TST-008's smoke suite caught. Every toggle on the main toolbars already goes
+            // through WhenToggled; these two embedded in menus were the ones left out.
+            WhenToggled(_hideTraceButton, () => ShowActiveTrace(false), () => ShowActiveTrace(true));
 
             _fullSpanButton = new Button
             {
@@ -739,7 +744,9 @@ namespace OpenVSA.Ui
                 ToolTip = "Stop drawing the selected marker, keeping its number and position.",
             };
 
-            _hideMarkerButton.Click += (sender, e) => HideSelectedMarker();
+            // Checked and Unchecked rather than Click -- see the trace toolbar's Hide button.
+            WhenToggled(
+                _hideMarkerButton, () => ShowSelectedMarker(false), () => ShowSelectedMarker(true));
 
             bar.Items.Add(_markerChooser);
             bar.Items.Add(add);
@@ -779,15 +786,17 @@ namespace OpenVSA.Ui
                 }
 
                 _traceChooser.SelectedIndex = IndexOfTrace(Documents.ActiveTrace);
+
+                // Inside the guard, now that the button acts on Checked and Unchecked: bringing it
+                // into line with the trace it describes must not read as somebody pressing it.
+                if (_hideTraceButton != null)
+                {
+                    _hideTraceButton.IsChecked = !Documents.IsVisible(Documents.ActiveTrace);
+                }
             }
             finally
             {
                 _followingToolbar = false;
-            }
-
-            if (_hideTraceButton != null)
-            {
-                _hideTraceButton.IsChecked = !Documents.IsVisible(Documents.ActiveTrace);
             }
         }
 
@@ -823,16 +832,23 @@ namespace OpenVSA.Ui
         }
 
         /// <summary>Takes the active trace's window off the arrangement, or puts it back.</summary>
-        private void HideActiveTrace()
+        /// <param name="wanted">Whether the trace is to be shown.</param>
+        /// <remarks>
+        /// Told which way round rather than reading the button back. The two callers are the
+        /// button's own <c>Checked</c> and <c>Unchecked</c>, so the direction is already known — and
+        /// reading <c>IsChecked</c> inside the handler is what tied this to <c>Click</c>, which the
+        /// automation layer does not raise.
+        /// </remarks>
+        private void ShowActiveTrace(bool wanted)
         {
             char trace = Documents.ActiveTrace;
-            bool wanted = _hideTraceButton.IsChecked != true;
 
             if (!Documents.SetVisible(trace, wanted))
             {
                 // The last visible trace cannot be hidden: an empty document area is a state with
                 // no way out of it from the document area itself.
-                _hideTraceButton.IsChecked = !Documents.IsVisible(trace);
+                FollowingToolbar(
+                    () => _hideTraceButton.IsChecked = !Documents.IsVisible(trace));
 
                 StatusText.Content = wanted
                     ? "Trace " + trace + " is already shown."
@@ -877,18 +893,19 @@ namespace OpenVSA.Ui
                 {
                     _markerChooser.SelectedIndex = IndexOfSelectedMarker();
                 }
+
+                // Inside the guard, for the reason FillTraceChooser's is.
+                Marker selected = _markers.Selected;
+
+                if (_hideMarkerButton != null)
+                {
+                    _hideMarkerButton.IsChecked = selected != null && !selected.IsVisible;
+                    _hideMarkerButton.IsEnabled = selected != null;
+                }
             }
             finally
             {
                 _followingToolbar = false;
-            }
-
-            Marker selected = _markers.Selected;
-
-            if (_hideMarkerButton != null)
-            {
-                _hideMarkerButton.IsChecked = selected != null && !selected.IsVisible;
-                _hideMarkerButton.IsEnabled = selected != null;
             }
         }
 
@@ -922,7 +939,9 @@ namespace OpenVSA.Ui
         }
 
         /// <summary>Stops drawing the selected marker, or draws it again.</summary>
-        private void HideSelectedMarker()
+        /// <param name="wanted">Whether the marker is to be drawn.</param>
+        /// <remarks>Told which way round, for the reason <see cref="ShowActiveTrace"/> is.</remarks>
+        private void ShowSelectedMarker(bool wanted)
         {
             Marker selected = _markers.Selected;
 
@@ -932,7 +951,7 @@ namespace OpenVSA.Ui
                 return;
             }
 
-            selected.IsVisible = _hideMarkerButton.IsChecked != true;
+            selected.IsVisible = wanted;
 
             RefreshMarkers();
             FillMarkerChooser();
