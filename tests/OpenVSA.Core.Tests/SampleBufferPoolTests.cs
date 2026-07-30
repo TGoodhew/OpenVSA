@@ -99,6 +99,45 @@ namespace OpenVSA.Core.Tests
         }
 
         [Fact]
+        public void WhatThePoolIsHoldingCanBeCounted()
+        {
+            // REQ-TST-009 asks a soak to show that pooled buffers have no net growth, and Rents and
+            // Hits cannot answer that: both rise for ever in a healthy run. What is bounded is what
+            // the pool RETAINS, so that is what these report.
+            var pool = new SampleBufferPool();
+
+            Assert.Equal(0, pool.RetainedBuffers);
+            Assert.Equal(0L, pool.RetainedBytes);
+
+            float[] small = pool.Rent(1024);
+            float[] large = pool.Rent(65536);
+
+            // Rented, not returned: the pool is holding nothing while the caller has them.
+            Assert.Equal(0, pool.RetainedBuffers);
+
+            pool.Return(small);
+            pool.Return(large);
+
+            Assert.Equal(2, pool.RetainedBuffers);
+
+            // Counted from each bucket's own length, so the geometric sizes are reflected rather
+            // than a buffer being a buffer: one 64Ki-element array is 64 times a 1Ki one.
+            Assert.Equal(
+                (long)(small.Length + large.Length) * sizeof(float), pool.RetainedBytes);
+
+            // And handing one back out reduces it again, or a soak would read every rent as growth.
+            pool.Rent(65536);
+
+            Assert.Equal(1, pool.RetainedBuffers);
+            Assert.Equal((long)small.Length * sizeof(float), pool.RetainedBytes);
+
+            pool.Clear();
+
+            Assert.Equal(0, pool.RetainedBuffers);
+            Assert.Equal(0L, pool.RetainedBytes);
+        }
+
+        [Fact]
         public void ABufferOfAForeignLengthIsNotPooled()
         {
             var pool = new SampleBufferPool();

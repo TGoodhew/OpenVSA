@@ -39,6 +39,9 @@
     <Project Path="tests/OpenVSA.Benchmarks/OpenVSA.Benchmarks.csproj" />
     <Project Path="tests/OpenVSA.PerformanceGate/OpenVSA.PerformanceGate.csproj" />
     <Project Path="tests/OpenVSA.PerformanceGate.Tests/OpenVSA.PerformanceGate.Tests.csproj" />
+    <Project Path="tests/OpenVSA.SoakGate/OpenVSA.SoakGate.csproj" />
+    <Project Path="tests/OpenVSA.SoakGate.Tests/OpenVSA.SoakGate.Tests.csproj" />
+    <Project Path="tests/OpenVSA.Soak/OpenVSA.Soak.csproj" />
     <Project Path="tests/OpenVSA.Personality.Example/OpenVSA.Personality.Example.csproj" />
     <Project Path="tests/OpenVSA.Personality.Tests/OpenVSA.Personality.Tests.csproj" />
   </Folder>

@@ -154,10 +154,29 @@ namespace OpenVSA.Ui.Rendering
         private TraceFormat[] _formats = { TraceFormat.LogMagnitude };
         private TraceSnapshot _pending;
         private long _framesDropped;
+        private long _framesTaken;
         private int _outstandingPosts;
 
         /// <summary>Frames discarded because the display had not collected the previous one.</summary>
         public long FramesDropped => Interlocked.Read(ref _framesDropped);
+
+        /// <summary>
+        /// Frames collected for drawing since this marshal was created.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The counterpart of <see cref="FramesDropped"/>, and monotonic: never reset, not even by
+        /// <see cref="Reset"/>, because its only use is as the difference between two readings.
+        /// </para>
+        /// <para>
+        /// <c>REQ-TST-009</c> compares the update rate of a soak's final hour against its first, and
+        /// that has to be frames actually drawn in each hour — the difference of two readings of this
+        /// counter, divided by the elapsed time. Averaging
+        /// <see cref="OpenVSA.Measurement.SpectrumEngine.MeasuredUpdatesPerSecond"/> instead would be
+        /// averaging a smoothed instantaneous figure, which lags a real decline and understates it.
+        /// </para>
+        /// </remarks>
+        public long FramesTakenForRender => Interlocked.Read(ref _framesTaken);
 
         /// <summary>
         /// Pixel columns to decimate to. Set by the view when its graticule changes width.
@@ -316,6 +335,14 @@ namespace OpenVSA.Ui.Rendering
             {
                 snapshot = _pending;
                 _pending = null;
+            }
+
+            if (snapshot != null)
+            {
+                // Counted where the frame is handed over, not where it was posted: a post that
+                // found nothing to collect drew nothing, and counting it would report an update
+                // rate the display never achieved.
+                Interlocked.Increment(ref _framesTaken);
             }
 
             // Clamped rather than decremented blindly: Reset zeroes the count while callbacks are

@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.SoakGate</RootNamespace>
+    <AssemblyName>OpenVSA.SoakGate</AssemblyName>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      Under tests\ but not a test project: this is the library the soak host and the gate's own
+      tests both reference. IsTestProject would have `dotnet test` try to run it.
+    -->
+    <IsTestProject>false</IsTestProject>
+    <AppConfig />
+  </PropertyGroup>
+
+  <!--
+    Deliberately no package references and no reference to any OpenVSA assembly. Everything here is
+    arithmetic over recorded samples, so the unit suite drives every rule from both sides in
+    milliseconds - a slow leak under the ceiling, handles that never come back, a rate that decays
+    by six per cent - none of which could be provoked on demand inside a real eight-hour run. The
+    measuring lives in OpenVSA.Soak; the deciding lives here. Same split as OpenVSA.PerformanceGate.
+  -->
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+</Project>
