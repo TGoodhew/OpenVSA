@@ -437,6 +437,60 @@ namespace OpenVSA.SoakGate.Tests
         }
 
         [Fact]
+        public void TheOneOffCostOfTheFirstCycleIsNotALeak()
+        {
+            // Measured on a real run: the floor sat at 16.977 MiB before the first create-and-
+            // destroy cycle and 17.791 MiB after it -- 0.814 MiB of jitting the window-creation
+            // path, once, with nothing more from the thousands of cycles that followed.
+            //
+            // The time-based warm-up cannot cover it, because the first cycle is five minutes in and
+            // that window shuts at two. The eight-hour run escaped only because it collected every
+            // tenth minute, so its first fitted sample already lay beyond the step; collect on every
+            // sample, as a shorter run must, and 0.8 MiB of start-up reads as a leak.
+            SoakReport report = new EnduranceGate().Judge(SteppingAtFirstCycle(0.814 * Mib, 0.0));
+
+            _output.WriteLine(report.Render());
+
+            Assert.Equal(SoakVerdict.Passed, Verdict(report, "Managed memory"));
+        }
+
+        [Fact]
+        public void ALeakIsStillFoundBehindTheFirstCyclesOneOffCost()
+        {
+            // The other half, and the one that keeps the discard honest. Same step, with a genuine
+            // rise continuing after it: 3 MiB an hour, which no ceiling would catch either.
+            SoakReport report = new EnduranceGate().Judge(
+                SteppingAtFirstCycle(0.814 * Mib, 3.0 * Mib));
+
+            _output.WriteLine(report.Render());
+
+            Assert.Equal(SoakVerdict.Failed, Verdict(report, "Managed memory"));
+        }
+
+        [Fact]
+        public void WithoutTheFirstCycleDiscardThatStepWouldHaveReadAsALeak()
+        {
+            // Proof that the test above is not vacuous. The same fixture, judged over every sample
+            // rather than only those after the first cycle, does show a significant rise -- so the
+            // rule is catching something real rather than passing because the fixture is flat.
+            List<SoakSample> stepped = SteppingAtFirstCycle(0.814 * Mib, 0.0);
+
+            Trend everything = Trend.Fit(
+                stepped.Where(s => s.Collected && s.ElapsedSeconds >= EnduranceGate.WarmUpMinutes * 60.0)
+                    .Select(s => s.ElapsedHours).ToList(),
+                stepped.Where(s => s.Collected && s.ElapsedSeconds >= EnduranceGate.WarmUpMinutes * 60.0)
+                    .Select(s => (double)s.CollectedManagedBytes).ToList());
+
+            _output.WriteLine(
+                "Fitted from two minutes: " + (everything.Slope / Mib) + " MiB/hour +/-" +
+                (everything.StandardError / Mib));
+
+            Assert.True(
+                everything.RisesSignificantly(),
+                "The step does not tilt the line, so the first-cycle discard is untested by this fixture.");
+        }
+
+        [Fact]
         public void ALeakIsStillFoundWhenAWarmUpPrecedesIt()
         {
             // The other half, and the one that matters: discarding the opening minutes must not
@@ -521,6 +575,54 @@ namespace OpenVSA.SoakGate.Tests
                     pooledBytes: (long)(48.0 * Mib),
                     traces: 1 + (i % 4),
                     cycles: i / 15));
+            }
+
+            return samples;
+        }
+
+        /// <summary>
+        /// An eight-hour run that collects on every sample, whose floor steps once when the first
+        /// create-and-destroy cycle happens and then rises at a stated rate.
+        /// </summary>
+        /// <param name="stepBytes">The one-off cost of the first cycle.</param>
+        /// <param name="leakBytesPerHour">A genuine rise after it, or zero for none.</param>
+        /// <remarks>
+        /// Collecting on every sample is the point: it is what a run too short to collect every tenth
+        /// minute has to do, and it is what puts the step inside the fitted range. The first cycle is
+        /// at sample 15, as the host's five-minute cycle would be against minute-spaced samples.
+        /// </remarks>
+        private static List<SoakSample> SteppingAtFirstCycle(double stepBytes, double leakBytesPerHour)
+        {
+            var samples = new List<SoakSample>();
+            long frames = 0L;
+            int total = (8 * SamplesPerHour) + 1;
+
+            for (int i = 0; i < total; i++)
+            {
+                double hours = i / (double)SamplesPerHour;
+                int cycles = i / 15;
+
+                frames += 1800L;
+
+                double floor = (120.0 * Mib) +
+                    (cycles >= 1 ? stepBytes : 0.0) +
+                    (leakBytesPerHour * hours) +
+                    ((i % 3) * 4096.0);
+
+                samples.Add(Sample(
+                    hours,
+                    managed: (long)(floor * 1.3),
+                    collected: (long)floor,
+                    priv: (long)((420.0 + (i % 4 == 0 ? 6.0 : 0.0)) * Mib),
+                    handles: 700 + (i % 11),
+                    gdi: 300 + (i % 7),
+                    user: 200 + (i % 5),
+                    frames: frames,
+                    dropped: 12L * i,
+                    pooledBuffers: 24,
+                    pooledBytes: (long)(48.0 * Mib),
+                    traces: 1 + (i % 4),
+                    cycles: cycles));
             }
 
             return samples;

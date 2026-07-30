@@ -278,10 +278,38 @@ namespace OpenVSA.SoakGate
                 s => s.PrivateBytes,
                 null);
 
-        /// <summary>The samples after the warm-up window.</summary>
-        /// <remarks>See <see cref="WarmUpMinutes"/> for why any are discarded at all.</remarks>
-        private static List<SoakSample> WarmedUp(List<SoakSample> taken) =>
-            taken.Where(s => s.ElapsedSeconds >= WarmUpMinutes * 60.0).ToList();
+        /// <summary>The samples after the warm-up window, and after the first cycle.</summary>
+        /// <remarks>
+        /// <para>
+        /// See <see cref="WarmUpMinutes"/> for why any are discarded at all.
+        /// </para>
+        /// <para>
+        /// <strong>And why the first cycle goes too.</strong> The window-creation path is jitted and
+        /// first-touched when a window is first created, which is not at start-up: the host's first
+        /// cycle is five minutes in, three minutes after the time-based warm-up has closed. Measured,
+        /// a run whose floor sat at 16.977 MiB before its first cycle read 17.791 MiB after it — a
+        /// one-off <strong>0.814 MiB</strong>, and no more from the thousands of cycles that follow.
+        /// </para>
+        /// <para>
+        /// The eight-hour run escaped this by luck rather than by design. It forced a collection
+        /// every tenth minute, so its first fitted floor sample fell at ten minutes and the step at
+        /// five was already behind it. Sampled more densely — which is what a shorter run has to do —
+        /// the same step lands inside the fit, and 0.8 MiB of jitting reads as a leak. A rule that
+        /// holds only for one sampling interval is not a rule.
+        /// </para>
+        /// <para>
+        /// Only when the run cycled at all. A run that created nothing has no such step to discard,
+        /// and dropping every sample of it would leave nothing to fit.
+        /// </para>
+        /// </remarks>
+        private static List<SoakSample> WarmedUp(List<SoakSample> taken)
+        {
+            bool cycled = taken.Any(s => s.Cycles >= 1);
+
+            return taken
+                .Where(s => s.ElapsedSeconds >= WarmUpMinutes * 60.0 && (!cycled || s.Cycles >= 1))
+                .ToList();
+        }
 
         private static SoakFinding MemoryFinding(
             string claim, List<SoakSample> taken, Func<SoakSample, long> read, string cannot)
@@ -308,7 +336,8 @@ namespace OpenVSA.SoakGate
                 "slope " + Megabytes(trend.Slope) + "/hour ±" + Megabytes(trend.StandardError) +
                 ", from " + Megabytes(trend.First) + " to " + Megabytes(trend.Last) +
                 ", over " + trend.Count + " samples after the first " +
-                WarmUpMinutes.ToString("0.#", CultureInfo.InvariantCulture) + " minutes";
+                WarmUpMinutes.ToString("0.#", CultureInfo.InvariantCulture) +
+                " minutes and the first cycle";
 
             return trend.RisesSignificantly()
                 ? new SoakFinding(claim, "REQ-TST-009", SoakVerdict.Failed, figures)

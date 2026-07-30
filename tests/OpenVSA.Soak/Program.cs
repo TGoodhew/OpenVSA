@@ -185,6 +185,34 @@ namespace OpenVSA.Soak
 
         internal int CycleSamples { get; private set; } = 40;
 
+        /// <summary>
+        /// Frames a second to ask the engine for, or zero to leave its own target alone.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The second thing the eight-hour run could not separate. Its managed floor rose 0.0106
+        /// MiB/hour, and at a fixed 60 frames a second "per hour" and "per frame" are the same
+        /// straight line — exactly as "per hour" and "per cycle" were, and for the same reason.
+        /// Raising the rate breaks that line: if the rise is per frame it scales, and shows up in
+        /// half an hour instead of eight.
+        /// </para>
+        /// <para>
+        /// <strong>A number, and not simply "unbounded".</strong> The first attempt set the engine's
+        /// target to zero, which is what its pacer takes for no limit. The pump then posted to the
+        /// dispatcher at <c>Render</c> priority faster than it drained, and the sampling ticker —
+        /// deliberately <c>Background</c>, so that measuring perturbs as little as possible — did
+        /// not run <em>once</em> in fifteen minutes. The run burned four cores and wrote a single
+        /// sample, the one taken before the timer started. Any rate the pacer still sleeps between
+        /// leaves the queue somewhere to drain, so the lever is a rate rather than a switch.
+        /// </para>
+        /// <para>
+        /// The reading is one sided, and worth saying so: a rise that scales with the rate
+        /// identifies frames, while a rise that does not has only failed to identify them at this
+        /// run's length.
+        /// </para>
+        /// </remarks>
+        internal double RateHz { get; private set; }
+
         internal string LogPath { get; private set; }
 
         internal string JudgeOnly { get; private set; }
@@ -258,6 +286,12 @@ namespace OpenVSA.Soak
                         i++;
                         break;
 
+                    case "--rate":
+                        if (!TryRead(value, out double rate) || rate <= 0.0) { return null; }
+                        options.RateHz = rate;
+                        i++;
+                        break;
+
                     case "--judge":
                         if (value == null) { return null; }
                         options.JudgeOnly = value;
@@ -328,6 +362,7 @@ namespace OpenVSA.Soak
             Console.WriteLine("  --sample-seconds N   how often to sample (default 60)");
             Console.WriteLine("  --cycle-minutes N    how often to create and destroy windows (default 5)");
             Console.WriteLine("  --collect-every N    force a collection every Nth sample (default 10)");
+            Console.WriteLine("  --rate N             frames a second to ask for, to tell per-frame from per-hour");
             Console.WriteLine("  --log PATH           where to write the samples");
             Console.WriteLine("  --judge PATH         judge an existing soak log and exit, running nothing");
             Console.WriteLine();
@@ -559,6 +594,23 @@ namespace OpenVSA.Soak
             {
                 throw new InvalidOperationException(
                     "No frame was drawn in the first minute, so there is nothing to soak.");
+            }
+
+            if (_options.RateHz > 0.0)
+            {
+                if (_shell.Engine == null)
+                {
+                    throw new InvalidOperationException(
+                        "The rate cannot be raised: no engine is running. A run that quietly " +
+                        "stayed at 60 frames a second would answer the wrong question.");
+                }
+
+                // Set after the first frame, so the measurement has been through Start at the rate
+                // everything else was measured at. Not zero -- see Options.RateHz for what that did.
+                _shell.Engine.TargetUpdatesPerSecond = _options.RateHz;
+                Console.WriteLine(
+                    "  frame rate raised to " +
+                    _options.RateHz.ToString("0.#", CultureInfo.InvariantCulture) + " a second.");
             }
 
             Console.WriteLine(
