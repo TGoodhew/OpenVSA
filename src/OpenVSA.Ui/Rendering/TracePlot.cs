@@ -890,14 +890,46 @@ namespace OpenVSA.Ui.Rendering
             int row = SpectrogramRasterizer.RowForY(
                 Clamp(y, 0, graticule.Height - 1), graticule.Height, _history.RowCount);
 
+            int rowBefore = _spectrogramMarkers.RowIndex;
+
             if (!_spectrogramMarkers.MoveTo(which, bin, row))
             {
                 return false;
             }
 
             Redraw(_snapshot);
+
+            // REQ-MKR-007: moving the trace-select marker to a history row is what makes a spectrum
+            // trace show that row's data. Announced rather than acted on here, because the trace that
+            // shows it is a different window -- this plot is drawing the spectrogram.
+            if (_spectrogramMarkers.RowIndex != rowBefore)
+            {
+                SelectedHistoryRowChanged?.Invoke(this, EventArgs.Empty);
+            }
+
             return true;
         }
+
+        /// <summary>
+        /// Raised when the trace-select marker lands on a different history row
+        /// (<c>REQ-MKR-007</c>).
+        /// </summary>
+        public event EventHandler SelectedHistoryRowChanged;
+
+        /// <summary>Which history row the trace-select marker is on, or <c>-1</c>.</summary>
+        public int SelectedHistoryRow =>
+            IsShowingSpectrogram ? _spectrogramMarkers.RowIndex : -1;
+
+        /// <summary>
+        /// The spectrum captured at the trace-select marker's row (<c>REQ-MKR-007</c>).
+        /// </summary>
+        /// <remarks>
+        /// That row's own frame, not a rendering of the map: the requirement asks for the trace to
+        /// show "the data captured at that time", so a spectrum drawn from the colour-mapped cells
+        /// would be a picture of a picture, and wrong in any format but log magnitude.
+        /// </remarks>
+        public SpectrumFrame SelectedHistoryFrame =>
+            IsShowingSpectrogram ? _spectrogramMarkers.SelectedRow : null;
 
         private static int Clamp(int value, int low, int high) =>
             value < low ? low : (value > high ? high : value);
