@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -283,6 +283,75 @@ namespace OpenVSA.Architecture.Tests
         }
 
         /// <summary>A source file's lines with the comments left out.</summary>
+        /// <summary>
+        /// The chrome resource-key prefix, as a literal.
+        /// </summary>
+        /// <remarks>
+        /// Spelled rather than taken from <c>ChromeKeys</c>: this project deliberately has no
+        /// compile-time reference to <c>OpenVSA.Ui</c> — it inspects source text and loads assemblies by
+        /// name. A prefix that stopped matching would fail the self-check below rather than pass quietly.
+        /// </remarks>
+        private const string ChromePrefix = "OpenVSA.Chrome.";
+
+        [Fact]
+        public void NoThemeBrushIsReferencedWithStaticResource()
+        {
+            // A StaticResource is resolved once, when the element is created. A chrome brush fetched
+            // that way is right at start-up and stale for ever after a theme change -- the control
+            // keeps the colour the old dictionary had, and nothing is hard-coded so
+            // NoColourIsHardCodedIntoTheChromeOrThePlotSurface passes it.
+            //
+            // This is #408's one part that is a correctness rule rather than a matter of taste, so it
+            // belongs in the build rather than in a visual pass. Which controls are wrong on screen
+            // still wants eyes; a StaticResource on a themed brush is wrong without looking.
+            var offenders = new List<string>();
+
+            foreach (string file in SourceFiles(Path.Combine(RepositoryRoot(), "src", "OpenVSA.Ui")))
+            {
+                int number = 0;
+
+                foreach (string line in File.ReadAllLines(file))
+                {
+                    number++;
+
+                    if (line.IndexOf("StaticResource", StringComparison.Ordinal) >= 0 &&
+                        line.IndexOf(ChromePrefix, StringComparison.Ordinal) >= 0 &&
+                        line.IndexOf("DynamicResource", StringComparison.Ordinal) < 0)
+                    {
+                        offenders.Add(Relative(file) + ":" + number + "  " + line.Trim());
+                    }
+                }
+            }
+
+            Assert.True(
+                offenders.Count == 0,
+                "A theme brush fetched with StaticResource is correct until the theme changes and " +
+                "stale afterwards. Use DynamicResource:" + Environment.NewLine +
+                string.Join(Environment.NewLine, offenders));
+        }
+
+        [Fact]
+        public void ThatRuleWouldCatchAStaticResourceIfOneAppeared()
+        {
+            // The rule above passes by finding nothing, which is the same thing a broken search does.
+            // These are the two lines it has to tell apart.
+            const string Bad = "Background=\"{StaticResource " + ChromePrefix + "SurfaceBackground" + "}\"";
+            const string Good = "Background=\"{DynamicResource " + ChromePrefix + "SurfaceBackground" + "}\"";
+
+            Assert.True(
+                Bad.IndexOf("StaticResource", StringComparison.Ordinal) >= 0 &&
+                Bad.IndexOf(ChromePrefix, StringComparison.Ordinal) >= 0 &&
+                Bad.IndexOf("DynamicResource", StringComparison.Ordinal) < 0,
+                "The rule would not catch a StaticResource on a chrome brush.");
+
+            Assert.False(
+                Good.IndexOf("StaticResource", StringComparison.Ordinal) >= 0 &&
+                Good.IndexOf(ChromePrefix, StringComparison.Ordinal) >= 0 &&
+                Good.IndexOf("DynamicResource", StringComparison.Ordinal) < 0,
+                "The rule would fail a correct DynamicResource -- 'DynamicResource' contains " +
+                "'StaticResource' as a substring, which is exactly the trap here.");
+        }
+
         private static IEnumerable<string> Code(string file) =>
             File.ReadAllLines(file).Where(line => !IsComment(line));
 
