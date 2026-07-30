@@ -864,7 +864,47 @@ namespace OpenVSA.Ui
                 : "Trace " + trace + " hidden — it is still open and still measuring.";
         }
 
-        /// <summary>Fills the embedded markers toolbar's chooser.</summary>
+        /// <summary>What the chooser shows when the trace carries no markers.</summary>
+        /// <remarks>
+        /// A constant because two places have to agree on it: the one that puts it there and the one
+        /// that recognises it as already being there.
+        /// </remarks>
+        private const string NoMarkersEntry = "No markers";
+
+        /// <summary>The entry the chooser shows for a marker.</summary>
+        /// <param name="marker">The marker.</param>
+        /// <remarks>
+        /// Factored out because <see cref="FillMarkerChooser"/> both writes these and compares
+        /// against them. Were the two spellings to drift, the comparison would either never match —
+        /// rebuilding every frame, which is what this is here to stop — or match when it should not,
+        /// which would leave a stale label on screen. One expression cannot drift from itself.
+        /// </remarks>
+        private static string MarkerChooserEntry(Marker marker) =>
+            marker.IsVisible ? marker.WindowLabel : marker.WindowLabel + " (hidden)";
+
+        /// <summary>
+        /// Fills the embedded markers toolbar's chooser, if it does not already say the right thing.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>This runs on every drawn frame.</strong> <c>RefreshMarkers</c> calls it from the
+        /// drawing path, so at sixty frames a second it was clearing and refilling a live
+        /// <see cref="ComboBox"/>'s items sixty times a second — and with no markers placed, which
+        /// is the ordinary state, that is <c>Clear</c>, <c>Add("No markers")</c> and
+        /// <c>SelectedIndex = 0</c> for ever. Each pass drives a −1 → 0 selection transition and
+        /// raises <c>SelectionChanged</c> twice, all of it to arrive back at what was already there.
+        /// </para>
+        /// <para>
+        /// <strong>The guard compares the answer, not a proxy for it.</strong> A version counter on
+        /// the marker set was the obvious alternative and is the more dangerous one: the entries
+        /// depend on each marker's number, type, visibility, trace letter and its reference's letter
+        /// and number, and <c>IsVisible</c> is set on the marker directly rather than through the
+        /// set — so a counter would have to be threaded through every one of those, and the cost of
+        /// missing one is a chooser that silently shows the wrong marker. Recomputing the entries
+        /// and comparing them with what is displayed cannot go stale, because it is the same
+        /// computation the rebuild would do.
+        /// </para>
+        /// </remarks>
         private void FillMarkerChooser()
         {
             if (_markerChooser == null)
@@ -872,29 +912,34 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            IReadOnlyList<Marker> markers = _markers.Markers;
+            int wanted = markers.Count == 0 ? 0 : IndexOfSelectedMarker();
+
             _followingToolbar = true;
 
             try
             {
-                _markerChooser.Items.Clear();
-
-                foreach (Marker marker in _markers.Markers)
+                if (MarkerChooserDiffers(markers, wanted))
                 {
-                    _markerChooser.Items.Add(
-                        marker.IsVisible ? marker.WindowLabel : marker.WindowLabel + " (hidden)");
+                    _markerChooser.Items.Clear();
+
+                    foreach (Marker marker in markers)
+                    {
+                        _markerChooser.Items.Add(MarkerChooserEntry(marker));
+                    }
+
+                    if (markers.Count == 0)
+                    {
+                        _markerChooser.Items.Add(NoMarkersEntry);
+                    }
+
+                    _markerChooser.SelectedIndex = wanted;
                 }
 
-                if (_markers.Markers.Count == 0)
-                {
-                    _markerChooser.Items.Add("No markers");
-                    _markerChooser.SelectedIndex = 0;
-                }
-                else
-                {
-                    _markerChooser.SelectedIndex = IndexOfSelectedMarker();
-                }
-
-                // Inside the guard, for the reason FillTraceChooser's is.
+                // Inside the guard, for the reason FillTraceChooser's is. Set unconditionally: WPF
+                // raises nothing when a dependency property is assigned the value it already holds,
+                // so this costs nothing to leave outside the comparison and cannot fall out of step
+                // with a marker whose visibility changed without changing its entry.
                 Marker selected = _markers.Selected;
 
                 if (_hideMarkerButton != null)
@@ -907,6 +952,35 @@ namespace OpenVSA.Ui
             {
                 _followingToolbar = false;
             }
+        }
+
+        /// <summary>Whether the chooser shows anything other than what it should.</summary>
+        /// <param name="markers">The markers it should be showing.</param>
+        /// <param name="wanted">The index it should have selected.</param>
+        private bool MarkerChooserDiffers(IReadOnlyList<Marker> markers, int wanted)
+        {
+            ItemCollection items = _markerChooser.Items;
+
+            if (items.Count != Math.Max(1, markers.Count) || _markerChooser.SelectedIndex != wanted)
+            {
+                return true;
+            }
+
+            if (markers.Count == 0)
+            {
+                return !string.Equals(items[0] as string, NoMarkersEntry, StringComparison.Ordinal);
+            }
+
+            for (int index = 0; index < markers.Count; index++)
+            {
+                if (!string.Equals(
+                    items[index] as string, MarkerChooserEntry(markers[index]), StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private int IndexOfSelectedMarker()

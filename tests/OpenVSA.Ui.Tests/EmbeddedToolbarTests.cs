@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using OpenVSA.Measurement.Markers;
 using OpenVSA.Ui.Menus;
 using Xunit;
 
@@ -284,6 +285,78 @@ namespace OpenVSA.Ui.Tests
         }
 
         // ---- Helpers ---------------------------------------------------------------------------
+
+        [Fact]
+        public void RedrawingDoesNotRebuildTheMarkerChooserWhenNothingAboutItChanged()
+        {
+            // RefreshMarkers runs on every drawn frame, so this ran sixty times a second -- and with
+            // no markers placed, which is the ordinary state, every pass cleared the chooser, put
+            // "No markers" back and set SelectedIndex to 0 again. Each pass drives a -1 -> 0
+            // selection transition and raises SelectionChanged twice, to arrive at what was already
+            // displayed.
+            //
+            // Counting SelectionChanged is what makes this discriminate: an assertion on the items
+            // would pass either way, because the rebuild put back exactly what it removed.
+            _host.Run(() =>
+            {
+                var shell = Built();
+                var bar = (ToolBar)Menu(shell, "Marker").Items[0];
+                var chooser = bar.Items.OfType<ComboBox>().First();
+
+                shell.RefreshMarkers();
+
+                int changes = 0;
+                chooser.SelectionChanged += (sender, e) => changes++;
+
+                for (int frame = 0; frame < 20; frame++)
+                {
+                    shell.RefreshMarkers();
+                }
+
+                Assert.Equal(0, changes);
+
+                // And it is still showing the right thing, rather than having been skipped into
+                // being empty.
+                Assert.Equal(1, chooser.Items.Count);
+                Assert.Equal(0, chooser.SelectedIndex);
+            });
+        }
+
+        [Fact]
+        public void TheMarkerChooserStillFollowsAMarkerBeingAddedAndHidden()
+        {
+            // The other half. A guard that never rebuilds would pass the test above and leave the
+            // chooser permanently reading "No markers" -- so each thing the entries depend on has
+            // to be shown to still reach them.
+            _host.Run(() =>
+            {
+                var shell = Built();
+                var bar = (ToolBar)Menu(shell, "Marker").Items[0];
+                var chooser = bar.Items.OfType<ComboBox>().First();
+
+                shell.RefreshMarkers();
+                Assert.Equal("No markers", chooser.Items[0]);
+
+                Marker marker = shell.Markers.AddNormal(1.0e9);
+                shell.RefreshMarkers();
+
+                Assert.Equal(1, chooser.Items.Count);
+                Assert.Equal("Mkr 1", chooser.Items[0]);
+                Assert.Equal(0, chooser.SelectedIndex);
+
+                // Visibility is set on the marker itself rather than through the set, which is
+                // exactly what a version counter on the set would have missed.
+                marker.IsVisible = false;
+                shell.RefreshMarkers();
+
+                Assert.Equal("Mkr 1 (hidden)", chooser.Items[0]);
+
+                shell.Markers.Remove(marker);
+                shell.RefreshMarkers();
+
+                Assert.Equal("No markers", chooser.Items[0]);
+            });
+        }
 
         private static ShellWindow Built() =>
             new ShellWindow { PersistPreferences = false, Interactive = false };
