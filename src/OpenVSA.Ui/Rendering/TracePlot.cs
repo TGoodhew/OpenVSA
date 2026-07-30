@@ -1380,6 +1380,16 @@ namespace OpenVSA.Ui.Rendering
         public IReadOnlyList<FrameworkElement> MeasurementAnnotationElements =>
             _measurementAnnotation;
 
+        /// <summary>
+        /// The active-marker readout drawn above the grid (<c>REQ-MKR-006</c>, <c>REQ-UI-040</c>).
+        /// </summary>
+        /// <remarks>
+        /// Exposed so that the requirement's comparison — this and the Markers window row must show
+        /// the same values for the same marker — can be made against what is on screen rather than
+        /// against whatever the shell believes it passed in.
+        /// </remarks>
+        public string MarkerReadoutText => _markerReadout;
+
         /// <summary>The element holding the trace indicator strings (<c>REQ-UI-041</c>).</summary>
         public FrameworkElement IndicatorElement => _indicatorText;
 

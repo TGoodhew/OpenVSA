@@ -443,7 +443,12 @@ namespace OpenVSA.Ui.Tests
         [Fact]
         public void MissingArgumentsAreRefused()
         {
-            Assert.Throws<ArgumentNullException>(() => new MarkerWindowSource(null));
+            // Both ways of naming the collection, because there are two constructors and only one
+            // of them checked its argument before.
+            Assert.Throws<ArgumentNullException>(
+                () => new MarkerWindowSource((MarkerCollection)null));
+            Assert.Throws<ArgumentNullException>(
+                () => new MarkerWindowSource((Func<MarkerCollection>)null));
             Assert.Throws<ArgumentNullException>(() => new ContextWindowSource().Set(null, ""));
             Assert.Throws<ArgumentNullException>(
                 () => new ToolWindowLog(ToolWindow.Output).Append(null));
