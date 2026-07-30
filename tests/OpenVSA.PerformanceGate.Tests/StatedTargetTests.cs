@@ -55,6 +55,110 @@ namespace OpenVSA.PerformanceGate.Tests
         }
 
         [Fact]
+        public void AColdStartIsJudgedOnItsColdFigureAndNotOnTheWarmMean()
+        {
+            // The defect this exists to stop. REQ-NFR-025 states a COLD start of 3 s, but only the
+            // first launch of a session is cold: the reproducible figure a 15 % regression gate needs
+            // is the warm mean over the launches after it. Reported alone, that warm mean was then
+            // compared against the cold requirement -- 1.36 s against 3 s, comfortably inside, while
+            // the cold start it was standing in for was 3.29 s and over.
+            var store = new BaselineStore();
+            store.Set(new BaselineEntry(
+                Machine, "ColdStartToFirstTrace", 1.36, 0.02,
+                new System.DateTime(2026, 7, 29, 0, 0, 0, System.DateTimeKind.Utc), "s"));
+
+            GateReport report = new RegressionGate(store).Judge(
+                Machine,
+                new[]
+                {
+                    new TargetMeasurement(
+                        "ColdStartToFirstTrace", 1.36, 0.02, 4, againstStated: 3.29),
+                });
+
+            TargetVerdict v = For(report, "REQ-NFR-025");
+
+            // The warm mean has not regressed against the warm baseline, which is the gate's job...
+            Assert.Equal(PerformanceGate.Verdict.Passed, v.Verdict);
+
+            // ...and the requirement is missed all the same, which is the other question.
+            Assert.True(
+                v.MissesStatedTarget,
+                "3.29 s cold against a stated 3 s has to be reported as a miss.");
+            Assert.Contains("BELOW THE STATED TARGET", report.Render());
+        }
+
+        [Fact]
+        public void AColdStartInsideTheStatedFigureIsNotReportedAsAMiss()
+        {
+            // The other side of it: the distinction must not turn into a gate that always complains.
+            GateReport report = new RegressionGate(new BaselineStore()).Judge(
+                Machine,
+                new[]
+                {
+                    new TargetMeasurement(
+                        "ColdStartToFirstTrace", 1.36, 0.02, 4, againstStated: 2.80),
+                });
+
+            Assert.False(For(report, "REQ-NFR-025").MissesStatedTarget);
+        }
+
+        [Fact]
+        public void AMeasurementThatNamesNoSeparateFigureIsJudgedOnItsMean()
+        {
+            // Every other target asks one question of one population, and must keep behaving as it
+            // did: AgainstStated defaults to the mean rather than to nothing.
+            var measurement = new TargetMeasurement("Spectrum8192Rendered", 45.0, 1.0, 10);
+
+            Assert.Equal(45.0, measurement.AgainstStated);
+            Assert.True(For(Judge(new BaselineStore(), "Spectrum8192Rendered", 45.0), "REQ-NFR-020")
+                .MissesStatedTarget);
+        }
+
+        [Fact]
+        public void ASeparateFigureSurvivesTheHandOffToTheGate()
+        {
+            // The two halves are separate processes, so the figure has to cross a file. One that was
+            // dropped in writing would put the old defect back with no test failing.
+            var written = new[]
+            {
+                new TargetMeasurement("ColdStartToFirstTrace", 1.36, 0.02, 4, againstStated: 3.29),
+            };
+
+            TargetMeasurement read = MeasurementFile.Read(MeasurementFile.Write(written)).Single();
+
+            Assert.Equal(1.36, read.Mean, 6);
+            Assert.Equal(3.29, read.AgainstStated, 6);
+        }
+
+        [Fact]
+        public void AFileFromBeforeTheDistinctionExistedStillReads()
+        {
+            // Four columns, as the format was. The mean stands for both figures, which is what it
+            // meant then -- refusing the file would make an old measurement unreadable rather than
+            // merely less informative.
+            TargetMeasurement read = MeasurementFile.Read(
+                "# REQ-TST-007 run measurements.\n" +
+                "benchmark\tmean\tstddev\tsamples\n" +
+                "ColdStartToFirstTrace\t1.36\t0.02\t4\n").Single();
+
+            Assert.Equal(1.36, read.Mean, 6);
+            Assert.Equal(1.36, read.AgainstStated, 6);
+        }
+
+        [Fact]
+        public void ANonsensicalSeparateFigureIsRefused()
+        {
+            Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                new TargetMeasurement("ColdStartToFirstTrace", 1.36, 0.02, 4, againstStated: 0.0));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                new TargetMeasurement("ColdStartToFirstTrace", 1.36, 0.02, 4, againstStated: -1.0));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() =>
+                new TargetMeasurement(
+                    "ColdStartToFirstTrace", 1.36, 0.02, 4,
+                    againstStated: double.PositiveInfinity));
+        }
+
+        [Fact]
         public void ATargetWithNoMeasurementCannotMissItsFigure()
         {
             GateReport report = new RegressionGate(new BaselineStore())
