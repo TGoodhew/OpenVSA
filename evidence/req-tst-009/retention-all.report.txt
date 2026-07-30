@@ -1,0 +1,7 @@
+﻿OpenVSA retention (REQ-TST-009, diagnosing #356): 5,000 cycles over 0.09 hours, 60 collected samples
+
+  PASSED      REQ-TST-009  The run drove enough cycles to resolve a per-cycle rate — 5000 cycles over 60 collected samples after the first 50
+  PASSED      REQ-TST-009  The samples span the cycles they are fitted over — sampled from cycle 84 to cycle 5000, spanning 4916 of 5000
+  PASSED      REQ-TST-009  Managed memory does not grow with each create-and-destroy cycle — measured -0.9 bytes/cycle ±1.7 bytes over 60 samples after the first 50 cycles, from 17.099 MiB to 17.099 MiB; 2σ upper bound 2.4 bytes/cycle, against the hypothesis of 926.2 bytes/cycle
+
+  CONCLUSION  NOTPERCYCLE — the per-cycle explanation is refuted — 926.2 bytes/cycle is 553.4σ above what was measured, and the 2σ upper bound of 2.4 bytes/cycle excludes it. Whatever rose over eight hours, the cycles did not cause it

@@ -150,6 +150,58 @@ namespace OpenVSA.Hal.Tests
         }
 
         [Fact]
+        public async Task TheRecordOfCommandsSentDoesNotGrowForeverWhileMeasuring()
+        {
+            // Found while diagnosing REQ-TST-009's managed-memory claim. AcquireNextAsync records
+            // two commands for every block, so before the cap this list grew for as long as the
+            // instrument was measuring — an unbounded collection on the acquisition path, which is
+            // the exact fault that requirement's soak exists to catch. It could not have caught this
+            // one: the soak runs against the simulator and never reaches this driver.
+            var instrument = new FakeE4406A();
+
+            using (E4406AFrontEnd frontEnd = Connected(instrument))
+            {
+                AcquisitionPlan plan = frontEnd.Negotiate(new AcquisitionRequest(1e9, 1e6, 2, -10.0));
+                await frontEnd.ConfigureAsync(plan, CancellationToken.None);
+                await frontEnd.ArmAsync(CancellationToken.None);
+
+                int configured = frontEnd.Sent.Count;
+
+                // Enough blocks to fill the record several times over. Uncapped this is thousands of
+                // entries and rising; the assertion is that it stops.
+                const int Blocks = 2000;
+
+                for (int i = 0; i < Blocks; i++)
+                {
+                    using (await frontEnd.AcquireNextAsync(CancellationToken.None))
+                    {
+                    }
+                }
+
+                Assert.True(
+                    frontEnd.Sent.Count <= E4406AFrontEnd.SentCapacity,
+                    "The record holds " + frontEnd.Sent.Count + " commands, over its capacity of " +
+                    E4406AFrontEnd.SentCapacity + ".");
+
+                // And the fixture has to actually overflow it, or the assertion above passes on a
+                // driver with no cap at all.
+                Assert.True(
+                    configured + (Blocks * 2) > E4406AFrontEnd.SentCapacity,
+                    "This test acquires too few blocks to fill the record, so it proves nothing.");
+
+                // What was dropped is counted rather than silently lost, so a long session's
+                // diagnostics read as truncated instead of as a short conversation.
+                Assert.Equal(
+                    configured + (Blocks * 2) - E4406AFrontEnd.SentCapacity,
+                    frontEnd.SentDroppedCount);
+
+                // The most recent commands are the ones kept: an acquisition's own two.
+                Assert.Contains(frontEnd.Sent, c => c.IndexOf("READ", StringComparison.Ordinal) >= 0
+                    || c.IndexOf("FETCh", StringComparison.Ordinal) >= 0);
+            }
+        }
+
+        [Fact]
         public async Task TheTraceIsReadAsInterleavedIqInVolts()
         {
             var instrument = new FakeE4406A();
