@@ -765,7 +765,10 @@ namespace OpenVSA.Ui
             {
                 _traceChooser.Items.Clear();
 
-                foreach (char letter in Documents.Traces)
+                // The active context's windows, not every window open (REQ-DAT-010). Another
+                // context's traces are hidden and are not its to select; listing them would offer
+                // the user a trace that belongs to a measurement they are not looking at.
+                foreach (char letter in _contextSet.Active.Traces)
                 {
                     // Hidden traces are listed too, marked as such: they are still open, and the
                     // chooser is how a user gets back to one in order to show it again.
@@ -790,7 +793,9 @@ namespace OpenVSA.Ui
 
         private int IndexOfTrace(char trace)
         {
-            IReadOnlyList<char> traces = Documents.Traces;
+            // The same list the chooser was filled from, or the selected index would name a
+            // different trace from the one it highlights.
+            IReadOnlyList<char> traces = _contextSet.Active.Traces;
 
             for (int index = 0; index < traces.Count; index++)
             {
@@ -805,13 +810,16 @@ namespace OpenVSA.Ui
 
         private void OnTraceChosenFromToolbar(object sender, SelectionChangedEventArgs e)
         {
+            // Indexed into the list the chooser was filled from: the active context's traces.
+            IReadOnlyList<char> traces = _contextSet.Active.Traces;
+
             if (_followingToolbar || _traceChooser.SelectedIndex < 0 ||
-                _traceChooser.SelectedIndex >= Documents.Traces.Count)
+                _traceChooser.SelectedIndex >= traces.Count)
             {
                 return;
             }
 
-            Documents.ActiveTrace = Documents.Traces[_traceChooser.SelectedIndex];
+            Documents.ActiveTrace = traces[_traceChooser.SelectedIndex];
         }
 
         /// <summary>Takes the active trace's window off the arrangement, or puts it back.</summary>
@@ -1574,7 +1582,11 @@ namespace OpenVSA.Ui
         /// </remarks>
         private ApplicationState StartingPoint(PresetVariant variant)
         {
-            ApplicationState current = CaptureState();
+            // The active context alone, not every context in the session. A preset is one
+            // measurement's setup (REQ-STA-005) and Presets.Apply works on Measurements[0], so a
+            // multi-context state here would reset the pane from whichever context happened to be
+            // first -- which is the active one only until a second context exists.
+            ApplicationState current = ActiveContextState();
 
             if (variant != PresetVariant.Measurement)
             {

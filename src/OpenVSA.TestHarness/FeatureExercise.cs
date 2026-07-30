@@ -13,6 +13,7 @@ using OpenVSA.Dsp.Zoom;
 using OpenVSA.Hal;
 using OpenVSA.Measurement;
 using OpenVSA.Measurement.Channels;
+using OpenVSA.Measurement.Contexts;
 using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
@@ -164,6 +165,7 @@ namespace OpenVSA.TestHarness
                     ExerciseChannelMeasurements(frame, actualToneHz);
                     ExerciseCrossChannelAvailability();
                     ExerciseMarkerCollection(block, frame, actualToneHz);
+                    ExerciseContexts(block, actualToneHz);
                     ExerciseCompositionOrder(block);
                     ExerciseOverlap(block, actualToneHz);
                     ExerciseGating(block, frame);
@@ -1422,6 +1424,136 @@ namespace OpenVSA.TestHarness
         /// <summary>
         /// Runs the real acquisition through the declared pipeline (<c>REQ-TRC-003</c>).
         /// </summary>
+        /// <summary>
+        /// Two measurement contexts over one acquired block (<c>REQ-DAT-010</c>).
+        /// </summary>
+        /// <param name="block">The block the instrument produced.</param>
+        /// <param name="toneHz">Where the generator says its carrier is.</param>
+        /// <remarks>
+        /// The requirement's criterion is two contexts running concurrently against one capture
+        /// session, each with its own trace windows and markers. The unit suite proves that against a
+        /// fake front end; this proves it against a block the instrument really produced, which is the
+        /// only place the claim "one capture session" can be checked against real samples.
+        /// </remarks>
+        private void ExerciseContexts(IqBlock block, double toneHz)
+        {
+            var contexts = new MeasurementContextSet("Bench spectrum");
+            MeasurementContext wide = contexts.Active;
+            MeasurementContext narrow = contexts.Add("Bench narrow");
+
+            wide.Setup.Analysis.Window = WindowType.Uniform;
+            narrow.Setup.Analysis.Window = WindowType.FlatTop;
+
+            wide.AddTrace('A');
+            narrow.AddTrace('B');
+
+            using (var analyser = new ContextAnalyser(contexts))
+            {
+                Step("REQ-DAT-010", "Two contexts analyse one real block, each its own way", () =>
+                {
+                    analyser.Distribute(block);
+
+                    SpectrumFrame fromWide = wide.TakeLatestFrame();
+                    SpectrumFrame fromNarrow = narrow.TakeLatestFrame();
+
+                    try
+                    {
+                        if (fromWide == null || fromNarrow == null)
+                        {
+                            return Failed<string>("a context produced no frame");
+                        }
+
+                        int widePeak = fromWide.IndexOfPeak();
+                        int narrowPeak = fromNarrow.IndexOfPeak();
+
+                        if (widePeak < 0 || narrowPeak < 0)
+                        {
+                            return Failed<string>("a context's frame has no peak");
+                        }
+
+                        // Both found the same carrier, because it is one acquisition; the skirt two
+                        // bins out differs, because a flat-top window spreads a tone further than a
+                        // uniform one. If the two contexts shared a transform, they would agree.
+                        double wideSkirt = fromWide.LevelsDbm[Math.Min(
+                            widePeak + 2, fromWide.PointCount - 1)];
+                        double narrowSkirt = fromNarrow.LevelsDbm[Math.Min(
+                            narrowPeak + 2, fromNarrow.PointCount - 1)];
+
+                        bool sameCarrier =
+                            Math.Abs(fromWide.FrequencyAt(widePeak) - toneHz) <
+                                2.0 * fromWide.BinWidthHz &&
+                            Math.Abs(fromNarrow.FrequencyAt(narrowPeak) - toneHz) <
+                                2.0 * fromNarrow.BinWidthHz;
+
+                        bool differentAnalysis = narrowSkirt > wideSkirt + 3.0;
+
+                        // And each context's markers are its own: one placed on the first is not on
+                        // the second.
+                        wide.Markers.ForTrace('A').AddNormal(fromWide.FrequencyAt(widePeak));
+
+                        bool separateMarkers =
+                            wide.Markers.ForTrace('A').Markers.Count == 1 &&
+                            narrow.Markers.ForTrace('B').Markers.Count == 0;
+
+                        return new Outcome<string>(
+                            sameCarrier && differentAnalysis && separateMarkers,
+                            "one block, two contexts",
+                            "both found the carrier at " +
+                            Hz(fromWide.FrequencyAt(widePeak)) + "; skirt 2 bins out is " +
+                            wideSkirt.ToString("0.0", CultureInfo.CurrentCulture) + " dBm uniform " +
+                            "against " +
+                            narrowSkirt.ToString("0.0", CultureInfo.CurrentCulture) +
+                            " dBm flat-top; markers " +
+                            wide.Markers.ForTrace('A').Markers.Count + " and " +
+                            narrow.Markers.ForTrace('B').Markers.Count);
+                    }
+                    finally
+                    {
+                        // REQ-NFR-002: the shares TakeLatestFrame took, and then the contexts' own.
+                        if (fromWide != null)
+                        {
+                            fromWide.Release();
+                        }
+
+                        if (fromNarrow != null)
+                        {
+                            fromNarrow.Release();
+                        }
+
+                        wide.ClearFrame();
+                        narrow.ClearFrame();
+                    }
+                });
+            }
+
+            Step("REQ-DAT-010", "Both contexts are saved and recalled by name", () =>
+            {
+                wide.Setup.CenterFrequencyHz = block.CenterFrequencyHz;
+                narrow.Setup.CenterFrequencyHz = block.CenterFrequencyHz;
+                narrow.Setup.Kind = MeasurementKind.VectorAnalysis;
+
+                ApplicationState saved = contexts.Capture();
+
+                // A fresh session with the same two names in the other order: matching is by name, so
+                // the order they were made in must not decide which setup lands where.
+                var reopened = new MeasurementContextSet("Bench narrow");
+                reopened.Add("Bench spectrum");
+                reopened.Recall(saved);
+
+                bool ok =
+                    saved.ContextNames().Count == 2 &&
+                    reopened["Bench spectrum"].Setup.Analysis.Window == WindowType.Uniform &&
+                    reopened["Bench narrow"].Setup.Analysis.Window == WindowType.FlatTop &&
+                    reopened["Bench narrow"].Setup.Kind == MeasurementKind.VectorAnalysis;
+
+                return new Outcome<string>(
+                    ok,
+                    string.Join(", ", saved.ContextNames()),
+                    "saved " + saved.ContextNames().Count + " contexts and recalled both into a " +
+                    "session that made them in the opposite order");
+            });
+        }
+
         private void ExerciseCompositionOrder(IqBlock block)
         {
             Step("REQ-TRC-003", "The pipeline runs the stages in the declared order", () =>
