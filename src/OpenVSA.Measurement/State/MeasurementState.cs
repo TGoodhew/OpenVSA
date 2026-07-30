@@ -99,6 +99,27 @@ namespace OpenVSA.Measurement.State
         /// <summary>Analysis window (<c>REQ-DSP-010</c>).</summary>
         public WindowType Window { get; set; } = WindowType.FlatTop;
 
+        /// <summary>
+        /// Whether the measurement is in zero-span/power-spectrum operation (<c>REQ-DSP-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// A mode, not a span of zero hertz — see <see cref="ZeroSpanMeasurement"/> for why. Saved
+        /// because it decides which of <see cref="Window"/> and <see cref="ChannelFilter"/> produced
+        /// the trace, and a recalled setup that lost it would report the wrong one of the two.
+        /// </remarks>
+        public bool ZeroSpan { get; set; }
+
+        /// <summary>
+        /// The channel filter shape that replaces the window in zero span (<c>REQ-DSP-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// Held whatever the mode, and deliberately: a user who leaves zero span and comes back
+        /// should find the filter they chose, exactly as they find the window they chose. Which of
+        /// the two was in force is what <see cref="ZeroSpan"/> records — "so a saved measurement
+        /// records which filter produced it" is the criterion, and it takes both fields to answer.
+        /// </remarks>
+        public ChannelFilterType ChannelFilter { get; set; } = ChannelFilterType.Gaussian;
+
         /// <summary>Which acquisition path (<c>REQ-ACQ-001</c>).</summary>
         public AnalysisPath Path { get; set; } = AnalysisPath.ComplexZoom;
 

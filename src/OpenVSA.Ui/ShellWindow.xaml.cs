@@ -35,6 +35,8 @@ using OpenVSA.Ui.ToolWindows;
 // the DSP namespace would make the word ambiguous in a WPF window of all places.
 using DspWindow = OpenVSA.Dsp.Windowing.Window;
 using WindowType = OpenVSA.Dsp.Windowing.WindowType;
+using ChannelFilters = OpenVSA.Dsp.Windowing.ChannelFilters;
+using ChannelFilterType = OpenVSA.Dsp.Windowing.ChannelFilterType;
 
 namespace OpenVSA.Ui
 {
@@ -270,6 +272,16 @@ namespace OpenVSA.Ui
             }
 
             WindowBox.SelectedIndex = IndexOfWindow(DspWindow.Default);
+
+            // REQ-DSP-012. Both controls are declared in the same grid cell; only the applicable one
+            // is in the grid at all, and FollowZeroSpan is what decides which.
+            foreach (ChannelFilterType filter in ChannelFilters.All)
+            {
+                ChannelFilterBox.Items.Add(ChannelFilters.Describe(filter));
+            }
+
+            ChannelFilterBox.SelectedIndex = 0;
+            FollowZeroSpan();
 
             // The measured rate and the dropped-frame count of REQ-NFR-012 are status-bar figures,
             // not per-frame ones: updating them from the frame handler would put text layout on the
@@ -1849,6 +1861,11 @@ namespace OpenVSA.Ui
             _marshal.Detector = _analysis.Detector;
 
             ApplyAccumulator();
+
+            // REQ-DSP-012, before the early return below: the pane must follow the mode whether the
+            // change came from the pane, the Analysis dialog or a recalled state, and the guard that
+            // follows is only about not echoing a pane edit back into the pane.
+            FollowZeroSpan();
 
             if (_applyingFromPane)
             {
@@ -4288,6 +4305,10 @@ namespace OpenVSA.Ui
 
             // REQ-NFR-012: the dropped-frame count is displayed, not merely counted.
             DroppedText.Content = MeasurementStatusText.DroppedFramesText(_marshal.FramesDropped);
+
+            // REQ-DSP-012: in zero span the measurement's answer is one number, and this is the
+            // cadence to read it at.
+            ReportZeroSpan();
 
             ShowMeasurementStatus();
             ShowStatusFields();

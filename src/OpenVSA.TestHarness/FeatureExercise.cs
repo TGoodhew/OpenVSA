@@ -165,6 +165,7 @@ namespace OpenVSA.TestHarness
                     ExerciseChannelMeasurements(frame, actualToneHz);
                     ExerciseCrossChannelAvailability();
                     ExerciseMarkerCollection(block, frame, actualToneHz);
+                    ExerciseZeroSpan(frame, actualToneHz);
                     ExerciseContexts(block, actualToneHz);
                     ExerciseCompositionOrder(block);
                     ExerciseOverlap(block, actualToneHz);
@@ -1424,6 +1425,85 @@ namespace OpenVSA.TestHarness
         /// <summary>
         /// Runs the real acquisition through the declared pipeline (<c>REQ-TRC-003</c>).
         /// </summary>
+        /// <summary>
+        /// Zero-span operation over the real trace (<c>REQ-DSP-012</c>).
+        /// </summary>
+        /// <param name="frame">The spectrum of the block the instrument produced.</param>
+        /// <param name="toneHz">Where the generator says its carrier is.</param>
+        /// <remarks>
+        /// The control swap is a shell matter and is asserted there. What can only be shown against
+        /// a real acquisition is that the channel filter is <em>applied</em>: that the reading follows
+        /// the shape and the bandwidth rather than being a setting nothing consults.
+        /// </remarks>
+        private void ExerciseZeroSpan(SpectrumFrame frame, double toneHz)
+        {
+            Step("REQ-DSP-012", "A zero-span reading is taken through the channel filter", () =>
+            {
+                int peak = frame.IndexOfPeak();
+
+                if (peak < 0)
+                {
+                    return Failed<string>("the measured frame has no peak");
+                }
+
+                double peakDbm = frame.LevelsDbm[peak];
+
+                // A zero-span channel sits at the TUNE frequency, and this harness deliberately
+                // places the carrier off centre -- which is what makes the pair below a real test
+                // rather than two readings of the same thing.
+                double offsetHz = Math.Abs(toneHz - frame.CenterFrequencyHz);
+                double narrowHz = Math.Max(10.0 * frame.BinWidthHz, 100e3);
+
+                if (!(offsetHz > 2.0 * narrowHz))
+                {
+                    return Failed<string>(
+                        "the carrier is inside the narrow channel, so rejection cannot be shown");
+                }
+
+                // Wide enough to contain the off-centre carrier, and narrow enough to exclude it.
+                double wideHz = 4.0 * offsetHz;
+
+                BandPower narrow = ZeroSpanMeasurement.Power(
+                    frame, ChannelFilterType.Gaussian, narrowHz);
+                BandPower wide = ZeroSpanMeasurement.Power(
+                    frame, ChannelFilterType.Gaussian, wideHz);
+                BandPower unshaped = ZeroSpanMeasurement.Power(
+                    frame, ChannelFilterType.None, narrowHz);
+
+                // The carrier is 3 MHz outside a 300 kHz channel, so the narrow Gaussian must reject
+                // it while the unshaped reading -- which takes the whole analysed span -- still sees
+                // it. A reading that ignored the filter would give the same number twice.
+                bool rejectsOutside = unshaped.TotalDbm - narrow.TotalDbm > 20.0;
+
+                // Widened to contain the carrier, the same filter passes it: a filter that rejected
+                // everything would satisfy the clause above on its own.
+                bool passesInside = wide.TotalDbm > peakDbm - 6.0;
+
+                // And a wider filter can only pass more power than a narrower one at the same centre.
+                bool followsBandwidth = wide.TotalDbm >= narrow.TotalDbm - 0.01;
+
+                double noiseBandwidthHz = ZeroSpanMeasurement.NoiseBandwidthHz(
+                    frame, ChannelFilterType.Gaussian, narrowHz);
+
+                bool noiseBandwidth = Math.Abs(
+                    noiseBandwidthHz / narrowHz -
+                    ChannelFilters.GaussianNoiseBandwidthFactor) < 1e-9;
+
+                return new Outcome<string>(
+                    rejectsOutside && passesInside && followsBandwidth && noiseBandwidth,
+                    "zero span at " + Hz(frame.CenterFrequencyHz),
+                    "carrier " + Hz(offsetHz) + " off the tuned centre, peak " +
+                    peakDbm.ToString("0.00", CultureInfo.CurrentCulture) + " dBm; a " +
+                    Hz(narrowHz) + " Gaussian rejects it to " +
+                    narrow.TotalDbm.ToString("0.00", CultureInfo.CurrentCulture) +
+                    " dBm against unshaped " +
+                    unshaped.TotalDbm.ToString("0.00", CultureInfo.CurrentCulture) +
+                    " dBm, and a " + Hz(wideHz) + " one passes it at " +
+                    wide.TotalDbm.ToString("0.00", CultureInfo.CurrentCulture) +
+                    " dBm; noise bandwidth " + Hz(noiseBandwidthHz));
+            });
+        }
+
         /// <summary>
         /// Two measurement contexts over one acquired block (<c>REQ-DAT-010</c>).
         /// </summary>

@@ -158,9 +158,18 @@
                     <TextBlock Grid.Row="5" Grid.Column="1" x:Name="ReferenceLevelRange" FontSize="10"
                                Foreground="{DynamicResource OpenVSA.Chrome.MutedForeground}" Margin="0,0,0,8" TextWrapping="Wrap" />
 
-                    <TextBlock Grid.Row="6" Grid.Column="0" Text="Window" Margin="0,4,8,4"
+                    <!--
+                      REQ-DSP-012: in zero span this row is the Channel Filter Shape's. The two
+                      controls share the cell and only the applicable one is in the grid at all -
+                      the other is removed, not hidden, because the requirement asks for no
+                      window-type selection to remain REACHABLE.
+                    -->
+                    <TextBlock Grid.Row="6" Grid.Column="0" x:Name="WindowLabel" Text="Window" Margin="0,4,8,4"
                                VerticalAlignment="Center" />
                     <ComboBox Grid.Row="6" Grid.Column="1" x:Name="WindowBox" Margin="0,4,0,8" AutomationProperties.AutomationId="Window" />
+                    <ComboBox Grid.Row="6" Grid.Column="1" x:Name="ChannelFilterBox" Margin="0,4,0,8"
+                              AutomationProperties.AutomationId="ChannelFilterShape"
+                              SelectionChanged="OnChannelFilterSelectionChanged" />
 
                     <TextBlock Grid.Row="7" Grid.Column="0" Text="Points" Margin="0,4,8,4"
                                VerticalAlignment="Center" />
