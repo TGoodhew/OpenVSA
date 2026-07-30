@@ -5,7 +5,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using OpenVSA.Measurement.Markers;
+using OpenVSA.Ui.Layout;
 using OpenVSA.Ui.Menus;
+using OpenVSA.Ui.Theming;
 using Xunit;
 
 namespace OpenVSA.Ui.Tests
@@ -355,6 +357,43 @@ namespace OpenVSA.Ui.Tests
                 shell.RefreshMarkers();
 
                 Assert.Equal("No markers", chooser.Items[0]);
+            });
+        }
+
+        [Fact]
+        public void TheActiveTraceWindowIsFramedInTheAccentColour()
+        {
+            // REQ-UI-083's Accent key is "the colour that marks the thing currently in force", and
+            // with several windows tiled the thing in force is the one the shell drives. It had no
+            // consumer anywhere in the tree until this, so the key was complete in both shipped
+            // themes and reached nothing on screen -- see #408.
+            //
+            // The second half is the part that would have been missed: selecting a trace does not
+            // rebuild the arrangement, so a frame coloured only where the cell is built keeps the
+            // accent on whichever window was active when the layout was last laid out.
+            _host.Run(() =>
+            {
+                var shell = Built();
+
+                TraceDocumentArea area = shell.DocumentArea;
+
+                area.AddTrace('B');
+
+                // Each trace in its own cell. Left in the default arrangement the two share one tab
+                // group, so they share one frame — and a frame round a cell holding the active
+                // trace is accented whichever tab is on top, which is right but says nothing about
+                // the accent moving.
+                area.ApplyLayout(TraceLayoutPreset.Stack(2));
+
+                area.ActiveTrace = 'A';
+
+                Assert.Equal(ChromeKeys.Accent, area.FrameKeyFor('A'));
+                Assert.Equal(ChromeKeys.Border, area.FrameKeyFor('B'));
+
+                area.ActiveTrace = 'B';
+
+                Assert.Equal(ChromeKeys.Border, area.FrameKeyFor('A'));
+                Assert.Equal(ChromeKeys.Accent, area.FrameKeyFor('B'));
             });
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using OpenVSA.Ui.Theming;
 using Xunit;
 
 namespace OpenVSA.Architecture.Tests
@@ -134,6 +135,130 @@ namespace OpenVSA.Architecture.Tests
                 "REQ-UI-083: every themed value resolves through a resource dictionary keyed by " +
                 "name. These name a colour instead:" + Environment.NewLine +
                 string.Join(Environment.NewLine, offences));
+        }
+
+        /// <summary>
+        /// Chrome keys that no code reads yet, each with the issue that will finish them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// These three are drawn by WPF's own control templates — a selected row, a highlighted menu
+        /// item, a disabled caption — and under the stock theme those templates take their colours
+        /// from hard-coded brushes rather than from anything a resource dictionary can reach.
+        /// Measured, not assumed: assigning <c>SystemColors.HighlightBrushKey</c> and selecting a
+        /// row leaves the item rendering <c>#3DDADADA</c>, the stock brush, and not the theme's.
+        /// Reaching them needs explicit styles or templates, which is a colour decision that wants a
+        /// screen, and is <strong>#408</strong>.
+        /// </para>
+        /// <para>
+        /// The list is here rather than the rule being dropped, so the other fourteen keys are still
+        /// guarded and a fifteenth cannot quietly join these. <see
+        /// cref="AnExemptionThatIsNoLongerNeededFailsRatherThanLingering"/> is what stops it becoming
+        /// permanent.
+        /// </para>
+        /// </remarks>
+        private static readonly string[] KeysAwaitingStyling =
+        {
+            ChromeKeys.DisabledForeground,
+            ChromeKeys.SelectionBackground,
+            ChromeKeys.SelectionForeground,
+        };
+
+        [Fact]
+        public void AnExemptionThatIsNoLongerNeededFailsRatherThanLingering()
+        {
+            // An exemption list that outlives its reason is how a rule stops meaning anything: the
+            // key gets a consumer, nobody removes the entry, and the guard silently stops covering
+            // it for ever. So a key that IS consumed must not be on the list.
+            var stale = KeysAwaitingStyling.Where(IsConsumed).ToList();
+
+            Assert.True(
+                stale.Count == 0,
+                "These chrome keys now have consumers and must come off KeysAwaitingStyling, or " +
+                "they stay permanently unguarded:" + Environment.NewLine +
+                string.Join(Environment.NewLine, stale));
+        }
+
+        [Fact]
+        public void EveryDeclaredChromeKeyHasAConsumer()
+        {
+            // A key that every theme defines and nothing reads is worse than a missing one: the
+            // theme looks complete, the colour is there to be edited, and the control on screen goes
+            // on painting itself with the Windows default. That was the reported symptom of #408 —
+            // Accent, DisabledForeground, SelectionBackground and SelectionForeground were all
+            // complete in both shipped dictionaries and reached nothing at all.
+            //
+            // BOTH SPELLINGS ARE SEARCHED, and that is not incidental. Code says
+            // ChromeKeys.SelectionBackground; XAML and resource lookups say the string
+            // "OpenVSA.Chrome.SelectionBackground". A search for only the string form reported seven
+            // unused keys when three of those seven were in use under the other spelling.
+            var orphaned = ChromeKeys.All
+                .Where(key => !KeysAwaitingStyling.Contains(key, StringComparer.Ordinal))
+                .Where(key => !IsConsumed(key))
+                .ToList();
+
+            Assert.True(
+                orphaned.Count == 0,
+                "REQ-UI-083: these chrome keys are defined by every theme and read by nothing, so " +
+                "the controls they name keep the system's colours and do not follow a theme " +
+                "change:" + Environment.NewLine + string.Join(Environment.NewLine, orphaned));
+        }
+
+        [Fact]
+        public void TheConsumerRuleWouldNoticeAKeyThatLostItsConsumer()
+        {
+            // The rule above passes by finding something for every key, so it would also pass if the
+            // search were broken and matched everything. This asserts the search discriminates: a
+            // key that no theme declares, and that therefore nothing can be consuming, must come out
+            // as unused under exactly the same lookup.
+            string ui = Path.Combine(RepositoryRoot(), "src", "OpenVSA.Ui");
+
+            string invented = ChromeKeys.Prefix + "NoSuchKeyAsThis";
+            string inventedMember = "ChromeKeys.NoSuchKeyAsThis";
+
+            bool found = SourceFiles(ui).Any(file =>
+            {
+                string text = File.ReadAllText(file);
+
+                return text.IndexOf(invented, StringComparison.Ordinal) >= 0 ||
+                       text.IndexOf(inventedMember, StringComparison.Ordinal) >= 0;
+            });
+
+            Assert.False(found, "The consumer search matches a key that does not exist.");
+        }
+
+        /// <summary>Whether anything outside the declaration and the dictionaries reads a key.</summary>
+        /// <param name="key">The full key, prefix and all.</param>
+        /// <remarks>
+        /// <strong>Both spellings, and that is not incidental.</strong> Code says
+        /// <c>ChromeKeys.SelectionBackground</c>; XAML and resource lookups say the string
+        /// <c>"OpenVSA.Chrome.SelectionBackground"</c>. A search for only the string form once
+        /// reported seven unused keys when three of the seven were in use under the other spelling.
+        /// </remarks>
+        private static bool IsConsumed(string key)
+        {
+            string asMember = "ChromeKeys." + key.Substring(ChromeKeys.Prefix.Length);
+
+            foreach (string file in SourceFiles(Path.Combine(RepositoryRoot(), "src", "OpenVSA.Ui")))
+            {
+                // The declaration itself and the dictionaries that define the keys are where they
+                // are written down, not where they are used.
+                if (file.IndexOf("ChromeKeys.cs", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    file.IndexOf("Themes" + "\\", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    continue;
+                }
+
+                string text = File.ReadAllText(file);
+
+                if (text.IndexOf(asMember, StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(key, StringComparison.Ordinal) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         [Fact]

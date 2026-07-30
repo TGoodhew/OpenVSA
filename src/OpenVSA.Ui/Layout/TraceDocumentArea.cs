@@ -53,6 +53,17 @@ namespace OpenVSA.Ui.Layout
         /// <summary>Traces that are open but have no window (<c>REQ-UI-062</c>).</summary>
         private readonly HashSet<char> _hidden = new HashSet<char>();
         private readonly List<TraceTabStrip> _strips = new List<TraceTabStrip>();
+
+        /// <summary>One frame per occupied slot, in the same order as <see cref="_strips"/>.</summary>
+        /// <remarks>
+        /// Kept so that selecting a trace can move the accent without rebuilding the arrangement.
+        /// The lists are filled together in <c>BuildCell</c> and cleared together, which is what
+        /// makes indexing one by another's index sound.
+        /// </remarks>
+        private readonly List<Border> _frames = new List<Border>();
+
+        /// <summary>The chrome key each frame's border currently follows.</summary>
+        private readonly List<string> _frameKeys = new List<string>();
         private readonly TraceLayoutHistory _history = new TraceLayoutHistory();
 
         private IReadOnlyList<TraceSlot> _slots =
@@ -111,8 +122,9 @@ namespace OpenVSA.Ui.Layout
 
                 _active = value;
 
-                foreach (TraceTabStrip strip in _strips)
+                for (int index = 0; index < _strips.Count; index++)
                 {
+                    TraceTabStrip strip = _strips[index];
                     bool holdsIt = Holds(strip.Traces, value);
 
                     if (holdsIt)
@@ -124,6 +136,15 @@ namespace OpenVSA.Ui.Layout
                     // has a tab on top, so bolding each group's own would make every tiled trace
                     // look active at once.
                     strip.HighlightsActive = holdsIt;
+
+                    // And the same for the frame round it. Recoloured here rather than only where
+                    // the cell is built, because selecting a trace does not rebuild the
+                    // arrangement — without this the accent would stay on whichever window happened
+                    // to be active when the layout was last built.
+                    if (index < _frames.Count)
+                    {
+                        ApplyFrameKey(index, holdsIt);
+                    }
                 }
 
                 Raise(ActiveTraceChanged, value);
@@ -439,6 +460,8 @@ namespace OpenVSA.Ui.Layout
             {
                 _canvas.Children.Clear();
                 _strips.Clear();
+                _frames.Clear();
+                _frameKeys.Clear();
                 return;
             }
 
@@ -456,6 +479,8 @@ namespace OpenVSA.Ui.Layout
 
             _canvas.Children.Clear();
             _strips.Clear();
+            _frames.Clear();
+            _frameKeys.Clear();
 
             foreach (TraceSlot slot in _slots)
             {
@@ -518,12 +543,56 @@ namespace OpenVSA.Ui.Layout
             // The frame round a trace window is chrome, not plot surface: REQ-UI-081 draws the line
             // at the graticule, and a resource reference is what makes this side of it follow a
             // theme change (REQ-UI-083).
-            frame.SetResourceReference(Border.BorderBrushProperty, Theming.ChromeKeys.Border);
+            _frames.Add(frame);
+            _frameKeys.Add(null);
+            ApplyFrameKey(_frames.Count - 1, holdsActive);
 
             Canvas.SetLeft(frame, slot.Left);
             Canvas.SetTop(frame, slot.Top);
 
             return frame;
+        }
+
+        /// <summary>
+        /// Draws a cell's frame in the accent colour when it holds the active trace, and in the
+        /// ordinary border colour otherwise.
+        /// </summary>
+        /// <param name="frame">The cell's frame.</param>
+        /// <param name="holdsActive">Whether the active trace is in this cell.</param>
+        /// <remarks>
+        /// <c>ChromeKeys.Accent</c> is documented as "the colour that marks the thing currently in
+        /// force", and with several windows tiled the thing in force is which one the shell is
+        /// driving. It had no consumer anywhere until this — see <c>ChromeKeyConsumersTests</c>,
+        /// which now fails the build if any declared key goes back to having none. A resource
+        /// reference rather than a brush, so both colours follow a theme change.
+        /// </remarks>
+        private void ApplyFrameKey(int index, bool holdsActive)
+        {
+            string key = holdsActive ? Theming.ChromeKeys.Accent : Theming.ChromeKeys.Border;
+
+            _frames[index].SetResourceReference(Border.BorderBrushProperty, key);
+            _frameKeys[index] = key;
+        }
+
+        /// <summary>The chrome key the frame round a trace draws its border from.</summary>
+        /// <param name="trace">The trace's letter.</param>
+        /// <returns>The key, or <c>null</c> if that trace has no frame.</returns>
+        /// <remarks>
+        /// Exposed so a test can assert which key a frame follows rather than which colour it
+        /// happens to be. Two keys may hold the same colour in some theme, and then a comparison of
+        /// brushes would pass on a frame wired to the wrong one.
+        /// </remarks>
+        internal string FrameKeyFor(char trace)
+        {
+            for (int index = 0; index < _strips.Count && index < _frameKeys.Count; index++)
+            {
+                if (Holds(_strips[index].Traces, trace))
+                {
+                    return _frameKeys[index];
+                }
+            }
+
+            return null;
         }
 
         private void AddSplitters()
