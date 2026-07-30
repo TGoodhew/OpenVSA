@@ -89,6 +89,27 @@ namespace OpenVSA.Hal.Visa
         /// <summary>Samples used to measure the instrument's transfer rate at connect.</summary>
         private const int ThroughputProbeSamples = 1024;
 
+        /// <summary>
+        /// Commands retained by <see cref="Sent"/> before the oldest are dropped.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>It has to be bounded, and it was not.</strong> <see cref="AcquireNextAsync"/>
+        /// records two commands for every block it acquires, so an uncapped list grows for as long
+        /// as the instrument is measuring — the exact unbounded growth <c>REQ-TST-009</c>'s soak
+        /// exists to catch, and the soak would never have caught this one because it runs against
+        /// the simulator. Found while diagnosing that requirement's managed-memory claim.
+        /// </para>
+        /// <para>
+        /// A thousand, and the oldest dropped rather than the newest refused: the connect and
+        /// configure conversation is about forty commands, so a session keeps all of it and several
+        /// hundred acquisitions besides, and a reconfiguration part way through a long run — which
+        /// is the thing a diagnostic is actually read for — stays visible instead of being crowded
+        /// out by the repeat of two invariant strings.
+        /// </para>
+        /// </remarks>
+        public const int SentCapacity = 1000;
+
         private readonly Func<string, IInstrumentSession> _openSession;
         private string _resourceName;
         private readonly List<string> _sent = new List<string>();
@@ -101,6 +122,7 @@ namespace OpenVSA.Hal.Visa
         private string _priorMode;
         private double _priorCenterFrequencyHz;
         private long _sequenceNumber;
+        private long _sentDropped;
         private float[] _scratch;
         private bool _disposed;
 
@@ -145,10 +167,23 @@ namespace OpenVSA.Hal.Visa
         /// <inheritdoc />
         public event EventHandler<FrontEndEvent> Notification;
 
-        /// <summary>Commands sent since construction, for diagnostics and for asserting order.</summary>
+        /// <summary>
+        /// The most recent commands sent, for diagnostics and for asserting order.
+        /// </summary>
+        /// <remarks>
+        /// Bounded by <see cref="SentCapacity"/>; see it for why it has to be. <see
+        /// cref="SentDroppedCount"/> says how many fell off the front, so a reader of a long
+        /// session's diagnostics can tell a short conversation from a truncated one.
+        /// </remarks>
         public IReadOnlyList<string> Sent
         {
             get { lock (_sent) { return _sent.ToArray(); } }
+        }
+
+        /// <summary>Commands dropped from <see cref="Sent"/> because it was full.</summary>
+        public long SentDroppedCount
+        {
+            get { lock (_sent) { return _sentDropped; } }
         }
 
         /// <summary>The information bandwidth the instrument reported it was actually using, in hertz.</summary>
@@ -943,6 +978,12 @@ namespace OpenVSA.Hal.Visa
             lock (_sent)
             {
                 _sent.Add(command);
+
+                while (_sent.Count > SentCapacity)
+                {
+                    _sent.RemoveAt(0);
+                    _sentDropped++;
+                }
             }
         }
 

@@ -55,6 +55,13 @@ namespace OpenVSA.Soak
                     options.JudgeOnly);
             }
 
+            if (options.JudgeCyclesOnly != null)
+            {
+                return ReportRetention(
+                    new RetentionGate().Judge(SoakLog.ReadFile(options.JudgeCyclesOnly)),
+                    options.JudgeCyclesOnly);
+            }
+
             // As App does, and for the same reason: every layer below asserts that it is not doing
             // DSP or I/O on this thread, and the assertion needs to know which thread it is.
             ThreadAffinity.MarkUiThread();
@@ -82,6 +89,74 @@ namespace OpenVSA.Soak
 
             return report.Passed ? 0 : 1;
         }
+
+        /// <summary>
+        /// Prints and files a retention run's conclusion.
+        /// </summary>
+        /// <param name="report">What the gate concluded.</param>
+        /// <param name="logPath">The log it read.</param>
+        /// <returns>
+        /// Zero when the run decided the question, either way. A refutation is a result: this run
+        /// exists to choose between two explanations, and it has done its job when it chooses.
+        /// </returns>
+        internal static int ReportRetention(RetentionReport report, string logPath)
+        {
+            Console.WriteLine();
+            Console.WriteLine(report.Render());
+
+            string reportPath = Path.ChangeExtension(logPath, ".report.txt");
+
+            try
+            {
+                File.WriteAllText(reportPath, report.Render(), Encoding.UTF8);
+                Console.WriteLine("  report  " + reportPath);
+                Console.WriteLine("  samples " + logPath);
+            }
+            catch (IOException failure)
+            {
+                Console.WriteLine("  (the report could not be written: " + failure.Message + ")");
+            }
+
+            return report.Decided ? 0 : 1;
+        }
+    }
+
+    /// <summary>Which part of a create-and-destroy cycle to drive.</summary>
+    /// <remarks>
+    /// Attribution. If cycles do retain memory, the next question is which half — and a run that can
+    /// drive the traces alone and the tool windows alone answers it without anyone reading code and
+    /// guessing.
+    /// </remarks>
+    internal enum CycleParts
+    {
+        /// <summary>Three traces and two tool windows, as the soak's own cycle does.</summary>
+        All = 0,
+
+        /// <summary>Three traces opened and closed, and no tool windows.</summary>
+        Traces,
+
+        /// <summary>Two tool windows shown and hidden, and no traces.</summary>
+        Tools,
+
+        /// <summary>
+        /// Nothing at all: the control experiment, which measures the measuring.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A run of this kind drives no windows and no traces, so every sample sees a shell in the
+        /// same state as the last one. Anything the fit then finds is retained by the sampling — by
+        /// <c>Process.Refresh</c>, by the forced collection, by writing the log — and not by the
+        /// product.
+        /// </para>
+        /// <para>
+        /// <strong>Why it is needed.</strong> Two runs over the same 5,000 cycles and the same six
+        /// minutes, differing only in taking 60 samples or 619, disagreed about the slope: −0.9 ±1.7
+        /// against +4.6 ±0.5 bytes a cycle. A difference that depends on how often it is measured
+        /// belongs to the measuring, and until it is subtracted, every figure this harness reports
+        /// about the product carries it.
+        /// </para>
+        /// </remarks>
+        None,
     }
 
     /// <summary>What the host was asked to do.</summary>
@@ -95,9 +170,26 @@ namespace OpenVSA.Soak
 
         internal int CollectEvery { get; private set; } = 10;
 
+        /// <summary>
+        /// Cycles to drive back to back, or zero for a time-based soak.
+        /// </summary>
+        /// <remarks>
+        /// This is the switch between the two runs the harness can do. A soak spends a stated time
+        /// and drives cycles occasionally; a retention run drives a stated number of cycles as fast
+        /// as the shell allows and spends whatever time that takes. Only the second can separate a
+        /// rise per cycle from a rise per hour — see <c>RetentionGate</c> for why.
+        /// </remarks>
+        internal int Cycles { get; private set; }
+
+        internal CycleParts CycleParts { get; private set; } = CycleParts.All;
+
+        internal int CycleSamples { get; private set; } = 40;
+
         internal string LogPath { get; private set; }
 
         internal string JudgeOnly { get; private set; }
+
+        internal string JudgeCyclesOnly { get; private set; }
 
         internal static Options Parse(string[] args)
         {
@@ -148,9 +240,33 @@ namespace OpenVSA.Soak
                         i++;
                         break;
 
+                    case "--cycles":
+                        if (!int.TryParse(value, out int count) || count <= 0) { return null; }
+                        options.Cycles = count;
+                        i++;
+                        break;
+
+                    case "--cycle-parts":
+                        if (!TryReadParts(value, out CycleParts parts)) { return null; }
+                        options.CycleParts = parts;
+                        i++;
+                        break;
+
+                    case "--cycle-samples":
+                        if (!int.TryParse(value, out int wanted) || wanted < 3) { return null; }
+                        options.CycleSamples = wanted;
+                        i++;
+                        break;
+
                     case "--judge":
                         if (value == null) { return null; }
                         options.JudgeOnly = value;
+                        i++;
+                        break;
+
+                    case "--judge-cycles":
+                        if (value == null) { return null; }
+                        options.JudgeCyclesOnly = value;
                         i++;
                         break;
 
@@ -164,15 +280,43 @@ namespace OpenVSA.Soak
                 }
             }
 
+            if (options.JudgeOnly != null && options.JudgeCyclesOnly != null)
+            {
+                Console.WriteLine("One log is judged by one gate. Give --judge or --judge-cycles.");
+                return null;
+            }
+
             if (options.LogPath == null)
             {
                 options.LogPath = Path.Combine(
                     Path.GetDirectoryName(typeof(Options).Assembly.Location) ?? ".",
-                    "soak-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) +
+                    (options.Cycles > 0 ? "retention-" : "soak-") +
+                    DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) +
                     ".tsv");
             }
 
             return options;
+        }
+
+        private static bool TryReadParts(string text, out CycleParts parts)
+        {
+            parts = CycleParts.All;
+
+            if (text == null)
+            {
+                return false;
+            }
+
+            switch (text.ToLowerInvariant())
+            {
+                case "all": parts = CycleParts.All; return true;
+                case "traces": parts = CycleParts.Traces; return true;
+                case "tools": parts = CycleParts.Tools; return true;
+                case "none": parts = CycleParts.None; return true;
+                default:
+                    Console.WriteLine("--cycle-parts takes all, traces, tools or none.");
+                    return false;
+            }
         }
 
         internal static void Usage()
@@ -185,7 +329,15 @@ namespace OpenVSA.Soak
             Console.WriteLine("  --cycle-minutes N    how often to create and destroy windows (default 5)");
             Console.WriteLine("  --collect-every N    force a collection every Nth sample (default 10)");
             Console.WriteLine("  --log PATH           where to write the samples");
-            Console.WriteLine("  --judge PATH         judge an existing log and exit, running nothing");
+            Console.WriteLine("  --judge PATH         judge an existing soak log and exit, running nothing");
+            Console.WriteLine();
+            Console.WriteLine("A retention run instead — cycles as fast as the shell allows, to tell a rise");
+            Console.WriteLine("per cycle from a rise per hour (see RetentionGate):");
+            Console.WriteLine();
+            Console.WriteLine("  --cycles N           drive N cycles back to back rather than soaking");
+            Console.WriteLine("  --cycle-parts WHICH  all (default), traces, tools, or none for a control");
+            Console.WriteLine("  --cycle-samples N    how many times to measure the floor (default 40)");
+            Console.WriteLine("  --judge-cycles PATH  judge an existing retention log and exit");
             Console.WriteLine();
             Console.WriteLine("Exits 0 when every claim holds, 1 when one does not, 2 on a bad command line.");
         }
@@ -233,12 +385,24 @@ namespace OpenVSA.Soak
 
         internal int Run()
         {
-            Console.WriteLine("OpenVSA soak (REQ-TST-009)");
-            Console.WriteLine("  duration  " + _options.Hours.ToString("0.###", CultureInfo.InvariantCulture) + " hours");
-            Console.WriteLine("  sampling  every " + _options.SampleSeconds.ToString("0.#", CultureInfo.InvariantCulture) + " s");
-            Console.WriteLine("  cycling   every " + _options.CycleMinutes.ToString("0.#", CultureInfo.InvariantCulture) + " min");
-            Console.WriteLine("  log       " + _options.LogPath);
-            Console.WriteLine();
+            if (_options.Cycles > 0)
+            {
+                Console.WriteLine("OpenVSA retention run (REQ-TST-009, diagnosing #356)");
+                Console.WriteLine("  cycles    " + _options.Cycles.ToString("N0", CultureInfo.InvariantCulture) + ", back to back");
+                Console.WriteLine("  driving   " + _options.CycleParts.ToString().ToLowerInvariant());
+                Console.WriteLine("  sampling  " + _options.CycleSamples + " measurements of the collected floor");
+                Console.WriteLine("  log       " + _options.LogPath);
+                Console.WriteLine();
+            }
+            else
+            {
+                Console.WriteLine("OpenVSA soak (REQ-TST-009)");
+                Console.WriteLine("  duration  " + _options.Hours.ToString("0.###", CultureInfo.InvariantCulture) + " hours");
+                Console.WriteLine("  sampling  every " + _options.SampleSeconds.ToString("0.#", CultureInfo.InvariantCulture) + " s");
+                Console.WriteLine("  cycling   every " + _options.CycleMinutes.ToString("0.#", CultureInfo.InvariantCulture) + " min");
+                Console.WriteLine("  log       " + _options.LogPath);
+                Console.WriteLine();
+            }
 
             var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
 
@@ -249,17 +413,18 @@ namespace OpenVSA.Soak
 
             using (_log)
             {
-                _log.Write(SoakLog.Preamble(
-                    _options.Hours.ToString("0.###", CultureInfo.InvariantCulture) +
-                    " hours requested, sampling every " +
-                    _options.SampleSeconds.ToString("0.#", CultureInfo.InvariantCulture) +
-                    " s, started " + DateTime.Now.ToString("u", CultureInfo.InvariantCulture)));
+                _log.Write(SoakLog.Preamble(_options.Cycles > 0
+                    ? _options.Cycles.ToString(CultureInfo.InvariantCulture) +
+                      " cycles requested (" + _options.CycleParts.ToString().ToLowerInvariant() +
+                      "), started " + DateTime.Now.ToString("u", CultureInfo.InvariantCulture)
+                    : _options.Hours.ToString("0.###", CultureInfo.InvariantCulture) +
+                      " hours requested, sampling every " +
+                      _options.SampleSeconds.ToString("0.#", CultureInfo.InvariantCulture) +
+                      " s, started " + DateTime.Now.ToString("u", CultureInfo.InvariantCulture)));
 
                 application.Startup += (sender, e) => Begin();
                 application.Run();
             }
-
-            SoakReport report = new EnduranceGate(_options.Hours).Judge(SoakLog.ReadFile(_options.LogPath));
 
             if (_faults > 0)
             {
@@ -269,7 +434,15 @@ namespace OpenVSA.Soak
                 Console.WriteLine("  " + _faults + " sample(s) or cycle(s) failed during the run.");
             }
 
-            return Program.Report(report, _options.LogPath);
+            if (_options.Cycles > 0)
+            {
+                return Program.ReportRetention(
+                    new RetentionGate().Judge(SoakLog.ReadFile(_options.LogPath)), _options.LogPath);
+            }
+
+            return Program.Report(
+                new EnduranceGate(_options.Hours).Judge(SoakLog.ReadFile(_options.LogPath)),
+                _options.LogPath);
         }
 
         private void Begin()
@@ -295,6 +468,13 @@ namespace OpenVSA.Soak
             Connect();
 
             _clock.Start();
+
+            if (_options.Cycles > 0)
+            {
+                Retention();
+                return;
+            }
+
             _nextCycleSeconds = _options.CycleMinutes * 60.0;
 
             // A timer rather than a loop: the dispatcher has to keep pumping, because a shell that
@@ -308,6 +488,58 @@ namespace OpenVSA.Soak
             ticker.Start();
 
             Sample();
+        }
+
+        /// <summary>
+        /// Drives cycles back to back, measuring the collected floor as it goes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A loop rather than a timer, and deliberately the opposite choice from the soak's. The
+        /// soak spends a stated time and needs the dispatcher to go on drawing between samples; this
+        /// spends a stated number of cycles and wants the time between them as short as possible, so
+        /// that elapsed hours — and anything that grows with them — cannot account for what it sees.
+        /// The dispatcher still pumps, because every invoke settles it.
+        /// </para>
+        /// <para>
+        /// <strong>The acquisition is left running.</strong> It makes the run slower and it adds
+        /// nothing this is measuring, but it is what the eight-hour run did, and a cycle driven in a
+        /// quieter shell is not the cycle whose retention is in question.
+        /// </para>
+        /// </remarks>
+        private void Retention()
+        {
+            int every = Math.Max(1, _options.Cycles / Math.Max(1, _options.CycleSamples - 1));
+
+            // Cycle zero, so the fit has a point before anything was created and destroyed.
+            Sample(forceCollect: true);
+
+            for (int i = 1; i <= _options.Cycles; i++)
+            {
+                try
+                {
+                    Cycle(_options.CycleParts);
+                }
+                catch (Exception failure)
+                {
+                    _faults++;
+                    Console.WriteLine(
+                        "  [cycle " + i + "] " + failure.GetType().Name + ": " + failure.Message);
+                }
+
+                if (i % every == 0 || i == _options.Cycles)
+                {
+                    Sample(forceCollect: true);
+
+                    Console.WriteLine(
+                        "  [" + Elapsed() + "] cycle " +
+                        i.ToString("N0", CultureInfo.InvariantCulture) + " of " +
+                        _options.Cycles.ToString("N0", CultureInfo.InvariantCulture) + ", " +
+                        Mib(GC.GetTotalMemory(false)) + " managed");
+                }
+            }
+
+            Finish();
         }
 
         private void Connect()
@@ -340,7 +572,7 @@ namespace OpenVSA.Soak
             {
                 if (_clock.Elapsed.TotalSeconds >= _nextCycleSeconds)
                 {
-                    Cycle();
+                    Cycle(CycleParts.All);
                     _nextCycleSeconds += _options.CycleMinutes * 60.0;
                 }
 
@@ -364,40 +596,63 @@ namespace OpenVSA.Soak
         /// <summary>
         /// Creates and destroys windows and traces, which is what the handle claim is about.
         /// </summary>
+        /// <param name="parts">Which half of the cycle to drive.</param>
         /// <remarks>
         /// Three traces and two tool windows, opened and then closed again. <c>REQ-TST-009</c> asks
         /// that the counts "return to their starting range after windows and traces are created and
         /// destroyed repeatedly" — so something has to be repeatedly created and destroyed, and a
         /// soak that only sat there would answer nothing.
         /// </remarks>
-        private void Cycle()
+        private void Cycle(CycleParts parts)
         {
-            ToolBar traces = _driver.Toolbar("Trace");
-            UIElement newTrace = ShellDriver.Control(traces, "New");
-            UIElement closeTrace = ShellDriver.Control(traces, "Close");
+            bool traces = parts == CycleParts.All || parts == CycleParts.Traces;
+            bool tools = parts == CycleParts.All || parts == CycleParts.Tools;
+            UIElement closeTrace = null;
 
-            for (int i = 0; i < 3; i++)
+            if (traces)
             {
-                _driver.Invoke(newTrace);
+                ToolBar bar = _driver.Toolbar("Trace");
+                UIElement newTrace = ShellDriver.Control(bar, "New");
+
+                closeTrace = ShellDriver.Control(bar, "Close");
+
+                for (int i = 0; i < 3; i++)
+                {
+                    _driver.Invoke(newTrace);
+                }
             }
 
-            Toggle("Window", "Output");
-            Toggle("Marker", "Markers Window");
-
-            Toggle("Window", "Output");
-            Toggle("Marker", "Markers Window");
-
-            // Back to one: the shell refuses to close the last trace, so this leaves the count where
-            // it started rather than trying to close it.
-            while (_shell.DocumentArea.Traces.Count > 1)
+            if (tools)
             {
-                int before = _shell.DocumentArea.Traces.Count;
+                Toggle("Window", "Output");
+                Toggle("Marker", "Markers Window");
 
-                _driver.Invoke(closeTrace);
+                Toggle("Window", "Output");
+                Toggle("Marker", "Markers Window");
+            }
 
-                if (_shell.DocumentArea.Traces.Count >= before)
+            if (parts == CycleParts.None)
+            {
+                // The control still lets the dispatcher run. A shell that stopped drawing between
+                // samples would not be the same shell the other runs measured, and the comparison
+                // would be with something else.
+                _driver.Settle();
+            }
+
+            if (traces)
+            {
+                // Back to one: the shell refuses to close the last trace, so this leaves the count
+                // where it started rather than trying to close it.
+                while (_shell.DocumentArea.Traces.Count > 1)
                 {
-                    break;
+                    int before = _shell.DocumentArea.Traces.Count;
+
+                    _driver.Invoke(closeTrace);
+
+                    if (_shell.DocumentArea.Traces.Count >= before)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -409,9 +664,15 @@ namespace OpenVSA.Soak
             _driver.Invoke(_driver.MenuPath(path));
         }
 
-        private void Sample()
+        /// <summary>Takes one sample.</summary>
+        /// <param name="forceCollect">
+        /// Whether to collect regardless of the sampling interval. A retention run measures the
+        /// floor at every sample, because it takes forty of them rather than four hundred and can
+        /// afford the collection each time.
+        /// </param>
+        private void Sample(bool forceCollect = false)
         {
-            bool collect = _samples % _options.CollectEvery == 0;
+            bool collect = forceCollect || _samples % _options.CollectEvery == 0;
             long collected = 0L;
 
             if (collect)
@@ -446,8 +707,10 @@ namespace OpenVSA.Soak
             _samples++;
 
             // One line an hour to the console, so a night's run leaves a readable trail without
-            // scrolling four hundred lines past whoever looks at it in the morning.
-            if (_samples == 1 || _clock.Elapsed.TotalSeconds % 3600.0 < _options.SampleSeconds)
+            // scrolling four hundred lines past whoever looks at it in the morning. A retention run
+            // reports its own progress by cycle, which is the axis it is measuring against.
+            if (_options.Cycles == 0 &&
+                (_samples == 1 || _clock.Elapsed.TotalSeconds % 3600.0 < _options.SampleSeconds))
             {
                 Console.WriteLine(
                     "  [" + Elapsed() + "] " +
