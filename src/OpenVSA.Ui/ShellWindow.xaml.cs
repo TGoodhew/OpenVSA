@@ -120,7 +120,30 @@ namespace OpenVSA.Ui
         /// above-grid readout render the same text from the same place rather than formatting the
         /// same values twice.
         /// </remarks>
-        private readonly MarkerCollection _markerReadouts = new MarkerCollection();
+        /// <summary>
+        /// The markers of the active context, which is the one collection they live in.
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-DAT-010</c> made a measurement context the owner of its state, and its markers are
+        /// part of that. There was a second <see cref="MarkerCollection"/> here for the Markers
+        /// window to read; nothing ever added a marker to it, so the window listed none while every
+        /// real marker sat in the context's own — which is <c>REQ-MKR-006</c>'s "lists every marker
+        /// on every trace" unmet by the wiring rather than by the model. One collection, resolved
+        /// live, so the window follows a context switch as well.
+        /// </remarks>
+        internal MarkerCollection MarkerReadouts => _contextSet.Active.Markers;
+
+        /// <summary>The frame markers are currently reading, or <c>null</c>.</summary>
+        /// <remarks>
+        /// Internal for the same reason <c>ReadPaneIntoAnalysis</c> is: <c>REQ-MKR-006</c> is about
+        /// two surfaces agreeing on a reading, and a test of it has to be able to see the frame the
+        /// reading was taken from.
+        /// </remarks>
+        internal SpectrumFrame CurrentFrame => _frame;
+
+        /// <summary>The active-marker readout as it appears above the grid (<c>REQ-MKR-006</c>).</summary>
+        internal string ActiveMarkerReadoutText =>
+            (Documents.ActivePlot ?? Plot).MarkerReadoutText;
 
         /// <summary>Measurement results, live once a measurement writes to it.</summary>
         private readonly ToolWindowLog _outputLog = new ToolWindowLog(ToolWindow.Output);
@@ -1171,7 +1194,10 @@ namespace OpenVSA.Ui
         {
             _toolWindows = new ToolWindowHost(Docking, LoadToolWindowLayout());
 
-            _markerReadouts.Update('A', SpectrumFrame.FromLevels(
+            // A frame to read against before anything has been measured, so a marker placed on a
+            // stopped shell reads "--" rather than throwing. Replaced by the real one on the first
+            // draw -- see RefreshMarkers, which updates the collection with the frame it is drawing.
+            MarkerReadouts.Update('A', SpectrumFrame.FromLevels(
                 new float[] { -100.0f, -100.0f }, 0.0, 1.0, DspWindow.Default, 1.0));
 
             // Seeded before the logs are attached: SetSource renders what the source says now, and
@@ -1192,7 +1218,9 @@ namespace OpenVSA.Ui
                 _eventLog.Seed(line);
             }
 
-            _toolWindows.SetSource(new MarkerWindowSource(_markerReadouts));
+            // A function, not the collection: the active context's markers are what the window
+            // shows, and switching context changes which collection that is.
+            _toolWindows.SetSource(new MarkerWindowSource(() => MarkerReadouts));
             _toolWindows.SetSource(_outputLog);
             _toolWindows.SetSource(_scpiLog);
             _toolWindows.SetSource(_eventLog);
@@ -1668,7 +1696,7 @@ namespace OpenVSA.Ui
 
             position.Changed += (sender, e) =>
             {
-                _markerReadouts.MoveTo(selected, position.Value);
+                MarkerReadouts.MoveTo(selected, position.Value);
                 RefreshMarkers();
             };
 
@@ -4113,14 +4141,28 @@ namespace OpenVSA.Ui
         /// what is on screen, so taking the reading anywhere else would let the two disagree by a
         /// frame. It is a handful of array lookups per marker, not work proportional to the trace.
         /// </remarks>
-        private void RefreshMarkers()
+        internal void RefreshMarkers()
         {
             var primitives = new List<PlotMarker>(_markers.Markers.Count);
-            string readout = string.Empty;
+
+            // The collection reads against the frame just drawn, so the window's rows and the
+            // above-grid readout are readings of the same frame rather than of two. Before this, the
+            // collection behind the window held a synthetic two-point frame from construction and
+            // was never told about a real one.
+            if (_frame != null)
+            {
+                MarkerReadouts.Update(_markers.TraceLetter, _frame);
+            }
+
+            // The readout is of the selected marker among the ones being drawn, so the collection's
+            // active trace is the set those come from. Left to default it would be whichever trace
+            // was registered first, and the readout would describe a marker on another window.
+            MarkerReadouts.ActiveTrace = _markers.TraceLetter;
+
+            string readout = DescribeMarker(MarkerReadouts.ActiveReadout);
 
             foreach (Marker marker in _markers.Markers)
             {
-                MarkerReading reading = marker.Read(_frame);
                 int index = marker.IndexIn(_frame);
 
                 // REQ-UI-062: a hidden marker keeps its number, its position and its readout, and
@@ -4137,11 +4179,6 @@ namespace OpenVSA.Ui
                     primitives.Add(new PlotMarker(
                         index, level, marker.Type == MarkerType.Fixed, marker.IsSelected));
                 }
-
-                if (marker.IsSelected)
-                {
-                    readout = DescribeMarker(marker, reading);
-                }
             }
 
             // The active trace's plot, which is the primary one in every arrangement that has trace A
@@ -4151,22 +4188,35 @@ namespace OpenVSA.Ui
             FillMarkerChooser();
         }
 
-        /// <summary>The active-marker readout, as <c>REQ-UI-031</c> labels it.</summary>
-        private static string DescribeMarker(Marker marker, MarkerReading reading)
+        /// <summary>
+        /// The active-marker readout above the grid, as <c>REQ-UI-031</c> labels it.
+        /// </summary>
+        /// <param name="readout">The one readout, from the marker collection.</param>
+        /// <remarks>
+        /// <para>
+        /// Composed from <see cref="MarkerReadout"/>'s parts rather than formatted here.
+        /// <c>REQ-MKR-006</c> requires this and the Markers window row to show the same value for the
+        /// same marker, "since two independently computed readouts drifting apart is the failure this
+        /// guards against" — and they had drifted: this said <c>NAN</c> where the window said
+        /// <c>--</c>, spelled the frequency in engineering units against the window's fixed MHz, and
+        /// forced a sign on the level that the window did not.
+        /// </para>
+        /// <para>
+        /// Two lines, which is the one thing that is genuinely this surface's own business: the
+        /// readout shares the upper band with the trace format and resolution bandwidth, and on one
+        /// line it is wide enough to collide with them. Layout here, values from the model.
+        /// </para>
+        /// </remarks>
+        private static string DescribeMarker(MarkerReadout readout)
         {
-            if (!reading.IsValid)
+            if (readout == null)
             {
-                // REQ-UI-032's convention for a readout that has no value.
-                return marker.WindowLabel + "   NAN";
+                return string.Empty;
             }
 
-            string level = reading.YDbm.ToString("+0.00;-0.00;0.00", CultureInfo.CurrentCulture) +
-                (marker.Type == MarkerType.Delta ? " dB" : " dBm");
-
-            // Two lines: the readout shares the upper band with the trace format and resolution
-            // bandwidth, and on one line it is wide enough to collide with them.
-            return marker.WindowLabel + "  " + EngineeringText.Frequency(reading.XHz, 6) +
-                Environment.NewLine + level;
+            return readout.HasValue
+                ? readout.Label + "  " + readout.XText + Environment.NewLine + readout.YText
+                : readout.Label + "  " + MarkerReadout.NoValue;
         }
 
         private void OnPlotClicked(object sender, MouseButtonEventArgs e)

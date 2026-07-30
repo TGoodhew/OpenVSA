@@ -260,23 +260,52 @@ namespace OpenVSA.Ui.ToolWindows
     /// </remarks>
     public sealed class MarkerWindowSource : ToolWindowSource
     {
-        private readonly MarkerCollection _markers;
+        private readonly Func<MarkerCollection> _resolve;
         private IReadOnlyList<string> _lines = new ReadOnlyCollection<string>(new string[0]);
 
-        /// <summary>Creates the source.</summary>
+        /// <summary>Creates the source over a fixed collection.</summary>
         /// <param name="markers">The markers to show.</param>
         /// <exception cref="ArgumentNullException"><paramref name="markers"/> is null.</exception>
         public MarkerWindowSource(MarkerCollection markers)
+            : this(Fixed(markers))
+        {
+        }
+
+        /// <summary>
+        /// Creates the source over whichever collection is current.
+        /// </summary>
+        /// <param name="resolve">Answers with the collection to show; must not return null.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="resolve"/> is null.</exception>
+        /// <remarks>
+        /// Resolved on each refresh rather than captured once, because markers belong to a
+        /// measurement context (<c>REQ-DAT-010</c>) and the active context changes. A captured
+        /// collection is how this window came to be showing a collection nothing ever added a marker
+        /// to while the markers lived in the context's own — see <c>REQ-MKR-006</c>.
+        /// </remarks>
+        public MarkerWindowSource(Func<MarkerCollection> resolve)
             : base(ToolWindow.Markers)
+        {
+            if (resolve == null)
+            {
+                throw new ArgumentNullException(nameof(resolve));
+            }
+
+            _resolve = resolve;
+            Refresh();
+        }
+
+        private static Func<MarkerCollection> Fixed(MarkerCollection markers)
         {
             if (markers == null)
             {
                 throw new ArgumentNullException(nameof(markers));
             }
 
-            _markers = markers;
-            Refresh();
+            return () => markers;
         }
+
+        /// <summary>The collection being shown at this moment.</summary>
+        private MarkerCollection Markers => _resolve();
 
         /// <inheritdoc />
         public override bool IsLive => true;
@@ -324,13 +353,13 @@ namespace OpenVSA.Ui.ToolWindows
 
             // The per-marker rows first: REQ-UI-032's Mkr N, its delta to the trace reference, and
             // the frequency counter, each numbered.
-            foreach (MarkerReadout readout in _markers.Readouts())
+            foreach (MarkerReadout readout in Markers.Readouts())
             {
                 lines.Add(
                     (readout.IsActive ? "▶ " : "  ") + readout.TraceLetter + "  " + readout.Text);
             }
 
-            if (_markers.Readouts().Count == 0)
+            if (Markers.Readouts().Count == 0)
             {
                 lines.Add("No markers. Marker → Normal marker at peak.");
             }
@@ -385,7 +414,7 @@ namespace OpenVSA.Ui.ToolWindows
         /// <summary>The active marker's number, or 1 when there is none.</summary>
         private int ActiveNumber()
         {
-            foreach (MarkerReadout readout in _markers.Readouts())
+            foreach (MarkerReadout readout in Markers.Readouts())
             {
                 if (readout.IsActive)
                 {
