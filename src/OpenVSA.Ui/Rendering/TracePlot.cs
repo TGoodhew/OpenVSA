@@ -68,6 +68,9 @@ namespace OpenVSA.Ui.Rendering
         private readonly TextBlock _markerText;
         private readonly TextBlock _indicatorText;
         private readonly List<FrameworkElement> _annotation = new List<FrameworkElement>();
+        private readonly List<FrameworkElement> _measurementAnnotation =
+            new List<FrameworkElement>();
+
         private readonly List<HotSpot> _hotSpots = new List<HotSpot>();
 
         private TraceSnapshot _snapshot;
@@ -191,6 +194,18 @@ namespace OpenVSA.Ui.Rendering
             SetRow(_indicatorText, 0);
             SetColumn(_indicatorText, 0);
             Children.Add(_indicatorText);
+
+            // REQ-UI-010 and REQ-UI-021 divide the annotation between two colours, and this is where
+            // the division is declared. Everything above describes THIS TRACE -- its Y scale, its
+            // format, its averaging, its marker readout -- and takes the trace's own colour, which is
+            // REQ-UI-021's visual signature. These four describe THE MEASUREMENT: the X axis, the
+            // record length, and two properties of the acquisition every trace in an overlay shares.
+            // They take the Annotation colour, because painting the centre frequency in trace A's
+            // colour says it belongs to trace A, and it does not.
+            _measurementAnnotation.Add(_resolutionBandwidth);
+            _measurementAnnotation.Add(_triggerChannel);
+            _measurementAnnotation.Add(_centerFrequency);
+            _measurementAnnotation.Add(_mainTime);
 
             // The rubber band drawn while a region is being dragged (REQ-DSP-023). A sibling of
             // the rasterised image rather than something painted into it: the image is redrawn
@@ -1351,6 +1366,20 @@ namespace OpenVSA.Ui.Rendering
         /// </remarks>
         public IReadOnlyList<FrameworkElement> AnnotationElements => _annotation;
 
+        /// <summary>
+        /// The annotation that describes the measurement rather than this trace (<c>REQ-UI-010</c>).
+        /// </summary>
+        /// <remarks>
+        /// The X axis, the record length, and the two acquisition properties every trace in an
+        /// overlay shares. These carry <see cref="PlotPalette.Annotation"/>; everything else in
+        /// <see cref="AnnotationElements"/> carries <see cref="PlotPalette.Trace"/>, which is
+        /// <c>REQ-UI-021</c>. Exposed so that the division can be sampled from a rendered frame
+        /// rather than taken on trust — the two colours being genuinely independent is the half of
+        /// <c>REQ-UI-010</c> that a shared brush would quietly break.
+        /// </remarks>
+        public IReadOnlyList<FrameworkElement> MeasurementAnnotationElements =>
+            _measurementAnnotation;
+
         /// <summary>The element holding the trace indicator strings (<c>REQ-UI-041</c>).</summary>
         public FrameworkElement IndicatorElement => _indicatorText;
 
@@ -2244,10 +2273,18 @@ namespace OpenVSA.Ui.Rendering
             {
                 var text = element as TextBlock;
 
-                if (text != null)
+                if (text == null)
                 {
-                    text.Foreground = traceInk;
+                    continue;
                 }
+
+                // REQ-UI-010's Annotation colour against REQ-UI-021's Trace colour. The two
+                // definitions overlap -- "text outside of the graticule" and "specified trace and
+                // its annotation" -- and the division is by what the text is ABOUT: see where
+                // _measurementAnnotation is filled. Giving every label the trace colour satisfies
+                // REQ-UI-021 and leaves Annotation colouring no glyph at all, which is how
+                // REQ-UI-010's fourth zone came to be unmeetable.
+                text.Foreground = _measurementAnnotation.Contains(element) ? annotation : traceInk;
             }
 
             _markerText.Foreground = traceInk;

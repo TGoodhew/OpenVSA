@@ -3014,9 +3014,30 @@ area outside of the trace graticule".
 independently settable colours. Set each to a distinct value and render: sampling the
 rendered frame returns `TraceBackground` inside the graticule rectangle away from any grid
 line or trace, `Grid` on a graticule line, `AnnotationBackground` in the surrounding band away
-from text, and `Annotation` on annotation glyphs. Changing any one of the four leaves the
-other three regions' sampled values unchanged — the zones are genuinely independent, not two
-colours with a shared background.
+from text, and `Annotation` on the glyphs of **measurement-wide** annotation. Changing any one
+of the four leaves the other three regions' sampled values unchanged — the zones are genuinely
+independent, not two colours with a shared background.
+
+> **Which annotation `Annotation` colours, and which `Trace` does.** This definition and
+> `REQ-UI-021`'s overlap: "text outside of the graticule" and "specified trace **and its
+> annotation**" describe the same band. Both are verbatim from the reference product, which has
+> both entries, so neither can simply win. The division is by what the text is *about*.
+>
+> Annotation describing **that trace** takes the trace's colour, per `REQ-UI-021`: its Y-axis top
+> and bottom scale, its per-division value, its format, its averaging and transform notes, and its
+> active-marker readout. Annotation describing **the measurement** takes `Annotation`: the centre
+> frequency, the main time length, the resolution bandwidth and the trigger channel.
+>
+> The overlay is what settles it. Four traces share one acquisition, so there is one centre
+> frequency and one resolution bandwidth on screen for all of them — painting those in trace A's
+> colour states that they belong to trace A, which is false and is exactly the misreading
+> `REQ-UI-021`'s per-trace tinting exists to prevent. The trace indicator strings keep `Indicator`,
+> which `REQ-UI-022` lists separately and `REQ-UI-040` places inside the graticule.
+>
+> *Recorded 2026-07-29, after `REQ-UI-010` was found unmeetable as implemented: every annotation
+> element had been given the trace colour, which satisfied `REQ-UI-021` and left `Annotation`
+> colouring no glyph anywhere — so its fourth sample could not be taken however the test was
+> written.*
 
 **`REQ-UI-011` (P1) — The annotation band reflows.**
 **Show Annotation** off shall remove all trace annotation, with **the graticule expanding to
@@ -3099,12 +3120,14 @@ truncating.
 tinted to match the trace itself, which is how a user reads a four-trace overlay at a glance.
 Corroborated from the other direction by an 89400 firmware defect report: "Trace A shows wrong
 annotation color after preset."*
-**AC:** A trace's line and its annotation text sample to the same colour in the rendered
+**AC:** A trace's line and *its own* annotation text sample to the same colour in the rendered
 frame, for every trace in a multi-trace overlay. They stay equal after the operations that
 historically broke it: changing the trace colour, preset, state recall, and theme change —
 the 89400 defect quoted above is exactly the post-preset case, so preset is tested
 explicitly. One colour setting drives both; there is no separate annotation-colour entry per
-trace to drift out of step.
+trace to drift out of step. Measurement-wide annotation is **not** a trace's own and does not
+follow the trace colour — see the note under `REQ-UI-010` for the division and why the overlay
+settles it.
 
 **`REQ-UI-022` (P1) — Themeable element set.**
 The following shall each be independently colourable, forming the WPF theme resource
