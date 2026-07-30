@@ -1937,15 +1937,36 @@ against. The above-grid readout follows the active marker when the active marker
 sits above the grid per `REQ-UI-040`. The Markers window lists every marker on every trace,
 not only those on the active trace.
 
-**`REQ-MKR-007` (P2) — Spectrogram and multi-dimensional markers.** Spectrogram traces
-shall support time-axis positioning via trace-select markers; OFDM-class personalities shall
-support three-dimensional marker placement (symbol × subcarrier × value). **[V]**
+**`REQ-MKR-007` (P2) — Spectrogram time-axis markers.** Spectrogram traces shall support
+time-axis positioning via trace-select markers. **[V]**
+*(Split 2026-07-29. This requirement previously also required three-dimensional marker
+placement on OFDM-class personalities, which is now `REQ-MKR-007a` — see there for why.)*
 **AC:** A spectrogram carries the two markers of `REQ-UI-054` on different axes, and moving
 the trace-select marker to a history row makes the spectrum trace show that row's data,
-matching the data captured at that time. On an OFDM personality a marker placed at a given
-symbol and subcarrier reads the value at exactly that cell, verified against a generated
-resource grid with a known distinguishable value per cell, so a transposed
-symbol/subcarrier index fails rather than passing by symmetry.
+matching the data captured at that time.
+
+**`REQ-MKR-007a` (P2) — Multi-dimensional markers on an OFDM personality.** OFDM-class
+personalities shall support three-dimensional marker placement (symbol × subcarrier × value).
+**[V]**
+
+> **Split from `REQ-MKR-007` on 2026-07-29, and the reason is worth recording.** The clause
+> was written into a Phase 1 requirement whose other half is provable from the spectrogram
+> alone, so Phase 1 could not close while it stood. Worse, `tools/check_phase_atomicity.py`
+> could not see the problem: the checker looks for references to other requirement **IDs** in
+> an acceptance criterion, and "an OFDM personality" names none. It is the same class of gap
+> that once let Phase 1 be declared complete with 37 Phase 0 issues open.
+>
+> **No requirement in this specification delivers an OFDM personality** — this was, before the
+> split, the only mention of OFDM anywhere in it. So this is not a forward dependency on a
+> later phase's work; it is a dependency on work that is not scheduled at all. It is placed in
+> the personality phase because that is where such a personality would belong, and it cannot
+> close until one is specified and built. Anyone reaching for it should raise the personality
+> requirement first rather than treat this as a marker defect.
+
+**AC:** On an OFDM personality a marker placed at a given symbol and subcarrier reads the
+value at exactly that cell, verified against a generated resource grid with a known
+distinguishable value per cell, so a transposed symbol/subcarrier index fails rather than
+passing by symmetry.
 
 ### 10.2 Limit tests
 

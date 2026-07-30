@@ -124,7 +124,7 @@
   "num": "005",
   "priority": "P0",
   "title": "WPF rendering strategy for large traces",
-  "body": "**`REQ-NFR-005` (P0) — WPF rendering strategy for large traces.**\n*(Amended 2026-07-29 on measurement; see \"What the measurement changed\" below. The original\nband table and its `D3DImage` interop clause are retained there rather than deleted, because\nthe reasoning that produced them is sound and only its premise turned out to be false.)*\n\nTrace rendering shall **not** use WPF `Polyline`/`Path` elements with per-point geometry\nabove ~2 000 points. Drawn geometry shall be produced only after `REQ-NFR-006`'s min/max\npixel-column decimation, and the strategy for the geometry that survives decimation shall be:\n\n| Drawn points | Strategy |\n|---|---|\n| ≤ 2 000 | `Polyline`/`Path` acceptable |\n| ≤ ~20 000 | `DrawingVisual` + `StreamGeometry` |\n| > ~20 000 | `WriteableBitmap` + software rasteriser |\n\n*Rationale, stated precisely because the usual folk explanation is wrong:* the cost at high\npoint counts is **MilCore's anti-aliased geometry tessellation on the render thread, plus\nper-`Point` managed→native marshalling** — not the visual tree as such. `StreamGeometry`\ninside a `DrawingVisual` removes the per-*element* overhead but goes through the **same\ntessellator**.\n\n**What the measurement changed.** This requirement was written to defend against a cost that\n`REQ-NFR-006` prevents, and the defence was more expensive than the threat.\n\n- **Decimation runs first and bounds the drawn point count by the pixel width** — roughly twice\n  it, so ~1 600 points at 800 px and ~7 700 on a 4K-wide window. A 2²⁰-point trace is drawn\n  from at most a few thousand spans. The >20 000-point band is therefore unreachable in any\n  window that fits on a display.\n- **Rendering is 1.4 % of a frame and is invariant in point count** — 1.00 ms to rasterise a\n  2²⁰-point frame against 924 µs for an 8 192-point one, because both have been decimated to\n  one span per graticule column first. The whole 2²⁰ frame is 72.2 ms against `REQ-NFR-021`'s\n  100 ms, of which **the FFT is 60.96 ms (84.4 %)**.\n\nThe original top band therefore offered `D3DImage` + a D3D9Ex shared-surface bridge\n(`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture` opened shared) as an\nalternative to the software rasteriser, and §19 carried RISK-03 against it. **That alternative\nis withdrawn, not merely deprioritised.** `D3DImage` degrades to software rendering under RDP\nand without WDDM, so a design resting on it has no path in exactly the environments a bench\ninstrument is operated from — and it would be buying back 1.4 % of a frame. The software\nrasteriser is the strategy, not the fallback, which also means the degraded case is the tested\ncase rather than an untested branch.\n\nThe original acceptance criterion also asked for a `DrawingVisual` + `StreamGeometry`\nimplementation to be **measured and recorded as failing** `REQ-NFR-021`. That clause is\nwithdrawn: `StreamGeometry` measures 95.8 updates/s at 100 000 points and does not fail as the\nrequirement assumed, and measuring it at a point count decimation makes unreachable would be\nmeasuring a case that cannot occur. The band boundaries stand as engineering limits on drawn\ngeometry, and are honest about being limits rather than measured cliffs.\n\n**AC:** The strategy selected for a trace is observable — a value a test can assert on, not a\nbranch inside a drawing method — and is tested either side of each band boundary (1 999/2 000/\n2 001 and 19 999/20 000/20 001). Selecting per-point `Polyline`/`Path` geometry above 2 000\npoints fails the test, stated as a prohibition. Dropping to a *more* expensive strategy is\npermitted at any size and dropping up to per-point geometry never is, so the asymmetry is\nasserted in both directions. The product renders through the `WriteableBitmap` software\nrasteriser, and no `D3DImage`, `HwndHost` or D3D9Ex shared-surface path is present — asserted\nby a test over the shell's source, so reintroducing one is a deliberate act that fails the\nbuild rather than a drift. Rasterisation cost is measured at 8 192 and 2²⁰ points and recorded,\nand the two figures are asserted to be within a small factor of one another, which is the\nobservable consequence of decimation running first: a rasteriser whose cost tracked the point\ncount would fail it.",
+  "body": "**`REQ-NFR-005` (P0) — WPF rendering strategy for large traces.**\n*(Amended 2026-07-29 on measurement; see \"What the measurement changed\" below. The original\nband table and its `D3DImage` interop clause are retained there rather than deleted, because\nthe reasoning that produced them is sound and only its premise turned out to be false.)*\n\nTrace rendering shall **not** use WPF `Polyline`/`Path` elements with per-point geometry\nabove ~2 000 points. Drawn geometry shall be produced only after `REQ-NFR-006`'s min/max\npixel-column decimation, and the strategy for the geometry that survives decimation shall be:\n\n| Drawn points | Strategy |\n|---|---|\n| ≤ 2 000 | `Polyline`/`Path` acceptable |\n| ≤ ~20 000 | `DrawingVisual` + `StreamGeometry` |\n| > ~20 000 | `WriteableBitmap` + software rasteriser |\n\n*Rationale, stated precisely because the usual folk explanation is wrong:* the cost at high\npoint counts is **MilCore's anti-aliased geometry tessellation on the render thread, plus\nper-`Point` managed→native marshalling** — not the visual tree as such. `StreamGeometry`\ninside a `DrawingVisual` removes the per-*element* overhead but goes through the **same\ntessellator**.\n\n**What the measurement changed.** This requirement was written to defend against a cost that\n`REQ-NFR-006` prevents, and the defence was more expensive than the threat.\n\n- **Decimation runs first and bounds the drawn point count by the pixel width** — roughly twice\n  it, so ~1 600 points at 800 px and ~7 700 on a 4K-wide window. A 2²⁰-point trace is drawn\n  from at most a few thousand spans. The >20 000-point band is therefore unreachable in any\n  window that fits on a display.\n- **Rendering is 1.4 % of a frame and is invariant in point count** — 1.00 ms to rasterise a\n  2²⁰-point frame against 924 µs for an 8 192-point one, because both have been decimated to\n  one span per graticule column first. The whole 2²⁰ frame is 72.2 ms against `REQ-NFR-021`'s\n  100 ms, of which **the FFT is 60.96 ms (84.4 %)**.\n\nThe original top band therefore offered `D3DImage` + a D3D9Ex shared-surface bridge\n(`IDXGIResource::GetSharedHandle` → `IDirect3DDevice9Ex::CreateTexture` opened shared) as an\nalternative to the software rasteriser, and §19 carried RISK-03 against it. **That alternative\nis withdrawn, not merely deprioritised.** `D3DImage` degrades to software rendering under RDP\nand without WDDM, so a design resting on it has no path in exactly the environments a bench\ninstrument is operated from — and it would be buying back 1.4 % of a frame. The software\nrasteriser is the strategy, not the fallback, which also means the degraded case is the tested\ncase rather than an untested branch.\n\nThe original acceptance criterion also asked for a `DrawingVisual` + `StreamGeometry`\nimplementation to be **measured and recorded as failing** `REQ-NFR-021`. That clause is\nwithdrawn: `StreamGeometry` measures 95.8 updates/s at 100 000 points and does not fail as the\nrequirement assumed, and measuring it at a point count decimation makes unreachable would be\nmeasuring a case that cannot occur. The band boundaries stand as engineering limits on drawn\ngeometry, and are honest about being limits rather than measured cliffs.\n\n**AC:** The strategy selected for a trace is observable — a value a test can assert on, not a\nbranch inside a drawing method — and is tested either side of each band boundary (1 999/2 000/\n2 001 and 19 999/20 000/20 001). Selecting per-point `Polyline`/`Path` geometry above 2 000\npoints fails the test, stated as a prohibition. Dropping to a *more* expensive strategy is\npermitted at any size and dropping up to per-point geometry never is, so the asymmetry is\nasserted in both directions. The product renders through the `WriteableBitmap` software\nrasteriser, and no `D3DImage`, `HwndHost` or D3D9Ex shared-surface path is present — asserted\nby a test over the shell's source, so reintroducing one is a deliberate act that fails the\nbuild rather than a drift. The invariance that makes the top band unreachable is asserted\n**structurally rather than by stopwatch** — at a fixed surface width the count of drawn spans is\nidentical for an 8 192-point and a 2²⁰-point trace, and is bounded by twice the pixel width —\nbecause a timing ratio asserted in CI measures the runner's load as much as the code, while the\nspan count is the mechanism itself and is deterministic. The corresponding *timings* are\nrecorded by `REQ-TST-007`'s harness, where a stored baseline and a machine-class check make a\nmeasurement meaningful.",
   "phase": 0,
   "evidence": [],
   "has_ac": true,
@@ -142,7 +142,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 571
+  "line": 574
  },
  {
   "id": "REQ-NFR-007",
@@ -155,7 +155,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 580
+  "line": 583
  },
  {
   "id": "REQ-NFR-007a",
@@ -170,7 +170,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 604
+  "line": 607
  },
  {
   "id": "REQ-VISA-001",
@@ -183,7 +183,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 613
+  "line": 616
  },
  {
   "id": "REQ-VISA-002",
@@ -198,7 +198,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 631
+  "line": 634
  },
  {
   "id": "REQ-VISA-003",
@@ -211,7 +211,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 645
+  "line": 648
  },
  {
   "id": "REQ-VISA-004",
@@ -224,7 +224,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 652
+  "line": 655
  },
  {
   "id": "REQ-VISA-005",
@@ -237,7 +237,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 668
+  "line": 671
  },
  {
   "id": "REQ-NFR-008",
@@ -250,7 +250,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 683
+  "line": 686
  },
  {
   "id": "REQ-NFR-010",
@@ -263,7 +263,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 701
+  "line": 704
  },
  {
   "id": "REQ-NFR-011",
@@ -276,7 +276,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 715
+  "line": 718
  },
  {
   "id": "REQ-NFR-012",
@@ -289,7 +289,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 722
+  "line": 725
  },
  {
   "id": "REQ-NFR-020",
@@ -302,7 +302,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 736
+  "line": 739
  },
  {
   "id": "REQ-NFR-021",
@@ -315,7 +315,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 737
+  "line": 740
  },
  {
   "id": "REQ-NFR-022",
@@ -328,7 +328,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 738
+  "line": 741
  },
  {
   "id": "REQ-NFR-023",
@@ -341,7 +341,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 739
+  "line": 742
  },
  {
   "id": "REQ-NFR-024",
@@ -354,7 +354,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 740
+  "line": 743
  },
  {
   "id": "REQ-NFR-025",
@@ -367,7 +367,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 741
+  "line": 744
  },
  {
   "id": "REQ-NFR-026",
@@ -380,7 +380,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 742
+  "line": 745
  },
  {
   "id": "REQ-NFR-027",
@@ -393,7 +393,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 762
+  "line": 765
  },
  {
   "id": "REQ-DAT-001",
@@ -406,7 +406,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 817
+  "line": 820
  },
  {
   "id": "REQ-DAT-001a",
@@ -419,7 +419,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 831
+  "line": 834
  },
  {
   "id": "REQ-DAT-002",
@@ -434,7 +434,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 843
+  "line": 846
  },
  {
   "id": "REQ-DAT-002a",
@@ -447,7 +447,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 854
+  "line": 857
  },
  {
   "id": "REQ-DAT-003",
@@ -460,7 +460,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 861
+  "line": 864
  },
  {
   "id": "REQ-HAL-001",
@@ -473,7 +473,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 928
+  "line": 931
  },
  {
   "id": "REQ-HAL-002",
@@ -486,7 +486,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 936
+  "line": 939
  },
  {
   "id": "REQ-HAL-003",
@@ -499,7 +499,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 942
+  "line": 945
  },
  {
   "id": "REQ-DAT-010",
@@ -514,7 +514,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 951
+  "line": 954
  },
  {
   "id": "REQ-TRC-001",
@@ -527,7 +527,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 978
+  "line": 981
  },
  {
   "id": "REQ-TRC-001a",
@@ -542,7 +542,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 984
+  "line": 987
  },
  {
   "id": "REQ-TRC-002",
@@ -555,7 +555,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 999
+  "line": 1002
  },
  {
   "id": "REQ-TRC-003",
@@ -568,7 +568,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1008
+  "line": 1011
  },
  {
   "id": "REQ-ACQ-001",
@@ -581,7 +581,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1030
+  "line": 1033
  },
  {
   "id": "REQ-ACQ-002",
@@ -596,7 +596,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1046
+  "line": 1049
  },
  {
   "id": "REQ-ACQ-003",
@@ -611,7 +611,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1053
+  "line": 1056
  },
  {
   "id": "REQ-ACQ-004",
@@ -624,7 +624,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1066
+  "line": 1069
  },
  {
   "id": "REQ-AMP-001",
@@ -637,7 +637,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1082
+  "line": 1085
  },
  {
   "id": "REQ-AMP-002",
@@ -650,7 +650,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1091
+  "line": 1094
  },
  {
   "id": "REQ-AMP-003",
@@ -663,7 +663,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1098
+  "line": 1101
  },
  {
   "id": "REQ-AMP-004",
@@ -676,7 +676,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1106
+  "line": 1109
  },
  {
   "id": "REQ-ACQ-010",
@@ -689,7 +689,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1114
+  "line": 1117
  },
  {
   "id": "REQ-TRG-001",
@@ -704,7 +704,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1126
+  "line": 1129
  },
  {
   "id": "REQ-TRG-002",
@@ -719,7 +719,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1134
+  "line": 1137
  },
  {
   "id": "REQ-TRG-003",
@@ -734,7 +734,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1141
+  "line": 1144
  },
  {
   "id": "REQ-E44-001",
@@ -747,7 +747,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1151
+  "line": 1154
  },
  {
   "id": "REQ-E44-002",
@@ -760,7 +760,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1157
+  "line": 1160
  },
  {
   "id": "REQ-E44-002a",
@@ -775,7 +775,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1199
+  "line": 1202
  },
  {
   "id": "REQ-E44-002b",
@@ -790,7 +790,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1219
+  "line": 1222
  },
  {
   "id": "REQ-E44-002c",
@@ -805,7 +805,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1246
+  "line": 1249
  },
  {
   "id": "REQ-E44-002d",
@@ -820,7 +820,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1275
+  "line": 1278
  },
  {
   "id": "REQ-E44-003",
@@ -833,7 +833,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1290
+  "line": 1293
  },
  {
   "id": "REQ-E44-004",
@@ -846,7 +846,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1299
+  "line": 1302
  },
  {
   "id": "REQ-E44-005",
@@ -859,7 +859,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1310
+  "line": 1313
  },
  {
   "id": "REQ-E44-006",
@@ -872,7 +872,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1317
+  "line": 1320
  },
  {
   "id": "REQ-E44-007",
@@ -885,7 +885,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1328
+  "line": 1331
  },
  {
   "id": "REQ-REC-001",
@@ -898,7 +898,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1339
+  "line": 1342
  },
  {
   "id": "REQ-REC-002",
@@ -911,7 +911,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1348
+  "line": 1351
  },
  {
   "id": "REQ-REC-003",
@@ -924,7 +924,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1354
+  "line": 1357
  },
  {
   "id": "REQ-REC-004",
@@ -939,7 +939,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1360
+  "line": 1363
  },
  {
   "id": "REQ-REC-004a",
@@ -952,7 +952,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1371
+  "line": 1374
  },
  {
   "id": "REQ-REC-005",
@@ -968,7 +968,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1380
+  "line": 1383
  },
  {
   "id": "REQ-REC-006",
@@ -983,7 +983,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1413
+  "line": 1416
  },
  {
   "id": "REQ-REC-007",
@@ -996,7 +996,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1427
+  "line": 1430
  },
  {
   "id": "REQ-REC-008",
@@ -1009,7 +1009,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1435
+  "line": 1438
  },
  {
   "id": "REQ-REC-009",
@@ -1022,7 +1022,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1445
+  "line": 1448
  },
  {
   "id": "REQ-SIM-001",
@@ -1035,7 +1035,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1455
+  "line": 1458
  },
  {
   "id": "REQ-SIM-001a",
@@ -1048,7 +1048,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1465
+  "line": 1468
  },
  {
   "id": "REQ-SIM-002",
@@ -1061,7 +1061,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1474
+  "line": 1477
  },
  {
   "id": "REQ-SIM-002a",
@@ -1074,7 +1074,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1489
+  "line": 1492
  },
  {
   "id": "REQ-SIM-003",
@@ -1087,7 +1087,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1498
+  "line": 1501
  },
  {
   "id": "REQ-SIM-004",
@@ -1100,7 +1100,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1503
+  "line": 1506
  },
  {
   "id": "REQ-SIM-005",
@@ -1113,7 +1113,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1512
+  "line": 1515
  },
  {
   "id": "REQ-DSP-001",
@@ -1126,7 +1126,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1525
+  "line": 1528
  },
  {
   "id": "REQ-DSP-001a",
@@ -1139,7 +1139,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1539
+  "line": 1542
  },
  {
   "id": "REQ-DSP-002",
@@ -1152,7 +1152,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1549
+  "line": 1552
  },
  {
   "id": "REQ-DSP-010",
@@ -1167,7 +1167,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1558
+  "line": 1561
  },
  {
   "id": "REQ-DSP-010a",
@@ -1180,7 +1180,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1579
+  "line": 1582
  },
  {
   "id": "REQ-DSP-010b",
@@ -1195,7 +1195,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1595
+  "line": 1598
  },
  {
   "id": "REQ-DSP-011",
@@ -1208,7 +1208,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1618
+  "line": 1621
  },
  {
   "id": "REQ-DSP-012",
@@ -1223,7 +1223,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1626
+  "line": 1629
  },
  {
   "id": "REQ-DSP-020",
@@ -1238,7 +1238,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1636
+  "line": 1639
  },
  {
   "id": "REQ-DSP-021",
@@ -1253,7 +1253,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1643
+  "line": 1646
  },
  {
   "id": "REQ-DSP-022",
@@ -1266,7 +1266,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1654
+  "line": 1657
  },
  {
   "id": "REQ-DSP-023",
@@ -1281,7 +1281,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1672
+  "line": 1675
  },
  {
   "id": "REQ-DSP-023a",
@@ -1296,7 +1296,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1684
+  "line": 1687
  },
  {
   "id": "REQ-DSP-024",
@@ -1311,7 +1311,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1703
+  "line": 1706
  },
  {
   "id": "REQ-DSP-030",
@@ -1327,7 +1327,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1716
+  "line": 1719
  },
  {
   "id": "REQ-DSP-031",
@@ -1342,7 +1342,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1744
+  "line": 1747
  },
  {
   "id": "REQ-DSP-040",
@@ -1357,7 +1357,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1755
+  "line": 1758
  },
  {
   "id": "REQ-DSP-040a",
@@ -1370,7 +1370,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1772
+  "line": 1775
  },
  {
   "id": "REQ-DSP-041",
@@ -1385,7 +1385,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1788
+  "line": 1791
  },
  {
   "id": "REQ-DSP-042",
@@ -1398,7 +1398,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1800
+  "line": 1803
  },
  {
   "id": "REQ-DSP-043",
@@ -1413,7 +1413,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1811
+  "line": 1814
  },
  {
   "id": "REQ-DSP-044",
@@ -1426,7 +1426,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1821
+  "line": 1824
  },
  {
   "id": "REQ-DSP-045",
@@ -1439,7 +1439,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1831
+  "line": 1834
  },
  {
   "id": "REQ-DSP-046",
@@ -1454,7 +1454,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1839
+  "line": 1842
  },
  {
   "id": "REQ-DSP-050",
@@ -1469,7 +1469,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1854
+  "line": 1857
  },
  {
   "id": "REQ-MKR-001",
@@ -1484,7 +1484,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1868
+  "line": 1871
  },
  {
   "id": "REQ-MKR-002",
@@ -1499,7 +1499,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1879
+  "line": 1882
  },
  {
   "id": "REQ-MKR-003",
@@ -1514,7 +1514,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1892
+  "line": 1895
  },
  {
   "id": "REQ-MKR-004",
@@ -1529,7 +1529,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1907
+  "line": 1910
  },
  {
   "id": "REQ-MKR-005",
@@ -1544,7 +1544,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1916
+  "line": 1919
  },
  {
   "id": "REQ-MKR-006",
@@ -1559,22 +1559,37 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1928
+  "line": 1931
  },
  {
   "id": "REQ-MKR-007",
   "area": "MKR",
   "num": "007",
   "priority": "P2",
-  "title": "Spectrogram and multi-dimensional markers",
-  "body": "**`REQ-MKR-007` (P2) — Spectrogram and multi-dimensional markers.** Spectrogram traces\nshall support time-axis positioning via trace-select markers; OFDM-class personalities shall\nsupport three-dimensional marker placement (symbol × subcarrier × value). **[V]**\n**AC:** A spectrogram carries the two markers of `REQ-UI-054` on different axes, and moving\nthe trace-select marker to a history row makes the spectrum trace show that row's data,\nmatching the data captured at that time. On an OFDM personality a marker placed at a given\nsymbol and subcarrier reads the value at exactly that cell, verified against a generated\nresource grid with a known distinguishable value per cell, so a transposed\nsymbol/subcarrier index fails rather than passing by symmetry.",
+  "title": "Spectrogram time-axis markers",
+  "body": "**`REQ-MKR-007` (P2) — Spectrogram time-axis markers.** Spectrogram traces shall support\ntime-axis positioning via trace-select markers. **[V]**\n*(Split 2026-07-29. This requirement previously also required three-dimensional marker\nplacement on OFDM-class personalities, which is now `REQ-MKR-007a` — see there for why.)*\n**AC:** A spectrogram carries the two markers of `REQ-UI-054` on different axes, and moving\nthe trace-select marker to a history row makes the spectrum trace show that row's data,\nmatching the data captured at that time.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1937
+  "line": 1940
+ },
+ {
+  "id": "REQ-MKR-007a",
+  "area": "MKR",
+  "num": "007a",
+  "priority": "P2",
+  "title": "Multi-dimensional markers on an OFDM personality",
+  "body": "**`REQ-MKR-007a` (P2) — Multi-dimensional markers on an OFDM personality.** OFDM-class\npersonalities shall support three-dimensional marker placement (symbol × subcarrier × value).\n**[V]**\n\n> **Split from `REQ-MKR-007` on 2026-07-29, and the reason is worth recording.** The clause\n> was written into a Phase 1 requirement whose other half is provable from the spectrogram\n> alone, so Phase 1 could not close while it stood. Worse, `tools/check_phase_atomicity.py`\n> could not see the problem: the checker looks for references to other requirement **IDs** in\n> an acceptance criterion, and \"an OFDM personality\" names none. It is the same class of gap\n> that once let Phase 1 be declared complete with 37 Phase 0 issues open.\n>\n> **No requirement in this specification delivers an OFDM personality** — this was, before the\n> split, the only mention of OFDM anywhere in it. So this is not a forward dependency on a\n> later phase's work; it is a dependency on work that is not scheduled at all. It is placed in\n> the personality phase because that is where such a personality would belong, and it cannot\n> close until one is specified and built. Anyone reaching for it should raise the personality\n> requirement first rather than treat this as a marker defect.\n\n**AC:** On an OFDM personality a marker placed at a given symbol and subcarrier reads the\nvalue at exactly that cell, verified against a generated resource grid with a known\ndistinguishable value per cell, so a transposed symbol/subcarrier index fails rather than\npassing by symmetry.",
+  "phase": 5,
+  "evidence": [
+   "verified"
+  ],
+  "has_ac": true,
+  "ac_exempt": false,
+  "line": 1948
  },
  {
   "id": "REQ-LIM-001",
@@ -1589,7 +1604,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1949
+  "line": 1973
  },
  {
   "id": "REQ-LIM-002",
@@ -1604,7 +1619,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1962
+  "line": 1986
  },
  {
   "id": "REQ-LIM-003",
@@ -1619,7 +1634,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1970
+  "line": 1994
  },
  {
   "id": "REQ-CHM-001",
@@ -1632,7 +1647,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1981
+  "line": 2005
  },
  {
   "id": "REQ-CHM-002",
@@ -1645,7 +1660,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 1992
+  "line": 2016
  },
  {
   "id": "REQ-CHM-003",
@@ -1658,7 +1673,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2001
+  "line": 2025
  },
  {
   "id": "REQ-DEM-001",
@@ -1671,7 +1686,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2018
+  "line": 2042
  },
  {
   "id": "REQ-DEM-002",
@@ -1686,7 +1701,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2049
+  "line": 2073
  },
  {
   "id": "REQ-DEM-010",
@@ -1702,7 +1717,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2067
+  "line": 2091
  },
  {
   "id": "REQ-DEM-010a",
@@ -1715,7 +1730,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2092
+  "line": 2116
  },
  {
   "id": "REQ-DEM-011",
@@ -1728,7 +1743,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2105
+  "line": 2129
  },
  {
   "id": "REQ-DEM-012",
@@ -1743,7 +1758,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2112
+  "line": 2136
  },
  {
   "id": "REQ-DEM-013",
@@ -1758,7 +1773,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2124
+  "line": 2148
  },
  {
   "id": "REQ-DEM-020",
@@ -1773,7 +1788,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2134
+  "line": 2158
  },
  {
   "id": "REQ-DEM-021",
@@ -1788,7 +1803,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2148
+  "line": 2172
  },
  {
   "id": "REQ-DEM-022",
@@ -1801,7 +1816,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2167
+  "line": 2191
  },
  {
   "id": "REQ-DEM-022a",
@@ -1814,7 +1829,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2187
+  "line": 2211
  },
  {
   "id": "REQ-DEM-023",
@@ -1827,7 +1842,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2209
+  "line": 2233
  },
  {
   "id": "REQ-DEM-030",
@@ -1842,7 +1857,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2223
+  "line": 2247
  },
  {
   "id": "REQ-DEM-031",
@@ -1857,7 +1872,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2234
+  "line": 2258
  },
  {
   "id": "REQ-DEM-032",
@@ -1872,7 +1887,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2242
+  "line": 2266
  },
  {
   "id": "REQ-DEM-033",
@@ -1887,7 +1902,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2252
+  "line": 2276
  },
  {
   "id": "REQ-DEM-034",
@@ -1902,7 +1917,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2265
+  "line": 2289
  },
  {
   "id": "REQ-DEM-034a",
@@ -1915,7 +1930,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2277
+  "line": 2301
  },
  {
   "id": "REQ-DEM-035",
@@ -1930,7 +1945,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2289
+  "line": 2313
  },
  {
   "id": "REQ-DEM-036",
@@ -1945,7 +1960,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2297
+  "line": 2321
  },
  {
   "id": "REQ-DEM-040",
@@ -1960,7 +1975,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2307
+  "line": 2331
  },
  {
   "id": "REQ-DEM-041",
@@ -1975,7 +1990,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2315
+  "line": 2339
  },
  {
   "id": "REQ-DEM-050",
@@ -1990,7 +2005,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2326
+  "line": 2350
  },
  {
   "id": "REQ-DEM-051",
@@ -2005,7 +2020,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2338
+  "line": 2362
  },
  {
   "id": "REQ-DEM-052",
@@ -2020,7 +2035,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2354
+  "line": 2378
  },
  {
   "id": "REQ-DEM-053",
@@ -2035,7 +2050,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2400
+  "line": 2424
  },
  {
   "id": "REQ-DEM-060",
@@ -2050,7 +2065,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2422
+  "line": 2446
  },
  {
   "id": "REQ-DEM-061",
@@ -2065,7 +2080,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2441
+  "line": 2465
  },
  {
   "id": "REQ-DEM-062",
@@ -2080,7 +2095,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2455
+  "line": 2479
  },
  {
   "id": "REQ-DEM-063",
@@ -2095,7 +2110,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2464
+  "line": 2488
  },
  {
   "id": "REQ-DEM-064",
@@ -2108,7 +2123,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2475
+  "line": 2499
  },
  {
   "id": "REQ-DEM-065",
@@ -2123,7 +2138,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2488
+  "line": 2512
  },
  {
   "id": "REQ-DEM-066",
@@ -2138,7 +2153,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2493
+  "line": 2517
  },
  {
   "id": "REQ-DEM-067",
@@ -2151,7 +2166,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2524
+  "line": 2548
  },
  {
   "id": "REQ-DEM-067a",
@@ -2166,7 +2181,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2552
+  "line": 2576
  },
  {
   "id": "REQ-DEM-068",
@@ -2181,7 +2196,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2573
+  "line": 2597
  },
  {
   "id": "REQ-DEM-069",
@@ -2196,7 +2211,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2586
+  "line": 2610
  },
  {
   "id": "REQ-DEM-070",
@@ -2211,7 +2226,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2604
+  "line": 2628
  },
  {
   "id": "REQ-DEM-071",
@@ -2226,7 +2241,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2618
+  "line": 2642
  },
  {
   "id": "REQ-DEM-072",
@@ -2239,7 +2254,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2628
+  "line": 2652
  },
  {
   "id": "REQ-DEM-080",
@@ -2255,7 +2270,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2644
+  "line": 2668
  },
  {
   "id": "REQ-DEM-081",
@@ -2270,7 +2285,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2673
+  "line": 2697
  },
  {
   "id": "REQ-DEM-082",
@@ -2283,7 +2298,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2684
+  "line": 2708
  },
  {
   "id": "REQ-DEM-083",
@@ -2296,7 +2311,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2690
+  "line": 2714
  },
  {
   "id": "REQ-PER-001",
@@ -2309,7 +2324,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2706
+  "line": 2730
  },
  {
   "id": "REQ-PER-002",
@@ -2322,7 +2337,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2736
+  "line": 2760
  },
  {
   "id": "REQ-PER-003",
@@ -2337,7 +2352,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2750
+  "line": 2774
  },
  {
   "id": "REQ-PER-010",
@@ -2350,7 +2365,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2788
+  "line": 2812
  },
  {
   "id": "REQ-PER-011",
@@ -2363,7 +2378,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2801
+  "line": 2825
  },
  {
   "id": "REQ-UI-001",
@@ -2378,7 +2393,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2835
+  "line": 2859
  },
  {
   "id": "REQ-UI-002",
@@ -2393,7 +2408,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2858
+  "line": 2882
  },
  {
   "id": "REQ-UI-003",
@@ -2408,7 +2423,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2864
+  "line": 2888
  },
  {
   "id": "REQ-UI-004",
@@ -2423,7 +2438,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2873
+  "line": 2897
  },
  {
   "id": "REQ-UI-005",
@@ -2438,7 +2453,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2888
+  "line": 2912
  },
  {
   "id": "REQ-UI-006",
@@ -2453,7 +2468,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2912
+  "line": 2936
  },
  {
   "id": "REQ-UI-007",
@@ -2466,7 +2481,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2934
+  "line": 2958
  },
  {
   "id": "REQ-UI-010",
@@ -2481,7 +2496,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2950
+  "line": 2974
  },
  {
   "id": "REQ-UI-011",
@@ -2496,7 +2511,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2980
+  "line": 3004
  },
  {
   "id": "REQ-UI-012",
@@ -2509,7 +2524,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 2987
+  "line": 3011
  },
  {
   "id": "REQ-UI-013",
@@ -2524,7 +2539,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3003
+  "line": 3027
  },
  {
   "id": "REQ-UI-014",
@@ -2539,7 +2554,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3017
+  "line": 3041
  },
  {
   "id": "REQ-UI-015",
@@ -2552,7 +2567,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3026
+  "line": 3050
  },
  {
   "id": "REQ-UI-020",
@@ -2567,7 +2582,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3044
+  "line": 3068
  },
  {
   "id": "REQ-UI-021",
@@ -2582,7 +2597,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3055
+  "line": 3079
  },
  {
   "id": "REQ-UI-022",
@@ -2595,7 +2610,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3068
+  "line": 3092
  },
  {
   "id": "REQ-UI-023",
@@ -2610,7 +2625,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3088
+  "line": 3112
  },
  {
   "id": "REQ-UI-024",
@@ -2625,7 +2640,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3106
+  "line": 3130
  },
  {
   "id": "REQ-UI-030",
@@ -2640,7 +2655,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3132
+  "line": 3156
  },
  {
   "id": "REQ-UI-031",
@@ -2655,7 +2670,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3152
+  "line": 3176
  },
  {
   "id": "REQ-UI-032",
@@ -2670,7 +2685,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3163
+  "line": 3187
  },
  {
   "id": "REQ-UI-033",
@@ -2685,7 +2700,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3177
+  "line": 3201
  },
  {
   "id": "REQ-UI-040",
@@ -2698,7 +2713,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3188
+  "line": 3212
  },
  {
   "id": "REQ-UI-041",
@@ -2713,7 +2728,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3211
+  "line": 3235
  },
  {
   "id": "REQ-UI-042",
@@ -2728,7 +2743,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3230
+  "line": 3254
  },
  {
   "id": "REQ-UI-050",
@@ -2743,7 +2758,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3260
+  "line": 3284
  },
  {
   "id": "REQ-UI-051",
@@ -2758,7 +2773,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3276
+  "line": 3300
  },
  {
   "id": "REQ-UI-052",
@@ -2773,7 +2788,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3292
+  "line": 3316
  },
  {
   "id": "REQ-UI-053",
@@ -2788,7 +2803,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3315
+  "line": 3339
  },
  {
   "id": "REQ-UI-054",
@@ -2803,7 +2818,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3341
+  "line": 3365
  },
  {
   "id": "REQ-UI-060",
@@ -2816,7 +2831,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3357
+  "line": 3381
  },
  {
   "id": "REQ-UI-061",
@@ -2831,7 +2846,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3375
+  "line": 3399
  },
  {
   "id": "REQ-UI-062",
@@ -2846,7 +2861,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3415
+  "line": 3439
  },
  {
   "id": "REQ-UI-063",
@@ -2861,7 +2876,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3427
+  "line": 3451
  },
  {
   "id": "REQ-UI-064",
@@ -2876,7 +2891,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3449
+  "line": 3473
  },
  {
   "id": "REQ-UI-065",
@@ -2891,7 +2906,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3457
+  "line": 3481
  },
  {
   "id": "REQ-UI-070",
@@ -2906,7 +2921,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3483
+  "line": 3507
  },
  {
   "id": "REQ-UI-071",
@@ -2921,7 +2936,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3495
+  "line": 3519
  },
  {
   "id": "REQ-UI-072",
@@ -2936,7 +2951,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3518
+  "line": 3542
  },
  {
   "id": "REQ-UI-073",
@@ -2951,7 +2966,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3524
+  "line": 3548
  },
  {
   "id": "REQ-UI-080",
@@ -2967,7 +2982,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3535
+  "line": 3559
  },
  {
   "id": "REQ-UI-081",
@@ -2982,7 +2997,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3552
+  "line": 3576
  },
  {
   "id": "REQ-UI-082",
@@ -2997,7 +3012,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3573
+  "line": 3597
  },
  {
   "id": "REQ-UI-083",
@@ -3010,7 +3025,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3588
+  "line": 3612
  },
  {
   "id": "REQ-UI-090",
@@ -3023,7 +3038,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3623
+  "line": 3647
  },
  {
   "id": "REQ-UI-091",
@@ -3036,7 +3051,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3655
+  "line": 3679
  },
  {
   "id": "REQ-STA-001",
@@ -3051,7 +3066,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3719
+  "line": 3743
  },
  {
   "id": "REQ-STA-002",
@@ -3066,7 +3081,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3733
+  "line": 3757
  },
  {
   "id": "REQ-STA-003",
@@ -3081,7 +3096,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3743
+  "line": 3767
  },
  {
   "id": "REQ-STA-004",
@@ -3096,7 +3111,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3751
+  "line": 3775
  },
  {
   "id": "REQ-STA-005",
@@ -3109,7 +3124,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3761
+  "line": 3785
  },
  {
   "id": "REQ-API-001",
@@ -3124,7 +3139,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3773
+  "line": 3797
  },
  {
   "id": "REQ-API-002",
@@ -3137,7 +3152,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3808
+  "line": 3832
  },
  {
   "id": "REQ-API-003",
@@ -3152,7 +3167,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3814
+  "line": 3838
  },
  {
   "id": "REQ-API-004",
@@ -3165,7 +3180,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3827
+  "line": 3851
  },
  {
   "id": "REQ-API-005",
@@ -3180,7 +3195,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3840
+  "line": 3864
  },
  {
   "id": "REQ-API-006",
@@ -3195,7 +3210,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3850
+  "line": 3874
  },
  {
   "id": "REQ-API-007",
@@ -3210,7 +3225,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3861
+  "line": 3885
  },
  {
   "id": "REQ-NFR-030",
@@ -3223,7 +3238,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3880
+  "line": 3904
  },
  {
   "id": "REQ-NFR-031",
@@ -3236,7 +3251,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3881
+  "line": 3905
  },
  {
   "id": "REQ-NFR-032",
@@ -3249,7 +3264,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3882
+  "line": 3906
  },
  {
   "id": "REQ-NFR-033",
@@ -3262,7 +3277,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3883
+  "line": 3907
  },
  {
   "id": "REQ-NFR-034",
@@ -3275,7 +3290,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3884
+  "line": 3908
  },
  {
   "id": "REQ-NFR-035",
@@ -3288,7 +3303,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3885
+  "line": 3909
  },
  {
   "id": "REQ-NFR-036",
@@ -3301,7 +3316,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3886
+  "line": 3910
  },
  {
   "id": "REQ-NFR-037",
@@ -3314,7 +3329,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3887
+  "line": 3911
  },
  {
   "id": "REQ-NFR-040",
@@ -3327,7 +3342,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3888
+  "line": 3912
  },
  {
   "id": "REQ-NFR-041",
@@ -3340,7 +3355,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3889
+  "line": 3913
  },
  {
   "id": "REQ-NFR-042",
@@ -3353,7 +3368,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3890
+  "line": 3914
  },
  {
   "id": "REQ-NFR-038",
@@ -3366,7 +3381,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3891
+  "line": 3915
  },
  {
   "id": "REQ-NFR-039",
@@ -3379,7 +3394,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3892
+  "line": 3916
  },
  {
   "id": "REQ-NFR-032a",
@@ -3392,7 +3407,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3918
+  "line": 3942
  },
  {
   "id": "REQ-NFR-036a",
@@ -3405,7 +3420,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3982
+  "line": 4006
  },
  {
   "id": "REQ-LIC-010",
@@ -3418,7 +3433,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4068
+  "line": 4092
  },
  {
   "id": "REQ-LIC-010a",
@@ -3431,7 +3446,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4084
+  "line": 4108
  },
  {
   "id": "REQ-LIC-011",
@@ -3444,7 +3459,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4095
+  "line": 4119
  },
  {
   "id": "REQ-TST-001",
@@ -3457,7 +3472,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4119
+  "line": 4143
  },
  {
   "id": "REQ-TST-002",
@@ -3470,7 +3485,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4144
+  "line": 4168
  },
  {
   "id": "REQ-TST-003",
@@ -3483,7 +3498,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4171
+  "line": 4195
  },
  {
   "id": "REQ-TST-004",
@@ -3496,7 +3511,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4179
+  "line": 4203
  },
  {
   "id": "REQ-TST-004a",
@@ -3509,7 +3524,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4194
+  "line": 4218
  },
  {
   "id": "REQ-TST-005",
@@ -3522,7 +3537,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4211
+  "line": 4235
  },
  {
   "id": "REQ-TST-006",
@@ -3535,7 +3550,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4224
+  "line": 4248
  },
  {
   "id": "REQ-TST-007",
@@ -3548,7 +3563,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4245
+  "line": 4269
  },
  {
   "id": "REQ-TST-007a",
@@ -3561,7 +3576,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4257
+  "line": 4281
  },
  {
   "id": "REQ-TST-008",
@@ -3574,7 +3589,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4264
+  "line": 4288
  },
  {
   "id": "REQ-TST-009",
@@ -3587,7 +3602,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4273
+  "line": 4297
  },
  {
   "id": "REQ-PLN-001",
@@ -3600,6 +3615,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 4311
+  "line": 4335
  }
 ]

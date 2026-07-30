@@ -126,6 +126,16 @@ PHASE_OVERRIDES = {
     "REQ-DAT-002a": (3, "REQ-REC-005's export formats do not exist yet"),
     "REQ-NFR-023": (2, "benchmarks flexible demod at 1024-QAM with an equaliser"),
 
+    # --- Verifiable only once a personality exists (Phase 5) ----------------------------------
+    #
+    # Same class as REQ-DSP-040a below: not a forward dependency on a later phase's work but a
+    # dependency on work that is not scheduled at all. Before REQ-MKR-007 was split on
+    # 2026-07-29 this clause was the ONLY mention of OFDM in the whole specification, so nothing
+    # delivers the personality it needs. Placed where such a personality would belong; it cannot
+    # close until one is specified. The atomicity checker could not catch this on its own --
+    # "an OFDM personality" names no requirement ID for it to follow.
+    "REQ-MKR-007a": (5, "needs an OFDM personality, which no requirement delivers"),
+
     # --- Verifiable only once recording and a real front end exist (Phase 3) ------------------
     "REQ-NFR-026": (3, "plays back a 4 GB recording; REQ-REC-001 delivers recordings"),
     "REQ-DSP-040a": (3, "needs phase-coherent two-channel acquisition; see the issue's own "
