@@ -105,6 +105,61 @@ namespace OpenVSA.Core
         /// <summary>Rents above <see cref="MaximumLength"/>, which the pool cannot retain.</summary>
         public long OversizeRequests => Interlocked.Read(ref _oversize);
 
+        /// <summary>Buffers the pool is holding at this moment.</summary>
+        /// <remarks>
+        /// <c>REQ-TST-009</c> requires a soak to show that pooled buffers have no net growth, and
+        /// <see cref="Rents"/> and <see cref="Hits"/> cannot answer that: both rise for ever in a
+        /// healthy run. What is bounded is what the pool <em>retains</em>, and this is a count of
+        /// exactly that. Per-bucket retention is already capped by
+        /// <see cref="MaximumPerBucket"/>, so a rise here means buckets in use that were not before.
+        /// </remarks>
+        public int RetainedBuffers
+        {
+            get
+            {
+                int total = 0;
+
+                for (int i = 0; i < _buckets.Length; i++)
+                {
+                    lock (_gates[i])
+                    {
+                        total += _buckets[i].Count;
+                    }
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>Bytes the pool is holding at this moment.</summary>
+        /// <remarks>
+        /// The figure that matters for a memory trend, because the buckets are geometric: one 2^24
+        /// buffer retained is 64 MiB, and sixteen 1024-element ones are 64 KiB. Counted from each
+        /// bucket's own length rather than from the arrays, so it is a walk of the bucket sizes
+        /// rather than of every buffer.
+        /// </remarks>
+        public long RetainedBytes
+        {
+            get
+            {
+                long total = 0L;
+
+                for (int i = 0; i < _buckets.Length; i++)
+                {
+                    int count;
+
+                    lock (_gates[i])
+                    {
+                        count = _buckets[i].Count;
+                    }
+
+                    total += (long)count * LengthOf(i) * sizeof(float);
+                }
+
+                return total;
+            }
+        }
+
         /// <summary>
         /// Rents a buffer of at least <paramref name="minimumLength"/> elements.
         /// </summary>

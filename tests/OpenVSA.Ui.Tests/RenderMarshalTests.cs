@@ -87,6 +87,40 @@ namespace OpenVSA.Ui.Tests
         }
 
         [Fact]
+        public void FramesActuallyDrawnAreCountedSeparatelyFromOnesDropped()
+        {
+            // REQ-TST-009 compares the update rate of a soak's final hour against its first, which
+            // has to be frames actually drawn: the difference between two readings of this counter
+            // over the time between them is the rate the display achieved.
+            var marshal = new RenderMarshal { Columns = 32 };
+
+            Assert.Equal(0L, marshal.FramesTakenForRender);
+
+            marshal.Offer(Ramp(256));
+            marshal.Offer(Ramp(256));
+
+            // Offered twice, drawn once: the counter follows what was collected, not what arrived,
+            // or a shell that fell behind would report a rate it never achieved.
+            Assert.NotNull(marshal.TakeForRender());
+
+            Assert.Equal(1L, marshal.FramesTakenForRender);
+            Assert.Equal(1L, marshal.FramesDropped);
+
+            // A collection that found nothing is not a frame.
+            Assert.Null(marshal.TakeForRender());
+            Assert.Equal(1L, marshal.FramesTakenForRender);
+
+            marshal.Offer(Ramp(256));
+            Assert.NotNull(marshal.TakeForRender());
+            Assert.Equal(2L, marshal.FramesTakenForRender);
+
+            // Monotonic across a stop, because its only use is as a difference: a reset partway
+            // through a soak would make the hour containing it read as a collapse in rate.
+            marshal.Reset();
+            Assert.Equal(2L, marshal.FramesTakenForRender);
+        }
+
+        [Fact]
         public void ItStopsPostingOnceEnoughRenderCallbacksAreOutstanding()
         {
             // REQ-NFR-012 applied to the dispatcher queue: the pump may outrun the UI, but it may

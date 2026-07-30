@@ -2407,6 +2407,21 @@ namespace OpenVSA.Ui
         public SpectrumEngine Engine => _engine;
 
         /// <summary>
+        /// Frames the display has collected for drawing since the shell opened.
+        /// </summary>
+        /// <remarks>
+        /// Monotonic, and the counter <c>REQ-TST-009</c>'s update-rate comparison is built from: the
+        /// difference between two readings over the time between them is the rate actually achieved
+        /// in that window. The two counters are exposed rather than the marshal itself, because a
+        /// caller outside the shell has no business resetting it.
+        /// </remarks>
+        public long FramesDrawn => _marshal.FramesTakenForRender;
+
+        /// <summary>Frames coalesced away because the display had not collected the previous one.</summary>
+        /// <remarks><c>REQ-NFR-012</c>'s counter, which the status bar already shows.</remarks>
+        public long FramesDropped => _marshal.FramesDropped;
+
+        /// <summary>
         /// Opens the connection dialog for a front end that needs an address (<c>REQ-HAL-003</c>).
         /// </summary>
         /// <param name="frontEnd">The front end to point at an address.</param>

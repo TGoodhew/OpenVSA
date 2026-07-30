@@ -1,0 +1,35 @@
+OpenVSA soak (REQ-TST-009)
+  duration  8 hours
+  sampling  every 60 s
+  cycling   every 5 min
+  log       C:\Users\Tony\source\OpenVSA\artifacts\soak\soak-8h.tsv
+
+  connected to Simulated source and measuring.
+
+  [00:00:00] 140 MiB private, 16 MiB managed, 688 handles, 21 GDI, 1 frames, 0 cycles
+  [00:00:59] 131 MiB private, 18 MiB managed, 714 handles, 21 GDI, 3,457 frames, 0 cycles
+  [01:00:00] 155 MiB private, 17 MiB managed, 633 handles, 22 GDI, 214,292 frames, 12 cycles
+  [02:00:01] 119 MiB private, 17 MiB managed, 626 handles, 22 GDI, 428,190 frames, 24 cycles
+  [03:00:02] 119 MiB private, 17 MiB managed, 633 handles, 22 GDI, 642,649 frames, 36 cycles
+  [04:00:03] 119 MiB private, 17 MiB managed, 633 handles, 22 GDI, 857,226 frames, 48 cycles
+  [05:00:04] 122 MiB private, 17 MiB managed, 633 handles, 22 GDI, 1,071,721 frames, 60 cycles
+  [06:00:05] 120 MiB private, 17 MiB managed, 633 handles, 22 GDI, 1,286,228 frames, 72 cycles
+  [07:00:06] 122 MiB private, 17 MiB managed, 640 handles, 22 GDI, 1,500,726 frames, 84 cycles
+  [08:00:07] 121 MiB private, 17 MiB managed, 641 handles, 22 GDI, 1,715,452 frames, 96 cycles
+
+OpenVSA soak (REQ-TST-009): 8.00 hours, 481 samples
+
+  PASSED      REQ-TST-009  The soak ran at least 8 hours - 8.00 hours over 481 samples, with 96 create-and-destroy cycles
+  FAILED      REQ-TST-009  Managed memory is bounded on a trend, not a ceiling - slope 0.01 MiB/hour ñ0.00 MiB, from 16.93 MiB to 17.04 MiB, over 48 samples after the first 2 minutes
+  PASSED      REQ-TST-009  Unmanaged memory is bounded on a trend, not a ceiling - slope -2.57 MiB/hour ñ0.18 MiB, from 131.67 MiB to 120.90 MiB, over 478 samples after the first 2 minutes
+  PASSED      REQ-TST-009  Handles return to their starting range - opened 626-724, ended 641, peaked 724, allowed up to 797
+  PASSED      REQ-TST-009  GDI objects return to their starting range - opened 21-22, ended 22, peaked 22, allowed up to 25
+  PASSED      REQ-TST-009  USER objects return to their starting range - opened 28-33, ended 34, peaked 34, allowed up to 37
+  PASSED      REQ-TST-009  Update rate over the final hour is within 5 % of the first - first hour 59.51 frames/s, final hour 59.63 frames/s, -0.2 % slower
+  PASSED      REQ-NFR-011  Pooled buffers show no net growth - opened 0.02 MiB, ended 0.02 MiB, peaked 0.03 MiB; 4 buffers retained, slope over the second half 0.00 MiB/hour ñ0.00 MiB
+  PASSED      REQ-NFR-012  Dropped frames are reported - 6,689 dropped of 1,722,141 produced (0.4 %), 1,715,452 drawn
+
+  1 of 9 claims did not hold.
+
+  report  C:\Users\Tony\source\OpenVSA\artifacts\soak\soak-8h.report.txt
+  samples C:\Users\Tony\source\OpenVSA\artifacts\soak\soak-8h.tsv

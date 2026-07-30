@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenVSA.Soak</RootNamespace>
+    <AssemblyName>OpenVSA.Soak</AssemblyName>
+    <AssemblyTitle>OpenVSA.Soak</AssemblyTitle>
+    <Description>Long-duration soak host: runs the shell against the simulator for hours, samples memory, handles and frame counts, and judges the log with OpenVSA.SoakGate. Exits non-zero on failure so a build can gate on it.</Description>
+    <IsTestProject>false</IsTestProject>
+
+    <!--
+      A real window and a real message pump. REQ-TST-009 is about a shell that has been running for
+      eight hours with traces updating and the UI live, so the thing measured has to be the shell.
+    -->
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
+    <ProjectReference Include="..\OpenVSA.SoakGate\OpenVSA.SoakGate.csproj" />
+  </ItemGroup>
+
+  <!--
+    The simulator, deployed rather than referenced, exactly as OpenVSA.Ui deploys it and as
+    OpenVSA.Ui.Tests does: ReferenceOutputAssembly is false, so REQ-ARC-001 still holds and this
+    host cannot have been built with any knowledge of the front end it selects. FrontEndRegistry
+    finds it in FrontEnds\ at run time, the way a launched application would.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Hal.Sim\OpenVSA.Hal.Sim.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OpenVsaSimulatedFrontEnd>$(MSBuildThisFileDirectory)..\..\src\OpenVSA.Hal.Sim\bin\$(Configuration)\$(TargetFramework)\OpenVSA.Hal.Sim.dll</OpenVsaSimulatedFrontEnd>
+  </PropertyGroup>
+
+  <Target Name="DeploySimulatedFrontEnd" AfterTargets="Build"
+          Condition="Exists('$(OpenVsaSimulatedFrontEnd)')">
+    <Copy SourceFiles="$(OpenVsaSimulatedFrontEnd)"
+          DestinationFolder="$(OutDir)FrontEnds"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
