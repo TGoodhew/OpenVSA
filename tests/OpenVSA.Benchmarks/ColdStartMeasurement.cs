@@ -50,7 +50,8 @@ namespace OpenVSA.Benchmarks
 
             for (int i = 0; i < runs; i++)
             {
-                double elapsed = OneLaunch(shellPath);
+                var phases = new LaunchPhases();
+                double elapsed = OneLaunch(shellPath, phases);
 
                 if (double.IsNaN(elapsed))
                 {
@@ -58,7 +59,12 @@ namespace OpenVSA.Benchmarks
                 }
 
                 seconds[i] = elapsed;
-                Console.WriteLine("    launch " + (i + 1) + ": " + elapsed.ToString("F2") + " s");
+
+                // The breakdown on every launch, not only the cold one. The useful question is which
+                // phase is longer when cold, and answering it needs both to compare.
+                Console.WriteLine(
+                    "    launch " + (i + 1) + ": " + elapsed.ToString("F2") + " s  (" +
+                    phases.Render() + ")");
             }
 
             // **Only the first launch is cold.** After it, the assemblies are in the OS file cache
@@ -98,11 +104,55 @@ namespace OpenVSA.Benchmarks
                 sum += (seconds[i] - mean) * (seconds[i] - mean);
             }
 
+            // The warm mean is what the regression gate tracks; the COLD figure is what the
+            // requirement's 3 s is held against. Passing only the warm mean reported a missed
+            // requirement as met -- 1.36 s against 3 s looks comfortable, and the cold start it was
+            // standing in for is 3.29 s. See TargetMeasurement.AgainstStated.
             return new TargetMeasurement(
-                "ColdStartToFirstTrace", mean, Math.Sqrt(sum / (runs - 2)), runs - 1);
+                "ColdStartToFirstTrace",
+                mean,
+                Math.Sqrt(sum / (runs - 2)),
+                runs - 1,
+                againstStated: seconds[0]);
         }
 
-        private static double OneLaunch(string shellPath)
+        /// <summary>
+        /// Where one launch spent its time, in seconds from the process's own start.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A total of 3.29 s against a 3 s requirement says the requirement is missed and nothing
+        /// about what to do next, and there are four places it could be going: assembly load and JIT
+        /// before a window exists, the front-end registry probing every <c>OpenVSA.Hal.*.dll</c>
+        /// beside the shell (including the VISA one, which fails to load where there is no VISA),
+        /// the capabilities query behind connecting, and the first frame itself.
+        /// </para>
+        /// <para>
+        /// Every boundary here is observable from outside the process, so nothing is added to the
+        /// shipping path to obtain it. That was the constraint that mattered: the alternative was a
+        /// stopwatch inside <c>App</c>, and measurement scaffolding on the shipping path for a figure
+        /// an automation client can already see is a poor trade.
+        /// </para>
+        /// </remarks>
+        private sealed class LaunchPhases
+        {
+            internal double WindowAppeared { get; set; }
+
+            internal double MenuPopulated { get; set; }
+
+            internal double SourceConnected { get; set; }
+
+            internal double FirstTrace { get; set; }
+
+            /// <summary>The phases as one line: when the window came up, then each step after it.</summary>
+            internal string Render() =>
+                "window " + WindowAppeared.ToString("F2") +
+                " s, +menu " + (MenuPopulated - WindowAppeared).ToString("F2") +
+                " s, +connect " + (SourceConnected - MenuPopulated).ToString("F2") +
+                " s, +first frame " + (FirstTrace - SourceConnected).ToString("F2") + " s";
+        }
+
+        private static double OneLaunch(string shellPath, LaunchPhases phases)
         {
             var info = new ProcessStartInfo(shellPath)
             {
@@ -131,15 +181,19 @@ namespace OpenVSA.Benchmarks
                     return double.NaN;
                 }
 
+                phases.WindowAppeared = Since(process);
+
                 // The shell opens with no source connected, and REQ-NFR-032 requires the simulator
                 // to be *available*, not selected — so getting to a trace means walking the menu
                 // the same way a user would. Every step of it is product work: the submenu is
                 // populated on open from the front-end registry, and choosing an item runs
                 // ConnectAsync and the capabilities query that ranges the settings pane.
-                if (!SelectSimulatedSource(window))
+                if (!SelectSimulatedSource(window, phases, process))
                 {
                     return double.NaN;
                 }
+
+                phases.SourceConnected = Since(process);
 
                 if (!Invoke(window, "Apply"))
                 {
@@ -155,7 +209,9 @@ namespace OpenVSA.Benchmarks
 
                 // From the process's own start, so the harness's own scheduling is not charged to
                 // the product.
-                return (DateTime.Now - process.StartTime).TotalSeconds;
+                phases.FirstTrace = Since(process);
+
+                return phases.FirstTrace;
             }
             finally
             {
@@ -182,7 +238,8 @@ namespace OpenVSA.Benchmarks
         /// That is worth fixing on the shell side one day; until then the name is the only handle.
         /// </para>
         /// </remarks>
-        private static bool SelectSimulatedSource(AutomationElement window)
+        private static bool SelectSimulatedSource(
+            AutomationElement window, LaunchPhases phases, Process process)
         {
             AutomationElement hardware = Expand(window, "Hardware");
 
@@ -204,6 +261,11 @@ namespace OpenVSA.Benchmarks
             }
 
             AutomationElement source = ByName(instruments, SimulatedSource);
+
+            // Here rather than after the click: reaching this point means the registry has probed
+            // every OpenVSA.Hal.*.dll beside the shell and the submenu has been filled from what it
+            // found, which is the phase a failed VISA load would show up in.
+            phases.MenuPopulated = Since(process);
 
             if (source == null)
             {
@@ -240,6 +302,10 @@ namespace OpenVSA.Benchmarks
             Console.Error.WriteLine("  REQ-NFR-025: the source item cannot be activated.");
             return false;
         }
+
+        /// <summary>Seconds since a process started, by its own clock.</summary>
+        private static double Since(Process process) =>
+            (DateTime.Now - process.StartTime).TotalSeconds;
 
         /// <summary>Expands a named menu item under a parent and returns it.</summary>
         private static AutomationElement Expand(AutomationElement parent, string name)
