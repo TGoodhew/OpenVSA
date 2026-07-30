@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -60,6 +62,23 @@ namespace OpenVSA.Soak
                 return ReportRetention(
                     new RetentionGate().Judge(SoakLog.ReadFile(options.JudgeCyclesOnly)),
                     options.JudgeCyclesOnly);
+            }
+
+            if (options.JudgeReplicates.Count > 0)
+            {
+                var runs = new List<IReadOnlyList<SoakSample>>();
+
+                foreach (string path in options.JudgeReplicates)
+                {
+                    runs.Add(SoakLog.ReadFile(path).ToList());
+                }
+
+                ReplicatedReport replicated = new ReplicatedGate().Judge(runs);
+
+                Console.WriteLine();
+                Console.WriteLine(replicated.Render());
+
+                return replicated.Passed ? 0 : 1;
             }
 
             // As App does, and for the same reason: every layer below asserts that it is not doing
@@ -219,6 +238,14 @@ namespace OpenVSA.Soak
 
         internal string JudgeCyclesOnly { get; private set; }
 
+        /// <summary>Logs to judge together as replicates of one another.</summary>
+        /// <remarks>
+        /// A list built from repeated <c>--judge-run</c>, rather than one comma-separated argument,
+        /// because these are file paths and a separator inside a path is a trap waiting for the
+        /// first directory with a comma in its name.
+        /// </remarks>
+        internal List<string> JudgeReplicates { get; } = new List<string>();
+
         internal static Options Parse(string[] args)
         {
             var options = new Options();
@@ -304,6 +331,12 @@ namespace OpenVSA.Soak
                         i++;
                         break;
 
+                    case "--judge-run":
+                        if (value == null) { return null; }
+                        options.JudgeReplicates.Add(value);
+                        i++;
+                        break;
+
                     case "--help":
                     case "-h":
                         return null;
@@ -365,6 +398,9 @@ namespace OpenVSA.Soak
             Console.WriteLine("  --rate N             frames a second to ask for, to tell per-frame from per-hour");
             Console.WriteLine("  --log PATH           where to write the samples");
             Console.WriteLine("  --judge PATH         judge an existing soak log and exit, running nothing");
+            Console.WriteLine("  --judge-run PATH     add a log to a replicate set; give it three or more times,");
+            Console.WriteLine("                       and the managed claim is judged on how far the runs DISAGREE");
+            Console.WriteLine("                       rather than on one run's own error bar (see ReplicatedGate)");
             Console.WriteLine();
             Console.WriteLine("A retention run instead — cycles as fast as the shell allows, to tell a rise");
             Console.WriteLine("per cycle from a rise per hour (see RetentionGate):");
