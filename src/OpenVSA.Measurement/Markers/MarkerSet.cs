@@ -33,19 +33,35 @@ namespace OpenVSA.Measurement.Markers
         public const int MaximumPerTrace = 20;
 
         private readonly List<Marker> _markers = new List<Marker>();
+        private readonly ReadOnlyCollection<Marker> _readOnly;
 
         /// <summary>Creates an empty set for a trace.</summary>
         /// <param name="traceLetter">The trace's letter (<c>REQ-UI-020</c>).</param>
         public MarkerSet(char traceLetter = 'A')
         {
             TraceLetter = traceLetter;
+            _readOnly = new ReadOnlyCollection<Marker>(_markers);
         }
 
         /// <summary>The letter of the trace these markers are on.</summary>
         public char TraceLetter { get; }
 
         /// <summary>The markers, in creation order.</summary>
-        public IReadOnlyList<Marker> Markers => new ReadOnlyCollection<Marker>(_markers);
+        /// <remarks>
+        /// <para>
+        /// One wrapper, made once. <see cref="ReadOnlyCollection{T}"/> is a live view over the list
+        /// rather than a copy of it, so a single instance stays correct for the life of the set and
+        /// there is nothing to invalidate.
+        /// </para>
+        /// <para>
+        /// <strong>It used to be built on every read</strong>, and this is read from the drawing
+        /// path: <c>ShellWindow.RefreshMarkers</c> and the chooser it fills touch it five times for
+        /// every frame drawn, sixty times a second. That is garbage rather than a leak, but it is
+        /// garbage created by a property that looks free at the call site — which is the kind that
+        /// does not get noticed.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<Marker> Markers => _readOnly;
 
         /// <summary>The selected marker, or <c>null</c> if there is none.</summary>
         public Marker Selected => _markers.FirstOrDefault(m => m.IsSelected);
