@@ -18,7 +18,8 @@
       one sitting in the payload directory and harvesting it would ship that developer's key.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:netfx="http://wixtoolset.org/schemas/v4/wxs/netfx">
 
   <Package Name="OpenVSA"
            Manufacturer="OpenVSA"
@@ -93,7 +94,43 @@
         <Exclude Files="$(var.PayloadDirectory)\*.example" />
         <Exclude Files="$(var.PayloadDirectory)\Ivi.Visa.dll" />
         <Exclude Files="$(var.PayloadDirectory)\NationalInstruments.*" />
+
+        <!--
+          Named on its own below, so there is a File element to hang NativeImage on. A harvested file has
+          no identity to reference, and this is the one file that needs one.
+        -->
+        <Exclude Files="$(var.PayloadDirectory)\OpenVSA.exe" />
       </Files>
+
+      <!--
+        REQ-NFR-025: a cold start of three seconds, and the measured phase breakdown says the whole
+        overrun is before a window exists: 6.80 s to the window against 0.87 s warm, while the menu,
+        the connection and the first frame together take 0.60 s and are the same figure either way. So
+        the cost is loading and jitting assemblies.
+
+        App's multicore JIT parallelises that from the second launch onward, and cannot help the
+        first: there is no profile yet, and the first launch is exactly what "cold start" means.
+        Native images remove the jitting instead of scheduling it, which is the only lever that
+        reaches launch one.
+
+        Priority is idle rather than immediate: ngen at install time on the foreground would add
+        minutes to an install to save seconds on a launch, and the queue drains on the machine's own
+        idle time. A machine that never idles is one where the first launch jits as it does today,
+        which is the behaviour being improved on rather than depended upon.
+
+        Assembly is Ngen's "this file and what it references", so the analysis assemblies come with
+        it and are not listed one by one. A list would go stale the moment one was added.
+
+        NOT conditioned on being an administrative install, and that is deliberate: ngen requires
+        elevation, REQ-NFR-031 asks for a non-admin install where VISA is already present, and a
+        failed native-image generation must leave a working installation behind. WiX schedules this
+        as a deferred action whose failure does not roll the install back.
+      -->
+      <Component Id="Shell" Guid="4f8c1d62-7b93-4e05-a8d1-6c2f9e3b7a54">
+        <File Id="OpenVSA.exe" Source="$(var.PayloadDirectory)\OpenVSA.exe" KeyPath="yes">
+          <netfx:NativeImage Id="OpenVSA.ni" Priority="3" Platform="64bit" AppBaseDirectory="INSTALLFOLDER" />
+        </File>
+      </Component>
     </ComponentGroup>
 
     <!--

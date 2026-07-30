@@ -34,6 +34,13 @@
 
   <ItemGroup>
     <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+
+    <!--
+      netfx is here for one element: NativeImage on the shell. REQ-NFR-025 wants a cold start under three
+      seconds, and the measured breakdown says the whole overrun is before a window exists, so the
+      lever is the jitting on first launch. Native images remove it rather than scheduling it.
+    -->
+    <PackageReference Include="WixToolset.Netfx.wixext" Version="5.0.2" />
   </ItemGroup>
 
 </Project>

@@ -218,6 +218,55 @@ namespace OpenVSA.Ui.Tests
         }
 
         [Fact]
+        public void MovingTheTraceSelectMarkerSurfacesThatRowsOwnData()
+        {
+            // REQ-MKR-007's second half at the control: "moving the trace-select marker to a history
+            // row makes the spectrum trace show that row's data, matching the data captured at that
+            // time". The marker moved and the map redrew; nothing surfaced the row, so the trace that
+            // is meant to show it had nothing to show.
+            OnStaThread(() =>
+            {
+                TracePlot plot = Laid();
+
+                plot.History = Swept(24);
+                plot.Accumulator = TraceAccumulator.Spectrogram;
+
+                int announced = 0;
+                plot.SelectedHistoryRowChanged += (sender, e) => announced++;
+
+                // Bottom first, because the marker starts on the newest row at the top: moving it
+                // there would be a move that changes nothing, and this needs a change to observe.
+                plot.MoveSpectrogramMarker(SpectrogramMarkerKind.TraceSelect, new Point(400.0, 592.0));
+
+                int bottom = plot.SelectedHistoryRow;
+
+                Assert.True(bottom >= 0, "The trace-select marker is on no row.");
+                Assert.Equal(1, announced);
+
+                // That row's OWN frame, taken from the history rather than from the drawn map: a
+                // spectrum built from colour-mapped cells would be a picture of a picture, and wrong
+                // in every format but log magnitude.
+                Assert.Same(plot.History.Row(bottom), plot.SelectedHistoryFrame);
+
+                plot.MoveSpectrogramMarker(SpectrogramMarkerKind.TraceSelect, new Point(400.0, 8.0));
+
+                int top = plot.SelectedHistoryRow;
+
+                Assert.NotEqual(top, bottom);
+                Assert.Equal(2, announced);
+                Assert.Same(plot.History.Row(top), plot.SelectedHistoryFrame);
+
+                // A move that lands on the row it was already on announces nothing: a trace that
+                // rebuilt itself on every mouse move during a drag would spend the frame budget
+                // redrawing the same spectrum.
+                plot.MoveSpectrogramMarker(SpectrogramMarkerKind.TraceSelect, new Point(410.0, 8.0));
+
+                Assert.Equal(2, announced);
+                Assert.Equal(top, plot.SelectedHistoryRow);
+            });
+        }
+
+        [Fact]
         public void AMarkerIsRefusedWhenThereIsNoSpectrogramToMarkerOn()
         {
             OnStaThread(() =>

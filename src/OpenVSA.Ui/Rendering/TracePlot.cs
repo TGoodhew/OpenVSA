@@ -68,6 +68,9 @@ namespace OpenVSA.Ui.Rendering
         private readonly TextBlock _markerText;
         private readonly TextBlock _indicatorText;
         private readonly List<FrameworkElement> _annotation = new List<FrameworkElement>();
+        private readonly List<FrameworkElement> _measurementAnnotation =
+            new List<FrameworkElement>();
+
         private readonly List<HotSpot> _hotSpots = new List<HotSpot>();
 
         private TraceSnapshot _snapshot;
@@ -191,6 +194,18 @@ namespace OpenVSA.Ui.Rendering
             SetRow(_indicatorText, 0);
             SetColumn(_indicatorText, 0);
             Children.Add(_indicatorText);
+
+            // REQ-UI-010 and REQ-UI-021 divide the annotation between two colours, and this is where
+            // the division is declared. Everything above describes THIS TRACE -- its Y scale, its
+            // format, its averaging, its marker readout -- and takes the trace's own colour, which is
+            // REQ-UI-021's visual signature. These four describe THE MEASUREMENT: the X axis, the
+            // record length, and two properties of the acquisition every trace in an overlay shares.
+            // They take the Annotation colour, because painting the centre frequency in trace A's
+            // colour says it belongs to trace A, and it does not.
+            _measurementAnnotation.Add(_resolutionBandwidth);
+            _measurementAnnotation.Add(_triggerChannel);
+            _measurementAnnotation.Add(_centerFrequency);
+            _measurementAnnotation.Add(_mainTime);
 
             // The rubber band drawn while a region is being dragged (REQ-DSP-023). A sibling of
             // the rasterised image rather than something painted into it: the image is redrawn
@@ -875,14 +890,46 @@ namespace OpenVSA.Ui.Rendering
             int row = SpectrogramRasterizer.RowForY(
                 Clamp(y, 0, graticule.Height - 1), graticule.Height, _history.RowCount);
 
+            int rowBefore = _spectrogramMarkers.RowIndex;
+
             if (!_spectrogramMarkers.MoveTo(which, bin, row))
             {
                 return false;
             }
 
             Redraw(_snapshot);
+
+            // REQ-MKR-007: moving the trace-select marker to a history row is what makes a spectrum
+            // trace show that row's data. Announced rather than acted on here, because the trace that
+            // shows it is a different window -- this plot is drawing the spectrogram.
+            if (_spectrogramMarkers.RowIndex != rowBefore)
+            {
+                SelectedHistoryRowChanged?.Invoke(this, EventArgs.Empty);
+            }
+
             return true;
         }
+
+        /// <summary>
+        /// Raised when the trace-select marker lands on a different history row
+        /// (<c>REQ-MKR-007</c>).
+        /// </summary>
+        public event EventHandler SelectedHistoryRowChanged;
+
+        /// <summary>Which history row the trace-select marker is on, or <c>-1</c>.</summary>
+        public int SelectedHistoryRow =>
+            IsShowingSpectrogram ? _spectrogramMarkers.RowIndex : -1;
+
+        /// <summary>
+        /// The spectrum captured at the trace-select marker's row (<c>REQ-MKR-007</c>).
+        /// </summary>
+        /// <remarks>
+        /// That row's own frame, not a rendering of the map: the requirement asks for the trace to
+        /// show "the data captured at that time", so a spectrum drawn from the colour-mapped cells
+        /// would be a picture of a picture, and wrong in any format but log magnitude.
+        /// </remarks>
+        public SpectrumFrame SelectedHistoryFrame =>
+            IsShowingSpectrogram ? _spectrogramMarkers.SelectedRow : null;
 
         private static int Clamp(int value, int low, int high) =>
             value < low ? low : (value > high ? high : value);
@@ -1350,6 +1397,30 @@ namespace OpenVSA.Ui.Rendering
         /// inspection.
         /// </remarks>
         public IReadOnlyList<FrameworkElement> AnnotationElements => _annotation;
+
+        /// <summary>
+        /// The annotation that describes the measurement rather than this trace (<c>REQ-UI-010</c>).
+        /// </summary>
+        /// <remarks>
+        /// The X axis, the record length, and the two acquisition properties every trace in an
+        /// overlay shares. These carry <see cref="PlotPalette.Annotation"/>; everything else in
+        /// <see cref="AnnotationElements"/> carries <see cref="PlotPalette.Trace"/>, which is
+        /// <c>REQ-UI-021</c>. Exposed so that the division can be sampled from a rendered frame
+        /// rather than taken on trust — the two colours being genuinely independent is the half of
+        /// <c>REQ-UI-010</c> that a shared brush would quietly break.
+        /// </remarks>
+        public IReadOnlyList<FrameworkElement> MeasurementAnnotationElements =>
+            _measurementAnnotation;
+
+        /// <summary>
+        /// The active-marker readout drawn above the grid (<c>REQ-MKR-006</c>, <c>REQ-UI-040</c>).
+        /// </summary>
+        /// <remarks>
+        /// Exposed so that the requirement's comparison — this and the Markers window row must show
+        /// the same values for the same marker — can be made against what is on screen rather than
+        /// against whatever the shell believes it passed in.
+        /// </remarks>
+        public string MarkerReadoutText => _markerReadout;
 
         /// <summary>The element holding the trace indicator strings (<c>REQ-UI-041</c>).</summary>
         public FrameworkElement IndicatorElement => _indicatorText;
@@ -2244,10 +2315,18 @@ namespace OpenVSA.Ui.Rendering
             {
                 var text = element as TextBlock;
 
-                if (text != null)
+                if (text == null)
                 {
-                    text.Foreground = traceInk;
+                    continue;
                 }
+
+                // REQ-UI-010's Annotation colour against REQ-UI-021's Trace colour. The two
+                // definitions overlap -- "text outside of the graticule" and "specified trace and
+                // its annotation" -- and the division is by what the text is ABOUT: see where
+                // _measurementAnnotation is filled. Giving every label the trace colour satisfies
+                // REQ-UI-021 and leaves Annotation colouring no glyph at all, which is how
+                // REQ-UI-010's fourth zone came to be unmeetable.
+                text.Foreground = _measurementAnnotation.Contains(element) ? annotation : traceInk;
             }
 
             _markerText.Foreground = traceInk;

@@ -17,7 +17,7 @@ namespace OpenVSA.PerformanceGate
     /// </remarks>
     public static class MeasurementFile
     {
-        private const string Header = "benchmark\tmean\tstddev\tsamples";
+        private const string Header = "benchmark\tmean\tstddev\tsamples\tagainst_stated";
 
         /// <summary>Renders measurements as tab-separated text.</summary>
         /// <param name="measurements">The measurements.</param>
@@ -38,7 +38,8 @@ namespace OpenVSA.PerformanceGate
                     .Append(m.Name).Append('\t')
                     .Append(m.Mean.ToString("G9", CultureInfo.InvariantCulture)).Append('\t')
                     .Append(m.StandardDeviation.ToString("G9", CultureInfo.InvariantCulture)).Append('\t')
-                    .Append(m.SampleCount.ToString(CultureInfo.InvariantCulture))
+                    .Append(m.SampleCount.ToString(CultureInfo.InvariantCulture)).Append('\t')
+                    .Append(m.AgainstStated.ToString("G9", CultureInfo.InvariantCulture))
                     .Append('\n');
             }
 
@@ -88,7 +89,20 @@ namespace OpenVSA.PerformanceGate
                     throw new FormatException("Measurement line " + (i + 1) + " has an unreadable number.");
                 }
 
-                results.Add(new TargetMeasurement(cells[0], mean, deviation, samples));
+                // A fifth column, and optional: a file written before the cold-start distinction
+                // existed still reads, with the mean standing for both figures as it did then.
+                double againstStated = double.NaN;
+
+                if (cells.Length > 4 && cells[4].Length > 0 &&
+                    !double.TryParse(
+                        cells[4], NumberStyles.Float, CultureInfo.InvariantCulture, out againstStated))
+                {
+                    throw new FormatException(
+                        "Measurement line " + (i + 1) + " has an unreadable stated-target figure '" +
+                        cells[4] + "'.");
+                }
+
+                results.Add(new TargetMeasurement(cells[0], mean, deviation, samples, againstStated));
             }
 
             return results;

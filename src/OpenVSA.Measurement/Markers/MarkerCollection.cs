@@ -58,25 +58,48 @@ namespace OpenVSA.Measurement.Markers
         /// asserting agreement between two formatters would be testing that someone remembered to
         /// change both.
         /// </remarks>
-        public string Text
-        {
-            get
-            {
-                if (!Reading.IsValid)
-                {
-                    return Marker.WindowLabel + "  --";
-                }
+        public string Text =>
+            HasValue
+                ? Label + "  " + XText + "  " + YText
+                : Label + "  " + NoValue;
 
-                string x = Axis == MarkerAxis.Time
+        /// <summary>Whether there is a reading to show.</summary>
+        public bool HasValue => Reading.IsValid;
+
+        /// <summary>What a surface shows in place of a value it does not have.</summary>
+        /// <remarks>
+        /// One spelling, because two surfaces inventing their own is how the above-grid readout came
+        /// to say <c>NAN</c> where the window said <c>--</c>. A reader seeing both at once should not
+        /// have to work out whether they mean the same thing.
+        /// </remarks>
+        public const string NoValue = "--";
+
+        /// <summary>How the marker names itself: <c>Mkr 1</c>.</summary>
+        public string Label => Marker.WindowLabel;
+
+        /// <summary>
+        /// The X reading, in the units of its trace's axis.
+        /// </summary>
+        /// <remarks>
+        /// The three parts are exposed separately so that a surface can lay them out its own way
+        /// without formatting them its own way. The above-grid readout puts the level on a second
+        /// line, because on one it collides with the trace format and resolution bandwidth beside it
+        /// — a layout difference, where formatting the numbers again was a <em>value</em> difference,
+        /// and it is values that <c>REQ-MKR-006</c> requires to agree.
+        /// </remarks>
+        public string XText =>
+            !HasValue
+                ? NoValue
+                : Axis == MarkerAxis.Time
                     ? (Reading.XHz * 1e6).ToString("0.###", CultureInfo.CurrentCulture) + " us"
                     : (Reading.XHz / 1e6).ToString("0.######", CultureInfo.CurrentCulture) + " MHz";
 
-                string y = Reading.YDbm.ToString("0.00", CultureInfo.CurrentCulture) +
-                    (Marker.Type == MarkerType.Delta ? " dB" : " dBm");
-
-                return Marker.WindowLabel + "  " + x + "  " + y;
-            }
-        }
+        /// <summary>The Y reading, in dBm, or dB for a delta marker.</summary>
+        public string YText =>
+            !HasValue
+                ? NoValue
+                : Reading.YDbm.ToString("0.00", CultureInfo.CurrentCulture) +
+                  (Marker.Type == MarkerType.Delta ? " dB" : " dBm");
 
         /// <inheritdoc />
         public override string ToString() => Text;

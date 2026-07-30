@@ -83,9 +83,12 @@ namespace OpenVSA.PerformanceGate
                     return false;
                 }
 
+                // AgainstStated, not Mean: for cold start the two are different populations, and
+                // comparing the reproducible one against the requirement's figure reports a missed
+                // requirement as met. See TargetMeasurement.AgainstStated.
                 return Target.Better == Better.Higher
-                    ? Measurement.Mean < Target.Stated
-                    : Measurement.Mean > Target.Stated;
+                    ? Measurement.AgainstStated < Target.Stated
+                    : Measurement.AgainstStated > Target.Stated;
             }
         }
 
