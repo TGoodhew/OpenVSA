@@ -56,4 +56,33 @@
           SkipUnchangedFiles="true" />
   </Target>
 
+  <!--
+    REQ-TST-008's smoke suite drives the settings pane, and the pane is disabled until a front end
+    has declared its capabilities (REQ-HAL-002). So the simulator has to be there to be selected.
+
+    Deployed exactly as the shell deploys it, and for the same reason: ReferenceOutputAssembly is
+    false, so nothing here compiles against OpenVSA.Hal.Sim and REQ-ARC-001's prohibition still
+    holds - the shell under test cannot have been built with any knowledge of it. The file is copied
+    into the FrontEnds\ subdirectory that FrontEndRegistry.CreateDefault probes, so a shell built on
+    the test thread discovers it the way a launched application would.
+
+    Referencing it instead would put the type in the test's own output and prove only that
+    Activator can create something the compiler already loaded.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Hal.Sim\OpenVSA.Hal.Sim.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OpenVsaSimulatedFrontEnd>$(MSBuildThisFileDirectory)..\..\src\OpenVSA.Hal.Sim\bin\$(Configuration)\$(TargetFramework)\OpenVSA.Hal.Sim.dll</OpenVsaSimulatedFrontEnd>
+  </PropertyGroup>
+
+  <Target Name="DeploySimulatedFrontEnd" AfterTargets="Build"
+          Condition="Exists('$(OpenVsaSimulatedFrontEnd)')">
+    <Copy SourceFiles="$(OpenVsaSimulatedFrontEnd)"
+          DestinationFolder="$(OutDir)FrontEnds"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

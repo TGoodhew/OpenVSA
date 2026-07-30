@@ -106,11 +106,15 @@ namespace OpenVSA.Ui.Tests
                 Assert.Equal(1, chooser.SelectedIndex);
 
                 // Hides — which is not removing: the trace stays open, and stays in the chooser.
+                //
+                // Setting IsChecked is the whole press: the button acts on Checked and Unchecked, so
+                // that it works for an automation client as well as a mouse. It used to be raised as
+                // a Click as well, which did nothing and hid the fact that Click was the only thing
+                // driving it. See ShellMenuBinding.ShowActiveTrace.
                 char hidden = shell.DocumentArea.ActiveTrace;
                 var hide = (ToggleButton)Control(bar, "Hide");
 
                 hide.IsChecked = true;
-                hide.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
                 Assert.False(shell.DocumentArea.IsVisible(hidden));
                 Assert.Contains(hidden, shell.DocumentArea.Traces);
@@ -121,7 +125,6 @@ namespace OpenVSA.Ui.Tests
                 // And back again.
                 shell.DocumentArea.ActiveTrace = hidden;
                 hide.IsChecked = false;
-                hide.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
                 Assert.True(shell.DocumentArea.IsVisible(hidden));
 
@@ -144,7 +147,6 @@ namespace OpenVSA.Ui.Tests
                 Assert.Single(shell.DocumentArea.Traces);
 
                 hide.IsChecked = true;
-                hide.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
                 Assert.True(shell.DocumentArea.IsVisible(shell.DocumentArea.ActiveTrace));
                 Assert.False(hide.IsChecked == true);
@@ -180,14 +182,12 @@ namespace OpenVSA.Ui.Tests
                 double where = shell.Markers.Markers[0].XHz;
 
                 hide.IsChecked = true;
-                hide.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
                 Assert.False(shell.Markers.Markers[0].IsVisible);
                 Assert.Equal(2, shell.Markers.Markers.Count);
                 Assert.Equal(where, shell.Markers.Markers[0].XHz);
 
                 hide.IsChecked = false;
-                hide.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
                 Assert.True(shell.Markers.Markers[0].IsVisible);
 

@@ -461,6 +461,32 @@ namespace OpenVSA.Ui
         /// that must not be mistaken for a user pressing it.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// Runs something that sets a toggle's state, without it reading as a press.
+        /// </summary>
+        /// <param name="body">What to do.</param>
+        /// <remarks>
+        /// Saves and restores rather than clearing, because these run inside methods that have
+        /// already raised the flag: clearing it on the way out of the inner one would leave the rest
+        /// of the outer one unguarded, and the bug that lets through is a toolbar that acts on its own
+        /// attempt to display a setting.
+        /// </remarks>
+        private void FollowingToolbar(Action body)
+        {
+            bool was = _followingToolbar;
+
+            _followingToolbar = true;
+
+            try
+            {
+                body();
+            }
+            finally
+            {
+                _followingToolbar = was;
+            }
+        }
+
         private void WhenToggled(ToggleButton button, Action on, Action off)
         {
             button.Checked += (sender, e) =>
