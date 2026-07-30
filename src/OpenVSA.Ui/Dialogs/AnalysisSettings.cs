@@ -60,6 +60,8 @@ namespace OpenVSA.Ui.Dialogs
         private bool _resolutionBandwidthIsAutomatic = true;
         private double _spanToRatio = ResolutionBandwidthControl.DefaultSpanToRatio;
         private WindowType _window = WindowType.FlatTop;
+        private bool _zeroSpan;
+        private ChannelFilterType _channelFilter = ChannelFilterType.Gaussian;
 
         private double _overlap;
         private bool _gateEnabled;
@@ -189,6 +191,29 @@ namespace OpenVSA.Ui.Dialogs
         {
             get { return _window; }
             set { Set(ref _window, value); }
+        }
+
+        /// <summary>
+        /// Whether the measurement is in zero-span/power-spectrum operation (<c>REQ-DSP-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// Changing it changes which control the settings pane and the ResBW tab offer, so it is a
+        /// setting like any other rather than a UI flag: the pane follows the settings, and a mode
+        /// held in the pane instead would be a mode the Analysis dialog could not see.
+        /// </remarks>
+        public bool ZeroSpan
+        {
+            get { return _zeroSpan; }
+            set { Set(ref _zeroSpan, value); }
+        }
+
+        /// <summary>
+        /// The channel filter shape that replaces the window in zero span (<c>REQ-DSP-012</c>).
+        /// </summary>
+        public ChannelFilterType ChannelFilter
+        {
+            get { return _channelFilter; }
+            set { Set(ref _channelFilter, value); }
         }
 
         // ---- Time ------------------------------------------------------------------------------
@@ -489,6 +514,8 @@ namespace OpenVSA.Ui.Dialogs
                     Positive(state.ResolutionBandwidthHz, _resolutionBandwidthHz);
                 _resolutionBandwidthIsAutomatic = state.ResolutionBandwidthIsAutomatic;
                 _window = analysis.Window;
+                _zeroSpan = analysis.ZeroSpan;
+                _channelFilter = analysis.ChannelFilter;
 
                 _overlap = analysis.Overlap >= 0.0 && analysis.Overlap <= 0.99
                     ? analysis.Overlap
@@ -552,6 +579,8 @@ namespace OpenVSA.Ui.Dialogs
             analysis.PointsAreAutomatic = _pointsAreAutomatic;
             analysis.SpanChange = _spanChange;
             analysis.Window = _window;
+            analysis.ZeroSpan = _zeroSpan;
+            analysis.ChannelFilter = _channelFilter;
             analysis.Overlap = _overlap;
             analysis.GateEnabled = _gateEnabled;
             analysis.GateDelaySeconds = _gateDelaySeconds;

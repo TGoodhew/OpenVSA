@@ -105,21 +105,41 @@ namespace OpenVSA.Ui.Dialogs.Pages
                 Plain,
                 ParsePlain);
 
-            AddChoice(
+            AddCheck(
+                "Zero span",
+                () => Settings.ZeroSpan,
+                on => Settings.ZeroSpan = on);
+
+            // REQ-DSP-012: one row, and in zero span it is the channel filter's. The window is
+            // removed rather than disabled -- see AddEitherRow.
+            AddEitherRow(
+                () => Settings.ZeroSpan,
                 "Window",
-                Windows(),
-                WindowText.Describe,
-                () => Settings.Window,
-                w => Settings.Window = w);
+                BuildChoice(
+                    Windows(),
+                    WindowText.Describe,
+                    () => Settings.Window,
+                    w => Settings.Window = w),
+                "Channel Filter Shape",
+                BuildChoice(
+                    ChannelFilters.All,
+                    ChannelFilters.Describe,
+                    () => Settings.ChannelFilter,
+                    f => Settings.ChannelFilter = f));
 
             AddFollowingNote(() =>
-                "Time record " + Time(
-                    ResolutionBandwidth.RecordLengthFor(
-                        Window.Get(Settings.Window, EnbwReferenceLength).Enbw,
-                        Settings.ResolutionBandwidthHz)) +
-                (Settings.ResolutionBandwidthIsAutomatic
-                    ? ", coupled at " + Plain(Settings.SpanToRatio) + ":1."
-                    : ", uncoupled."));
+                Settings.ZeroSpan
+                    ? "Zero span: one channel's power through the channel filter, so the window has " +
+                      "nothing to do. Noise bandwidth " +
+                      Frequency(ChannelFilters.NoiseBandwidthHz(
+                          Settings.ChannelFilter, Settings.ResolutionBandwidthHz)) + "."
+                    : "Time record " + Time(
+                          ResolutionBandwidth.RecordLengthFor(
+                              Window.Get(Settings.Window, EnbwReferenceLength).Enbw,
+                              Settings.ResolutionBandwidthHz)) +
+                      (Settings.ResolutionBandwidthIsAutomatic
+                          ? ", coupled at " + Plain(Settings.SpanToRatio) + ":1."
+                          : ", uncoupled."));
 
             Refresh();
         }

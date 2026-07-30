@@ -116,6 +116,31 @@ namespace OpenVSA.Ui.Dialogs.Pages
             Func<T> read,
             Action<T> write)
         {
+            ComboBox box = BuildChoice(options, name, read, write);
+
+            Row(label, box);
+
+            return box;
+        }
+
+        /// <summary>
+        /// Builds a choosing control without giving it a row.
+        /// </summary>
+        /// <typeparam name="T">The option type.</typeparam>
+        /// <param name="options">The options, in the order to offer them.</param>
+        /// <param name="name">How an option is written.</param>
+        /// <param name="read">Reads the setting.</param>
+        /// <param name="write">Writes the setting.</param>
+        /// <remarks>
+        /// For <see cref="AddEitherRow"/>, where two controls share one row and only one of them is
+        /// in the page at a time.
+        /// </remarks>
+        protected ComboBox BuildChoice<T>(
+            IEnumerable<T> options,
+            Func<T, string> name,
+            Func<T> read,
+            Action<T> write)
+        {
             var box = new ComboBox { MinWidth = 220.0 };
             var values = new List<T>(options);
 
@@ -134,8 +159,6 @@ namespace OpenVSA.Ui.Dialogs.Pages
                 Apply(() => write(values[box.SelectedIndex]));
             };
 
-            Row(label, box);
-
             _refreshers.Add(() =>
             {
                 string wanted = name(read());
@@ -153,6 +176,61 @@ namespace OpenVSA.Ui.Dialogs.Pages
             });
 
             return box;
+        }
+
+        /// <summary>
+        /// Adds one row that holds either of two controls, according to a condition
+        /// (<c>REQ-DSP-012</c>).
+        /// </summary>
+        /// <param name="useSecond">Whether the second control is the applicable one.</param>
+        /// <param name="firstLabel">The first control's label.</param>
+        /// <param name="first">The first control.</param>
+        /// <param name="secondLabel">The second control's label.</param>
+        /// <param name="second">The second control.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="useSecond"/> is null.</exception>
+        /// <remarks>
+        /// <strong>The inapplicable row is removed, not hidden.</strong> <c>REQ-DSP-012</c> requires
+        /// that in zero span "no window-type selection remains reachable", and a collapsed control is
+        /// still in the logical tree — still findable, still focusable by an automation client, still
+        /// there for anything walking the page. Removing it makes the claim true in the only form
+        /// that can be asserted without first arguing about what "reachable" means.
+        /// </remarks>
+        protected void AddEitherRow(
+            Func<bool> useSecond,
+            string firstLabel,
+            UIElement first,
+            string secondLabel,
+            UIElement second)
+        {
+            if (useSecond == null)
+            {
+                throw new ArgumentNullException(nameof(useSecond));
+            }
+
+            DockPanel firstRow = MakeRow(firstLabel, first);
+            DockPanel secondRow = MakeRow(secondLabel, second);
+
+            int index = Children.Count;
+
+            Children.Add(useSecond() ? secondRow : firstRow);
+            RowCount++;
+
+            _refreshers.Add(() =>
+            {
+                DockPanel wanted = useSecond() ? secondRow : firstRow;
+
+                if (index < Children.Count && ReferenceEquals(Children[index], wanted))
+                {
+                    return;
+                }
+
+                if (index < Children.Count)
+                {
+                    Children.RemoveAt(index);
+                }
+
+                Children.Insert(index, wanted);
+            });
         }
 
         /// <summary>
@@ -305,6 +383,16 @@ namespace OpenVSA.Ui.Dialogs.Pages
 
         private void Row(string label, UIElement control, bool counts = true)
         {
+            Children.Add(MakeRow(label, control));
+
+            if (counts)
+            {
+                RowCount++;
+            }
+        }
+
+        private static DockPanel MakeRow(string label, UIElement control)
+        {
             var row = new DockPanel { Margin = new Thickness(0.0, 0.0, 0.0, 8.0) };
 
             var caption = new TextBlock
@@ -318,12 +406,7 @@ namespace OpenVSA.Ui.Dialogs.Pages
             row.Children.Add(caption);
             row.Children.Add(control);
 
-            Children.Add(row);
-
-            if (counts)
-            {
-                RowCount++;
-            }
+            return row;
         }
 
         private void Apply(Action write)

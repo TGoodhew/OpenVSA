@@ -1631,8 +1631,25 @@ operation, "window type" shall be replaced by **Channel Filter Shape** (Gaussian
 None/anti-alias only), mirroring the reference product. **[V]**
 **AC:** Entering zero-span or power-spectrum operation replaces the window-type control with
 a Channel Filter Shape control offering Gaussian and None/anti-alias-only, and no window-type
-selection remains reachable in that mode. The selected shape is recorded in the trace state
-and in exported metadata, so a saved measurement records which filter produced it.
+selection remains reachable in that mode. The selected shape is recorded in the trace state,
+so a saved measurement records which filter produced it.
+
+> **Zero span is an analysis mode here, not a span of zero hertz.** A digital vector analyser
+> does not stop acquiring a band in order to report one channel: it acquires the narrowest band
+> the front end allows and reports the power in a single channel, shaped by the channel filter,
+> against time. Expressing the mode as `Span = 0` would put it in the acquisition request, where
+> `REQ-HAL-002`'s declared `MinSpanHz` correctly refuses it — so the mode is carried in the
+> analysis state and the negotiated plan is untouched. The reference product reaches the same
+> place from its scalar power-spectrum measurement, which is why the requirement names the two
+> together.
+
+**`REQ-DSP-012a` (P2) — The channel filter shape survives export.**
+**AC:** The selected Channel Filter Shape appears in exported metadata, so a measurement
+exported from a zero-span setup records which filter produced it. A test enumerates the export
+writers and fails any that omits it or writes a defaulted value.
+*Split from `REQ-DSP-012`: the export formats are `REQ-REC-005`'s and none exists yet, so this
+criterion cannot run until they do. Tracked in the Needs Verification epic, exactly as
+`REQ-DAT-002a` is.*
 
 ### 9.3 Spectrum computation and RBW
 
