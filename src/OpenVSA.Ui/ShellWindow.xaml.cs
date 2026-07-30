@@ -18,6 +18,7 @@ using OpenVSA.Measurement;
 using OpenVSA.Personality;
 using System.IO;
 using OpenVSA.Capture.Triggering;
+using OpenVSA.Measurement.Contexts;
 using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
@@ -80,14 +81,34 @@ namespace OpenVSA.Ui
         private readonly DispatcherTimer _statusTimer;
 
         /// <summary>
-        /// The markers on the one trace that exists so far.
+        /// The measurement contexts this session has (<c>REQ-DAT-010</c>).
         /// </summary>
         /// <remarks>
-        /// Trace 'A': <c>REQ-UI-020</c> letters traces, and <c>REQ-UI-031</c>'s delta label needs
-        /// the letter to decide whether to print it. One trace means the cross-trace form cannot
-        /// arise yet, but the model carries the letter so that it will be right when it can.
+        /// Declared above <see cref="_markers"/> and <see cref="_contextAnalyser"/> because field
+        /// initialisers run in textual order and both of those are built from it.
         /// </remarks>
-        private readonly MarkerSet _markers = new MarkerSet('A');
+        private readonly MeasurementContextSet _contextSet = new MeasurementContextSet(ContextName);
+
+        /// <summary>Feeds every context but the active one from the running capture session.</summary>
+        private readonly ContextAnalyser _contextAnalyser;
+
+        /// <summary>
+        /// The markers of the active context's active trace.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-UI-020</c> letters traces, and <c>REQ-UI-031</c>'s delta label needs the letter to
+        /// decide whether to print it, so the set carries it.
+        /// </para>
+        /// <para>
+        /// <strong>Repointed on a context switch rather than cleared and refilled.</strong> Each
+        /// context owns its markers (<c>REQ-DAT-010</c>), so switching context is a change of which
+        /// set this names — not a change to any set's contents. Rebuilding the markers from the
+        /// incoming context's saved state would lose anything placed since it was last saved, and
+        /// would do it silently.
+        /// </para>
+        /// </remarks>
+        private MarkerSet _markers;
 
         /// <summary>
         /// The marker readouts the Markers window shows (<c>REQ-MKR-006</c>).
@@ -207,6 +228,12 @@ namespace OpenVSA.Ui
 
             InitializeComponent();
 
+            // The active context's markers. Assigned here rather than in a field initialiser because
+            // it reads two other fields, and repointed by ActivateContext from then on.
+            _markers = _contextSet.Active.Markers.ForTrace('A');
+            _contextAnalyser = new ContextAnalyser(_contextSet) { Primary = _contextSet.Active };
+            _automation = new OpenVSA.Api.VsaApplication(_contextSet);
+
             _registry = FrontEndRegistry.CreateDefault();
 
             // REQ-ARC-003: "discovered on NEXT LAUNCH". Once, here, and never re-probed — a
@@ -272,6 +299,10 @@ namespace OpenVSA.Ui
 
             BuildDocumentArea();
 
+            // After both, because the Contexts window is built by one and the first context's trace
+            // window by the other (REQ-DAT-010, REQ-UI-002).
+            ShowContexts();
+
             // After the document area, so the colours and fonts reach the plots that exist.
             // BuildToolWindows is what read them out of the sidecar; applying them there would
             // paint nothing.
@@ -322,7 +353,16 @@ namespace OpenVSA.Ui
         /// <summary>The chrome themes on offer (<c>REQ-UI-083</c>).</summary>
         public ThemeCatalogue Themes => _themes;
 
-        private readonly OpenVSA.Api.VsaApplication _automation = new OpenVSA.Api.VsaApplication();
+        /// <summary>
+        /// The automation object model over this session's contexts.
+        /// </summary>
+        /// <remarks>
+        /// Bound to <see cref="_contextSet"/> rather than given its own list of names, because
+        /// <c>REQ-DAT-010</c> requires a context to be the same addressable object in the UI, in a
+        /// saved state and in the automation API. Declared after the context set, because field
+        /// initialisers run in textual order.
+        /// </remarks>
+        private readonly OpenVSA.Api.VsaApplication _automation;
 
         /// <summary>
         /// The automation surface over this shell (<c>REQ-API-001</c>, <c>REQ-LIM-003</c>).
@@ -336,7 +376,12 @@ namespace OpenVSA.Ui
         public OpenVSA.Api.VsaApplication Automation => _automation;
 
         /// <summary>The limit evaluator both the display and the API read (<c>REQ-LIM-003</c>).</summary>
-        public LimitEvaluator Limits => _automation.Measurements[0].Evaluator;
+        /// <remarks>
+        /// The active context's, not the first one's. A limit test is part of a measurement
+        /// (<c>REQ-LIM-001</c>), so a session with two contexts has two of them and the one being
+        /// evaluated against the trace on screen is the one belonging to the context on screen.
+        /// </remarks>
+        public LimitEvaluator Limits => _automation.Active.Evaluator;
 
         /// <summary>
         /// Puts a limit test under evaluation, on screen and in the API together.
@@ -578,6 +623,11 @@ namespace OpenVSA.Ui
 
             TracePlot first = Documents.AddTrace('A');
 
+            // Trace windows belong to a context, not to the shell (REQ-DAT-010): the first one is
+            // the first context's, and every trace opened afterwards belongs to whichever context
+            // was active when it was opened.
+            _contextSet.Active.AddTrace('A');
+
             WireSelectArea(first);
             ColourTrace(first, 'A');
             first.ApplyDisplayOptions(_traceDisplay);
@@ -590,6 +640,20 @@ namespace OpenVSA.Ui
             Documents.ActiveTraceChanged += (sender, trace) =>
             {
                 StatusText.Content = "Trace " + trace + " selected";
+
+                // Remembered on the context, so returning to it selects the trace it was left on
+                // rather than its first. Guarded, because the document area's active trace can be
+                // one belonging to another context during a switch.
+                //
+                // The marker set is NOT repointed here. Markers are per trace in the model
+                // (REQ-MKR-002) but the shell has only ever shown one trace's, and making a trace
+                // change swap them is REQ-MKR-002's work rather than REQ-DAT-010's -- what belongs
+                // here is that a CONTEXT switch swaps them, which ActivateContext does.
+                if (_contextSet.Active.HasTrace(trace))
+                {
+                    _contextSet.Active.ActiveTrace = trace;
+                }
+
                 ShowActiveTrace();
                 FillTraceChooser();
             };
@@ -634,6 +698,26 @@ namespace OpenVSA.Ui
 
         private void OnAddTrace(object sender, RoutedEventArgs e)
         {
+            if (!OpenTrace(_contextSet.Active))
+            {
+                StatusText.Content = "Trace letters A to Z are all in use.";
+            }
+        }
+
+        /// <summary>
+        /// Opens a trace window and gives it to a context (<c>REQ-UI-020</c>, <c>REQ-DAT-010</c>).
+        /// </summary>
+        /// <param name="owner">The context the window belongs to.</param>
+        /// <returns><c>false</c> when every letter is in use.</returns>
+        /// <remarks>
+        /// The letters are the document area's, shared across contexts: a window is one window
+        /// whichever context owns it, and two contexts each having a "Trace A" would make the layout
+        /// and the state file ambiguous about which one was meant. What is per context is
+        /// <em>ownership</em> — <see cref="ActivateContext"/> shows the active context's windows and
+        /// hides the rest.
+        /// </remarks>
+        private bool OpenTrace(MeasurementContext owner)
+        {
             // Letters, per REQ-UI-020. The next unused one, so closing B and adding again reuses B
             // rather than walking up the alphabet for the life of the session.
             for (char letter = 'A'; letter <= 'Z'; letter++)
@@ -641,6 +725,8 @@ namespace OpenVSA.Ui
                 if (Documents.PlotOf(letter) == null)
                 {
                     TracePlot plot = Documents.AddTrace(letter);
+
+                    owner.AddTrace(letter);
 
                     WireSelectArea(plot);
                     ColourTrace(plot, letter);
@@ -665,24 +751,43 @@ namespace OpenVSA.Ui
                         plot.SetIndicators(_indicators);
                     }
 
-                    Documents.ActiveTrace = letter;
+                    if (ReferenceEquals(owner, _contextSet.Active))
+                    {
+                        Documents.ActiveTrace = letter;
+                    }
+                    else
+                    {
+                        // A window opened for a context that is not on screen is hidden until that
+                        // context is activated, and selecting it would point the trace commands at
+                        // something the user cannot see.
+                        Documents.SetVisible(letter, false);
+                    }
 
                     // More traces than the layout has cells is a layout that needs re-choosing;
                     // Tile Visible is the entry that always fits them all.
                     Documents.ApplyLayout(TraceLayoutPreset.TileVisible());
-                    return;
+                    return true;
                 }
             }
 
-            StatusText.Content = "Trace letters A to Z are all in use.";
+            return false;
         }
 
         private void OnRemoveTrace(object sender, RoutedEventArgs e)
         {
-            if (!Documents.RemoveTrace(Documents.ActiveTrace))
+            char closing = Documents.ActiveTrace;
+
+            if (!Documents.RemoveTrace(closing))
             {
                 StatusText.Content = "The last trace cannot be closed.";
                 return;
+            }
+
+            // Off whichever context owned it, so the letter can be reused and so a context switch
+            // does not try to show a window that is no longer there.
+            foreach (MeasurementContext context in _contextSet.Contexts)
+            {
+                context.RemoveTrace(closing);
             }
 
             UpdateMarshalFormats();
@@ -1804,10 +1909,18 @@ namespace OpenVSA.Ui
         /// </summary>
         /// <returns>Whether every control held something the settings would accept.</returns>
         /// <remarks>
+        /// <para>
         /// One batch, so a pane holding five changed values costs one change notification and one
         /// re-plan rather than five of each.
+        /// </para>
+        /// <para>
+        /// Internal rather than private because this is what pressing Apply does, and a test about
+        /// what a measurement is set to has to be able to set it the way a user does. Making it
+        /// public would put a settings-pane implementation detail in the product's surface, which is
+        /// the same trade <see cref="RangeSettingsFor"/> makes.
+        /// </para>
         /// </remarks>
-        private bool ReadPaneIntoAnalysis()
+        internal bool ReadPaneIntoAnalysis()
         {
             double centre;
             double span;
@@ -2905,6 +3018,14 @@ namespace OpenVSA.Ui
 
             _engine = engine;
 
+            // REQ-DAT-010: every context but the active one is analysed from the blocks this session
+            // acquires, so two contexts are live against one capture rather than two acquisitions
+            // taken a moment apart. The active one is the engine's own inline analysis, which is what
+            // FrameComputed above publishes -- naming it here is what stops its transform being done
+            // twice.
+            _contextAnalyser.Primary = _contextSet.Active;
+            _contextAnalyser.Attach(engine);
+
             // The panel, not just its text: the panel carries the background that keeps the
             // guidance legible over a trace, so hiding only the text would leave a dark rectangle
             // floating over the arrangement.
@@ -3347,11 +3468,34 @@ namespace OpenVSA.Ui
 
         // ---- State, presets and their exclusions ------------------------------------------------
 
-        /// <summary>The context this shell's one measurement belongs to (<c>REQ-STA-004</c>).</summary>
-        private const string ContextName = "Measurement 1";
+        /// <summary>The name this shell's first measurement context is given (<c>REQ-STA-004</c>).</summary>
+        private const string ContextName = MeasurementContextSet.DefaultName;
 
         /// <summary>
-        /// The settings pane and plot, expressed as a saveable state (<c>REQ-STA-001</c>).
+        /// Every context's setup, as a saveable state (<c>REQ-STA-001</c>, <c>REQ-DAT-010</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// All the contexts, not just the one on screen. A session with two contexts whose state file
+        /// carried one would recall as a session with one measurement configured and one left at
+        /// whatever it happened to be — the partial application <c>REQ-STA-004</c> exists to prevent,
+        /// arriving through the save instead of through the recall.
+        /// </para>
+        /// <para>
+        /// The active context's setup is read out of the controls first, so what is saved is what is
+        /// on screen. The others were read out of the controls when they were last active, which is
+        /// the same thing a moment earlier.
+        /// </para>
+        /// </remarks>
+        public ApplicationState CaptureState()
+        {
+            _contextSet.Active.Setup = CaptureActiveSetup();
+
+            return _contextSet.Capture();
+        }
+
+        /// <summary>
+        /// The settings pane and plot, expressed as one context's setup (<c>REQ-STA-001</c>).
         /// </summary>
         /// <remarks>
         /// Read from the controls rather than from a parallel model, so what is saved is what is on
@@ -3359,9 +3503,9 @@ namespace OpenVSA.Ui
         /// keep in step, and the failure would be silent: a state that saved a frequency the user
         /// had changed and not applied.
         /// </remarks>
-        public ApplicationState CaptureState()
+        private MeasurementState CaptureActiveSetup()
         {
-            ApplicationState state = ApplicationState.Default(ContextName);
+            ApplicationState state = ApplicationState.Default(_contextSet.Active.Name);
             MeasurementState measurement = state.Measurements[0];
 
             double parsed;
@@ -3427,7 +3571,7 @@ namespace OpenVSA.Ui
                 });
             }
 
-            return state;
+            return measurement;
         }
 
         /// <summary>
@@ -3435,7 +3579,21 @@ namespace OpenVSA.Ui
         /// </summary>
         /// <param name="measurement">The recalled settings.</param>
         /// <exception cref="ArgumentNullException"><paramref name="measurement"/> is null.</exception>
-        public void ApplyState(MeasurementState measurement)
+        public void ApplyState(MeasurementState measurement) =>
+            ApplySettings(measurement, restoreMarkers: true);
+
+        /// <summary>
+        /// Applies a measurement's settings to the pane and the plot.
+        /// </summary>
+        /// <param name="measurement">The settings to apply.</param>
+        /// <param name="restoreMarkers">
+        /// Whether to rebuild the marker set from the state. False on a context switch: the incoming
+        /// context's markers are live objects it already owns, and rebuilding them from its last
+        /// saved setup would discard anything placed since — silently, and only for the user who had
+        /// switched away and back.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="measurement"/> is null.</exception>
+        private void ApplySettings(MeasurementState measurement, bool restoreMarkers)
         {
             if (measurement == null)
             {
@@ -3482,6 +3640,12 @@ namespace OpenVSA.Ui
                 Plot.FormatHotSpot.Value.TrySet(
                     TraceFormatText.Describe(measurement.Traces[0].Format));
                 Plot.FormatHotSpot.Refresh();
+            }
+
+            if (!restoreMarkers)
+            {
+                RefreshMarkers();
+                return;
             }
 
             foreach (Marker existing in _markers.Markers.ToList())
@@ -3620,14 +3784,13 @@ namespace OpenVSA.Ui
                 throw new ArgumentNullException(nameof(state));
             }
 
-            var contexts = new Dictionary<string, MeasurementState>(StringComparer.Ordinal)
-            {
-                { ContextName, CaptureState().Measurements[0] },
-            };
+            // Read out of the controls first, so a state that does not name the active context
+            // leaves it holding what is on screen rather than what it last happened to be assigned.
+            _contextSet.Active.Setup = CaptureActiveSetup();
 
             try
             {
-                StateRecall.Apply(state, contexts);
+                _contextSet.Recall(state);
             }
             catch (ContextMismatchException mismatch)
             {
@@ -3638,7 +3801,11 @@ namespace OpenVSA.Ui
                 return;
             }
 
-            ApplyState(contexts[ContextName]);
+            // Every context has its recalled setup now; the pane shows the active one's. The others
+            // are applied to the pane as they are activated, which is the only time a pane can show
+            // them.
+            ApplyState(_contextSet.Active.Setup);
+            ShowContexts();
             SettingsMessage.Text = string.Empty;
         }
 
@@ -3646,7 +3813,11 @@ namespace OpenVSA.Ui
         {
             // REQ-UI-061: the hardware setup is left alone, which is structural - a state carries
             // no front end, so applying one cannot disturb the connection.
-            Recall(Presets.Factory(ContextName));
+            //
+            // Named for the active context rather than for "Measurement 1": a factory preset is a
+            // setup, not a state file, so it applies to whatever context is on screen. Recalling it
+            // under a fixed name would refuse the whole thing the moment a context was renamed.
+            Recall(Presets.Factory(_contextSet.Active.Name));
             StatusText.Content = "Factory preset";
         }
 
@@ -3669,7 +3840,10 @@ namespace OpenVSA.Ui
 
             try
             {
-                _presets.Save(dialog.Path, CaptureState());
+                // The active context's setup, not the whole session: a preset is one measurement's
+                // setup (REQ-STA-005), and one that carried every context would be refused by
+                // REQ-STA-004's name matching in any session that did not have the same ones.
+                _presets.Save(dialog.Path, ActiveContextState());
                 StatusText.Content = "Preset '" + dialog.Path + "' saved";
             }
             catch (ArgumentException failure)
@@ -3734,7 +3908,7 @@ namespace OpenVSA.Ui
         {
             try
             {
-                Recall(_presets.Load(name));
+                Recall(ForActiveContext(_presets.Load(name)));
                 StatusText.Content = "Preset '" + name + "'";
             }
             catch (StateFormatException failure)
@@ -3903,7 +4077,10 @@ namespace OpenVSA.Ui
                 }
             }
 
-            Plot.SetMarkers(primitives, readout);
+            // The active trace's plot, which is the primary one in every arrangement that has trace A
+            // on screen. Named through the document area rather than as Plot so that a context whose
+            // windows are other letters draws its markers on a window it owns.
+            (Documents.ActivePlot ?? Plot).SetMarkers(primitives, readout);
             FillMarkerChooser();
         }
 
@@ -4083,6 +4260,12 @@ namespace OpenVSA.Ui
             engine.BlockAcquired -= OnBlockAcquired;
             engine.Faulted -= OnEngineFaulted;
             engine.Completed -= OnEngineCompleted;
+
+            // Off this session before it goes: the shell builds a new engine on every Apply, and an
+            // analyser still attached to the old one would be feeding contexts from a front end that
+            // had been abandoned. The frames the contexts are holding are left alone -- a stopped
+            // measurement is still one you can look at.
+            _contextAnalyser.Attach(null);
 
             await engine.StopAsync().ConfigureAwait(true);
             engine.Dispose();
@@ -4276,6 +4459,15 @@ namespace OpenVSA.Ui
 
             SpectrumEngine engine = _engine;
             _engine = null;
+
+            _contextAnalyser.Dispose();
+
+            // REQ-NFR-002: every context's held frame goes back, because nothing will ever display
+            // it again.
+            foreach (MeasurementContext context in _contextSet.Contexts)
+            {
+                context.ClearFrame();
+            }
 
             if (engine != null)
             {
