@@ -1,0 +1,13 @@
+﻿OpenVSA soak (REQ-TST-009): 8.00 hours, 481 samples
+
+  PASSED      REQ-TST-009  The soak ran at least 8 hours — 8.00 hours over 481 samples, with 96 create-and-destroy cycles
+  PASSED      REQ-TST-009  Managed memory is bounded on a trend, not a ceiling — slope 0.00 MiB/hour ±0.00 MiB, from 17.10 MiB to 17.10 MiB, over 48 samples after the first 2 minutes and the first cycle
+  PASSED      REQ-TST-009  Unmanaged memory is bounded on a trend, not a ceiling — slope -0.33 MiB/hour ±0.12 MiB, from 174.72 MiB to 120.55 MiB, over 476 samples after the first 2 minutes and the first cycle
+  PASSED      REQ-TST-009  Handles return to their starting range — opened 616–749, ended 628, peaked 749, allowed up to 824
+  PASSED      REQ-TST-009  GDI objects return to their starting range — opened 21–22, ended 22, peaked 22, allowed up to 25
+  PASSED      REQ-TST-009  USER objects return to their starting range — opened 27–32, ended 31, peaked 32, allowed up to 36
+  PASSED      REQ-TST-009  Update rate over the final hour is within 5 % of the first — first hour 53.39 frames/s, final hour 56.62 frames/s, -6.0 % slower
+  PASSED      REQ-NFR-011  Pooled buffers show no net growth — opened 0.02 MiB, ended 0.02 MiB, peaked 0.04 MiB; 4 buffers retained, slope over the second half 0.00 MiB/hour ±0.00 MiB
+  PASSED      REQ-NFR-012  Dropped frames are reported — 17,008 dropped of 1,635,666 produced (1.0 %), 1,618,658 drawn
+
+  9 of 9 claims hold.
