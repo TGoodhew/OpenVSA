@@ -345,6 +345,9 @@ namespace OpenVSA.Ui
             ApplyColours();
             ApplyFonts();
 
+            // EXPERIMENT (#420): re-apply, so the skin lands on a fully built tree.
+            ApplyTheme(_themeName);
+
             // The menu follows the options rather than holding them, so that the Trace tab and the
             // Display menu are two views of one setting (REQ-UI-070).
             _traceDisplay.Changed += (sender, e) => FollowTraceDisplayOptions();

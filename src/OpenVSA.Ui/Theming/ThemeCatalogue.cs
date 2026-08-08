@@ -224,7 +224,8 @@ namespace OpenVSA.Ui.Theming
 
             try
             {
-                SfSkinManager.ApplyStylesOnApplication = true;
+                SfSkinManager.ApplyStylesOnApplication =
+                    Environment.GetEnvironmentVariable("OPENVSA_SKIN_MSCONTROLS") != "0";
                 SfSkinManager.SetTheme(scope, new Theme(theme.Skin));
             }
             catch (Exception failure)
