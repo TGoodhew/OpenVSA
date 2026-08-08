@@ -345,9 +345,6 @@ namespace OpenVSA.Ui
             ApplyColours();
             ApplyFonts();
 
-            // EXPERIMENT (#420): re-apply, so the skin lands on a fully built tree.
-            ApplyTheme(_themeName);
-
             // The menu follows the options rather than holding them, so that the Trace tab and the
             // Display menu are two views of one setting (REQ-UI-070).
             _traceDisplay.Changed += (sender, e) => FollowTraceDisplayOptions();
@@ -606,7 +603,37 @@ namespace OpenVSA.Ui
                 ? Resources
                 : Application.Current.Resources;
 
-            return _themes.Apply(name, target, this);
+            // Scoped deliberately, and NOT to the window. Skinning the window reaches the
+            // DockingManager, and a skinned DockingManager does not host its documents: the trace
+            // plot stays in the tree, stays Visible, and is 0x0 with no visual parent above the
+            // fifth level -- the graticule and the whole annotation band simply absent. These four
+            // are the chrome that is ours to style, and every one of them is outside the document
+            // container. See ThemeCatalogue.PrepareSkin for the measurement.
+            bool applied = _themes.Apply(
+                name, target, MainMenu, Toolbars, MeasurementPane, HardwarePane);
+
+            // The caption bar is drawn by the desktop window manager and no dictionary reaches it,
+            // so it has to be told. Harmless before the handle exists; OnSourceInitialized repeats
+            // the call once there is one.
+            TitleBar.Apply(this);
+
+            return applied;
+        }
+
+        /// <summary>
+        /// Colours the caption bar as soon as there is a window handle to colour.
+        /// </summary>
+        /// <param name="e">Ignored.</param>
+        /// <remarks>
+        /// The theme is applied during construction, before the handle exists, so the call there
+        /// does nothing and this is the one that takes effect on the first paint. Both are needed:
+        /// this one for start-up, that one for a theme chosen while running.
+        /// </remarks>
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+
+            TitleBar.Apply(this);
         }
 
         /// <summary>The trace windows and their arrangement (<c>REQ-UI-005</c>).</summary>

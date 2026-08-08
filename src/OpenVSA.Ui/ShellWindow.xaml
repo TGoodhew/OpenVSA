@@ -217,7 +217,7 @@
                 </Grid>
             </ScrollViewer>
 
-            <ScrollViewer syncfusion:DockingManager.Header="Hardware"
+            <ScrollViewer x:Name="HardwarePane" syncfusion:DockingManager.Header="Hardware"
                           syncfusion:DockingManager.SideInDockedMode="Left"
                           syncfusion:DockingManager.DesiredWidthInDockedMode="380">
                 <StackPanel Margin="12">

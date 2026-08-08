@@ -158,7 +158,7 @@ namespace OpenVSA.Ui.Theming
         /// ordering is what keeps a chrome key authoritative over the skin that would otherwise
         /// have answered the same question.
         /// </remarks>
-        public bool Apply(string name, ResourceDictionary target, DependencyObject scope = null)
+        public bool Apply(string name, ResourceDictionary target, params DependencyObject[] scopes)
         {
             if (target == null)
             {
@@ -177,7 +177,7 @@ namespace OpenVSA.Ui.Theming
                 _target.MergedDictionaries.Remove(_installed.Resources);
             }
 
-            ApplySkin(theme, scope);
+            ApplySkin(theme, scopes);
 
             target.MergedDictionaries.Add(theme.Resources);
 
@@ -213,25 +213,39 @@ namespace OpenVSA.Ui.Theming
         /// hidden.
         /// </para>
         /// </remarks>
-        private static void ApplySkin(ChromeTheme theme, DependencyObject scope)
+        private static void ApplySkin(ChromeTheme theme, DependencyObject[] scopes)
         {
             SkinFailure = null;
 
-            if (theme.Skin == null || scope == null)
+            if (theme.Skin == null || scopes == null)
             {
                 return;
             }
 
-            try
+            foreach (DependencyObject scope in scopes)
             {
-                SfSkinManager.ApplyStylesOnApplication =
-                    Environment.GetEnvironmentVariable("OPENVSA_SKIN_MSCONTROLS") != "0";
-                SfSkinManager.SetTheme(scope, new Theme(theme.Skin));
-            }
-            catch (Exception failure)
-            {
-                SkinFailure = "The '" + theme.Name + "' theme's skin '" + theme.Skin +
-                    "' could not be applied: " + failure.Message;
+                if (scope == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    // Before SetTheme, which builds Syncfusion's own templates: an unlicensed
+                    // control raises a MODAL trial dialog as it is constructed, and on a dispatcher
+                    // thread that stops the dispatcher pumping. Idempotent, and enforced by
+                    // NoUnregisteredSyncfusionHostsTests -- which caught this file the moment it
+                    // first touched SfSkinManager.
+                    SyncfusionLicense.Register();
+
+                    SfSkinManager.SetTheme(scope, new Theme(theme.Skin));
+                }
+                catch (Exception failure)
+                {
+                    SkinFailure = "The '" + theme.Name + "' theme's skin '" + theme.Skin +
+                        "' could not be applied to a " + scope.GetType().Name + ": " +
+                        failure.Message;
+                }
             }
         }
 
@@ -240,6 +254,48 @@ namespace OpenVSA.Ui.Theming
         /// install its skin, or <c>null</c> if it could or had none to install.
         /// </summary>
         public static string SkinFailure { get; private set; }
+
+        /// <summary>
+        /// Selects the skin every control constructed after this call is drawn with.
+        /// </summary>
+        /// <param name="skin">The Syncfusion skin's name, or <c>null</c> to leave it alone.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>This has to run before the controls exist, and that is measured, not assumed.
+        /// </strong> Skinning a <c>DockingManager</c> that has already been built re-templates it,
+        /// and the documents it was hosting do not survive: with the skin applied to the finished
+        /// window the trace plot was still in the tree and still <c>Visibility.Visible</c>, but
+        /// <c>0x0</c>, never loaded, and its visual parent chain stopped five levels up instead of
+        /// reaching the <c>DocumentTabControl</c> — the whole graticule, annotation band and trace
+        /// window chrome simply absent from a screenshot. Applying it before
+        /// <c>InitializeComponent</c> is what makes the document host build itself skinned in the
+        /// first place.
+        /// </para>
+        /// <para>
+        /// The consequence is worth stating plainly: the chrome <em>dictionary</em> swaps live, and
+        /// the <em>skin</em> does not. See <see cref="Apply(string, ResourceDictionary, DependencyObject)"/>.
+        /// </para>
+        /// </remarks>
+        public static void PrepareSkin(string skin)
+        {
+            if (string.IsNullOrEmpty(skin))
+            {
+                return;
+            }
+
+            SfSkinManager.ApplyThemeAsDefaultStyle = true;
+            SfSkinManager.ApplyStylesOnApplication = true;
+            SfSkinManager.ApplicationTheme = new Theme(skin);
+        }
+
+        /// <summary>The skin the theme of that name is drawn with, or <c>null</c>.</summary>
+        /// <param name="name">The theme's name.</param>
+        public string SkinFor(string name)
+        {
+            ChromeTheme theme = Find(name);
+
+            return theme == null ? null : theme.Skin;
+        }
 
         /// <summary>
         /// Loads a shipped theme's dictionary from this assembly.

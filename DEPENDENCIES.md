@@ -24,6 +24,9 @@ restrictive terms.
 | `Syncfusion.Tools.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | `DockingManager` and Ribbon for the shell furniture of `REQ-UI-001`/`REQ-UI-060`. See the decision below. |
 | `Syncfusion.SfGrid.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Marker, limit-line and demod error-summary tables. |
 | `Syncfusion.Shared.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Numeric editors, used as the entry control inside the `REQ-UI-042` hot-spot framework. |
+| `Syncfusion.SfSkinManager.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | Applies a named skin to an element. `REQ-UI-083`: three of the seventeen chrome keys cannot reach the controls that need them, because `ListBoxItem`, `TabItem` and `MenuItem` hard-code their selection colours inside their own templates and only a full template reaches them. See the decision below. |
+| `Syncfusion.Themes.FluentDark.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | The templates the `Dark` chrome theme names. Carries full `ControlTemplate`s for the stock WPF controls as well as Syncfusion's own, which is what supplies the hover and pressed states a colour setter cannot reach. |
+| `Syncfusion.Themes.FluentLight.WPF` | 34.1.32 | Syncfusion Community (free, royalty-free) | The same for the `Light` theme. Both ship, because a theme naming a skin that is not deployed falls back to stock templates rather than failing. |
 | `IviFoundation.Visa` | 8.0.2 | IVI Foundation (permissive; redistribution of the shared components permitted) | `REQ-VISA-001`: `Ivi.Visa.dll` alone, referenced by `OpenVSA.Hal.Visa`. See the note below on why nothing is shipped. |
 | `Newtonsoft.Json` | 13.0.3 | MIT | `REQ-STA-003`'s state format. See the note below. |
 
