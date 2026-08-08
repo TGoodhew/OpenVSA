@@ -154,6 +154,45 @@
   </Target>
 
   <!--
+    The cross-validation harness, for issue #393's test signal source panel. Same arrangement as
+    the front-end plug-ins above and for one more reason on top of theirs: the harness is TEST
+    INFRASTRUCTURE, and REQ-ARC-001 bars it from becoming a dependency of the product. It is also
+    the assembly that references OpenVSA.Hal.Visa, so a compile-time reference here would put VISA
+    on the start-up path and break REQ-NFR-032.
+
+    ReferenceOutputAssembly="false" gives build ordering without a reference; StimulusRegistry
+    finds it at run time and degrades to a disabled menu item with a stated reason when it is not
+    there.
+
+    NOT THERE IS THE NORMAL CASE FOR AN INSTALLED COPY, and that is deliberate rather than an
+    accident of packaging. The installer harvests the payload root and the FrontEnds folder by
+    name; this subdirectory is in neither, so a shipped OpenVSA carries no bench harness. Driving
+    a generator is equipment for cross-validating this product, not a feature of it.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.TestHarness\OpenVSA.TestHarness.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyStimulusHarness" AfterTargets="Build">
+    <ItemGroup>
+      <StimulusHarnessFile Include="$(MSBuildThisFileDirectory)..\OpenVSA.TestHarness\$(OutputPath)OpenVSA.TestHarness.dll" />
+      <StimulusHarnessFile Include="$(MSBuildThisFileDirectory)..\OpenVSA.TestHarness\$(OutputPath)OpenVSA.TestHarness.pdb" />
+    </ItemGroup>
+
+    <!--
+      The harness alone. Its dependencies - Core, Hal, Dsp, Capture, Measurement - are already
+      beside the shell, and OpenVSA.Hal.Visa is loaded from FrontEnds by the front-end registry, so
+      copying a second one here would give the process two assemblies of the same identity from
+      two paths. One copy, resolved the way every other plug-in here is resolved.
+    -->
+    <Copy SourceFiles="@(StimulusHarnessFile)"
+          DestinationFolder="$(OutDir)TestHarness"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(StimulusHarnessFile.FullPath)')" />
+  </Target>
+
+  <!--
     REQ-HAL-002's second clause is "switching front ends visibly re-ranges the affected controls",
     which is a statement about what the settings pane shows and cannot be asserted from outside the
     shell. RangeSettingsFor is internal rather than public for that: the test needs it, no caller

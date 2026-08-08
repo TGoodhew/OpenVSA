@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml.Linq;
@@ -196,6 +197,41 @@ namespace OpenVSA.Architecture.Tests
             }
 
             throw new InvalidOperationException("Could not find the repository root.");
+        }
+
+        [Fact]
+        public void TheBenchHarnessSitsBesideTheShellWithoutBeingReferencedByIt()
+        {
+            // Issue #393's test signal source panel finds its sources at run time, because the
+            // assembly they live in is test infrastructure (REQ-ARC-001) and references VISA
+            // (REQ-NFR-032). Two halves of that arrangement can fail silently and this asserts
+            // both: the shell must NOT reference the harness, and the build must still put it
+            // where the shell looks - otherwise the panel is permanently and quietly unavailable.
+            string shell = ShellPath();
+            string directory = Path.GetDirectoryName(shell);
+
+            string[] referenced = Assembly.LoadFrom(shell)
+                .GetReferencedAssemblies()
+                .Select(a => a.Name)
+                .ToArray();
+
+            Assert.DoesNotContain("OpenVSA.TestHarness", referenced);
+
+            string harness = Path.Combine(directory, "TestHarness", "OpenVSA.TestHarness.dll");
+
+            _output.WriteLine(harness);
+
+            Assert.True(
+                File.Exists(harness),
+                "The shell's build no longer places the bench harness at " + harness +
+                ", which is the only place StimulusRegistry looks. Hardware > Source Control… " +
+                "would be disabled in a developer build with nothing to say about why.");
+
+            // And nowhere else beside the shell: a copy in the payload root would be harvested by
+            // the installer, which is precisely what keeps bench equipment out of the product.
+            Assert.False(
+                File.Exists(Path.Combine(directory, "OpenVSA.TestHarness.dll")),
+                "The bench harness is in the installer's payload root and would be shipped.");
         }
 
         /// <summary>A built tool, found rather than computed.</summary>

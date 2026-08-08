@@ -38,7 +38,9 @@ namespace OpenVSA.TestHarness
     /// is the <em>analyser's</em> bin resolution, not the generator's.</description></item>
     /// </list>
     /// </remarks>
-    public sealed class SimulatedStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus
+    [StimulusProvider("Simulated source (no instrument)")]
+    public sealed class SimulatedStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus,
+        IStimulusLimits
     {
         /// <summary>Lowest carrier the modelled instrument produces, in hertz.</summary>
         /// <remarks>From the instrument's own <c>:FREQuency:CW? MIN</c>, not from the data sheet.</remarks>
@@ -181,6 +183,17 @@ namespace OpenVSA.TestHarness
         public void Refresh()
         {
         }
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// The measured limits above, reported through the same interface the real source reports
+        /// its probed ones through. That is what makes this a stand-in: a panel ranged from this
+        /// offers the same frequency and level range the instrument would have given it, so the
+        /// path that ranges a control is exercised with no hardware rather than skipped.
+        /// </remarks>
+        public StimulusLimits ReadLimits() =>
+            new StimulusLimits(
+                MinimumFrequencyHz, MaximumFrequencyHz, MinimumLevelDbm, MaximumLevelDbm);
 
         /// <inheritdoc />
         public void Dispose() => IsOutputEnabled = false;

@@ -22,7 +22,12 @@ namespace OpenVSA.TestHarness
     /// between two runs made a correct measurement look like a mirrored spectrum.
     /// </para>
     /// </remarks>
-    public sealed class E4438CStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus
+    [StimulusProvider(
+        "Signal generator over VISA",
+        RequiresResource = true,
+        DefaultResource = DefaultResource)]
+    public sealed class E4438CStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus,
+        IStimulusLimits
     {
         /// <summary>Resource used when configuration names none.</summary>
         /// <remarks>
@@ -56,6 +61,19 @@ namespace OpenVSA.TestHarness
         /// <summary>Creates a stimulus source over the configured resource.</summary>
         public E4438CStimulus()
             : this(VisaConfiguration.ResourceFor(ResourceSettingKey, DefaultResource), null)
+        {
+        }
+
+        /// <summary>Creates a stimulus source over a named resource.</summary>
+        /// <param name="resourceName">VISA resource string.</param>
+        /// <exception cref="ArgumentException"><paramref name="resourceName"/> is missing.</exception>
+        /// <remarks>
+        /// The constructor the shell uses. It asks the user for the resource rather than reading
+        /// configuration, because the panel's whole job is to open the instrument in front of the
+        /// person using it, and this bench's generator has moved address before.
+        /// </remarks>
+        public E4438CStimulus(string resourceName)
+            : this(resourceName, null)
         {
         }
 
@@ -376,6 +394,87 @@ namespace OpenVSA.TestHarness
                 : 0.0;
         }
 
+        /// <summary>How long to allow a limit probe before giving up on it.</summary>
+        /// <remarks>
+        /// Short, and deliberately shorter than the session's own timeout. A query this firmware
+        /// rejects does not answer at all — it times out — so the cost of asking for a limit that
+        /// cannot be had is one timeout apiece, and four of them at the session default is a panel
+        /// that appears to hang while it opens.
+        /// </remarks>
+        public const int LimitProbeTimeoutMilliseconds = 2000;
+
+        /// <summary>
+        /// Asks the instrument for its frequency and level range.
+        /// </summary>
+        /// <returns>The limits, with <c>NaN</c> for anything it would not answer for.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>Four queries, and the error queue drained behind all four.</strong> The lesson
+        /// that made this method careful is recorded below beside the tone-count limits: a probe
+        /// this firmware rejects times out with no reply <em>and leaves its error in the
+        /// instrument's queue</em>, where the next unrelated operation picks it up and is blamed
+        /// for it. Catching the timeout is not enough — the exception is this side of the wire and
+        /// the queue is the other — so the queue is read to the end here whether anything failed or
+        /// not.
+        /// </para>
+        /// <para>
+        /// <strong>Nothing is substituted for a limit that does not answer.</strong> The tempting
+        /// fallback is the data sheet, and it is wrong: this instrument's top frequency depends on
+        /// which of Options 501 to 506 it carries, so a data-sheet number would be a confident
+        /// statement about a different instrument. Unknown is reported as unknown and the panel
+        /// says so.
+        /// </para>
+        /// </remarks>
+        public StimulusLimits ReadLimits()
+        {
+            IInstrumentSession session = RequireSession();
+
+            int wasTimeout = session.TimeoutMilliseconds;
+
+            try
+            {
+                session.TimeoutMilliseconds =
+                    Math.Min(wasTimeout, LimitProbeTimeoutMilliseconds);
+
+                return new StimulusLimits(
+                    Probe(session, ":FREQuency:CW? MIN"),
+                    Probe(session, ":FREQuency:CW? MAX"),
+                    Probe(session, ":POWer:AMPLitude? MIN"),
+                    Probe(session, ":POWer:AMPLitude? MAX"));
+            }
+            finally
+            {
+                session.TimeoutMilliseconds = wasTimeout;
+
+                // Behind all four, and outside the try that produced them: a probe that threw is
+                // exactly the one whose error is still sitting in the queue.
+                try
+                {
+                    ReadErrors(session);
+                }
+                catch (Exception)
+                {
+                    // An instrument that will not even report its errors has bigger problems than
+                    // an unranged panel, and they will be reported by the next real operation.
+                }
+            }
+        }
+
+        /// <summary>A limit query that answers with <c>NaN</c> rather than failing.</summary>
+        private double Probe(IInstrumentSession session, string query)
+        {
+            try
+            {
+                return QueryDouble(session, query);
+            }
+            catch (Exception)
+            {
+                // Rejected, or unanswered until the timeout. Either way this instrument does not
+                // report that limit, which is a fact about it and not a fault in the harness.
+                return double.NaN;
+            }
+        }
+
         // The tone-count limits are the manual's 2-64 for this model, and are NOT probed.
         //
         // ":RADio:MTONe:ARB:SETup:TABLe:NTONes? MIN" is rejected by firmware C.05.85 with
@@ -472,6 +571,26 @@ namespace OpenVSA.TestHarness
         /// </remarks>
         private void ThrowOnInstrumentError(IInstrumentSession session, string what)
         {
+            List<string> errors = ReadErrors(session);
+
+            if (errors.Count == 0)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                "The stimulus source reported an error while " + what + ": " +
+                string.Join("; ", errors.ToArray()));
+        }
+
+        /// <summary>Reads the instrument's error queue to the end and returns what was in it.</summary>
+        /// <remarks>
+        /// Separated from <see cref="ThrowOnInstrumentError"/> so that a tolerated probe can drain
+        /// the queue without raising: draining and raising are two decisions, and the caller that
+        /// asked a question it was willing to be refused makes the second one differently.
+        /// </remarks>
+        private List<string> ReadErrors(IInstrumentSession session)
+        {
             var errors = new List<string>();
 
             // Bounded: an instrument that answers every read with an error would otherwise spin
@@ -490,14 +609,7 @@ namespace OpenVSA.TestHarness
                 errors.Add(reply.Trim());
             }
 
-            if (errors.Count == 0)
-            {
-                return;
-            }
-
-            throw new InvalidOperationException(
-                "The stimulus source reported an error while " + what + ": " +
-                string.Join("; ", errors.ToArray()));
+            return errors;
         }
 
         private void Record(string command)
