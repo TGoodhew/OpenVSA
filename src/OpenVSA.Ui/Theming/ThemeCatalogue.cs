@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Media;
 using Syncfusion.SfSkinManager;
+using Syncfusion.Themes.FluentDark.WPF;
+using Syncfusion.Themes.FluentLight.WPF;
 
 namespace OpenVSA.Ui.Theming
 {
@@ -44,6 +47,8 @@ namespace OpenVSA.Ui.Theming
 
         /// <summary>The name of the dark theme this build ships.</summary>
         public const string DarkName = "Dark";
+
+        private static readonly HashSet<string> _accented = new HashSet<string>(StringComparer.Ordinal);
 
         private readonly List<ChromeTheme> _themes = new List<ChromeTheme>();
 
@@ -222,6 +227,19 @@ namespace OpenVSA.Ui.Theming
                 return;
             }
 
+            // Before SetTheme, which builds Syncfusion's own templates: an unlicensed control
+            // raises a MODAL trial dialog as it is constructed, and on a dispatcher thread that
+            // stops the dispatcher pumping. Idempotent, and enforced by
+            // NoUnregisteredSyncfusionHostsTests -- which caught this file the moment it first
+            // touched SfSkinManager.
+            SyncfusionLicense.Register();
+
+            // ONCE, outside the loop, and once per skin for the life of the process. Syncfusion
+            // builds the skin's dictionary on first use and seals it: registering settings again
+            // afterwards throws "ResourceDictionary is read-only", which is what four scopes in a
+            // row did -- the first succeeded and the other three reported a failure to skin.
+            RegisterAccent(theme);
+
             foreach (DependencyObject scope in scopes)
             {
                 if (scope == null)
@@ -231,13 +249,6 @@ namespace OpenVSA.Ui.Theming
 
                 try
                 {
-                    // Before SetTheme, which builds Syncfusion's own templates: an unlicensed
-                    // control raises a MODAL trial dialog as it is constructed, and on a dispatcher
-                    // thread that stops the dispatcher pumping. Idempotent, and enforced by
-                    // NoUnregisteredSyncfusionHostsTests -- which caught this file the moment it
-                    // first touched SfSkinManager.
-                    SyncfusionLicense.Register();
-
                     SfSkinManager.SetTheme(scope, new Theme(theme.Skin));
                 }
                 catch (Exception failure)
@@ -246,6 +257,67 @@ namespace OpenVSA.Ui.Theming
                         "' could not be applied to a " + scope.GetType().Name + ": " +
                         failure.Message;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Gives the skin the theme's own accent, so its highlights are the theme's colour.
+        /// </summary>
+        /// <param name="theme">The theme whose <c>Accent</c> and foreground keys to hand over.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>Without this a skinned menu highlights in the vendor's grey.</strong> Measured
+        /// on the running shell: the File menu highlighted its item at <c>#474747</c> while the
+        /// theme asked for <c>#0078D4</c>. A skin brings whole templates, and those templates paint
+        /// selection from the skin's own palette rather than from a chrome key — reaching them is
+        /// the whole reason a skin is used, and it cuts both ways.
+        /// </para>
+        /// <para>
+        /// <strong>The colour still comes from the dictionary.</strong> It is read out of the
+        /// theme's own resources and handed to the vendor, so a custom theme's accent reaches the
+        /// skinned controls with nothing added here. What is selected by name below is which
+        /// vendor <em>settings type</em> to build — a property of the skin, not of the theme, and
+        /// not a colour decision. <c>REQ-UI-083</c> forbids deciding a colour from a theme's name;
+        /// this decides a type from a skin's name and then asks the dictionary for the colour.
+        /// </para>
+        /// </remarks>
+        private static void RegisterAccent(ChromeTheme theme)
+        {
+            // Once per skin. See ApplySkin: the dictionary is sealed after first use, so a second
+            // registration throws rather than taking effect. A theme edited while running keeps
+            // the accent it was first applied with; the chrome dictionary still swaps live.
+            if (!_accented.Add(theme.Skin))
+            {
+                return;
+            }
+
+            var accent = theme.Resources[ChromeKeys.Accent] as SolidColorBrush;
+            var onAccent = theme.Resources[ChromeKeys.SelectionForeground] as SolidColorBrush;
+
+            if (accent == null)
+            {
+                return;
+            }
+
+            if (string.Equals(theme.Skin, "FluentDark", StringComparison.Ordinal))
+            {
+                SfSkinManager.RegisterThemeSettings(
+                    theme.Skin,
+                    new FluentDarkThemeSettings
+                    {
+                        PrimaryBackground = accent,
+                        PrimaryColorForeground = onAccent,
+                    });
+            }
+            else if (string.Equals(theme.Skin, "FluentLight", StringComparison.Ordinal))
+            {
+                SfSkinManager.RegisterThemeSettings(
+                    theme.Skin,
+                    new FluentLightThemeSettings
+                    {
+                        PrimaryBackground = accent,
+                        PrimaryColorForeground = onAccent,
+                    });
             }
         }
 

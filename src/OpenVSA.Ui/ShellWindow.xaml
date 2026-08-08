@@ -24,6 +24,104 @@
         Menu names follow the modern (PathWave) bar of REQ-UI-060, not the Agilent-era one:
             File | Edit | Hardware | Acquisition | Analysis | Trace | Marker | Utilities | Window | Help
     -->
+    <Window.Resources>
+        <!--
+            NOT HERE: the menu popup highlight. Measured at #474747 where the theme asks for
+            #0078D4, and two cheap routes were tried and BOTH failed, so neither should be tried
+            again without reading this:
+
+              - registering the accent with the skin (ThemeCatalogue.RegisterAccent) reaches
+                toolbars and selections but not menus - Fluent highlights a menu from its neutral
+                ramp by design, where VS Code uses the accent;
+              - a Style with an IsHighlighted trigger, BasedOn the skin's own style, changed
+                nothing: the skin's MenuItem ControlTemplate paints its highlight internally and
+                does not bind Background, which is the same finding #420 recorded for the stock
+                templates.
+
+            What is left is owning the MenuItem template - submenus, icons, check marks and
+            input-gesture text - which is a real surface to own for ever and is recorded on #420
+            rather than done quietly here.
+        -->
+
+        <!--
+            The document tab strip. DockingManager's own TabItemBackgroundSelected does not reach
+            it - measured: the strip went dark and the selected tab stayed Aero blue - because the
+            document tabs are a TabControlExt with its own brushes. SETTERS ONLY, and deliberately
+            no ControlTemplate: replacing the template is what loses the hosted documents, and the
+            whole point of colouring the chrome this way rather than skinning it is to leave every
+            template alone.
+        -->
+        <Style x:Key="OpenVSA.DocumentTabs" TargetType="{x:Type syncfusion:TabControlExt}">
+            <Setter Property="Background" Value="{DynamicResource OpenVSA.Chrome.WindowBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource OpenVSA.Chrome.MutedForeground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource OpenVSA.Chrome.Border}" />
+            <Setter Property="TabPanelBackground" Value="{DynamicResource OpenVSA.Chrome.WindowBackground}" />
+            <Setter Property="TabItemSelectedBackground" Value="{DynamicResource OpenVSA.Chrome.SurfaceBackground}" />
+            <Setter Property="TabItemSelectedForeground" Value="{DynamicResource OpenVSA.Chrome.WindowForeground}" />
+            <Setter Property="TabItemSelectedBorderBrush" Value="{DynamicResource OpenVSA.Chrome.Accent}" />
+            <Setter Property="TabItemHoverBackground" Value="{DynamicResource OpenVSA.Chrome.SurfaceBackground}" />
+            <Setter Property="TabItemHoverForeground" Value="{DynamicResource OpenVSA.Chrome.WindowForeground}" />
+            <Setter Property="TabItemHoverBorderBrush" Value="{DynamicResource OpenVSA.Chrome.Border}" />
+        </Style>
+
+        <!--
+            The document tab header, and the ONE template this shell owns.
+
+            Every brush above binds correctly and the tab went on painting an Aero gradient anyway:
+            TabItemExt hard-codes its selected fill inside its own ControlTemplate, which is exactly
+            what #420 measured for ListBoxItem, TabItem and MenuItem. A colour setter cannot reach
+            inside a template, so for this one control there is nothing to set - it has to be
+            replaced.
+
+            Kept as small as it can be: a border, a top rule and the header. It is the tab HEADER
+            only; the document content is hosted elsewhere and is untouched, which is why this is
+            safe where re-templating the docking manager is not. The top rule in the accent colour
+            is VS Code's tab.activeBorderTop, which is how Dark Modern marks the active tab.
+        -->
+        <Style x:Key="OpenVSA.DocumentTabItem" TargetType="{x:Type syncfusion:TabItemExt}">
+            <Setter Property="Background" Value="{DynamicResource OpenVSA.Chrome.WindowBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource OpenVSA.Chrome.MutedForeground}" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type syncfusion:TabItemExt}">
+                        <!--
+                            No BorderBrush at rest, and no thickness either. Naming a colour here
+                            (even Transparent) is what REQ-UI-083's hard-coded-colour rule exists
+                            to stop; an unselected tab simply has no top rule to colour.
+                        -->
+                        <Border x:Name="Shape"
+                                Background="{TemplateBinding Background}"
+                                BorderThickness="0">
+                            <ContentPresenter x:Name="Header"
+                                              ContentSource="Header"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Shape" Property="Background"
+                                        Value="{DynamicResource OpenVSA.Chrome.SurfaceBackground}" />
+                                <Setter TargetName="Shape" Property="BorderThickness" Value="0,2,0,0" />
+                                <Setter TargetName="Shape" Property="BorderBrush"
+                                        Value="{DynamicResource OpenVSA.Chrome.Accent}" />
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource OpenVSA.Chrome.WindowForeground}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Shape" Property="Background"
+                                        Value="{DynamicResource OpenVSA.Chrome.SurfaceBackground}" />
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource OpenVSA.Chrome.WindowForeground}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <!--
         Named so REQ-NFR-007a's content scaling has something to scale: Ctrl+plus and Ctrl+minus
         put a transform on the whole shell rather than changing a font size, so everything grows
@@ -103,7 +201,36 @@
             software rasteriser in Rendering\, because REQ-NFR-006's decimation and REQ-UI-042's
             hot-spot framework have to be ours either way.
         -->
-        <syncfusion:DockingManager x:Name="Docking" UseDocumentContainer="True">
+        <!--
+            The pane captions and document tabs are Syncfusion's own chrome, and they are coloured
+            HERE rather than by a skin. Skinning the DockingManager themes them and costs the
+            documents: the trace plot survives as a 0x0 element with no visual parent above the
+            fifth level, drawing nothing, with nothing thrown and the tab still on screen. These
+            brush properties reach the same pixels through the control's public surface, leave its
+            template alone, and - being DynamicResource - follow a theme change with no restart,
+            which SetTheme does not. SkinnedShellTests guards the plot; ChromeTheming tests guard
+            these.
+        -->
+        <syncfusion:DockingManager x:Name="Docking" UseDocumentContainer="True"
+                                   Background="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+                                   HeaderBackground="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+                                   HeaderForeground="{DynamicResource OpenVSA.Chrome.MutedForeground}"
+                                   HeaderForegroundSelected="{DynamicResource OpenVSA.Chrome.WindowForeground}"
+                                   SelectedHeaderBackground="{DynamicResource OpenVSA.Chrome.SurfaceBackground}"
+                                   HeaderMouseOverBackground="{DynamicResource OpenVSA.Chrome.SurfaceBackground}"
+                                   HeaderBorderBrush="{DynamicResource OpenVSA.Chrome.Border}"
+                                   TabPanelBackground="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+                                   TabPanelBorderBrush="{DynamicResource OpenVSA.Chrome.Border}"
+                                   TabItemsBackground="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+                                   TabItemsBorderBrush="{DynamicResource OpenVSA.Chrome.Border}"
+                                   TabItemBackgroundSelected="{DynamicResource OpenVSA.Chrome.SurfaceBackground}"
+                                   SplitterBackground="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+                                   SidePanelBackground="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+                                   SidePanelBorderBrush="{DynamicResource OpenVSA.Chrome.Border}"
+                                   SideItemsBackground="{DynamicResource OpenVSA.Chrome.WindowBackground}"
+                                   SideItemsBorderBrush="{DynamicResource OpenVSA.Chrome.Border}"
+                                   PreviewPanelBackground="{DynamicResource OpenVSA.Chrome.Accent}"
+                                   TabControlStyle="{StaticResource OpenVSA.DocumentTabs}">
 
             <!--
                 REQ-HAL-002, and the visible half of it: every limit these controls enforce comes
@@ -113,8 +240,7 @@
             -->
             <ScrollViewer x:Name="MeasurementPane"
                           syncfusion:DockingManager.Header="Measurement"
-                          syncfusion:DockingManager.SideInDockedMode="Left"
-                          syncfusion:DockingManager.DesiredWidthInDockedMode="380">
+                          syncfusion:DockingManager.SideInDockedMode="Left">
                 <Grid Margin="12" IsEnabled="False" x:Name="SettingsGrid">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -218,8 +344,7 @@
             </ScrollViewer>
 
             <ScrollViewer x:Name="HardwarePane" syncfusion:DockingManager.Header="Hardware"
-                          syncfusion:DockingManager.SideInDockedMode="Left"
-                          syncfusion:DockingManager.DesiredWidthInDockedMode="380">
+                          syncfusion:DockingManager.SideInDockedMode="Left">
                 <StackPanel Margin="12">
                     <TextBlock x:Name="DiscoveryHeading" FontWeight="SemiBold" Margin="0,0,0,8" />
                     <ItemsControl x:Name="ProviderList" Margin="0,0,0,16">

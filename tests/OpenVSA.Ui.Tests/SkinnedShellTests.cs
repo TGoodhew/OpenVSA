@@ -57,7 +57,9 @@ namespace OpenVSA.Ui.Tests
             {
                 ShellWindow shell = Shown();
 
-                Assert.Null(ThemeCatalogue.SkinFailure);
+                Assert.True(
+                    ThemeCatalogue.SkinFailure == null,
+                    ThemeCatalogue.SkinFailure ?? string.Empty);
 
                 TracePlot plot = shell.DocumentArea.ActivePlot;
 

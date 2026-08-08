@@ -161,7 +161,6 @@ namespace OpenVSA.Architecture.Tests
         {
             ChromeKeys.DisabledForeground,
             ChromeKeys.SelectionBackground,
-            ChromeKeys.SelectionForeground,
         };
 
         [Fact]
