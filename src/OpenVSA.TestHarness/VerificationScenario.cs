@@ -15,6 +15,28 @@ namespace OpenVSA.TestHarness
 
         /// <summary>Offset of the largest peak from the analysis centre frequency, in hertz.</summary>
         PeakOffsetHz,
+
+        /// <summary>How many tones of a comb were found, as a count.</summary>
+        /// <remarks>
+        /// Checked separately from the spacing because the two fail differently: a comb with a tone
+        /// missing has the right spacing among the ones that remain, and a spacing check alone
+        /// would pass it.
+        /// </remarks>
+        ToneCount,
+
+        /// <summary>Mean spacing between adjacent tones of a comb, in hertz.</summary>
+        ToneSpacingHz,
+
+        /// <summary>
+        /// Spread between the strongest and weakest tone of a comb, in decibels.
+        /// </summary>
+        /// <remarks>
+        /// The tones are generated equal, so the expectation is zero and the measurement is
+        /// entirely OpenVSA's amplitude behaviour across the span. A window correction applied per
+        /// trace rather than per bin, or decimation that keeps the wrong sample, shows here and
+        /// nowhere in a one-tone test.
+        /// </remarks>
+        ToneFlatnessDb,
     }
 
     /// <summary>
@@ -56,7 +78,9 @@ namespace OpenVSA.TestHarness
             double spanHz,
             int frequencyPoints,
             double tolerance,
-            bool outputEnabled = true)
+            bool outputEnabled = true,
+            int toneCount = 0,
+            double toneSpacingHz = 0.0)
         {
             if (string.IsNullOrEmpty(name))
             {
@@ -84,7 +108,25 @@ namespace OpenVSA.TestHarness
             FrequencyPoints = frequencyPoints;
             Tolerance = tolerance;
             OutputEnabled = outputEnabled;
+            RequestedToneCount = toneCount;
+            RequestedToneSpacingHz = toneSpacingHz;
         }
+
+        /// <summary>
+        /// Tones the generator is asked for, or zero for an unmodulated carrier.
+        /// </summary>
+        /// <remarks>
+        /// What makes a scenario a comb scenario. Zero is not "two by default": a scenario that did
+        /// not ask for a comb must get a carrier, because the two need different things of the
+        /// generator and a silent default would produce whichever the last scenario left behind.
+        /// </remarks>
+        public int RequestedToneCount { get; }
+
+        /// <summary>Spacing the generator is asked for, in hertz.</summary>
+        public double RequestedToneSpacingHz { get; }
+
+        /// <summary>Whether this scenario needs a source that can produce a comb.</summary>
+        public bool NeedsMultitone => RequestedToneCount >= 2;
 
         /// <summary>Short name, used in the report.</summary>
         public string Name { get; }
@@ -114,7 +156,24 @@ namespace OpenVSA.TestHarness
         public bool OutputEnabled { get; }
 
         /// <summary>The units the quantity and its tolerance are in.</summary>
-        public string Units => What == VerifiedQuantity.PeakLevelDbm ? "dB" : "Hz";
+        public string Units
+        {
+            get
+            {
+                switch (What)
+                {
+                    case VerifiedQuantity.PeakLevelDbm:
+                    case VerifiedQuantity.ToneFlatnessDb:
+                        return "dB";
+
+                    case VerifiedQuantity.ToneCount:
+                        return "tones";
+
+                    default:
+                        return "Hz";
+                }
+            }
+        }
 
         /// <summary>
         /// The expected reading, taken from what the generator says it is doing.
@@ -144,9 +203,35 @@ namespace OpenVSA.TestHarness
                 case VerifiedQuantity.PeakLevelDbm:
                     return source.LevelDbm;
 
+                case VerifiedQuantity.ToneCount:
+                    return Comb(source).ToneCount;
+
+                case VerifiedQuantity.ToneSpacingHz:
+                    return Comb(source).ToneSpacingHz;
+
+                // The tones are generated equal, so any spread is the measurement's. Nothing is
+                // read back from the generator here because there is nothing it could say: a
+                // source that reported its own flatness would be marking its own work.
+                case VerifiedQuantity.ToneFlatnessDb:
+                    return 0.0;
+
                 default:
                     throw new ArgumentOutOfRangeException(nameof(What), What, "Unknown quantity.");
             }
+        }
+
+        private static IMultitoneStimulus Comb(IStimulusSource source)
+        {
+            var comb = source as IMultitoneStimulus;
+
+            if (comb == null)
+            {
+                throw new InvalidOperationException(
+                    "This scenario checks a multitone comb and '" + source.DisplayName +
+                    "' cannot produce one.");
+            }
+
+            return comb;
         }
 
         /// <inheritdoc />
@@ -203,6 +288,24 @@ namespace OpenVSA.TestHarness
                 new VerificationScenario(
                     "Level at a narrower span", VerifiedQuantity.PeakLevelDbm,
                     centerFrequencyHz, levelDbm, centerFrequencyHz, 2e6, 801, 2.0),
+
+                // Five tones, 1 MHz apart, across a 10 MHz span: the comb spans 4 MHz and sits
+                // clear of both edges, and an odd count puts one tone on the carrier so a comb
+                // shifted by half a spacing fails rather than looking symmetrical.
+                new VerificationScenario(
+                    "Every tone of a comb is present", VerifiedQuantity.ToneCount,
+                    centerFrequencyHz, levelDbm, centerFrequencyHz, 10e6, 801, 0.5,
+                    true, 5, 1e6),
+
+                new VerificationScenario(
+                    "Tone spacing across the comb", VerifiedQuantity.ToneSpacingHz,
+                    centerFrequencyHz, levelDbm, centerFrequencyHz, 10e6, 801, 60e3,
+                    true, 5, 1e6),
+
+                new VerificationScenario(
+                    "The comb reads flat", VerifiedQuantity.ToneFlatnessDb,
+                    centerFrequencyHz, levelDbm, centerFrequencyHz, 10e6, 801, 3.0,
+                    true, 5, 1e6),
             };
         }
     }

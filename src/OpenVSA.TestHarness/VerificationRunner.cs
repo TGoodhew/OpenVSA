@@ -160,7 +160,33 @@ namespace OpenVSA.TestHarness
 
             try
             {
-                _stimulus.SetContinuousWave(scenario.StimulusFrequencyHz, scenario.StimulusLevelDbm);
+                if (scenario.NeedsMultitone)
+                {
+                    var comb = _stimulus as IMultitoneStimulus;
+
+                    if (comb == null)
+                    {
+                        // Reported, never skipped silently. A harness that quietly dropped the
+                        // scenarios its generator could not produce would report a clean run over
+                        // a reduced set, which is the failure that made "28 of 34" look like a
+                        // verification.
+                        return new VerificationResult(
+                            scenario, false, double.NaN, double.NaN,
+                            "'" + _stimulus.DisplayName + "' cannot produce a multitone comb");
+                    }
+
+                    comb.SetMultitone(
+                        scenario.StimulusFrequencyHz,
+                        scenario.RequestedToneCount,
+                        scenario.RequestedToneSpacingHz,
+                        scenario.StimulusLevelDbm);
+                }
+                else
+                {
+                    _stimulus.SetContinuousWave(
+                        scenario.StimulusFrequencyHz, scenario.StimulusLevelDbm);
+                }
+
                 _stimulus.SetOutput(scenario.OutputEnabled);
 
                 // From the generator's read-back, so a coerced or externally changed setting moves
@@ -177,6 +203,11 @@ namespace OpenVSA.TestHarness
 
                 try
                 {
+                    if (scenario.NeedsMultitone)
+                    {
+                        return MeasureComb(scenario, frame, expected);
+                    }
+
                     int peak = frame.IndexOfPeak();
 
                     if (peak < 0)
@@ -202,6 +233,95 @@ namespace OpenVSA.TestHarness
                 return new VerificationResult(
                     scenario, false, double.NaN, double.NaN, failure.Message.Split('\n')[0]);
             }
+        }
+
+        /// <summary>
+        /// Finds the comb's tones and checks whichever property the scenario names.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Tones are found as local maxima above a floor referred to the largest one</strong>,
+        /// not as "the N largest bins". The shoulders of a strong tone are larger than a weak
+        /// tone's peak, so taking the N largest bins returns one tone reported N times and a
+        /// spacing of one bin — a result that would look like a catastrophic failure of the
+        /// frequency axis while the axis was perfectly correct.
+        /// </para>
+        /// <para>
+        /// <strong>The floor is 6 dB below the weakest tone the comb should have.</strong> With
+        /// equal tones sharing the total power, each sits about 10·log10(N) below it; 6 dB of head
+        /// room admits a real tone that the analyser has under-read while still excluding the
+        /// skirts, which fall much faster than that.
+        /// </para>
+        /// </remarks>
+        private static VerificationResult MeasureComb(
+            VerificationScenario scenario, SpectrumFrame frame, double expected)
+        {
+            IReadOnlyList<int> tones = ToneSearch.Find(
+                frame.LevelsDbm.ToArray(), scenario.RequestedToneCount);
+
+            if (tones.Count == 0)
+            {
+                return new VerificationResult(
+                    scenario, false, expected, double.NaN, "no tone rose above the search floor");
+            }
+
+            double measured;
+            string note = tones.Count + " tone(s) found";
+
+            switch (scenario.What)
+            {
+                case VerifiedQuantity.ToneCount:
+                    measured = tones.Count;
+                    break;
+
+                case VerifiedQuantity.ToneSpacingHz:
+                    if (tones.Count < 2)
+                    {
+                        return new VerificationResult(
+                            scenario, false, expected, double.NaN,
+                            "only one tone was found, so there is no spacing to measure");
+                    }
+
+                    // Mean of the adjacent gaps, which is the whole comb's spacing rather than one
+                    // pair's. A single pair inherits the bin width as its uncertainty; averaging
+                    // over the comb divides that by the number of gaps.
+                    measured =
+                        (frame.FrequencyAt(tones[tones.Count - 1]) - frame.FrequencyAt(tones[0])) /
+                        (tones.Count - 1);
+                    break;
+
+                case VerifiedQuantity.ToneFlatnessDb:
+                    if (tones.Count < 2)
+                    {
+                        return new VerificationResult(
+                            scenario, false, expected, double.NaN,
+                            "only one tone was found, so there is no flatness to measure");
+                    }
+
+                    double strongest = double.NegativeInfinity;
+                    double weakest = double.PositiveInfinity;
+
+                    foreach (int tone in tones)
+                    {
+                        double level = frame.LevelsDbm[tone];
+                        strongest = Math.Max(strongest, level);
+                        weakest = Math.Min(weakest, level);
+                    }
+
+                    measured = strongest - weakest;
+                    note += ", " + weakest.ToString("F2", CultureInfo.CurrentCulture) + " to " +
+                        strongest.ToString("F2", CultureInfo.CurrentCulture) + " dBm";
+                    break;
+
+                default:
+                    return new VerificationResult(
+                        scenario, false, expected, double.NaN,
+                        "a comb scenario cannot check " + scenario.What);
+            }
+
+            bool passed = Math.Abs(measured - expected) <= scenario.Tolerance;
+
+            return new VerificationResult(scenario, passed, expected, measured, note);
         }
 
         private static double Measure(VerificationScenario scenario, SpectrumFrame frame, int peak)

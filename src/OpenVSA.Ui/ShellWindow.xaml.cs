@@ -210,6 +210,8 @@ namespace OpenVSA.Ui
 
         private string _themeName = ThemeCatalogue.DarkName;
 
+        private readonly bool _readSavedPreferences;
+
         /// <summary>
         /// The rows a spectrogram draws (<c>REQ-UI-054</c>).
         /// </summary>
@@ -240,9 +242,35 @@ namespace OpenVSA.Ui
         private SpectrumEngine _engine;
         private SpectrumFrame _frame;
 
-        /// <summary>Creates the shell window.</summary>
+        /// <summary>Creates the shell window, reading the saved display preferences.</summary>
         public ShellWindow()
+            : this(true)
         {
+        }
+
+        /// <summary>Creates the shell window.</summary>
+        /// <param name="readSavedPreferences">
+        /// Whether to read the user's saved layout. <c>false</c> builds from defaults and touches
+        /// nothing outside the process.
+        /// </param>
+        /// <remarks>
+        /// <para>
+        /// <strong>A constructor parameter, and it has to be.</strong>
+        /// <see cref="PersistPreferences"/> stops the shell <em>writing</em> the sidecar, but it is
+        /// a property and an object initializer runs after the constructor — by which time the
+        /// layout has already been read. A test that sets it is therefore still built from whatever
+        /// layout happens to be on the machine running it, which is how a pane-arrangement test came
+        /// to pass in CI and fail locally.
+        /// </para>
+        /// <para>
+        /// The default reads, because that is what the application wants. Only a caller that needs
+        /// to be independent of the machine says so.
+        /// </para>
+        /// </remarks>
+        public ShellWindow(bool readSavedPreferences)
+        {
+            _readSavedPreferences = readSavedPreferences;
+
             // Before InitializeComponent, because ShellWindow.xaml constructs a Syncfusion
             // DockingManager and an unlicensed control puts up a MODAL trial dialog as it is
             // created. App's constructor already registers, but not every path goes through App --
@@ -1403,6 +1431,14 @@ namespace OpenVSA.Ui
         /// </remarks>
         private ToolWindowLayout LoadToolWindowLayout()
         {
+            // A caller that asked not to read preferences gets defaults and touches no file. See
+            // the constructor: this is the only point at which that can be honoured, because the
+            // layout is read while the window is being built.
+            if (!_readSavedPreferences)
+            {
+                return new ToolWindowLayout();
+            }
+
             try
             {
                 if (File.Exists(ToolWindowLayoutPath))

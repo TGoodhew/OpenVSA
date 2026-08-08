@@ -109,7 +109,10 @@ namespace OpenVSA.Ui.Tests
         {
             _host.Run(() =>
             {
-                var shell = new ShellWindow
+                // readSavedPreferences: false, so this asserts an arrangement rather than whatever
+                // layout happens to be saved on the machine running the test. With it left on, the
+                // test passed in CI (no sidecar) and failed locally the moment a real one existed.
+                var shell = new ShellWindow(false)
                 {
                     PersistPreferences = false,
                     Interactive = false,
