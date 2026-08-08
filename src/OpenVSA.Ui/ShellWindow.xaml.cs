@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -345,6 +345,27 @@ namespace OpenVSA.Ui
             ApplyColours();
             ApplyFonts();
 
+            // After the document area and the tool windows, because it divides the width between
+            // them. First run only; see the method.
+            BalancePanes();
+
+            // The document tab strip is created by the docking manager itself, and NOT before its
+            // Loaded fires -- binding there found no tab control at all and silently did nothing,
+            // which is why the tabs came out Aero blue while every brush was correct. So: retry on
+            // each layout pass and stop as soon as one is bound. FollowTheme reports how many it
+            // found precisely so this loop can tell "not built yet" from "nothing to do".
+            EventHandler follow = null;
+
+            follow = (sender, e) =>
+            {
+                if (DockingChrome.FollowTheme(this) > 0)
+                {
+                    Docking.LayoutUpdated -= follow;
+                }
+            };
+
+            Docking.LayoutUpdated += follow;
+
             // The menu follows the options rather than holding them, so that the Trace tab and the
             // Display menu are two views of one setting (REQ-UI-070).
             _traceDisplay.Changed += (sender, e) => FollowTraceDisplayOptions();
@@ -603,8 +624,139 @@ namespace OpenVSA.Ui
                 ? Resources
                 : Application.Current.Resources;
 
-            return _themes.Apply(name, target);
+            // Scoped deliberately, and NOT to the window. Skinning the window reaches the
+            // DockingManager, and a skinned DockingManager does not host its documents: the trace
+            // plot stays in the tree, stays Visible, and is 0x0 with no visual parent above the
+            // fifth level -- the graticule and the whole annotation band simply absent. These four
+            // are the chrome that is ours to style, and every one of them is outside the document
+            // container. See ThemeCatalogue.PrepareSkin for the measurement.
+            bool applied = _themes.Apply(
+                name, target, MainMenu, Toolbars, MeasurementPane, HardwarePane);
+
+            // The caption bar is drawn by the desktop window manager and no dictionary reaches it,
+            // so it has to be told. Harmless before the handle exists; OnSourceInitialized repeats
+            // the call once there is one.
+            TitleBar.Apply(this);
+
+            return applied;
         }
+
+        /// <summary>
+        /// Gives every docked pane and the document area an equal share of the width, on a first
+        /// run only.
+        /// </summary>
+        /// <returns>How many panes were given a share; zero when a saved layout was restored.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>Three regions and a fixed 380 do not divide a window.</strong> Measurement and
+        /// Hardware asked for 380 each whatever the shell was, the document took what was left, and
+        /// any tool window the user had open took what was left of that — which on a real machine
+        /// was <strong>28 pixels</strong>. The panes are declared without widths now and given a
+        /// share of the actual window instead, so the arrangement is a proportion rather than a
+        /// race for the remainder.
+        /// </para>
+        /// <para>
+        /// <strong>Only on a first run.</strong> <see cref="ToolWindowLayout.WasRestored"/> is the
+        /// test: a returning user's arrangement is theirs and is left exactly as they left it, even
+        /// where it is lopsided. Balancing every launch would quietly undo every drag they had ever
+        /// made, which is a worse fault than the one this fixes.
+        /// </para>
+        /// <para>
+        /// The document counts as one region, so <em>n</em> panes divide the width into
+        /// <em>n</em> + 1. <see cref="Width"/> rather than <see cref="FrameworkElement.ActualWidth"/>
+        /// because this runs while the window is being built and has not been arranged yet.
+        /// </para>
+        /// </remarks>
+        public int BalancePanes()
+        {
+            if (_toolWindows == null)
+            {
+                return 0;
+            }
+
+            var docked = new List<ContentControl>();
+
+            // Left and right only. A bottom-docked window takes height from the document, not
+            // width from the panes beside it, so counting it here would narrow everything to pay
+            // for something that is not in the row.
+            foreach (ToolWindow window in _toolWindows.Layout.OpenWindows())
+            {
+                ToolWindowSide side = _toolWindows.Layout.SideOf(window);
+
+                if (side == ToolWindowSide.Left || side == ToolWindowSide.Right)
+                {
+                    docked.Add(_toolWindows.PaneOf(window));
+                }
+            }
+
+            double width = Width > 0.0 && !double.IsNaN(Width) ? Width : 1280.0;
+
+            // Measurement and Hardware are ALWAYS given a share, restored layout or not, because
+            // their widths are not saved anywhere: they are declared in XAML and there is no
+            // arrangement of them to respect. Skipping them on a restored layout is not
+            // conservative, it leaves them with no width at all -- which collapsed both to about
+            // ninety pixels the moment the hard-coded 380 came out of the markup.
+            double claimed = 0.0;
+
+            if (_toolWindows.Layout.WasRestored)
+            {
+                // A returning user's tool-window widths are theirs. The two XAML panes and the
+                // document then divide what is left.
+                foreach (ToolWindow window in _toolWindows.Layout.OpenWindows())
+                {
+                    ToolWindowSide side = _toolWindows.Layout.SideOf(window);
+
+                    if (side == ToolWindowSide.Left || side == ToolWindowSide.Right)
+                    {
+                        claimed += _toolWindows.Layout[window].Width;
+                    }
+                }
+
+                docked.Clear();
+            }
+
+            // The two panes declared in XAML, plus whatever tool windows are being balanced, plus
+            // the document area itself.
+            double share = Math.Max(
+                ToolWindowLayout.MinimumWidth, (width - claimed) / (docked.Count + 3.0));
+
+            Syncfusion.Windows.Tools.Controls.DockingManager.SetDesiredWidthInDockedMode(MeasurementPane, share);
+            Syncfusion.Windows.Tools.Controls.DockingManager.SetDesiredWidthInDockedMode(HardwarePane, share);
+
+            foreach (ContentControl pane in docked)
+            {
+                Syncfusion.Windows.Tools.Controls.DockingManager.SetDesiredWidthInDockedMode(pane, share);
+            }
+
+            return docked.Count + 2;
+        }
+
+        /// <summary>
+        /// Colours the caption bar as soon as there is a window handle to colour.
+        /// </summary>
+        /// <param name="e">Ignored.</param>
+        /// <remarks>
+        /// The theme is applied during construction, before the handle exists, so the call there
+        /// does nothing and this is the one that takes effect on the first paint. Both are needed:
+        /// this one for start-up, that one for a theme chosen while running.
+        /// </remarks>
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+
+            TitleBar.Apply(this);
+        }
+
+        /// <summary>The Measurement pane, so a test can read the width it was given.</summary>
+        /// <remarks>
+        /// The XAML name generates an internal field, and the width these two are docked at is a
+        /// property of the arrangement rather than of anything inside them - so there is nothing
+        /// else for a test to read.
+        /// </remarks>
+        public ContentControl MeasurementDock => MeasurementPane;
+
+        /// <summary>The Hardware pane. See <see cref="MeasurementDock"/>.</summary>
+        public ContentControl HardwareDock => HardwarePane;
 
         /// <summary>The trace windows and their arrangement (<c>REQ-UI-005</c>).</summary>
         public TraceDocumentArea DocumentArea => Documents;

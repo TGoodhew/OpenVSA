@@ -1,9 +1,20 @@
 <!--
     The Dark chrome theme (REQ-UI-083).
 
+    The values are Visual Studio Code's "Dark Modern", read from its own theme definition
+    (resources/app/extensions/theme-defaults/themes/dark_modern.json) rather than eyeballed from a
+    screenshot. Each key below names the VS Code colour it carries, so the two can be reconciled
+    again when either moves. Adopting a published palette settles the question a colour picker
+    cannot: these values are known to work together at the sizes and contrasts a shell uses.
+
+    A happy result worth recording: the seventeen keys mapped onto Dark Modern with nothing added
+    and nothing left over. That is evidence about the key set itself, which #420 asked after: the
+    set is not too coarse for a real palette, it was too coarse for the CONTROLS, and full
+    templates are what fixed that.
+
     Chrome only. REQ-UI-081 is explicit that a theme styles the window, the menus, the toolbars and
     the panes, and that the graticule, the traces and the annotation are governed entirely by the
-    colour settings of REQ-UI-022 — which are ThemeElements' and are not in this file. Nothing here
+    colour settings of REQ-UI-022 - which are ThemeElements' and are not in this file. Nothing here
     reaches the plot surface, and ChromeAndPlotSeparationTests samples every plot colour across a
     theme change to say so.
 
@@ -15,35 +26,64 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowBackground" Color="#FF1B1B1F" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowForeground" Color="#FFE6E6EA" />
+    <!-- titleBar.activeBackground, sideBar.background, activityBar.background -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowBackground" Color="#FF181818" />
+    <!-- foreground -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowForeground" Color="#FFCCCCCC" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceBackground" Color="#FF232329" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceForeground" Color="#FFE6E6EA" />
+    <!-- editor.background, tab.activeBackground -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceBackground" Color="#FF1F1F1F" />
+    <!-- editor.foreground -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceForeground" Color="#FFCCCCCC" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.MutedForeground" Color="#FF9A9AA4" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.DisabledForeground" Color="#FF6A6A74" />
+    <!-- tab.inactiveForeground -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MutedForeground" Color="#FF9D9D9D" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.Border" Color="#FF3A3A44" />
+    <!--
+        activityBar.inactiveForeground. This is the key #420 measured at 2.9:1 against the toolbar
+        and called illegible; VS Code's own disabled tone reads 4.6:1 on this background. Disabled
+        text should say "disabled", not "unreadable", and that is a contrast the palette's author
+        already settled.
+    -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.DisabledForeground" Color="#FF868686" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuBackground" Color="#FF232329" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuForeground" Color="#FFE6E6EA" />
+    <!-- panel.border, tab.border, titleBar.border -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.Border" Color="#FF2B2B2B" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.ToolbarBackground" Color="#FF232329" />
+    <!-- menu.background -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuBackground" Color="#FF1F1F1F" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuForeground" Color="#FFCCCCCC" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarBackground" Color="#FF1B1B1F" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarForeground" Color="#FFB6B6C0" />
+    <!-- activityBar.background; the toolbars sit in the same band as the title bar -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.ToolbarBackground" Color="#FF181818" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionBackground" Color="#FF2F5D8C" />
+    <!-- statusBar.background / statusBar.foreground -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarBackground" Color="#FF181818" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarForeground" Color="#FFCCCCCC" />
+
+    <!--
+        menu.selectionBackground. This is the menu highlight, and it is VS Code's exactly rather
+        than a blue chosen to look similar - the previous #2F5D8C was neither this nor anything
+        else published.
+    -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionBackground" Color="#FF0078D4" />
     <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionForeground" Color="#FFFFFFFF" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.Accent" Color="#FF4FA3E3" />
+    <!--
+        inputOption.activeBackground. Translucent on purpose: a toggle that is on is a setting the
+        user is not looking at, and several can be on at once. The solid accent above belongs to
+        the one thing being acted on.
+    -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.ActiveBackground" Color="#822489DB" />
+
+    <!-- focusBorder, activityBar.activeBorder, tab.activeBorderTop -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.Accent" Color="#FF0078D4" />
 
     <!--
         Partly transparent, because the overlay is drawn over a trace window and the geometry under
-        it has to stay readable while the guidance is on screen.
+        it has to stay readable while the guidance is on screen. editor.background at 80 %.
     -->
-    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayBackground" Color="#CC1E1E24" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayForeground" Color="#FFB0B0B8" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayBackground" Color="#CC1F1F1F" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayForeground" Color="#FF9D9D9D" />
 
 </ResourceDictionary>

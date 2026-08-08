@@ -172,8 +172,10 @@ namespace OpenVSA.Ui.ToolWindows
 
                 placement.Side = saved.Side;
                 placement.Width = Sane(saved.Width, DefaultWidth);
-                placement.Height = Sane(saved.Height, DefaultHeight);
+                placement.Height = SaneHeight(saved.Height, DefaultHeight);
                 placement.IsOpen = saved.IsOpen;
+
+                layout.WasRestored = true;
             }
 
             return layout;
@@ -205,8 +207,38 @@ namespace OpenVSA.Ui.ToolWindows
                 IsOpen = ToolWindows.IsOpenByDefault(window),
             };
 
+        /// <summary>
+        /// The narrowest a restored pane may be before its width is treated as an accident.
+        /// </summary>
+        /// <remarks>
+        /// <strong>A width of nothing is not the only unusable width.</strong> The rule below once
+        /// admitted anything above zero, and a real layout on a real machine came back with the
+        /// Markers pane at <strong>28 pixels</strong> — open, present, and showing a sliver of one
+        /// column. It is not a width anybody chose: it is what is left when the docking manager
+        /// squeezes a pane the rest of the arrangement has no room for, and once saved it is
+        /// restored and re-squeezed every launch. Below this floor a pane cannot show its own
+        /// caption buttons, so the user cannot even close it to recover.
+        /// </remarks>
+        public const double MinimumWidth = 120.0;
+
+        /// <summary>The shallowest a restored bottom-docked pane may be. See <see cref="MinimumWidth"/>.</summary>
+        public const double MinimumHeight = 80.0;
+
+        /// <summary>
+        /// Whether this layout came from saved preferences rather than from the defaults.
+        /// </summary>
+        /// <remarks>
+        /// The shell balances the panes on a first run and leaves a returning user's arrangement
+        /// alone; this is how it tells the two apart. False for a layout built from nothing, and
+        /// false for one built from a saved state that named no window this build knows.
+        /// </remarks>
+        public bool WasRestored { get; private set; }
+
         private static double Sane(double value, double fallback) =>
-            value > 0.0 && !double.IsInfinity(value) ? value : fallback;
+            value >= MinimumWidth && !double.IsInfinity(value) ? value : fallback;
+
+        private static double SaneHeight(double value, double fallback) =>
+            value >= MinimumHeight && !double.IsInfinity(value) ? value : fallback;
 
         private static void RequireSize(double value, string name)
         {

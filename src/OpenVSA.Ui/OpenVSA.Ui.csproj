@@ -89,6 +89,9 @@
     <PackageReference Include="Syncfusion.Tools.WPF" Version="34.1.32" />
     <PackageReference Include="Syncfusion.SfGrid.WPF" Version="34.1.32" />
     <PackageReference Include="Syncfusion.Shared.WPF" Version="34.1.32" />
+    <PackageReference Include="Syncfusion.SfSkinManager.WPF" Version="34.1.32" />
+    <PackageReference Include="Syncfusion.Themes.FluentDark.WPF" Version="34.1.32" />
+    <PackageReference Include="Syncfusion.Themes.FluentLight.WPF" Version="34.1.32" />
   </ItemGroup>
 
   <ItemGroup>

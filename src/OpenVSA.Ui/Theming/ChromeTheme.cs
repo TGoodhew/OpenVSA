@@ -32,10 +32,16 @@ namespace OpenVSA.Ui.Theming
         /// <summary>Creates a theme from a name and a dictionary.</summary>
         /// <param name="name">The theme's name, as the chooser shows it.</param>
         /// <param name="resources">What it defines; held by reference.</param>
+        /// <param name="skin">
+        /// The Syncfusion skin this theme is drawn with, or <c>null</c> for none. See
+        /// <see cref="Skin"/>.
+        /// </param>
         /// <exception cref="ArgumentException"><paramref name="name"/> is null or blank.</exception>
         /// <exception cref="ArgumentNullException"><paramref name="resources"/> is null.</exception>
-        public ChromeTheme(string name, ResourceDictionary resources)
+        public ChromeTheme(string name, ResourceDictionary resources, string skin = null)
         {
+            Skin = string.IsNullOrEmpty(skin) ? null : skin.Trim();
+
             if (string.IsNullOrEmpty(name) || name.Trim().Length == 0)
             {
                 throw new ArgumentException("A theme needs a name.", nameof(name));
@@ -67,6 +73,32 @@ namespace OpenVSA.Ui.Theming
 
         /// <summary>What it defines.</summary>
         public ResourceDictionary Resources { get; }
+
+        /// <summary>
+        /// The Syncfusion skin this theme is drawn with, or <c>null</c> to leave the stock
+        /// templates in place.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>This is a second dictionary, not a second mechanism.</strong> A skin name is
+        /// carried by the theme in exactly the way the resource dictionary is: supplied at
+        /// construction, applied without being inspected, and never compared against a literal to
+        /// decide a colour. Adding a theme is still a matter of supplying resources — a custom
+        /// theme may name a skin, or name none and get the stock templates, and no code changes
+        /// either way.
+        /// </para>
+        /// <para>
+        /// <strong>Why it exists at all.</strong> Three of the seventeen chrome keys could not
+        /// reach the controls that need them, and measurement showed why: a
+        /// <c>ListBoxItem</c>, a <c>TabItem</c> and a <c>MenuItem</c> hard-code their selection
+        /// colours inside their own templates, so only a full template reaches them — and the
+        /// Syncfusion pane captions are drawn by a control library that our dictionaries do not
+        /// address at all. Across a Light/Dark swap the caption row moved by <em>zero</em> grey
+        /// levels while our own menu strip moved 210. A skin supplies the templates we would
+        /// otherwise have to own for ever, for both the stock controls and Syncfusion's own.
+        /// </para>
+        /// </remarks>
+        public string Skin { get; }
 
         /// <summary>The keys of <see cref="ChromeKeys.All"/> this theme does not define.</summary>
         public IReadOnlyList<string> MissingKeys => _missing;

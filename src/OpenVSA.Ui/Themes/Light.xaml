@@ -1,6 +1,11 @@
 <!--
     The Light chrome theme (REQ-UI-083).
 
+    The values are Visual Studio Code's "Light Modern", read from its own theme definition
+    (resources/app/extensions/theme-defaults/themes/light_modern.json), so that the pair this build
+    ships are two halves of one published palette rather than a dark theme and a light theme chosen
+    separately. Each key names the VS Code colour it carries.
+
     Chrome only; see Dark.xaml for why, and for the rule that every key of ChromeKeys.All appears in
     both files. Switching to this theme leaves the graticule dark, and that is REQ-UI-081 rather
     than an oversight: the plot surface is governed by the colour settings of REQ-UI-022, which a
@@ -9,36 +14,52 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowBackground" Color="#FFF3F3F5" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowForeground" Color="#FF1A1A1E" />
+    <!-- titleBar.activeBackground, sideBar.background, statusBar.background -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowBackground" Color="#FFF8F8F8" />
+    <!-- foreground -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.WindowForeground" Color="#FF3B3B3B" />
 
+    <!-- editor.background, tab.activeBackground -->
     <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceBackground" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceForeground" Color="#FF1A1A1E" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SurfaceForeground" Color="#FF3B3B3B" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.MutedForeground" Color="#FF5F5F6B" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.DisabledForeground" Color="#FF9A9AA4" />
+    <!-- tab.inactiveForeground -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MutedForeground" Color="#FF868686" />
+    <!-- activityBar.inactiveForeground; 4.7:1 on the toolbar, against the 2.6:1 #420 measured -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.DisabledForeground" Color="#FF616161" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.Border" Color="#FFD0D0D8" />
+    <!-- panel.border, tab.border, widget.border -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.Border" Color="#FFE5E5E5" />
 
+    <!-- editor.background; Light Modern draws menus on white with a #CECECE border -->
     <SolidColorBrush x:Key="OpenVSA.Chrome.MenuBackground" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuForeground" Color="#FF1A1A1E" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.MenuForeground" Color="#FF3B3B3B" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.ToolbarBackground" Color="#FFF7F7F9" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.ToolbarBackground" Color="#FFF8F8F8" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarBackground" Color="#FFECECF0" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarForeground" Color="#FF3A3A44" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarBackground" Color="#FFF8F8F8" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.StatusBarForeground" Color="#FF3B3B3B" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionBackground" Color="#FFCCE4F7" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionForeground" Color="#FF1A1A1E" />
+    <!--
+        menu.selectionBackground / menu.selectionForeground. Light Modern highlights with a solid
+        dark blue and white text, not with a pale wash - so the highlight reads the same way in
+        both themes, which is the point of taking both halves from one palette.
+    -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionBackground" Color="#FF005FB8" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionForeground" Color="#FFFFFFFF" />
 
-    <SolidColorBrush x:Key="OpenVSA.Chrome.Accent" Color="#FF1E70BE" />
+    <!-- inputOption.activeBackground; translucent, for the reason given in Dark.xaml -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.ActiveBackground" Color="#552488DB" />
+
+    <!-- focusBorder -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.Accent" Color="#FF005FB8" />
 
     <!--
         The overlay stays dark under a light chrome: it is drawn over the graticule, which
         REQ-UI-081 keeps out of the theme's reach, and light text on a dark plot is what stays
         readable there whatever the rest of the window is doing.
     -->
-    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayBackground" Color="#CC1E1E24" />
-    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayForeground" Color="#FFE6E6EA" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayBackground" Color="#CC1F1F1F" />
+    <SolidColorBrush x:Key="OpenVSA.Chrome.OverlayForeground" Color="#FFCCCCCC" />
 
 </ResourceDictionary>

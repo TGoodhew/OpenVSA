@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Media;
+using Syncfusion.SfSkinManager;
+using Syncfusion.Themes.FluentDark.WPF;
+using Syncfusion.Themes.FluentLight.WPF;
 
 namespace OpenVSA.Ui.Theming
 {
@@ -44,6 +48,8 @@ namespace OpenVSA.Ui.Theming
         /// <summary>The name of the dark theme this build ships.</summary>
         public const string DarkName = "Dark";
 
+        private static readonly HashSet<string> _accented = new HashSet<string>(StringComparer.Ordinal);
+
         private readonly List<ChromeTheme> _themes = new List<ChromeTheme>();
 
         private ResourceDictionary _target;
@@ -85,8 +91,8 @@ namespace OpenVSA.Ui.Theming
         {
             var catalogue = new ThemeCatalogue();
 
-            catalogue.Add(new ChromeTheme(LightName, Load(LightName)));
-            catalogue.Add(new ChromeTheme(DarkName, Load(DarkName)));
+            catalogue.Add(new ChromeTheme(LightName, Load(LightName), "FluentLight"));
+            catalogue.Add(new ChromeTheme(DarkName, Load(DarkName), "FluentDark"));
 
             return catalogue;
         }
@@ -144,9 +150,20 @@ namespace OpenVSA.Ui.Theming
         /// Where to merge it; normally <c>Application.Current.Resources</c>, and a test's own
         /// dictionary when there is no application.
         /// </param>
+        /// <param name="scope">
+        /// The element to draw with the theme's <see cref="ChromeTheme.Skin"/>, or <c>null</c> to
+        /// merge the dictionary and leave the templates alone. Normally the shell window.
+        /// </param>
         /// <returns>Whether a theme of that name was found and applied.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="target"/> is null.</exception>
-        public bool Apply(string name, ResourceDictionary target)
+        /// <remarks>
+        /// <strong>The skin goes on before the dictionary.</strong> A skin supplies whole
+        /// templates and the dictionary supplies our own surfaces' colours, so the dictionary has
+        /// to be the later of the two or the skin's own brushes win wherever the two overlap. That
+        /// ordering is what keeps a chrome key authoritative over the skin that would otherwise
+        /// have answered the same question.
+        /// </remarks>
+        public bool Apply(string name, ResourceDictionary target, params DependencyObject[] scopes)
         {
             if (target == null)
             {
@@ -165,6 +182,8 @@ namespace OpenVSA.Ui.Theming
                 _target.MergedDictionaries.Remove(_installed.Resources);
             }
 
+            ApplySkin(theme, scopes);
+
             target.MergedDictionaries.Add(theme.Resources);
 
             _target = target;
@@ -178,6 +197,176 @@ namespace OpenVSA.Ui.Theming
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Draws <paramref name="scope"/> with the theme's skin, if it names one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A theme that names no skin, or a call with no scope, leaves the templates exactly as
+        /// they were — that is the path a test's bare <see cref="ResourceDictionary"/> takes, and
+        /// the path a custom theme supplying only colours takes.
+        /// </para>
+        /// <para>
+        /// <strong>A missing skin assembly is not a failure to theme.</strong> Syncfusion resolves
+        /// a skin by name at run time from an assembly that may not have been deployed, and it
+        /// signals that by throwing. Swallowing it leaves the chrome dictionary applied and the
+        /// stock templates in place — visibly worse, but running — where letting it out would take
+        /// down a shell over a colour. <see cref="SkinFailure"/> records it so the condition is
+        /// reportable rather than silent, which is the distinction that matters: this is quiet, not
+        /// hidden.
+        /// </para>
+        /// </remarks>
+        private static void ApplySkin(ChromeTheme theme, DependencyObject[] scopes)
+        {
+            SkinFailure = null;
+
+            if (theme.Skin == null || scopes == null)
+            {
+                return;
+            }
+
+            // Before SetTheme, which builds Syncfusion's own templates: an unlicensed control
+            // raises a MODAL trial dialog as it is constructed, and on a dispatcher thread that
+            // stops the dispatcher pumping. Idempotent, and enforced by
+            // NoUnregisteredSyncfusionHostsTests -- which caught this file the moment it first
+            // touched SfSkinManager.
+            SyncfusionLicense.Register();
+
+            // ONCE, outside the loop, and once per skin for the life of the process. Syncfusion
+            // builds the skin's dictionary on first use and seals it: registering settings again
+            // afterwards throws "ResourceDictionary is read-only", which is what four scopes in a
+            // row did -- the first succeeded and the other three reported a failure to skin.
+            RegisterAccent(theme);
+
+            foreach (DependencyObject scope in scopes)
+            {
+                if (scope == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    SfSkinManager.SetTheme(scope, new Theme(theme.Skin));
+                }
+                catch (Exception failure)
+                {
+                    SkinFailure = "The '" + theme.Name + "' theme's skin '" + theme.Skin +
+                        "' could not be applied to a " + scope.GetType().Name + ": " +
+                        failure.Message;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gives the skin the theme's own accent, so its highlights are the theme's colour.
+        /// </summary>
+        /// <param name="theme">The theme whose <c>Accent</c> and foreground keys to hand over.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>Without this a skinned menu highlights in the vendor's grey.</strong> Measured
+        /// on the running shell: the File menu highlighted its item at <c>#474747</c> while the
+        /// theme asked for <c>#0078D4</c>. A skin brings whole templates, and those templates paint
+        /// selection from the skin's own palette rather than from a chrome key — reaching them is
+        /// the whole reason a skin is used, and it cuts both ways.
+        /// </para>
+        /// <para>
+        /// <strong>The colour still comes from the dictionary.</strong> It is read out of the
+        /// theme's own resources and handed to the vendor, so a custom theme's accent reaches the
+        /// skinned controls with nothing added here. What is selected by name below is which
+        /// vendor <em>settings type</em> to build — a property of the skin, not of the theme, and
+        /// not a colour decision. <c>REQ-UI-083</c> forbids deciding a colour from a theme's name;
+        /// this decides a type from a skin's name and then asks the dictionary for the colour.
+        /// </para>
+        /// </remarks>
+        private static void RegisterAccent(ChromeTheme theme)
+        {
+            // Once per skin. See ApplySkin: the dictionary is sealed after first use, so a second
+            // registration throws rather than taking effect. A theme edited while running keeps
+            // the accent it was first applied with; the chrome dictionary still swaps live.
+            if (!_accented.Add(theme.Skin))
+            {
+                return;
+            }
+
+            var accent = theme.Resources[ChromeKeys.Accent] as SolidColorBrush;
+            var onAccent = theme.Resources[ChromeKeys.SelectionForeground] as SolidColorBrush;
+
+            if (accent == null)
+            {
+                return;
+            }
+
+            if (string.Equals(theme.Skin, "FluentDark", StringComparison.Ordinal))
+            {
+                SfSkinManager.RegisterThemeSettings(
+                    theme.Skin,
+                    new FluentDarkThemeSettings
+                    {
+                        PrimaryBackground = accent,
+                        PrimaryColorForeground = onAccent,
+                    });
+            }
+            else if (string.Equals(theme.Skin, "FluentLight", StringComparison.Ordinal))
+            {
+                SfSkinManager.RegisterThemeSettings(
+                    theme.Skin,
+                    new FluentLightThemeSettings
+                    {
+                        PrimaryBackground = accent,
+                        PrimaryColorForeground = onAccent,
+                    });
+            }
+        }
+
+        /// <summary>
+        /// Why the last <see cref="Apply(string, ResourceDictionary, DependencyObject)"/> could not
+        /// install its skin, or <c>null</c> if it could or had none to install.
+        /// </summary>
+        public static string SkinFailure { get; private set; }
+
+        /// <summary>
+        /// Selects the skin every control constructed after this call is drawn with.
+        /// </summary>
+        /// <param name="skin">The Syncfusion skin's name, or <c>null</c> to leave it alone.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>This has to run before the controls exist, and that is measured, not assumed.
+        /// </strong> Skinning a <c>DockingManager</c> that has already been built re-templates it,
+        /// and the documents it was hosting do not survive: with the skin applied to the finished
+        /// window the trace plot was still in the tree and still <c>Visibility.Visible</c>, but
+        /// <c>0x0</c>, never loaded, and its visual parent chain stopped five levels up instead of
+        /// reaching the <c>DocumentTabControl</c> — the whole graticule, annotation band and trace
+        /// window chrome simply absent from a screenshot. Applying it before
+        /// <c>InitializeComponent</c> is what makes the document host build itself skinned in the
+        /// first place.
+        /// </para>
+        /// <para>
+        /// The consequence is worth stating plainly: the chrome <em>dictionary</em> swaps live, and
+        /// the <em>skin</em> does not. See <see cref="Apply(string, ResourceDictionary, DependencyObject)"/>.
+        /// </para>
+        /// </remarks>
+        public static void PrepareSkin(string skin)
+        {
+            if (string.IsNullOrEmpty(skin))
+            {
+                return;
+            }
+
+            SfSkinManager.ApplyThemeAsDefaultStyle = true;
+            SfSkinManager.ApplyStylesOnApplication = true;
+            SfSkinManager.ApplicationTheme = new Theme(skin);
+        }
+
+        /// <summary>The skin the theme of that name is drawn with, or <c>null</c>.</summary>
+        /// <param name="name">The theme's name.</param>
+        public string SkinFor(string name)
+        {
+            ChromeTheme theme = Find(name);
+
+            return theme == null ? null : theme.Skin;
         }
 
         /// <summary>

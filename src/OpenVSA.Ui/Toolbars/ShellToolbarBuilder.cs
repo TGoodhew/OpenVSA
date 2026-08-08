@@ -233,18 +233,36 @@ namespace OpenVSA.Ui.Toolbars
             return made;
         }
 
+        /// <summary>
+        /// The resource key of the style a toolbar toggle is drawn with, if the host supplies one.
+        /// </summary>
+        public const string ToggleStyleKey = "OpenVSA.ToolbarToggle";
+
         private static FrameworkElement Create(ToolbarControl control)
         {
             switch (control.Kind)
             {
                 case ToolbarControlKind.Toggle:
                 case ToolbarControlKind.Radio:
-                    return new ToggleButton
+                    var toggle = new ToggleButton
                     {
                         Content = control.Name,
                         Padding = new Thickness(6.0, 1.0, 6.0, 1.0),
                         Focusable = false,
                     };
+
+                    // Asked for by key, on the control itself. ToolBar.ToggleButtonStyleKey is the
+                    // documented way and it does NOT work here: the skin assigns its own style to
+                    // the toolbar's children, which beats the ToolBar's key lookup, so the toggles
+                    // went on painting a solid accent block. A style set on the element wins.
+                    //
+                    // A resource reference rather than a lookup, so the style is found wherever the
+                    // control ends up and follows a theme change. If the host defines no such
+                    // style - a toolbar built in a test, say - nothing is set and the stock
+                    // appearance stands.
+                    toggle.SetResourceReference(FrameworkElement.StyleProperty, ToggleStyleKey);
+
+                    return toggle;
 
                 case ToolbarControlKind.Split:
                     return new SplitButton(control.Name);
