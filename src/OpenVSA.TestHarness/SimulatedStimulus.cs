@@ -18,7 +18,7 @@ namespace OpenVSA.TestHarness
     /// the read-back would pass that and should not.
     /// </para>
     /// </remarks>
-    public sealed class SimulatedStimulus : IStimulusSource
+    public sealed class SimulatedStimulus : IStimulusSource, IMultitoneStimulus
     {
         /// <summary>Reports this frequency whatever it is asked for; <c>NaN</c> to obey.</summary>
         public double CoerceFrequencyTo { get; set; } = double.NaN;
@@ -49,6 +49,50 @@ namespace OpenVSA.TestHarness
         {
             FrequencyHz = double.IsNaN(CoerceFrequencyTo) ? frequencyHz : CoerceFrequencyTo;
             LevelDbm = double.IsNaN(CoerceLevelTo) ? levelDbm : CoerceLevelTo;
+
+            // A carrier is not a comb. Leaving the count set would let a CW scenario run after a
+            // multitone one and still read back tones, which is the stale-state failure the real
+            // source avoids by reading MTONe:ARB:STATe.
+            ToneCount = 0;
+            ToneSpacingHz = 0.0;
+        }
+
+        /// <inheritdoc />
+        public int MinimumTones => 2;
+
+        /// <inheritdoc />
+        public int MaximumTones => 64;
+
+        /// <inheritdoc />
+        public int ToneCount { get; private set; }
+
+        /// <inheritdoc />
+        public double ToneSpacingHz { get; private set; }
+
+        /// <summary>Reports this spacing whatever it is asked for; <c>NaN</c> to obey.</summary>
+        /// <remarks>
+        /// The comb's counterpart to <see cref="CoerceFrequencyTo"/>. A real generator quantises the
+        /// spacing to its sample clock, and a harness taking its expectation from the request rather
+        /// than the read-back would report the analyser as wrong by the difference.
+        /// </remarks>
+        public double CoerceSpacingTo { get; set; } = double.NaN;
+
+        /// <inheritdoc />
+        public void SetMultitone(
+            double centreFrequencyHz, int toneCount, double spacingHz, double levelDbm)
+        {
+            if (toneCount < MinimumTones || toneCount > MaximumTones)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(toneCount), toneCount,
+                    "This source produces between " + MinimumTones + " and " + MaximumTones +
+                    " tones.");
+            }
+
+            FrequencyHz = double.IsNaN(CoerceFrequencyTo) ? centreFrequencyHz : CoerceFrequencyTo;
+            LevelDbm = double.IsNaN(CoerceLevelTo) ? levelDbm : CoerceLevelTo;
+            ToneSpacingHz = double.IsNaN(CoerceSpacingTo) ? spacingHz : CoerceSpacingTo;
+            ToneCount = toneCount;
         }
 
         /// <inheritdoc />

@@ -113,10 +113,46 @@ namespace OpenVSA.TestHarness.Tests
                 IReadOnlyList<VerificationResult> results = await runner.RunAsync(
                     VerificationScenario.Default(), CancellationToken.None);
 
-                Assert.Equal(6, results.Count);
+                // A result per scenario, and the count taken from the catalogue rather than
+                // written here: a literal only records how many scenarios there were on the day it
+                // was written, and it fails when one is added without saying anything about
+                // whether the new one ran.
+                Assert.Equal(VerificationScenario.Default().Count, results.Count);
+                Assert.NotEmpty(results);
                 Assert.All(results, r => Assert.NotNull(r.Scenario));
                 Assert.All(results, r => Assert.False(string.IsNullOrEmpty(r.ToString())));
             }
+        }
+
+        [Fact]
+        public void TheCatalogueCarriesTheCombScenariosIssue393AsksFor()
+        {
+            // "Multitone — all tones present at correct spacing and relative level." Three
+            // quantities, because they fail differently: a comb with a tone missing still has the
+            // right spacing among those that remain, and a comb that is present and evenly spaced
+            // can still be sloped.
+            IReadOnlyList<VerificationScenario> scenarios = VerificationScenario.Default();
+
+            Assert.Contains(scenarios, s => s.What == VerifiedQuantity.ToneCount);
+            Assert.Contains(scenarios, s => s.What == VerifiedQuantity.ToneSpacingHz);
+            Assert.Contains(scenarios, s => s.What == VerifiedQuantity.ToneFlatnessDb);
+
+            // An odd tone count, so that one tone sits on the carrier and a comb shifted by half a
+            // spacing fails rather than looking symmetrical about centre.
+            Assert.All(
+                scenarios.Where(s => s.NeedsMultitone),
+                s => Assert.True(
+                    s.RequestedToneCount % 2 == 1,
+                    "An even comb is symmetrical about centre and hides a half-spacing shift."));
+
+            // And the comb must fit inside the span with room at both edges, or the outermost
+            // tones fall off the analysis and the count fails for a reason that is the scenario's
+            // fault rather than the analyser's.
+            Assert.All(
+                scenarios.Where(s => s.NeedsMultitone),
+                s => Assert.True(
+                    (s.RequestedToneCount - 1) * s.RequestedToneSpacingHz < s.SpanHz,
+                    "The comb is wider than the span it is measured in."));
         }
 
         [Fact]
