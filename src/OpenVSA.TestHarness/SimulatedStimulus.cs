@@ -18,7 +18,7 @@ namespace OpenVSA.TestHarness
     /// the read-back would pass that and should not.
     /// </para>
     /// </remarks>
-    public sealed class SimulatedStimulus : IStimulusSource, IMultitoneStimulus
+    public sealed class SimulatedStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus
     {
         /// <summary>Reports this frequency whatever it is asked for; <c>NaN</c> to obey.</summary>
         public double CoerceFrequencyTo { get; set; } = double.NaN;
@@ -55,6 +55,7 @@ namespace OpenVSA.TestHarness
             // source avoids by reading MTONe:ARB:STATe.
             ToneCount = 0;
             ToneSpacingHz = 0.0;
+            NoiseBandwidthHz = 0.0;
         }
 
         /// <inheritdoc />
@@ -93,6 +94,42 @@ namespace OpenVSA.TestHarness
             LevelDbm = double.IsNaN(CoerceLevelTo) ? levelDbm : CoerceLevelTo;
             ToneSpacingHz = double.IsNaN(CoerceSpacingTo) ? spacingHz : CoerceSpacingTo;
             ToneCount = toneCount;
+            NoiseBandwidthHz = 0.0;
+        }
+
+        /// <inheritdoc />
+        public double MinimumNoiseBandwidthHz => 50e3;
+
+        /// <inheritdoc />
+        public double MaximumNoiseBandwidthHz => 15e6;
+
+        /// <inheritdoc />
+        public double NoiseBandwidthHz { get; private set; }
+
+        /// <summary>Reports this noise bandwidth whatever it is asked for; <c>NaN</c> to obey.</summary>
+        public double CoerceNoiseBandwidthTo { get; set; } = double.NaN;
+
+        /// <inheritdoc />
+        public void SetNoise(double centreFrequencyHz, double bandwidthHz, double levelDbm)
+        {
+            if (bandwidthHz < MinimumNoiseBandwidthHz || bandwidthHz > MaximumNoiseBandwidthHz)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(bandwidthHz), bandwidthHz,
+                    "This source produces noise between " + MinimumNoiseBandwidthHz + " and " +
+                    MaximumNoiseBandwidthHz + " Hz wide.");
+            }
+
+            FrequencyHz = double.IsNaN(CoerceFrequencyTo) ? centreFrequencyHz : CoerceFrequencyTo;
+            LevelDbm = double.IsNaN(CoerceLevelTo) ? levelDbm : CoerceLevelTo;
+
+            NoiseBandwidthHz = double.IsNaN(CoerceNoiseBandwidthTo)
+                ? bandwidthHz
+                : CoerceNoiseBandwidthTo;
+
+            // One personality at a time, as on the real source.
+            ToneCount = 0;
+            ToneSpacingHz = 0.0;
         }
 
         /// <inheritdoc />

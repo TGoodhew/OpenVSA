@@ -160,7 +160,23 @@ namespace OpenVSA.TestHarness
 
             try
             {
-                if (scenario.NeedsMultitone)
+                if (scenario.NeedsNoise)
+                {
+                    var noise = _stimulus as INoiseStimulus;
+
+                    if (noise == null)
+                    {
+                        return new VerificationResult(
+                            scenario, false, double.NaN, double.NaN,
+                            "'" + _stimulus.DisplayName + "' cannot produce band-limited noise");
+                    }
+
+                    noise.SetNoise(
+                        scenario.StimulusFrequencyHz,
+                        scenario.RequestedNoiseBandwidthHz,
+                        scenario.StimulusLevelDbm);
+                }
+                else if (scenario.NeedsMultitone)
                 {
                     var comb = _stimulus as IMultitoneStimulus;
 
@@ -203,6 +219,38 @@ namespace OpenVSA.TestHarness
 
                 try
                 {
+                    if (scenario.NeedsNoise)
+                    {
+                        int binsUsed;
+
+                        double density = NoiseDensity.MeasureDbmPerHz(
+                            frame.LevelsDbm.ToArray(),
+                            frame.StartFrequencyHz,
+                            frame.BinWidthHz,
+                            scenario.CenterFrequencyHz,
+                            scenario.SpanHz,
+                            frame.EquivalentNoiseBandwidthBins,
+                            out binsUsed);
+
+                        if (double.IsNaN(density))
+                        {
+                            return new VerificationResult(
+                                scenario, false, expected, double.NaN,
+                                "no usable bin was left after the centre and edge guards");
+                        }
+
+                        return new VerificationResult(
+                            scenario,
+                            Math.Abs(density - expected) <= scenario.Tolerance,
+                            expected,
+                            density,
+                            binsUsed + " bins, ENBW " +
+                            frame.EquivalentNoiseBandwidthBins.ToString(
+                                "F4", CultureInfo.CurrentCulture) + " bins of " +
+                            (frame.BinWidthHz / 1e3).ToString("F3", CultureInfo.CurrentCulture) +
+                            " kHz");
+                    }
+
                     if (scenario.NeedsMultitone)
                     {
                         return MeasureComb(scenario, frame, expected);

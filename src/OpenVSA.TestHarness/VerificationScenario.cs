@@ -37,6 +37,15 @@ namespace OpenVSA.TestHarness
         /// nowhere in a one-tone test.
         /// </remarks>
         ToneFlatnessDb,
+
+        /// <summary>Power spectral density of a noise band, in dBm per hertz.</summary>
+        /// <remarks>
+        /// The one quantity no tone scenario can stand in for. A peak is one bin, so the analysis
+        /// window's equivalent noise bandwidth divides out of it and is never exercised; noise is
+        /// spread over every bin, so the reading depends on <c>REQ-DSP-011</c>'s ENBW correction
+        /// directly. Get that wrong and every tone still reads correctly.
+        /// </remarks>
+        NoiseDensityDbmPerHz,
     }
 
     /// <summary>
@@ -80,7 +89,8 @@ namespace OpenVSA.TestHarness
             double tolerance,
             bool outputEnabled = true,
             int toneCount = 0,
-            double toneSpacingHz = 0.0)
+            double toneSpacingHz = 0.0,
+            double noiseBandwidthHz = 0.0)
         {
             if (string.IsNullOrEmpty(name))
             {
@@ -110,6 +120,7 @@ namespace OpenVSA.TestHarness
             OutputEnabled = outputEnabled;
             RequestedToneCount = toneCount;
             RequestedToneSpacingHz = toneSpacingHz;
+            RequestedNoiseBandwidthHz = noiseBandwidthHz;
         }
 
         /// <summary>
@@ -127,6 +138,12 @@ namespace OpenVSA.TestHarness
 
         /// <summary>Whether this scenario needs a source that can produce a comb.</summary>
         public bool NeedsMultitone => RequestedToneCount >= 2;
+
+        /// <summary>Noise bandwidth the generator is asked for, in hertz, or zero for none.</summary>
+        public double RequestedNoiseBandwidthHz { get; }
+
+        /// <summary>Whether this scenario needs a source that can produce band-limited noise.</summary>
+        public bool NeedsNoise => RequestedNoiseBandwidthHz > 0.0;
 
         /// <summary>Short name, used in the report.</summary>
         public string Name { get; }
@@ -165,6 +182,9 @@ namespace OpenVSA.TestHarness
                     case VerifiedQuantity.PeakLevelDbm:
                     case VerifiedQuantity.ToneFlatnessDb:
                         return "dB";
+
+                    case VerifiedQuantity.NoiseDensityDbmPerHz:
+                        return "dB/Hz";
 
                     case VerifiedQuantity.ToneCount:
                         return "tones";
@@ -215,9 +235,28 @@ namespace OpenVSA.TestHarness
                 case VerifiedQuantity.ToneFlatnessDb:
                     return 0.0;
 
+                // Total power spread over the band the source says it is filling. Both halves are
+                // read back: a generator that coerced either would move the reference with it.
+                case VerifiedQuantity.NoiseDensityDbmPerHz:
+                    return source.LevelDbm - (10.0 * Math.Log10(Noise(source).NoiseBandwidthHz));
+
                 default:
                     throw new ArgumentOutOfRangeException(nameof(What), What, "Unknown quantity.");
             }
+        }
+
+        private static INoiseStimulus Noise(IStimulusSource source)
+        {
+            var noise = source as INoiseStimulus;
+
+            if (noise == null)
+            {
+                throw new InvalidOperationException(
+                    "This scenario checks a noise band and '" + source.DisplayName +
+                    "' cannot produce one.");
+            }
+
+            return noise;
         }
 
         private static IMultitoneStimulus Comb(IStimulusSource source)
@@ -306,6 +345,17 @@ namespace OpenVSA.TestHarness
                     "The comb reads flat", VerifiedQuantity.ToneFlatnessDb,
                     centerFrequencyHz, levelDbm, centerFrequencyHz, 10e6, 801, 3.0,
                     true, 5, 1e6),
+
+                // Noise 5 MHz wide, measured over a 2 MHz span inside it, so every bin averaged is
+                // in the flat part of the band and none is on the generator's own roll-off. The
+                // tolerance is wider than the tone checks': a mean over a few hundred noise bins
+                // has a standard error of its own, and this is checking a correction factor rather
+                // than a calibration.
+                new VerificationScenario(
+                    "Noise density and the ENBW correction",
+                    VerifiedQuantity.NoiseDensityDbmPerHz,
+                    centerFrequencyHz, levelDbm, centerFrequencyHz, 2e6, 801, 2.5,
+                    true, 0, 0.0, 5e6),
             };
         }
     }
