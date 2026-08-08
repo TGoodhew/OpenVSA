@@ -22,7 +22,7 @@ namespace OpenVSA.TestHarness
     /// between two runs made a correct measurement look like a mirrored spectrum.
     /// </para>
     /// </remarks>
-    public sealed class E4438CStimulus : IStimulusSource, IMultitoneStimulus
+    public sealed class E4438CStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus
     {
         /// <summary>Resource used when configuration names none.</summary>
         /// <remarks>
@@ -37,6 +37,14 @@ namespace OpenVSA.TestHarness
 
         /// <summary><c>appSettings</c> key naming the VISA resource to open.</summary>
         public const string ResourceSettingKey = "OpenVSA.Visa.E4438C.Resource";
+
+        /// <summary>How long to allow the instrument to synthesise a noise waveform.</summary>
+        /// <remarks>
+        /// Measured at <strong>10.8 s</strong> for a 5 MHz band on firmware C.05.85. Three times
+        /// that, because the figure will scale with bandwidth and a harness that fails on a wider
+        /// band would be reporting its own impatience as an instrument fault.
+        /// </remarks>
+        public const int NoiseBuildTimeoutMilliseconds = 30000;
 
         private readonly Func<string, IInstrumentSession> _openSession;
         private readonly string _resourceName;
@@ -135,6 +143,12 @@ namespace OpenVSA.TestHarness
             // Modulation off explicitly. A generator left modulated by whoever used it last
             // produces a spread spectrum where the scenario expects a tone, and the failure reads
             // as a defect in the analyser.
+            //
+            // Both baseband personalities off by name as well, not just the modulator: leaving one
+            // running makes Refresh report a live comb or noise band on what is meant to be a bare
+            // carrier, and a scenario reading that back would take its expectation from it.
+            Send(session, ":RADio:MTONe:ARB:STATe OFF");
+            Send(session, ":RADio:AWGN:ARB:STATe OFF");
             Send(session, ":OUTPut:MODulation:STATe OFF");
             Send(session, ":FREQuency:CW " + Number(frequencyHz) + " HZ");
             Send(session, ":POWer:AMPLitude " + Number(levelDbm) + " dBm");
@@ -215,6 +229,99 @@ namespace OpenVSA.TestHarness
             Refresh();
         }
 
+        /// <inheritdoc />
+        /// <remarks>
+        /// The manual's range for <c>:RADio:AWGN:ARB:BWIDth</c> on Option 403: 50 kHz to 15 MHz.
+        /// Not probed — see the note beside the multitone limits for what a rejected range query
+        /// costs on this firmware.
+        /// </remarks>
+        public double MinimumNoiseBandwidthHz => 50e3;
+
+        /// <inheritdoc />
+        public double MaximumNoiseBandwidthHz => 15e6;
+
+        /// <inheritdoc />
+        public double NoiseBandwidthHz { get; private set; }
+
+        /// <summary>
+        /// Sets band-limited additive white Gaussian noise (Option 403).
+        /// </summary>
+        /// <param name="centreFrequencyHz">Centre of the noise band, in hertz.</param>
+        /// <param name="bandwidthHz">Noise bandwidth, in hertz.</param>
+        /// <param name="levelDbm">Total power in the band, in dBm.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="bandwidthHz"/> is unsupported.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>The multitone comb is switched off explicitly.</strong> Both personalities feed
+        /// the same baseband generator, and a comb left on from a previous scenario would be
+        /// measured as a very unflat noise floor — a failure that reads as a defect in the
+        /// analyser's density calculation.
+        /// </para>
+        /// <para>
+        /// Modulation goes on, for the reason it does for the comb: the noise reaches the RF output
+        /// through the modulator that <see cref="SetContinuousWave"/> switches off.
+        /// </para>
+        /// </remarks>
+        public void SetNoise(double centreFrequencyHz, double bandwidthHz, double levelDbm)
+        {
+            IInstrumentSession session = RequireSession();
+
+            if (bandwidthHz < MinimumNoiseBandwidthHz || bandwidthHz > MaximumNoiseBandwidthHz)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(bandwidthHz), bandwidthHz,
+                    "This source produces noise between " + MinimumNoiseBandwidthHz + " and " +
+                    MaximumNoiseBandwidthHz + " Hz wide.");
+            }
+
+            Send(session, ":RADio:MTONe:ARB:STATe OFF");
+
+            Send(session, ":FREQuency:CW " + Number(centreFrequencyHz) + " HZ");
+            Send(session, ":POWer:AMPLitude " + Number(levelDbm) + " dBm");
+
+            Send(session, ":RADio:AWGN:ARB:BWIDth " + Number(bandwidthHz) + " HZ");
+            Send(session, ":RADio:AWGN:ARB:STATe ON");
+            Send(session, ":OUTPut:MODulation:STATe ON");
+
+            // Enabling AWGN makes the instrument SYNTHESISE the noise waveform, and that is slow:
+            // measured at 10.8 s for a 5 MHz band on firmware C.05.85, against a default I/O
+            // timeout of a few seconds. The first attempt at this scenario failed with a bare
+            // IOTimeoutException, which - after a day of learning that a rejected command also
+            // returns nothing - looked exactly like an unsupported command and was not one.
+            //
+            // Raised only around this wait, and restored afterwards, so an instrument that really
+            // has gone away still fails promptly everywhere else.
+            int wasTimeout = session.TimeoutMilliseconds;
+
+            try
+            {
+                session.TimeoutMilliseconds = Math.Max(wasTimeout, NoiseBuildTimeoutMilliseconds);
+                Query(session, "*OPC?");
+            }
+            finally
+            {
+                session.TimeoutMilliseconds = wasTimeout;
+            }
+
+            ThrowOnInstrumentError(session, "setting the noise band");
+
+            Refresh();
+        }
+
+        /// <summary>Switches the noise off and leaves an unmodulated carrier.</summary>
+        public void StopNoise()
+        {
+            IInstrumentSession session = RequireSession();
+
+            Send(session, ":RADio:AWGN:ARB:STATe OFF");
+            Send(session, ":OUTPut:MODulation:STATe OFF");
+
+            Query(session, "*OPC?");
+            ThrowOnInstrumentError(session, "stopping the noise band");
+
+            Refresh();
+        }
+
         /// <summary>Switches the comb off and leaves an unmodulated carrier.</summary>
         public void StopMultitone()
         {
@@ -260,6 +367,12 @@ namespace OpenVSA.TestHarness
 
             ToneSpacingHz = comb
                 ? QueryDouble(session, ":RADio:MTONe:ARB:SETup:TABLe:FSPacing?")
+                : 0.0;
+
+            // Zero when the noise is off, for the reason the tone count is: a stale bandwidth read
+            // back as live would make a carrier scenario look like a noise one.
+            NoiseBandwidthHz = QueryDouble(session, ":RADio:AWGN:ARB:STATe?") > 0.5
+                ? QueryDouble(session, ":RADio:AWGN:ARB:BWIDth?")
                 : 0.0;
         }
 
