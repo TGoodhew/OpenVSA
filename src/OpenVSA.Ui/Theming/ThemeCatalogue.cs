@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Windows;
+using Syncfusion.SfSkinManager;
 
 namespace OpenVSA.Ui.Theming
 {
@@ -85,8 +86,8 @@ namespace OpenVSA.Ui.Theming
         {
             var catalogue = new ThemeCatalogue();
 
-            catalogue.Add(new ChromeTheme(LightName, Load(LightName)));
-            catalogue.Add(new ChromeTheme(DarkName, Load(DarkName)));
+            catalogue.Add(new ChromeTheme(LightName, Load(LightName), "FluentLight"));
+            catalogue.Add(new ChromeTheme(DarkName, Load(DarkName), "FluentDark"));
 
             return catalogue;
         }
@@ -144,9 +145,20 @@ namespace OpenVSA.Ui.Theming
         /// Where to merge it; normally <c>Application.Current.Resources</c>, and a test's own
         /// dictionary when there is no application.
         /// </param>
+        /// <param name="scope">
+        /// The element to draw with the theme's <see cref="ChromeTheme.Skin"/>, or <c>null</c> to
+        /// merge the dictionary and leave the templates alone. Normally the shell window.
+        /// </param>
         /// <returns>Whether a theme of that name was found and applied.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="target"/> is null.</exception>
-        public bool Apply(string name, ResourceDictionary target)
+        /// <remarks>
+        /// <strong>The skin goes on before the dictionary.</strong> A skin supplies whole
+        /// templates and the dictionary supplies our own surfaces' colours, so the dictionary has
+        /// to be the later of the two or the skin's own brushes win wherever the two overlap. That
+        /// ordering is what keeps a chrome key authoritative over the skin that would otherwise
+        /// have answered the same question.
+        /// </remarks>
+        public bool Apply(string name, ResourceDictionary target, DependencyObject scope = null)
         {
             if (target == null)
             {
@@ -165,6 +177,8 @@ namespace OpenVSA.Ui.Theming
                 _target.MergedDictionaries.Remove(_installed.Resources);
             }
 
+            ApplySkin(theme, scope);
+
             target.MergedDictionaries.Add(theme.Resources);
 
             _target = target;
@@ -179,6 +193,52 @@ namespace OpenVSA.Ui.Theming
 
             return true;
         }
+
+        /// <summary>
+        /// Draws <paramref name="scope"/> with the theme's skin, if it names one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A theme that names no skin, or a call with no scope, leaves the templates exactly as
+        /// they were — that is the path a test's bare <see cref="ResourceDictionary"/> takes, and
+        /// the path a custom theme supplying only colours takes.
+        /// </para>
+        /// <para>
+        /// <strong>A missing skin assembly is not a failure to theme.</strong> Syncfusion resolves
+        /// a skin by name at run time from an assembly that may not have been deployed, and it
+        /// signals that by throwing. Swallowing it leaves the chrome dictionary applied and the
+        /// stock templates in place — visibly worse, but running — where letting it out would take
+        /// down a shell over a colour. <see cref="SkinFailure"/> records it so the condition is
+        /// reportable rather than silent, which is the distinction that matters: this is quiet, not
+        /// hidden.
+        /// </para>
+        /// </remarks>
+        private static void ApplySkin(ChromeTheme theme, DependencyObject scope)
+        {
+            SkinFailure = null;
+
+            if (theme.Skin == null || scope == null)
+            {
+                return;
+            }
+
+            try
+            {
+                SfSkinManager.ApplyStylesOnApplication = true;
+                SfSkinManager.SetTheme(scope, new Theme(theme.Skin));
+            }
+            catch (Exception failure)
+            {
+                SkinFailure = "The '" + theme.Name + "' theme's skin '" + theme.Skin +
+                    "' could not be applied: " + failure.Message;
+            }
+        }
+
+        /// <summary>
+        /// Why the last <see cref="Apply(string, ResourceDictionary, DependencyObject)"/> could not
+        /// install its skin, or <c>null</c> if it could or had none to install.
+        /// </summary>
+        public static string SkinFailure { get; private set; }
 
         /// <summary>
         /// Loads a shipped theme's dictionary from this assembly.

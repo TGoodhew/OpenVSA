@@ -603,7 +603,7 @@ namespace OpenVSA.Ui
                 ? Resources
                 : Application.Current.Resources;
 
-            return _themes.Apply(name, target);
+            return _themes.Apply(name, target, this);
         }
 
         /// <summary>The trace windows and their arrangement (<c>REQ-UI-005</c>).</summary>
