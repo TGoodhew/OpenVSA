@@ -159,7 +159,6 @@ namespace OpenVSA.Architecture.Tests
         /// </remarks>
         private static readonly string[] KeysAwaitingStyling =
         {
-            ChromeKeys.DisabledForeground,
             ChromeKeys.SelectionBackground,
         };
 

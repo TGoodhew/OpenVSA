@@ -69,6 +69,13 @@
     <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionBackground" Color="#FF0078D4" />
     <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionForeground" Color="#FFFFFFFF" />
 
+    <!--
+        inputOption.activeBackground. Translucent on purpose: a toggle that is on is a setting the
+        user is not looking at, and several can be on at once. The solid accent above belongs to
+        the one thing being acted on.
+    -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.ActiveBackground" Color="#822489DB" />
+
     <!-- focusBorder, activityBar.activeBorder, tab.activeBorderTop -->
     <SolidColorBrush x:Key="OpenVSA.Chrome.Accent" Color="#FF0078D4" />
 

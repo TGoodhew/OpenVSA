@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Media;
 using OpenVSA.Ui.Rendering;
 using OpenVSA.Ui.Theming;
+using Syncfusion.Windows.Tools.Controls;
 using Xunit;
 
 namespace OpenVSA.Ui.Tests
@@ -76,6 +77,55 @@ namespace OpenVSA.Ui.Tests
 
                 shell.Close();
             });
+        }
+
+        [Fact]
+        public void TheDocumentTabStripIsBoundToTheTheme()
+        {
+            // This regressed silently once and looked fine for a whole build: the binding was
+            // hooked to DockingManager.Loaded, which fires BEFORE the manager creates its document
+            // tab control, so it found nothing and did nothing. Every brush was correct and the
+            // tab on screen was still Aero blue. Asserting the style is on the control is what
+            // makes "it happened at all" checkable without a screenshot.
+            _host.Run(() =>
+            {
+                ShellWindow shell = Shown();
+
+                TabControlExt tabs = FindTabs(shell);
+
+                Assert.True(tabs != null, "The docking manager built no document tab control.");
+
+                Assert.True(
+                    tabs.ItemContainerStyle != null,
+                    "The document tab headers are unstyled, so they paint the stock gradient " +
+                    "however correct the brushes on the tab control are.");
+
+                shell.Close();
+            });
+        }
+
+        private static TabControlExt FindTabs(DependencyObject root)
+        {
+            int children = VisualTreeHelper.GetChildrenCount(root);
+
+            for (int index = 0; index < children; index++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, index);
+
+                if (child is TabControlExt tabs)
+                {
+                    return tabs;
+                }
+
+                TabControlExt nested = FindTabs(child);
+
+                if (nested != null)
+                {
+                    return nested;
+                }
+            }
+
+            return null;
         }
 
         [Fact]

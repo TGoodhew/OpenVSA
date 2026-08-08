@@ -75,6 +75,18 @@ namespace OpenVSA.Ui.Theming
         /// <summary>Text on a selection.</summary>
         public const string SelectionForeground = Prefix + "SelectionForeground";
 
+        /// <summary>Behind a control that is switched on, such as a toolbar toggle.</summary>
+        /// <remarks>
+        /// <strong>Not <see cref="SelectionBackground"/>, and the difference is the point.</strong>
+        /// A selection is the one row or item the user is acting on now, and it is drawn in the
+        /// solid accent. A toggle that is on is a setting that stays on while the user works on
+        /// something else — half a toolbar can be in that state at once, and painting each of them
+        /// in the solid accent turns the band into a row of shouting blue blocks. VS Code draws its
+        /// active options in a translucent accent over whatever is behind them, which reads as "on"
+        /// without competing with the thing being worked on.
+        /// </remarks>
+        public const string ActiveBackground = Prefix + "ActiveBackground";
+
         /// <summary>The colour that marks the thing currently in force.</summary>
         public const string Accent = Prefix + "Accent";
 
@@ -101,6 +113,7 @@ namespace OpenVSA.Ui.Theming
                 StatusBarForeground,
                 SelectionBackground,
                 SelectionForeground,
+                ActiveBackground,
                 Accent,
                 OverlayBackground,
                 OverlayForeground,

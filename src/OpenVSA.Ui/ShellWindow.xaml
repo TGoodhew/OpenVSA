@@ -44,6 +44,64 @@
         -->
 
         <!--
+            A toolbar toggle that is on. The skin paints it in the solid accent, which is right for
+            a selected menu item and wrong here: Pointer / Area Select / Marker / Band Power are a
+            mode group, and one of them is always on, so the band ends up carrying a permanent blue
+            block that competes with everything else in it. VS Code marks an active option with a
+            translucent accent over the toolbar instead.
+
+            A trigger BasedOn the skin's style was tried first and did nothing, for the third time
+            in this file: the skin's ToggleButton template paints its checked fill internally and
+            does not bind Background. So this is the second template the shell owns, and like the
+            tab header it is deliberately tiny - a border and the content. These toggles carry text,
+            never an icon, so there is nothing else in them to lose.
+
+            Asked for by key on each control in ShellToolbarBuilder. ToolBar.ToggleButtonStyleKey
+            is the documented route and does NOT work: the skin assigns its own style to the
+            toolbar's children, which beats the ToolBar's key lookup.
+        -->
+        <Style x:Key="OpenVSA.ToolbarToggle" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Background" Value="{DynamicResource OpenVSA.Chrome.ToolbarBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource OpenVSA.Chrome.ToolbarBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource OpenVSA.Chrome.WindowForeground}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="Shape"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- Hover first, so that checked still wins while the pointer is over it. -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Shape" Property="Background"
+                                        Value="{DynamicResource OpenVSA.Chrome.SurfaceBackground}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Shape" Property="Background"
+                                        Value="{DynamicResource OpenVSA.Chrome.ActiveBackground}" />
+                                <Setter TargetName="Shape" Property="BorderBrush"
+                                        Value="{DynamicResource OpenVSA.Chrome.Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource OpenVSA.Chrome.DisabledForeground}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--
             The document tab strip. DockingManager's own TabItemBackgroundSelected does not reach
             it - measured: the strip went dark and the selected tab stayed Aero blue - because the
             document tabs are a TabControlExt with its own brushes. SETTERS ONLY, and deliberately

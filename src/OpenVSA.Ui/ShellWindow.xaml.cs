@@ -349,10 +349,22 @@ namespace OpenVSA.Ui
             // them. First run only; see the method.
             BalancePanes();
 
-            // The document tab strip is created by the docking manager itself and is reachable
-            // neither from XAML nor before it exists, so it is bound when it appears. Resource
-            // references, so it follows a later theme change on its own.
-            Docking.Loaded += (sender, e) => DockingChrome.FollowTheme(this);
+            // The document tab strip is created by the docking manager itself, and NOT before its
+            // Loaded fires -- binding there found no tab control at all and silently did nothing,
+            // which is why the tabs came out Aero blue while every brush was correct. So: retry on
+            // each layout pass and stop as soon as one is bound. FollowTheme reports how many it
+            // found precisely so this loop can tell "not built yet" from "nothing to do".
+            EventHandler follow = null;
+
+            follow = (sender, e) =>
+            {
+                if (DockingChrome.FollowTheme(this) > 0)
+                {
+                    Docking.LayoutUpdated -= follow;
+                }
+            };
+
+            Docking.LayoutUpdated += follow;
 
             // The menu follows the options rather than holding them, so that the Trace tab and the
             // Display menu are two views of one setting (REQ-UI-070).

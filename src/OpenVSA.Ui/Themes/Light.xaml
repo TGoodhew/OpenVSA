@@ -48,6 +48,9 @@
     <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionBackground" Color="#FF005FB8" />
     <SolidColorBrush x:Key="OpenVSA.Chrome.SelectionForeground" Color="#FFFFFFFF" />
 
+    <!-- inputOption.activeBackground; translucent, for the reason given in Dark.xaml -->
+    <SolidColorBrush x:Key="OpenVSA.Chrome.ActiveBackground" Color="#552488DB" />
+
     <!-- focusBorder -->
     <SolidColorBrush x:Key="OpenVSA.Chrome.Accent" Color="#FF005FB8" />
 
