@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using OpenVSA.PerformanceGate;
@@ -52,6 +53,11 @@ namespace OpenVSA.Benchmarks
             {
                 WindowedMeasurements.StageBreakdown(1 << 20);
                 return 0;
+            }
+
+            if (Has(args, "--cold-start"))
+            {
+                return ColdStart(args);
             }
 
             if (Has(args, "--measure"))
@@ -109,6 +115,98 @@ namespace OpenVSA.Benchmarks
             }
 
             return report.ExitCode;
+        }
+
+        /// <summary>
+        /// Measures <c>REQ-NFR-025</c> against a shell named on the command line (#410).
+        /// </summary>
+        /// <param name="args"><c>--cold-start --shell &lt;path&gt; [--runs &lt;n&gt;]</c>.</param>
+        /// <returns>0 when the cold figure meets the requirement, 1 when it does not, 2 on misuse.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>Why a mode of its own, when <c>--measure</c> already measures this.</strong>
+        /// That path finds the shell by walking up from its own <c>bin</c> to
+        /// <c>src\OpenVSA.Ui\bin</c>, which is a statement about a source tree. The figure
+        /// <c>REQ-NFR-025</c> actually asks for cannot be taken in a source tree at all: "cold"
+        /// means a machine that has never had this product on it, so the shell to measure is an
+        /// INSTALLED one and the machine has no repository, no SDK and no build tools. The
+        /// measurement is unchanged — only the way it is told where to look.
+        /// </para>
+        /// <para>
+        /// <strong>The cold figure is the first launch and nothing else.</strong> It cannot be
+        /// repeated on the same machine without dropping the file cache, and installing the
+        /// product destroys the property permanently, so this mode reports the first launch
+        /// against the requirement and the later ones only as context.
+        /// </para>
+        /// </remarks>
+        private static int ColdStart(string[] args)
+        {
+            string shell = Argument(args, "--shell");
+
+            if (shell == null)
+            {
+                Console.Error.WriteLine(
+                    "usage: OpenVSA.Benchmarks --gate --cold-start --shell <path to OpenVSA.exe> " +
+                    "[--runs <n>]");
+
+                return 2;
+            }
+
+            if (!File.Exists(shell))
+            {
+                Console.Error.WriteLine("There is no shell at '" + shell + "'.");
+                return 2;
+            }
+
+            int runs = 5;
+            string requested = Argument(args, "--runs");
+
+            if (requested != null &&
+                (!int.TryParse(requested, out runs) || runs < 3))
+            {
+                // Three is the floor the measurement itself imposes: fewer cannot separate the
+                // cold launch from the warm ones, and a mean over both describes neither.
+                Console.Error.WriteLine("--runs must be a whole number of at least 3.");
+                return 2;
+            }
+
+            Console.WriteLine("REQ-NFR-025: cold start to first trace displayed, simulated source.");
+            Console.WriteLine("  shell   " + shell);
+            Console.WriteLine("  version " + FileVersionInfo.GetVersionInfo(shell).FileVersion);
+            Console.WriteLine("  runs    " + runs + " (the first is the cold one)");
+            Console.WriteLine();
+
+            TargetMeasurement measured = ColdStartMeasurement.Run(shell, runs);
+
+            if (measured == null)
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine(
+                    "The shell could not be driven to a trace, so there is no figure. The reason " +
+                    "is above; it is a failure to measure, NOT a slow start.");
+
+                return 2;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("  cold (first launch) " + measured.AgainstStated.ToString("F2") + " s");
+            Console.WriteLine("  warm mean           " + measured.Mean.ToString("F2") + " s +/- " +
+                              measured.StandardDeviation.ToString("F2") + " over " +
+                              measured.SampleCount + " launches");
+            Console.WriteLine("  requirement         3.00 s, cold");
+            Console.WriteLine();
+
+            bool met = measured.AgainstStated <= 3.0;
+
+            Console.WriteLine(met
+                ? "  MET: the cold launch is within REQ-NFR-025."
+                : "  NOT MET: the cold launch is over REQ-NFR-025's 3 s by " +
+                  (measured.AgainstStated - 3.0).ToString("F2") + " s.");
+
+            // Exit code carries the verdict so a script can report it without parsing prose, but
+            // the log is the artefact: this figure can be taken once per machine and the phase
+            // breakdown above is what says where the time went.
+            return met ? 0 : 1;
         }
 
         /// <summary>
