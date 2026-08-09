@@ -107,8 +107,13 @@ while ($true) {
 
 Write-Output "Files packaged: $($packaged.Count)"
 
+# OpenVSA.TestHarness is bench equipment for cross-validating this product, not part of it: it is
+# test infrastructure (REQ-ARC-001) and it references VISA. The shell copies it into a TestHarness
+# subdirectory that neither <Files> element in the .wxs harvests, so it should never appear here -
+# and if a later edit harvests the payload recursively, this is what says so.
 $forbidden = $packaged | Where-Object {
-    $_ -match 'local\.secrets\.config' -or $_ -match '^Ivi\.Visa' -or $_ -match '^NationalInstruments'
+    $_ -match 'local\.secrets\.config' -or $_ -match '^Ivi\.Visa' -or
+    $_ -match '^NationalInstruments' -or $_ -match '^OpenVSA\.TestHarness'
 }
 
 if ($forbidden) {

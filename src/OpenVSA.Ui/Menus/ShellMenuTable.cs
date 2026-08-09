@@ -290,10 +290,11 @@ namespace OpenVSA.Ui.Menus
                 "not yet run the routines that produce them."),
             Item("Disconnect"),
             Off("Source",
-                "Driving a signal generator is Phase 2 work. The bench harness of issue #393 talks " +
-                "to one already; the shell does not."),
-            Off("Source Control…",
-                "Follows Source: there is nothing to control until a source can be opened."),
+                "Which instrument acts as the source is settled by opening it under Source " +
+                "Control…, because OpenVSA drives one source at a time — the same reason Analyzer " +
+                "is not an item here. This is where the role is assigned once a configuration can " +
+                "hold several."),
+            Item("Source Control…"),
             Off("Switch",
                 "Switch matrices and multiport test sets are outside the scope of a vector signal " +
                 "analyser in this phase. The item is listed because the requirement lists it."),

@@ -10,6 +10,7 @@ using OpenVSA.Hal;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Personality;
 using OpenVSA.Measurement.State;
+using OpenVSA.Ui.Bench;
 using OpenVSA.Ui.HotSpots;
 using OpenVSA.Ui.Menus;
 using OpenVSA.Ui.Rendering;
@@ -63,6 +64,9 @@ namespace OpenVSA.Ui
         private Button _fullSpanButton;
 
         private MeasurementKind _measurementKind = MeasurementKind.Spectrum;
+
+        private StimulusRegistry _stimulusRegistry;
+        private SourceControlWindow _sourceControl;
 
         /// <summary>
         /// Whether the shell may open dialogs, take the clipboard or close itself.
@@ -189,6 +193,9 @@ namespace OpenVSA.Ui
                     _disconnectItem = Runs((sender, e) => Disconnect());
                     ShowConnectionState();
                     return _disconnectItem;
+
+                case "Hardware > Source Control…":
+                    return SourceControlItem();
 
                 // ---- Acquisition --------------------------------------------------------------
                 case "Acquisition > Amplitude…":
@@ -452,6 +459,127 @@ namespace OpenVSA.Ui
             var item = new MenuItem();
             item.SubmenuOpened += onOpened;
             return item;
+        }
+
+        /// <summary>
+        /// The test signal source panel, or a disabled item saying why there is none (issue #393).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Discovered, never referenced.</strong> The sources live outside this assembly
+        /// and reach an instrument over VISA; <c>REQ-NFR-032</c> requires the application to start
+        /// with no VISA installed and <c>REQ-ARC-001</c> bars a compile-time reference to bench
+        /// infrastructure. So the shell looks for them beside itself, and an installed copy — which
+        /// carries no harness — finds none and says so.
+        /// </para>
+        /// <para>
+        /// <strong>Disabled with the reason, not hidden.</strong> <c>REQ-UI-061</c> requires every
+        /// item to be "either enabled and functional or disabled with a reason", and a hidden item
+        /// would leave a user unable to tell a build without the harness from one where the harness
+        /// failed to load. The registry distinguishes those two and the tooltip says which.
+        /// </para>
+        /// <para>
+        /// <strong>Discovery is deferred to the first look at the menu.</strong> It loads an
+        /// assembly, and doing that at start-up would put a VISA-referencing file on the launch
+        /// path that <c>REQ-NFR-025</c> is trying to shorten — for a panel most sessions never open.
+        /// </para>
+        /// </remarks>
+        private MenuItem SourceControlItem()
+        {
+            var item = Runs((sender, e) => ShowSourceControl());
+
+            // Enabled state is settled when the Hardware menu opens rather than at build, because
+            // discovery has not run yet at build and running it there is what this defers.
+            item.Loaded += (sender, e) => ShowSourceAvailability(item);
+
+            return item;
+        }
+
+        private void ShowSourceAvailability(MenuItem item)
+        {
+            StimulusRegistry registry = DiscoverStimulusSources();
+
+            item.IsEnabled = registry.IsAvailable;
+            item.ToolTip = registry.IsAvailable
+                ? "Drives a signal generator to a known stimulus, for checking a measurement " +
+                  "against a signal rather than against OpenVSA's own arithmetic."
+                : registry.UnavailableReason;
+
+            ToolTipService.SetShowOnDisabled(item, true);
+        }
+
+        private StimulusRegistry DiscoverStimulusSources()
+        {
+            if (_stimulusRegistry == null)
+            {
+                _stimulusRegistry = StimulusRegistry.CreateDefault();
+
+                foreach (StimulusDiscoveryFailure failure in _stimulusRegistry.Failures)
+                {
+                    // Into the event log, where the front-end registry's failures go. A source that
+                    // will not load is worth one line saying which and why, not a dialog.
+                    _eventLog.Append("Test signal source: " + failure);
+                }
+            }
+
+            return _stimulusRegistry;
+        }
+
+        /// <summary>
+        /// Puts a line in the event log and redraws the window, if it is open.
+        /// </summary>
+        /// <remarks>
+        /// <strong>The redraw is the half that makes the log useful here.</strong>
+        /// <c>ToolWindowHost</c> reads a source when the window is opened and not again, which has
+        /// never mattered because every other caller appends during start-up, before the window
+        /// exists. This one appends while a user is watching: issue #393 requires a coercion to
+        /// "surface in the event log", and a line that only appears after the window is toggled has
+        /// not surfaced. Redrawing a window that is not open is harmless — the host redraws a
+        /// hidden pane's text and it is read when it is shown.
+        /// </remarks>
+        private void LogSourceEvent(string line)
+        {
+            _eventLog.Append(line);
+            _toolWindows.Refresh(ToolWindow.EventLog);
+        }
+
+        /// <summary>Opens the panel, or brings the open one forward.</summary>
+        /// <remarks>
+        /// One panel, not one per invocation. Two panels over one generator would each show a state
+        /// the other had changed, and the second would report coercions against settings the first
+        /// had made.
+        /// </remarks>
+        private void ShowSourceControl()
+        {
+            if (!Interactive)
+            {
+                return;
+            }
+
+            if (_sourceControl != null)
+            {
+                _sourceControl.Activate();
+                return;
+            }
+
+            StimulusRegistry registry = DiscoverStimulusSources();
+
+            if (!registry.IsAvailable)
+            {
+                _eventLog.Append(registry.UnavailableReason);
+                return;
+            }
+
+            var window = new SourceControlWindow(
+                new SourceControlModel(registry, LogSourceEvent))
+            {
+                Owner = this,
+            };
+
+            _sourceControl = window;
+            window.Closed += (sender, e) => _sourceControl = null;
+
+            window.Show();
         }
 
         // ---- The dynamic submenus -------------------------------------------------------------

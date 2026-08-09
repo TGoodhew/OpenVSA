@@ -1,0 +1,125 @@
+<Window x:Class="OpenVSA.Ui.Bench.SourceControlWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Test signal source"
+        Height="400" Width="520"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+
+    <!--
+        Issue #393 scope A. Modeless, and not merely because REQ-UI-070 forbids a modal setting
+        dialog: the whole use of this panel is to change the stimulus while a measurement is
+        running and watch the trace follow, which a modal window would make impossible.
+
+        Every string shown here that states a bound comes from SourceControlModel, which takes it
+        from the source's own limits. Nothing in this file names an instrument or a number it
+        could have asked for - see REQ-HAL-002, whose acceptance criterion is a code search over
+        this assembly.
+
+        Sizes are device-independent and the entry column star-sizes, per REQ-NFR-007.
+    -->
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Label Grid.Row="0" Grid.Column="0" Content="_Source:" Margin="0,0,8,6" Padding="0"
+               VerticalAlignment="Center" Target="{Binding ElementName=SourceChooser}" />
+        <ComboBox x:Name="SourceChooser" Grid.Row="0" Grid.Column="1" Margin="0,0,8,6" />
+        <Button x:Name="ConnectButton" Grid.Row="0" Grid.Column="2" Content="_Connect"
+                Width="90" Margin="0,0,0,6" />
+
+        <Label Grid.Row="1" Grid.Column="0" Content="_Address:" Margin="0,0,8,6" Padding="0"
+               VerticalAlignment="Center" Target="{Binding ElementName=ResourceBox}" />
+        <TextBox x:Name="ResourceBox" Grid.Row="1" Grid.Column="1" Margin="0,0,8,6" />
+        <Button x:Name="DisconnectButton" Grid.Row="1" Grid.Column="2" Content="_Disconnect"
+                Width="90" Margin="0,0,0,6" IsEnabled="False" />
+
+        <TextBlock x:Name="IdentityText" Grid.Row="2" Grid.ColumnSpan="3"
+                   Margin="0,2,0,10" TextWrapping="Wrap" />
+
+        <Separator Grid.Row="3" Grid.ColumnSpan="3" Margin="0,0,0,10" />
+
+        <Label Grid.Row="4" Grid.Column="0" Content="S_timulus:" Margin="0,0,8,6" Padding="0"
+               VerticalAlignment="Center" Target="{Binding ElementName=StimulusChooser}" />
+        <ComboBox x:Name="StimulusChooser" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2"
+                  Margin="0,0,0,6" />
+
+        <Label Grid.Row="5" Grid.Column="0" Content="_Frequency:" Margin="0,0,8,6" Padding="0"
+               VerticalAlignment="Center" Target="{Binding ElementName=FrequencyBox}" />
+        <TextBox x:Name="FrequencyBox" Grid.Row="5" Grid.Column="1" Margin="0,0,8,6" />
+        <TextBlock x:Name="FrequencyRangeText" Grid.Row="5" Grid.Column="2" Margin="0,0,0,6"
+                   VerticalAlignment="Center" />
+
+        <Label Grid.Row="6" Grid.Column="0" Content="_Level:" Margin="0,0,8,6" Padding="0"
+               VerticalAlignment="Center" Target="{Binding ElementName=LevelBox}" />
+        <TextBox x:Name="LevelBox" Grid.Row="6" Grid.Column="1" Margin="0,0,8,6" />
+        <TextBlock x:Name="LevelRangeText" Grid.Row="6" Grid.Column="2" Margin="0,0,0,6"
+                   VerticalAlignment="Center" />
+
+        <!--
+            One row for the stimulus-specific settings, and only one is ever shown. A panel that
+            showed the comb's settings while a carrier was selected would let a user set a tone
+            spacing that nothing was going to send.
+        -->
+        <Grid x:Name="MultitonePanel" Grid.Row="7" Grid.ColumnSpan="3" Margin="0,0,0,6"
+              Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Label Grid.Column="0" Content="T_ones:" Margin="0,0,8,0" Padding="0"
+                   VerticalAlignment="Center" Target="{Binding ElementName=ToneCountBox}" />
+            <TextBox x:Name="ToneCountBox" Grid.Column="1" Margin="0,0,12,0" />
+
+            <Label Grid.Column="2" Content="S_pacing:" Margin="0,0,8,0" Padding="0"
+                   VerticalAlignment="Center" Target="{Binding ElementName=SpacingBox}" />
+            <TextBox x:Name="SpacingBox" Grid.Column="3" />
+        </Grid>
+
+        <Grid x:Name="NoisePanel" Grid.Row="8" Grid.ColumnSpan="3" Margin="0,0,0,6"
+              Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Label Grid.Column="0" Content="_Bandwidth:" Margin="0,0,8,0" Padding="0"
+                   VerticalAlignment="Center" Target="{Binding ElementName=BandwidthBox}" />
+            <TextBox x:Name="BandwidthBox" Grid.Column="1" Margin="0,0,8,0" />
+            <TextBlock x:Name="BandwidthRangeText" Grid.Column="2" VerticalAlignment="Center" />
+        </Grid>
+
+        <StackPanel Grid.Row="9" Grid.ColumnSpan="3" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,8,0,0">
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="0,0,12,0"
+                       TextWrapping="Wrap" />
+            <CheckBox x:Name="OutputToggle" Content="_RF on" VerticalAlignment="Center"
+                      Margin="0,0,12,0" IsEnabled="False" />
+            <Button x:Name="ApplyButton" Content="_Apply" Width="90" IsDefault="True"
+                    IsEnabled="False" />
+        </StackPanel>
+    </Grid>
+</Window>
