@@ -80,7 +80,7 @@ namespace OpenVSA.Benchmarks
             Console.WriteLine(
                 "    cold (first launch): " + seconds[0].ToString("F2") +
                 " s against REQ-NFR-025's 3 s" +
-                (seconds[0] > 3.0 ? "  — OVER" : string.Empty));
+                (seconds[0] > 3.0 ? "  -- OVER" : string.Empty));
 
             if (runs < 3)
             {
