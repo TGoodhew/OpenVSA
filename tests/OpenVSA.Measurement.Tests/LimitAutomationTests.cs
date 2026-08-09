@@ -159,7 +159,33 @@ namespace OpenVSA.Measurement.Tests
                 running.Wait(TimeSpan.FromSeconds(10.0)),
                 "The writer never completed an evaluation, so no concurrent read was ever attempted.");
 
-            stop.CancelAfter(TimeSpan.FromMilliseconds(400.0));
+            // **The window is bounded by WORK as well as by time, and that is the fix for #422.**
+            //
+            // It used to be 400 ms and nothing else, which made every count below a measurement of
+            // how much processor the test happened to get rather than of anything about limits.
+            // Measured over 23 full-solution runs — 8 unpinned, 3 pinned to two cores, 12 to one:
+            //
+            //     queries      3 … 1 026 777      against "at least one verdict seen"
+            //     evaluations  3 274 … 84 177     against "more than a thousand"
+            //     slowest read 0.000 … 2.615 ms   against 50 ms
+            //
+            // Five orders of magnitude on the reads. Neither count ever actually fell through —
+            // none of the 23 runs failed — but "at least one" was reached with three to spare on a
+            // loaded machine, and the property those counts exist to support, that a read is never
+            // blocked out, was never in doubt in any run.
+            //
+            // Running until the counts are reached cannot fail for want of a scheduler slot: on a
+            // fast machine the 400 ms still dominates and the loop takes its usual hundreds of
+            // thousands of samples, and on a slow one it simply takes longer. The safety deadline
+            // is the honest end of it — if even that is not enough, the message says which count
+            // fell short rather than leaving a bare assertion to be re-run and forgotten.
+            var window = System.Diagnostics.Stopwatch.StartNew();
+
+            TimeSpan atLeast = TimeSpan.FromMilliseconds(400.0);
+            TimeSpan giveUp = TimeSpan.FromSeconds(30.0);
+
+            const int RequiredReads = 1;
+            const long RequiredEvaluations = 1000L;
 
             int answers = 0;
             int wholeVerdicts = 0;
@@ -167,7 +193,10 @@ namespace OpenVSA.Measurement.Tests
 
             var readClock = new System.Diagnostics.Stopwatch();
 
-            while (!stop.IsCancellationRequested)
+            while (window.Elapsed < giveUp &&
+                   (window.Elapsed < atLeast ||
+                    answers < RequiredReads ||
+                    measurement.LimitTests.EvaluationCount < RequiredEvaluations))
             {
                 // Time the read itself, not the loop. "Answerable while a measurement is running"
                 // is a statement about how long a query waits, and that is what gets measured.
@@ -212,23 +241,36 @@ namespace OpenVSA.Measurement.Tests
                 }
             }
 
+            stop.Cancel();
+
             Assert.True(writer.Join(TimeSpan.FromSeconds(10.0)), "The writer did not stop.");
 
             _output.WriteLine(
                 answers + " queries during " + measurement.LimitTests.EvaluationCount +
-                " evaluations; " + wholeVerdicts + " whole verdicts, 0 partial; slowest read " +
+                " evaluations over " + window.Elapsed.TotalMilliseconds.ToString("F0") +
+                " ms; " + wholeVerdicts + " whole verdicts, 0 partial; slowest read " +
                 slowestReadMs.ToString("F3") + " ms");
 
             // The writer must actually have been running, or nothing concurrent was demonstrated.
+            // Guaranteed by the loop above rather than hoped for, so a failure here means the
+            // deadline expired — and says so, instead of reading as a concurrency defect.
             Assert.True(
-                measurement.LimitTests.EvaluationCount > 1000L,
+                measurement.LimitTests.EvaluationCount >= RequiredEvaluations,
                 "The writer completed only " + measurement.LimitTests.EvaluationCount +
-                " evaluations, so the reads did not overlap a busy writer.");
+                " evaluations in " + window.Elapsed.TotalSeconds.ToString("F1") +
+                " s, so the reads did not overlap a busy writer. That is a starved machine " +
+                "rather than a blocked reader: the loop waits for this count and gave up.");
 
             // Every read returned a whole verdict. The writer had already evaluated before the
             // window opened, so there is no legitimate null in here — a mismatch would mean the
             // published reference went briefly back to nothing.
-            Assert.True(wholeVerdicts > 0, "No verdict was ever observed.");
+            Assert.True(
+                wholeVerdicts >= RequiredReads,
+                "No verdict was observed in " + window.Elapsed.TotalSeconds.ToString("F1") +
+                " s. The reader is the test thread, and under a full-solution run pinned to one " +
+                "core it has been measured taking THREE turns in its window — so this is the " +
+                "deadline expiring, not a reader that was refused an answer.");
+
             Assert.Equal(answers, wholeVerdicts);
 
             // **This is the claim, not the query count.** An earlier version asserted more than a
@@ -237,6 +279,15 @@ namespace OpenVSA.Measurement.Tests
             // evaluations and failed, having demonstrated exactly the property it was meant to.
             // What matters is that no single read waited, and reading takes a volatile load and no
             // lock, so the bound is generous only to absorb scheduling.
+            //
+            // **#422 asked whether this absolute threshold is the fragile one. It was measured,
+            // and it is not.** Across 23 full-solution runs the worst single read was 2.615 ms,
+            // and it occurred on an UNPINNED one: adversity makes this number BETTER, not worse,
+            // because the maximum is the worst of N samples and N collapses along with everything
+            // else — 3 reads pinned to one core against over a million unpinned. Normalising it
+            // against a reference operation, as #415 concluded for LoggingTests, would therefore
+            // be treating the assertion that was not at risk. Left exactly as it is, deliberately,
+            // with the figures recorded so the next person need not measure it again.
             Assert.True(
                 slowestReadMs < 50.0,
                 "A query took " + slowestReadMs.ToString("F1") + " ms, so reading is blocked by writing.");
