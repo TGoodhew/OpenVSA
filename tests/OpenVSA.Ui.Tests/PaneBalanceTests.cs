@@ -135,14 +135,38 @@ namespace OpenVSA.Ui.Tests
                 Assert.Equal(2, shell.BalancePanes());
 
                 // Two XAML panes with no tool window open: they and the document make three, so
-                // each should ask for a third of 1200.
+                // each should ask for a third of the width.
+                //
+                // A THIRD OF THE WIDTH THE WINDOW ENDED UP WITH, not of the 1200 asked for above.
+                // This test asserted a literal 400 and failed in CI - and only in CI - with
+                // "Expected: 400, Actual: 348" for two merges running.
+                //
+                // 348 is 1044/3. Windows clamps a resizable window to SM_CXMAXTRACK and WPF
+                // reports the clamped size back through Width, so a 1200-wide window on a
+                // 1024-wide runner becomes 1044 wide. Measured rather than inferred: on a
+                // 5120-wide display SM_CXMAXTRACK reads 5140 and a window asking for 6000 comes
+                // back at 5140 - the screen plus twenty pixels of frame, which is 1024 + 20 on the
+                // runner. The share was correct on both machines; the number 400 was a statement
+                // about the display, and this test could only ever have passed where the display
+                // was wide enough to grant the request.
+                //
+                // Guarded rather than trusted: below three minimum widths the share is floored
+                // instead of divided, and a test that silently compared two floors would pass
+                // while proving nothing.
+                Assert.True(
+                    shell.Width >= 3.0 * ToolWindowLayout.MinimumWidth,
+                    "The window is only " + shell.Width + " px wide, which is too narrow for the " +
+                    "share to be a division rather than the minimum width.");
+
+                double expected = shell.Width / 3.0;
+
                 double measurement = Syncfusion.Windows.Tools.Controls.DockingManager
                     .GetDesiredWidthInDockedMode(shell.MeasurementDock);
                 double hardware = Syncfusion.Windows.Tools.Controls.DockingManager
                     .GetDesiredWidthInDockedMode(shell.HardwareDock);
 
-                Assert.Equal(400.0, measurement, 0);
-                Assert.Equal(400.0, hardware, 0);
+                Assert.Equal(expected, measurement, 0);
+                Assert.Equal(expected, hardware, 0);
 
                 shell.Close();
             });
