@@ -63,6 +63,26 @@
     A build that asks to embed and finds no key is a WARNING and not an error, so a fork with no
     Syncfusion account can still produce an installer. It produces one that shows the Syncfusion
     evaluation banner, and the warning says so.
+
+    THE KEY IS RECOVERABLE FROM ANY BINARY BUILT THIS WAY, AND THAT IS ACCEPTED DELIBERATELY.
+    Measured, not assumed: the generated constant lands in the assembly's user string heap as an
+    88 character UTF-16 literal, and it was extracted from the OpenVSA.exe inside the published
+    v0.1.0 MSI with nothing more than a regular expression over the file's bytes. Keeping the key
+    out of git does not keep it out of what git's releases hand people.
+
+    Tony decided on 2026-08-22 to keep embedding anyway, and the reasoning is Syncfusion's own
+    distribution model: a shipped application is MEANT to carry a registered key, which is how any
+    commercial product built on these controls reaches its users. What the class remarks in
+    SyncfusionLicense.cs guard against is a key sitting in the SOURCE, where it would be copied by
+    anyone reading the repository and reused for their own development. A compiled binary is a
+    weaker exposure than that, and the property bought with it is real: an end user needs no
+    Syncfusion account and sees no evaluation banner.
+
+    So this is a decision, not an oversight. If you are reading this because you found the key in a
+    shipped binary: yes, it is there on purpose. Reopen the question only if the licence terms
+    change or the account moves off a distribution licence, and take it to Tony rather than
+    quietly switching the flag off, because turning it off puts an evaluation banner in front of
+    every user.
   -->
   <Target Name="GenerateSyncfusionLicenseKey" BeforeTargets="CoreCompile">
     <PropertyGroup>

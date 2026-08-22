@@ -17,6 +17,13 @@ namespace OpenVSA.Ui
     /// <c>appSettings</c> by the <c>file</c> attribute in <c>App.config</c>.
     /// </para>
     /// <para>
+    /// <strong>This is about the SOURCE, not about the shipped binary.</strong> A release or
+    /// installer build does embed the key, it is recoverable from the binary with a regular
+    /// expression, and that is a deliberate decision rather than a hole in the one above. The
+    /// reasoning, and what would justify revisiting it, is recorded beside the target that does the
+    /// embedding in <c>OpenVSA.Ui.csproj</c>. Read that before acting on this paragraph.
+    /// </para>
+    /// <para>
     /// <strong>A missing key is not an error.</strong> Registration is skipped and the application
     /// launches in trial mode. A contributor who has cloned the repository and not yet obtained a
     /// free Community key still gets a working build to develop against. This matters because
