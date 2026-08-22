@@ -48,6 +48,7 @@
 
   <Folder Name="/solution items/">
     <File Path="Directory.Build.props" />
+    <File Path="NuGet.config" />
     <File Path="README.md" />
     <File Path="DEPENDENCIES.md" />
     <File Path=".editorconfig" />
