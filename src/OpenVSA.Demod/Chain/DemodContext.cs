@@ -27,7 +27,7 @@ namespace OpenVSA.Demod.Chain
         private readonly List<string> _notices = new List<string>();
 
         internal DemodContext(
-            double[] mainTime, double sampleRateHz, DemodSettings settings, ChainJournal journal)
+            float[] mainTime, double sampleRateHz, DemodSettings settings, ChainJournal journal)
         {
             MainTime = mainTime;
             SampleRateHz = sampleRateHz;
@@ -46,7 +46,14 @@ namespace OpenVSA.Demod.Chain
         internal int Pass { get; set; }
 
         /// <summary>The acquired record, interleaved, as it arrived.</summary>
-        internal double[] MainTime { get; }
+        /// <remarks>
+        /// Still <c>float</c>, and not widened on the way in. The estimators work in double
+        /// precision, but they work on the Search Length window, and a record is not that window:
+        /// <c>REQ-NFR-001</c>'s worked example is a 30-second capture at 25.6 MS/s, which is 6.1 GB
+        /// as it stands. Widening it before step 1 has chosen a window would ask for 12.2 GB to
+        /// throw most of it away, and step 1 converts what it keeps.
+        /// </remarks>
+        internal float[] MainTime { get; }
 
         /// <summary>The rate <see cref="MainTime"/> was sampled at.</summary>
         internal double SampleRateHz { get; }

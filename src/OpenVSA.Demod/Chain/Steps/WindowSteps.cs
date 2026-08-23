@@ -20,7 +20,7 @@ namespace OpenVSA.Demod.Chain.Steps
         /// <inheritdoc />
         public StepOutcome Run(DemodContext context)
         {
-            int total = Iq.Count(context.MainTime);
+            int total = context.MainTime.Length / 2;
             int start = context.Settings.SearchStartSample;
 
             if (start >= total)
@@ -44,9 +44,13 @@ namespace OpenVSA.Demod.Chain.Steps
                     " left. The window was shortened to what was there.");
             }
 
+            // Widened here, where the window's length is known, rather than on the way in.
             var search = new double[2 * length];
 
-            Array.Copy(context.MainTime, 2 * start, search, 0, 2 * length);
+            for (int index = 0; index < 2 * length; index++)
+            {
+                search[index] = context.MainTime[(2 * start) + index];
+            }
 
             context.Search = search;
             context.SearchStartSample = start;
