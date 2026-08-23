@@ -19,6 +19,12 @@ namespace OpenVSA.Demod.Chain.Steps
     /// The filter is applied on its centre tap, so it introduces no delay for step 8 to have to
     /// estimate away as symbol timing.
     /// </para>
+    /// <para>
+    /// <strong>A signal that has already been matched-filtered wants none.</strong> That is what
+    /// <see cref="PulseFilterType.None"/> is for, and it is not a hypothetical case: the synthetic
+    /// source of <c>REQ-SIM-001</c> shapes with a full raised cosine on purpose. Filtering it again
+    /// costs about 10 % EVM on a signal with nothing wrong with it.
+    /// </para>
     /// </remarks>
     internal sealed class MeasurementFilterStep : IChainStep
     {
@@ -30,6 +36,14 @@ namespace OpenVSA.Demod.Chain.Steps
         {
             double[] working = DemodContext.Require(
                 context.Working, DemodStep.Resample, DemodStep.MeasurementFilter);
+
+            if (context.Settings.MeasurementFilter == PulseFilterType.None)
+            {
+                // The step ran and applied the filter it was asked for. "None" is an entry in
+                // REQ-DEM-021's catalogue, not a step being skipped, and the journal records it as
+                // executed because it was.
+                return StepOutcome.Continue;
+            }
 
             double[] taps = PulseShaping.RootRaisedCosine(
                 context.Settings.MeasurementFilterAlpha,

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 using OpenVSA.Core;
+using OpenVSA.Demod.Chain;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
 using OpenVSA.Measurement.Markers;
@@ -54,6 +55,12 @@ namespace OpenVSA.Measurement.Contexts
         private int _averagerCount;
         private SpectrumFrame _latest;
         private long _framesAnalysed;
+
+        private Demodulator _demodulator;
+        private DemodSettings _demodSettings;
+        private DemodState _demodSettingsFrom;
+        private DemodResult _latestResult;
+        private long _resultsAnalysed;
         private char _activeTrace = 'A';
 
         /// <summary>
@@ -85,6 +92,26 @@ namespace OpenVSA.Measurement.Contexts
         /// have to subscribe at all.
         /// </remarks>
         public event EventHandler<SpectrumFrame> FrameAnalysed;
+
+        /// <summary>Raised when this context has demodulated a block.</summary>
+        /// <remarks>
+        /// The demodulation leg of <see cref="FrameAnalysed"/>, raised on the same thread at the
+        /// same point: a context whose setup asks for digital demodulation produces both from one
+        /// block, so a spectrum and a constellation on screen are two views of one acquisition
+        /// rather than of two.
+        /// </remarks>
+        public event EventHandler<DemodResult> ResultAnalysed;
+
+        /// <summary>
+        /// Raised when a demodulation could not be performed with this context's settings.
+        /// </summary>
+        /// <remarks>
+        /// A setting to correct rather than an acquisition to abandon, which is why it is an event
+        /// and not an exception -- see <c>Demodulate</c>. Nothing subscribing is the same as nobody
+        /// being told, so the shell subscribes and says so rather than leaving a constellation to
+        /// go quietly stale.
+        /// </remarks>
+        public event EventHandler<Exception> DemodulationFaulted;
 
         /// <summary>
         /// The context's name.
@@ -135,6 +162,29 @@ namespace OpenVSA.Measurement.Contexts
 
         /// <summary>Frames this context has analysed.</summary>
         public long FramesAnalysed => Interlocked.Read(ref _framesAnalysed);
+
+        /// <summary>Blocks this context has demodulated.</summary>
+        public long ResultsAnalysed => Interlocked.Read(ref _resultsAnalysed);
+
+        /// <summary>Whether this context's setup asks for digital demodulation.</summary>
+        public bool IsDemodulating => _setup.Kind == MeasurementKind.DigitalDemodulation;
+
+        /// <summary>The newest demodulation this context produced, or <c>null</c>.</summary>
+        /// <remarks>
+        /// Unlike a frame, a result owns no pooled buffer, so it is handed out as it stands rather
+        /// than with a share taken. It is read once, under the lock, as a whole object: reading two
+        /// properties off "the latest result" could otherwise read them off two different ones.
+        /// </remarks>
+        public DemodResult LatestResult
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _latestResult;
+                }
+            }
+        }
 
         /// <summary>
         /// The trace this context's commands act on.
@@ -298,6 +348,11 @@ namespace OpenVSA.Measurement.Contexts
                 throw new ArgumentNullException(nameof(block));
             }
 
+            if (IsDemodulating)
+            {
+                Demodulate(block);
+            }
+
             SpectrumFrame computed = Computer.Compute(block);
             SpectrumFrame frame = computed;
             TraceAverager averager = Averager;
@@ -337,6 +392,92 @@ namespace OpenVSA.Measurement.Contexts
                 computed.Release();
             }
         }
+
+        /// <summary>
+        /// Demodulates one block as this context's setup asks for it (<c>REQ-DEM-001</c>).
+        /// </summary>
+        /// <param name="block">The block, owned by the caller.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>A failure here is reported, not thrown.</strong> The block arrives on the
+        /// acquisition pump's thread, and <c>SpectrumEngine</c>'s contract is that a handler which
+        /// throws stops the pump. For a transform that is the right outcome, because nothing the
+        /// context produced afterwards would mean anything. A demodulation is different: a record
+        /// too short for the Result Length, or a symbol rate that does not suit the span, is a
+        /// setting to correct rather than an acquisition to abandon -- and stopping the measurement
+        /// would take down the spectrum the user needs in order to see what the setting should be.
+        /// </para>
+        /// <para>
+        /// <strong>The samples are copied.</strong> The chain takes an array; the block owns a span
+        /// over a pooled buffer that goes back to the pool as soon as the pump's handlers return.
+        /// One copy per block, at the boundary where the block's lifetime ends and the result's
+        /// begins.
+        /// </para>
+        /// </remarks>
+        private void Demodulate(IqBlock block)
+        {
+            DemodResult result;
+
+            try
+            {
+                DemodSettings settings = DemodulationSettings();
+
+                var samples = new float[block.SampleCount * 2];
+
+                block.GetSamples().CopyTo(new Span<float>(samples));
+
+                result = Chain().Run(samples, block.SampleRateHz, settings);
+            }
+            catch (Exception failure) when (
+                failure is ArgumentException || failure is ChainOrderException)
+            {
+                EventHandler<Exception> faulted = DemodulationFaulted;
+
+                if (faulted != null)
+                {
+                    faulted(this, failure);
+                }
+
+                return;
+            }
+
+            Interlocked.Increment(ref _resultsAnalysed);
+
+            lock (_gate)
+            {
+                _latestResult = result;
+            }
+
+            EventHandler<DemodResult> handler = ResultAnalysed;
+
+            if (handler != null)
+            {
+                handler(this, result);
+            }
+        }
+
+        /// <summary>
+        /// The chain's settings for this context, rebuilt when the setup changes them.
+        /// </summary>
+        /// <remarks>
+        /// Rebuilt rather than remade per block: resolving a format's name allocates its
+        /// constellation, and doing that for every acquired block would build a list of points
+        /// sixty times a second to describe something that had not changed.
+        /// </remarks>
+        private DemodSettings DemodulationSettings()
+        {
+            DemodState state = _setup.Demod;
+
+            if (_demodSettings == null || !ReferenceEquals(_demodSettingsFrom, state))
+            {
+                _demodSettings = state.ToSettings();
+                _demodSettingsFrom = state;
+            }
+
+            return _demodSettings;
+        }
+
+        private Demodulator Chain() => _demodulator ?? (_demodulator = new Demodulator());
 
         /// <summary>
         /// The newest frame this context analysed, with a share taken for the caller, or

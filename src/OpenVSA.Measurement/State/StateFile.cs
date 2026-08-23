@@ -268,6 +268,15 @@ namespace OpenVSA.Measurement.State
             {
                 switch (from)
                 {
+                    case 1:
+                        // Version 2 added the demodulator's settings to each measurement. A
+                        // version 1 file has none, and the model's own defaults supply them --
+                        // which is why this step transforms nothing. It exists rather than being
+                        // skipped because the alternative is a version number nobody can trace to
+                        // a change, and because the next migration has to run after this one
+                        // whether or not this one does any work.
+                        break;
+
                     default:
                         throw new StateFormatException(
                             "No migration from schema version " +

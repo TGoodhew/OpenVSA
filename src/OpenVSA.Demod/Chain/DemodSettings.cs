@@ -72,6 +72,15 @@ namespace OpenVSA.Demod.Chain
         /// <summary>How many symbols the Result Length window holds (<c>REQ-DEM-031</c>).</summary>
         public int ResultLengthSymbols { get; set; } = 256;
 
+        /// <summary>Which measurement filter is applied at step 5 (<c>REQ-DEM-021</c>).</summary>
+        /// <remarks>
+        /// The reference filter of step 10 has no type of its own yet: it is the full Nyquist pulse
+        /// that a matched pair composes to, which is what the measured waveform is compared
+        /// against. <c>REQ-DEM-020</c> requires both to be independently selectable in type, and
+        /// that is where the second half arrives.
+        /// </remarks>
+        public PulseFilterType MeasurementFilter { get; set; } = PulseFilterType.RootRaisedCosine;
+
         /// <summary>The measurement filter's roll-off (<c>REQ-DEM-020</c>).</summary>
         public double MeasurementFilterAlpha { get; set; } = 0.35;
 

@@ -81,6 +81,42 @@ namespace OpenVSA.Demod.Signal
         }
 
         /// <summary>
+        /// The constellation a format name asks for.
+        /// </summary>
+        /// <param name="name">The format's name, compared without regard to case.</param>
+        /// <returns>The constellation.</returns>
+        /// <exception cref="ArgumentException">No format of that name is supported.</exception>
+        /// <remarks>
+        /// <para>
+        /// One format, because <c>REQ-DEM-001</c> needed one and <c>REQ-DEM-010</c>'s catalogue is
+        /// its own requirement. This exists so that a measurement's stored setup can name a format
+        /// as text — which is what a state file has to hold — without every caller knowing which
+        /// factory method to call, and so that the catalogue grows in one place.
+        /// </para>
+        /// <para>
+        /// An unknown name is refused by name rather than falling back to QPSK. A demodulation
+        /// silently performed against the wrong constellation reports EVM and symbols that look
+        /// entirely reasonable and are wrong.
+        /// </para>
+        /// </remarks>
+        public static Constellation ByName(string name)
+        {
+            if (string.Equals(name, "QPSK", StringComparison.OrdinalIgnoreCase))
+            {
+                return Qpsk();
+            }
+
+            throw new ArgumentException(
+                "No format called \"" + (name ?? "(none)") + "\" is supported. This build " +
+                "demodulates QPSK; REQ-DEM-010's catalogue is where the rest arrive.",
+                nameof(name));
+        }
+
+        /// <summary>The names <see cref="ByName"/> answers to.</summary>
+        public static IReadOnlyList<string> Names =>
+            new ReadOnlyCollection<string>(new List<string> { "QPSK" });
+
+        /// <summary>
         /// Builds a constellation from an explicit point list, normalising it to unit mean power.
         /// </summary>
         /// <param name="name">What the format is called.</param>

@@ -137,7 +137,10 @@ namespace OpenVSA.Measurement.Tests.State
 
             _output.WriteLine(json.Substring(0, Math.Min(400, json.Length)));
 
-            Assert.Contains("\"schemaVersion\": 1", json);
+            // Against the constant, not against a literal: the version changes whenever the model
+            // does, and a test that had to be edited each time would be edited without being read.
+            Assert.Contains(
+                "\"schemaVersion\": " + ApplicationState.CurrentSchemaVersion, json);
             Assert.Contains("\"centerFrequencyHz\"", json);
             Assert.Contains(Environment.NewLine, json);
             Assert.Contains("  ", json);
