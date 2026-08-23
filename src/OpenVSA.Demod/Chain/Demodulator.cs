@@ -144,14 +144,7 @@ namespace OpenVSA.Demod.Chain
 
             settings.Validate();
 
-            var record = new double[mainTime.Length];
-
-            for (int index = 0; index < mainTime.Length; index++)
-            {
-                record[index] = mainTime[index];
-            }
-
-            return Execute(record, sampleRateHz, settings);
+            return Execute(mainTime, sampleRateHz, settings);
         }
 
         private static Dictionary<DemodStep, IChainStep> DefaultSteps()
@@ -184,7 +177,7 @@ namespace OpenVSA.Demod.Chain
             return registry;
         }
 
-        private DemodResult Execute(double[] record, double sampleRateHz, DemodSettings settings)
+        private DemodResult Execute(float[] record, double sampleRateHz, DemodSettings settings)
         {
             var journal = new ChainJournal();
             var context = new DemodContext(record, sampleRateHz, settings, journal);
