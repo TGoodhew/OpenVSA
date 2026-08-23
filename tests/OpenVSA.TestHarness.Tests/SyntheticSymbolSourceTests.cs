@@ -4,7 +4,7 @@ using System.Linq;
 using OpenVSA.Core;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
-using OpenVSA.TestHarness.Synthesis;
+using OpenVSA.Synthesis;
 using Xunit;
 using Xunit.Abstractions;
 

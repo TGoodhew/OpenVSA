@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using OpenVSA.Demod.Results;
+using OpenVSA.Synthesis;
 using OpenVSA.TestHarness.Synthesis;
 using Xunit;
 using Xunit.Abstractions;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenVSA.Core;
+using OpenVSA.Synthesis;
 
 namespace OpenVSA.Hal.Sim
 {
@@ -35,6 +36,30 @@ namespace OpenVSA.Hal.Sim
 
         /// <summary>Seed for all stochastic elements (<c>REQ-SIM-003</c>). Default 0.</summary>
         public long Seed { get; set; }
+
+        /// <summary>
+        /// The modulation to transmit, by name, or <c>null</c> for an unmodulated tone
+        /// (<c>REQ-SIM-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Null by default, so the simulated source stays the tone every existing test and every
+        /// spectrum demonstration expects. Naming a format turns it into a transmitter: the tone
+        /// becomes a carrier at <see cref="ToneOffsetHz"/> and the symbols are shaped onto it.
+        /// </para>
+        /// <para>
+        /// The names are <c>ModulationScheme</c>'s, which is the generator's catalogue rather than
+        /// the demodulator's. The two overlap at QPSK today; <c>REQ-DEM-010</c> is where the
+        /// demodulator's catches up.
+        /// </para>
+        /// </remarks>
+        public string Modulation { get; set; }
+
+        /// <summary>The symbol rate to transmit at, in hertz. Default 1 Msym/s.</summary>
+        public double SymbolRateHz { get; set; } = 1e6;
+
+        /// <summary>The transmit pulse's roll-off, from 0 to 1. Default 0.35.</summary>
+        public double RollOff { get; set; } = 0.35;
     }
 
     /// <summary>
@@ -63,6 +88,7 @@ namespace OpenVSA.Hal.Sim
 
         private long _sequenceNumber;
         private double _phaseAccumulator;
+        private ContinuousModulatedSource _modulator;
         private bool _disposed;
 
         /// <summary>Creates a simulated front end with default signal settings.</summary>
@@ -315,6 +341,13 @@ namespace OpenVSA.Hal.Sim
 
         private void Fill(Span<float> samples, AcquisitionPlan plan)
         {
+            if (!string.IsNullOrEmpty(_settings.Modulation))
+            {
+                FillModulated(samples, plan);
+
+                return;
+            }
+
             int count = plan.SamplesPerBlock;
             double phaseStep = 2.0 * Math.PI * _settings.ToneOffsetHz / plan.SampleRateHz;
             double amplitude = _settings.AmplitudeVolts;
@@ -364,6 +397,72 @@ namespace OpenVSA.Hal.Sim
             // Keep the accumulator bounded so a long run does not lose phase resolution to
             // floating-point magnitude — an error that would appear as a slow frequency drift.
             _phaseAccumulator = Math.IEEERemainder(_phaseAccumulator, 2.0 * Math.PI);
+        }
+
+        /// <summary>
+        /// Fills a block with a modulated signal (<c>REQ-SIM-001</c>).
+        /// </summary>
+        /// <param name="samples">The block's samples, interleaved.</param>
+        /// <param name="plan">What was negotiated.</param>
+        /// <remarks>
+        /// <para>
+        /// The generator is kept between blocks and knows how many samples it has produced, so the
+        /// signal runs on across block boundaries rather than restarting sixty times a second. A
+        /// demodulator would not care — it analyses each block on its own — but a spectrogram, a
+        /// trigger and anything measuring across blocks would, and a source whose signal restarts
+        /// invisibly is a source that makes those look broken.
+        /// </para>
+        /// <para>
+        /// <strong>Rebuilt when the plan or the settings change.</strong> The sample rate comes from
+        /// the plan and the rest from the settings, and both can change between acquisitions. What
+        /// is not rebuilt is the position in the signal, unless the rates themselves moved.
+        /// </para>
+        /// <para>
+        /// The real path has no quadrature channel, so a modulated signal has nowhere to go on it.
+        /// Rather than transmit half of one, this falls back to the tone that path already
+        /// produces: <c>REQ-SIM-001</c> is about the IQ the simulator generates, and a real-baseband
+        /// digitiser is by definition not acquiring IQ.
+        /// </para>
+        /// </remarks>
+        private void FillModulated(Span<float> samples, AcquisitionPlan plan)
+        {
+            ContinuousModulatedSource source = Modulator(plan);
+
+            source.Fill(samples);
+        }
+
+        private ContinuousModulatedSource Modulator(AcquisitionPlan plan)
+        {
+            ModulationScheme scheme = ModulationScheme.ByName(_settings.Modulation);
+
+            if (_modulator == null)
+            {
+                _modulator = new ContinuousModulatedSource();
+            }
+
+            bool ratesMoved =
+                _modulator.SampleRateHz != plan.SampleRateHz ||
+                _modulator.SymbolRateHz != _settings.SymbolRateHz;
+
+            _modulator.Scheme = scheme;
+            _modulator.SampleRateHz = plan.SampleRateHz;
+            _modulator.SymbolRateHz = _settings.SymbolRateHz;
+            _modulator.RollOff = _settings.RollOff;
+            _modulator.CarrierOffsetHz = _settings.ToneOffsetHz;
+            _modulator.PhaseRadians = _settings.PhaseRadians;
+            _modulator.AmplitudeVolts = _settings.AmplitudeVolts;
+            _modulator.SignalToNoiseDb = _settings.SnrDb;
+            _modulator.Seed = _settings.Seed;
+
+            if (ratesMoved)
+            {
+                // The position in the signal is measured in samples, so it means something
+                // different at a different rate. Carrying it across a rate change would put a
+                // discontinuity in the middle of the first block after it.
+                _modulator.Restart();
+            }
+
+            return _modulator;
         }
 
         /// <inheritdoc />

@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenVSA.Synthesis</RootNamespace>
+    <AssemblyTitle>OpenVSA.Synthesis</AssemblyTitle>
+    <Description>The synthetic modulated source of REQ-SIM-001 and the controllable impairments of REQ-SIM-002: modulation formats, pulse shaping, bursts and the measurements that read an impairment back out of the samples.</Description>
+  </PropertyGroup>
+
+  <!--
+    Core alone, and that is the whole point of this assembly existing.
+
+    A generator that referenced the demodulator could not be used by OpenVSA.Hal.Sim without putting
+    an L3 analysis assembly underneath an L0 transport; a generator that lived with the bench
+    harness could not be used by the analysis stack's own tests, because the harness references the
+    VISA transport and REQ-ARC-001 requires that stack to build with no transport present. It had
+    lived with the harness, and that is exactly how it turned main red.
+
+    So: samples in, samples out, and nothing about how they are analysed. The one thing that did
+    reach into OpenVSA.Demod, turning a burst's own truth into a SymbolTrace, stayed behind in
+    the harness as an extension, because converting a generator's truth into a demodulator's result
+    type is an analysis-side convenience rather than part of generating anything.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+  </ItemGroup>
+
+</Project>

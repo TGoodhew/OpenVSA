@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
-namespace OpenVSA.TestHarness.Synthesis
+namespace OpenVSA.Synthesis
 {
     /// <summary>How a burst's amplitude gets from off to on.</summary>
     public enum RampShape

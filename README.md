@@ -46,7 +46,14 @@ L3  Analysis          OpenVSA.Dsp            OpenVSA.Demod
 L2  Capture session   OpenVSA.Capture        block assembly, recording, playback
 L1  Front-end HAL     OpenVSA.Hal            IFrontEnd and friends
 L0  Transport         OpenVSA.Hal.Visa       OpenVSA.Hal.File   OpenVSA.Hal.Sim
+
+    Signal synthesis  OpenVSA.Synthesis      modulation, impairments, bursts
 ```
+
+`OpenVSA.Synthesis` sits outside the stack rather than in it. It generates signals and measures
+impairments back out of samples, and it references `OpenVSA.Core` alone — so the simulated transport
+can transmit a modulated signal without an analysis assembly appearing beneath it, and the analysis
+stack's own tests can use it without a transport appearing inside them.
 
 Four data sources are first-class: the Agilent **E4406A** over NI-VISA/GPIB, a **pluggable
 instrument abstraction** for further VISA instruments, **file playback and recording**, and a

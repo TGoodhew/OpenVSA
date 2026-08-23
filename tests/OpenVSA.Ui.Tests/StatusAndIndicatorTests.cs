@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Measurement;
+using OpenVSA.Synthesis;
 using OpenVSA.TestHarness.Synthesis;
 using OpenVSA.Ui.Rendering;
 using Xunit;

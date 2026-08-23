@@ -6,7 +6,7 @@ using OpenVSA.Demod.Signal;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Measurement.Contexts;
 using OpenVSA.Measurement.State;
-using OpenVSA.TestHarness.Synthesis;
+using OpenVSA.Synthesis;
 using Xunit;
 using Xunit.Abstractions;
 

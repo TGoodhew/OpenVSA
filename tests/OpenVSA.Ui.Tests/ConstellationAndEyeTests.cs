@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Linq;
 using OpenVSA.Demod.Results;
+using OpenVSA.Synthesis;
 using OpenVSA.TestHarness.Synthesis;
 using OpenVSA.Ui.Rendering;
 using Xunit;

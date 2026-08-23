@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 
-namespace OpenVSA.TestHarness.Synthesis
+namespace OpenVSA.Synthesis
 {
     /// <summary>One point of a constellation, in normalised units.</summary>
     public readonly struct SymbolPoint

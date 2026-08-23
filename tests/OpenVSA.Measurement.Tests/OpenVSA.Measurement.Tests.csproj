@@ -12,6 +12,13 @@
       reference; nothing in OpenVSA.Measurement references OpenVSA.Api, which sits above it.
     -->
     <ProjectReference Include="..\..\src\OpenVSA.Api\OpenVSA.Api.csproj" />
+
+    <!--
+      The modulated generator of REQ-SIM-001. It carries no transport, so referencing it keeps
+      REQ-ARC-001's "the analysis stack builds with every real transport removed" true, which the
+      same reference to OpenVSA.TestHarness did not, because the harness drives a bench.
+    -->
+    <ProjectReference Include="..\..\src\OpenVSA.Synthesis\OpenVSA.Synthesis.csproj" />
   </ItemGroup>
 
 </Project>

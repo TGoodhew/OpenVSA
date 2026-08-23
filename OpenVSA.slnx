@@ -16,6 +16,7 @@
     <Project Path="src/OpenVSA.Hal.Sim/OpenVSA.Hal.Sim.csproj" />
     <Project Path="src/OpenVSA.Hal.Stub/OpenVSA.Hal.Stub.csproj" />
     <Project Path="src/OpenVSA.Capture/OpenVSA.Capture.csproj" />
+    <Project Path="src/OpenVSA.Synthesis/OpenVSA.Synthesis.csproj" />
     <Project Path="src/OpenVSA.Dsp/OpenVSA.Dsp.csproj" />
     <Project Path="src/OpenVSA.Demod/OpenVSA.Demod.csproj" />
     <Project Path="src/OpenVSA.Measurement/OpenVSA.Measurement.csproj" />
