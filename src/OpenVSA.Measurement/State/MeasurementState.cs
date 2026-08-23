@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using OpenVSA.Core;
+using OpenVSA.Demod.Chain;
+using OpenVSA.Demod.Signal;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
 using OpenVSA.Hal;
@@ -294,6 +297,127 @@ namespace OpenVSA.Measurement.State
     }
 
     /// <summary>
+    /// The digital demodulator's settings (<c>REQ-DEM-001</c> and the requirements it makes room
+    /// for).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>Why this is not <c>DemodSettings</c>.</strong> The chain of <c>REQ-DEM-001</c> takes
+    /// a settings object of its own, carrying a <c>Constellation</c> — a list of points, computed.
+    /// A state is what gets written to a file and read back by software that may be older or newer,
+    /// so it holds a format's <em>name</em> and plain numbers, and <see cref="ToSettings"/> resolves
+    /// the one into the other. Sharing one type would mean either a state file full of coordinates
+    /// or a demodulator that parsed strings.
+    /// </para>
+    /// <para>
+    /// <strong>What is deliberately not here yet.</strong> The sync pattern of <c>REQ-DEM-040</c>,
+    /// because how a pattern is entered is that requirement's to decide and a guess here would be a
+    /// format to migrate away from later. Step 6 therefore has nothing to search for and is not
+    /// offered. The convergence bounds of <c>REQ-DEM-001</c> are absent for a different reason: they
+    /// are not settings anyone picks, and the chain's defaults are what they are set to.
+    /// </para>
+    /// </remarks>
+    public sealed class DemodState
+    {
+        /// <summary>The modulation format, by name (<c>REQ-DEM-010</c>).</summary>
+        public string Format { get; set; } = "QPSK";
+
+        /// <summary>
+        /// The symbol rate, in hertz, applied exactly as entered (<c>REQ-DEM-030</c>).
+        /// </summary>
+        /// <remarks>
+        /// Zero means no rate has been chosen yet. <c>REQ-DEM-030</c> makes the default Span/2 on
+        /// first selection of digital demodulation, which is what
+        /// <see cref="MeasurementState.SelectKind"/> applies — a default at the moment of choosing,
+        /// not a rate the demodulator invents for itself while measuring.
+        /// </remarks>
+        public double SymbolRateHz { get; set; }
+
+        /// <summary>
+        /// The internal processing rate, in samples per symbol (<c>REQ-DEM-034a</c>).
+        /// </summary>
+        /// <remarks>
+        /// Not the displayed points per symbol of <c>REQ-DEM-034</c>, which is a display parameter
+        /// and is required not to change what the demodulator does.
+        /// </remarks>
+        public int PointsPerSymbol { get; set; } = 4;
+
+        /// <summary>How many symbols the Result Length window holds (<c>REQ-DEM-031</c>).</summary>
+        public int ResultLengthSymbols { get; set; } = 256;
+
+        /// <summary>
+        /// How long the Search Length window is, in samples; zero for the whole record
+        /// (<c>REQ-DEM-033</c>).
+        /// </summary>
+        public int SearchLengthSamples { get; set; }
+
+        /// <summary>Which measurement filter is applied (<c>REQ-DEM-021</c>).</summary>
+        public PulseFilterType MeasurementFilter { get; set; } = PulseFilterType.RootRaisedCosine;
+
+        /// <summary>The measurement filter's roll-off (<c>REQ-DEM-020</c>).</summary>
+        public double MeasurementFilterAlpha { get; set; } = 0.35;
+
+        /// <summary>The reference filter's roll-off (<c>REQ-DEM-020</c>).</summary>
+        public double ReferenceFilterAlpha { get; set; } = 0.35;
+
+        /// <summary>How many symbols either side of centre the filters span (<c>REQ-DEM-023</c>).</summary>
+        public int FilterSymbolSpan { get; set; } = 6;
+
+        /// <summary>Whether the burst search of step 2 runs (<c>REQ-DEM-041</c>).</summary>
+        public bool BurstSearch { get; set; }
+
+        /// <summary>Whether the adaptive equaliser of step 11 runs (<c>REQ-DEM-050</c>).</summary>
+        public bool Equaliser { get; set; }
+
+        /// <summary>How many taps the equaliser has (<c>REQ-DEM-051</c>).</summary>
+        public int EqualiserTaps { get; set; } = 21;
+
+        /// <summary>The symbol rate a newly selected demodulation starts at (<c>REQ-DEM-030</c>).</summary>
+        /// <param name="spanHz">The measurement's span.</param>
+        /// <returns>Half the span.</returns>
+        public static double DefaultSymbolRateFor(double spanHz) => spanHz / 2.0;
+
+        /// <summary>
+        /// The chain's settings for this state.
+        /// </summary>
+        /// <returns>A settings object the demodulator can be run with.</returns>
+        /// <exception cref="ArgumentException">
+        /// The format is not one this build demodulates, or a setting is outside its range.
+        /// </exception>
+        /// <remarks>
+        /// Validated here rather than at the point of use: a setup that cannot be demodulated should
+        /// say so when it is applied, not once per acquired block on the pump thread.
+        /// </remarks>
+        public DemodSettings ToSettings()
+        {
+            var settings = new DemodSettings
+            {
+                Constellation = Constellation.ByName(Format),
+                MeasurementFilter = MeasurementFilter,
+                SymbolRateHz = SymbolRateHz,
+                PointsPerSymbol = PointsPerSymbol,
+                ResultLengthSymbols = ResultLengthSymbols,
+                SearchLengthSamples = SearchLengthSamples,
+                MeasurementFilterAlpha = MeasurementFilterAlpha,
+                ReferenceFilterAlpha = ReferenceFilterAlpha,
+                FilterSymbolSpan = FilterSymbolSpan,
+                BurstSearchEnabled = BurstSearch,
+                EqualiserEnabled = Equaliser,
+                EqualiserTaps = EqualiserTaps,
+            };
+
+            settings.Validate();
+
+            return settings;
+        }
+
+        /// <inheritdoc />
+        public override string ToString() =>
+            Format + " at " + SymbolRateHz.ToString("G6", CultureInfo.InvariantCulture) +
+            " symbols/s, " + ResultLengthSymbols.ToString(CultureInfo.InvariantCulture) + " symbols";
+    }
+
+    /// <summary>
     /// One vertex of a saved limit line (<c>REQ-LIM-001</c>).
     /// </summary>
     public sealed class LimitPointState
@@ -427,6 +551,15 @@ namespace OpenVSA.Measurement.State
         /// <summary>Analysis parameters.</summary>
         public AnalysisState Analysis { get; set; } = new AnalysisState();
 
+        /// <summary>The digital demodulator's settings (<c>REQ-DEM-001</c>).</summary>
+        /// <remarks>
+        /// Carried whatever the measurement's kind is, so that switching to digital demodulation and
+        /// back does not lose what was set up. <c>REQ-ARC-002a</c> asks the same of a front-end
+        /// change, for the same reason: a setting the user chose surviving is the difference between
+        /// changing a mode and starting again.
+        /// </remarks>
+        public DemodState Demod { get; set; } = new DemodState();
+
         /// <summary>Source parameters.</summary>
         public SourceState Source { get; set; } = new SourceState();
 
@@ -453,6 +586,39 @@ namespace OpenVSA.Measurement.State
         /// measurement has none — unlike a marker, where one is the useful starting point.
         /// </remarks>
         public List<LimitTestState> LimitTests { get; set; } = new List<LimitTestState>();
+
+        /// <summary>
+        /// Changes what kind of measurement this is, applying the defaults a first selection brings
+        /// with it.
+        /// </summary>
+        /// <param name="kind">The kind to change to.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong><c>REQ-DEM-030</c>'s Span/2.</strong> "On first selection of digital
+        /// demodulation the default shall be Span/2" — a default at the moment of choosing, and
+        /// only when no rate has been chosen before. Applying it on every selection would discard a
+        /// rate the user had entered the moment they looked at the spectrum and came back, and
+        /// applying it inside the demodulator would be the estimation that same requirement
+        /// forbids.
+        /// </para>
+        /// <para>
+        /// A method rather than a setter on <see cref="Kind"/> because the state is walked by
+        /// reflection for save and recall (<c>REQ-STA-005</c>), and behaviour hidden in an accessor
+        /// would run during a recall — turning "load the setup I saved" into "load it and then
+        /// change the symbol rate".
+        /// </para>
+        /// </remarks>
+        public void SelectKind(MeasurementKind kind)
+        {
+            if (kind == MeasurementKind.DigitalDemodulation &&
+                Kind != MeasurementKind.DigitalDemodulation &&
+                Demod.SymbolRateHz <= 0.0)
+            {
+                Demod.SymbolRateHz = DemodState.DefaultSymbolRateFor(SpanHz);
+            }
+
+            Kind = kind;
+        }
 
         /// <inheritdoc />
         public override string ToString() =>

@@ -417,7 +417,7 @@ namespace OpenVSA.TestHarness.Synthesis
                     : ideal;
             }
 
-            double[] pulse = RootRaisedCosinePulse();
+            double[] pulse = RaisedCosinePulse();
 
             // Head and tail room for the pulse's own span, so the first and last symbols are shaped
             // by the whole filter rather than by half of it.
@@ -495,7 +495,7 @@ namespace OpenVSA.TestHarness.Synthesis
         /// that never opens.
         /// </para>
         /// </remarks>
-        private double[] RootRaisedCosinePulse()
+        private double[] RaisedCosinePulse()
         {
             int half = PulseSpanSymbols * SamplesPerSymbol;
             var taps = new double[half * 2 + 1];
