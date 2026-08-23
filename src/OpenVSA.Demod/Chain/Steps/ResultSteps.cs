@@ -40,10 +40,16 @@ namespace OpenVSA.Demod.Chain.Steps
             List<ConstellationPoint> measured = Points(context.MeasuredSymbols);
             List<ConstellationPoint> ideal = Points(context.IdealSymbols);
 
-            ErrorSummary summary = ErrorSummary.For(measured, ideal);
+            ErrorSummary computed = ErrorSummary.For(measured, ideal);
 
-            context.Summary = summary;
-            context.EvmPercent = Evm(summary);
+            // The rows the format shows, not just the ones this build can fill in: REQ-DEM-071
+            // wants a table whose shape follows the format, with NAN where a metric applies and has
+            // not been measured. Reading EVM off the computed summary rather than off the table is
+            // deliberate -- they agree today, and the table is the thing that will grow rows.
+            Constellation constellation = context.Settings.Constellation;
+
+            context.Summary = computed.AsTableFor(constellation.Family, constellation.IsOffset);
+            context.EvmPercent = Evm(computed);
 
             return StepOutcome.Continue;
         }
