@@ -10,7 +10,7 @@ using OpenVSA.TestHarness.Synthesis;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace OpenVSA.Measurement.Tests
+namespace OpenVSA.TestHarness.Tests
 {
     /// <summary>
     /// The demodulation leg of a measurement context: <c>REQ-DEM-001</c>'s chain, driven by an
@@ -30,6 +30,17 @@ namespace OpenVSA.Measurement.Tests
     /// delivered and <c>REQ-SIM-001</c>'s own tests proved without demodulating anything. Using it
     /// here rather than writing another generator is deliberate: two generators means two things to
     /// keep correct, and this one has already been checked against the parameters it was asked for.
+    /// </para>
+    /// <para>
+    /// <strong>Why a test about measurement contexts lives with the harness.</strong>
+    /// <c>REQ-ARC-001</c> requires the analysis stack — <c>OpenVSA.Measurement.Tests</c> named
+    /// among it — to build with every real transport removed, and
+    /// <c>tools/build_without_front_ends.ps1</c> proves it by building that stack and searching the
+    /// output for a transport. The generator lives in <c>OpenVSA.TestHarness</c>, which references
+    /// the VISA transport because driving a bench instrument is its other job, so a reference to it
+    /// from the measurement tests puts <c>OpenVSA.Hal.Visa.dll</c> into the analysis stack's output.
+    /// That is not a technicality about a test project: it is the check catching exactly what it
+    /// exists to catch, and it caught this. The test belongs where the generator it needs is.
     /// </para>
     /// </remarks>
     public class DemodulationContextTests

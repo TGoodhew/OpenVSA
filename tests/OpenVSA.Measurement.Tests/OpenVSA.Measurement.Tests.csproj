@@ -12,13 +12,6 @@
       reference; nothing in OpenVSA.Measurement references OpenVSA.Api, which sits above it.
     -->
     <ProjectReference Include="..\..\src\OpenVSA.Api\OpenVSA.Api.csproj" />
-
-    <!--
-      For SyntheticSymbolSource: the modulated generator REQ-SIM-001 delivered, already proved
-      against the parameters it is asked for. A demodulation test needs a modulated signal, and
-      writing a second generator to get one would be a second thing to keep correct.
-    -->
-    <ProjectReference Include="..\..\src\OpenVSA.TestHarness\OpenVSA.TestHarness.csproj" />
   </ItemGroup>
 
 </Project>
