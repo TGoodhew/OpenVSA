@@ -324,6 +324,57 @@ namespace OpenVSA.Demod.Results
         }
 
         /// <summary>
+        /// This summary as the error summary table a format shows (<c>REQ-DEM-071</c>).
+        /// </summary>
+        /// <param name="family">The format's family.</param>
+        /// <param name="isOffset">Whether the format staggers I and Q by half a symbol.</param>
+        /// <returns>
+        /// A summary holding every metric that applies to the format, in the table's order, with
+        /// this summary's values where it has them.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>Applicable but not computed shows <c>NAN</c>, not nothing and not a stale
+        /// value.</strong> That is <c>REQ-DEM-071</c>'s own instruction, and it matters most in the
+        /// case it names: changing format must not leave the previous format's number under a row
+        /// the new format happens to share. A row that is applicable is always present; whether
+        /// there is a number in it is a separate question, and the display says which.
+        /// </para>
+        /// <para>
+        /// The metrics this build computes are the four the geometry supports. The rest are
+        /// applicable and unmeasured, and read <c>NAN</c> until the requirements that specify them
+        /// arrive — <c>REQ-DEM-065</c>'s frequency error, <c>REQ-DEM-069</c>'s SNR and the others of
+        /// section 11.7. The table's shape is right now, which is what lets those land one at a time
+        /// without the display changing shape under the user each time.
+        /// </para>
+        /// </remarks>
+        public ErrorSummary AsTableFor(ModulationFamily family, bool isOffset)
+        {
+            var table = new ErrorSummary();
+
+            foreach (string label in MetricApplicability.LabelsFor(family, isOffset))
+            {
+                ErrorMetric computed = null;
+
+                foreach (ErrorMetric metric in _metrics)
+                {
+                    if (string.Equals(metric.Label, label, StringComparison.Ordinal))
+                    {
+                        computed = metric;
+
+                        break;
+                    }
+                }
+
+                table.Add(
+                    computed ??
+                    new ErrorMetric(label, MetricApplicability.UnitOf(label), double.NaN));
+            }
+
+            return table;
+        }
+
+        /// <summary>
         /// The summary as <c>REQ-UI-053</c>'s layout, one string per row.
         /// </summary>
         /// <remarks>

@@ -38,11 +38,18 @@ namespace OpenVSA.Demod.Signal
         private int _symmetry;
 
         private Constellation(
-            string name, int bitsPerSymbol, int levelsPerAxis, IList<ConstellationPoint> points)
+            string name,
+            int bitsPerSymbol,
+            int levelsPerAxis,
+            IList<ConstellationPoint> points,
+            ModulationFamily family,
+            bool isOffset)
         {
             Name = name;
             BitsPerSymbol = bitsPerSymbol;
             LevelsPerAxis = levelsPerAxis;
+            Family = family;
+            IsOffset = isOffset;
             _points = new ReadOnlyCollection<ConstellationPoint>(points);
         }
 
@@ -54,6 +61,23 @@ namespace OpenVSA.Demod.Signal
 
         /// <summary>Distinct levels on the I axis — the <em>m</em> of <c>REQ-UI-051</c>'s eyes.</summary>
         public int LevelsPerAxis { get; }
+
+        /// <summary>
+        /// Which family this format belongs to, which is what decides the metrics it shows
+        /// (<c>REQ-DEM-071</c>).
+        /// </summary>
+        public ModulationFamily Family { get; }
+
+        /// <summary>
+        /// Whether I and Q are staggered by half a symbol, as OQPSK and its relatives are
+        /// (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// A property of the format rather than of its points: the constellation of OQPSK is QPSK's,
+        /// and what differs is when each axis is sampled. It decides whether Offset EVM is a metric
+        /// the summary shows, and <c>REQ-DEM-012</c> is where it decides rather more than that.
+        /// </remarks>
+        public bool IsOffset { get; }
 
         /// <summary>The points, indexed by symbol value.</summary>
         public IReadOnlyList<ConstellationPoint> Points => _points;
@@ -77,7 +101,7 @@ namespace OpenVSA.Demod.Signal
                 new ConstellationPoint(unit, -unit),
             };
 
-            return new Constellation("QPSK", 2, 2, points);
+            return new Constellation("QPSK", 2, 2, points, ModulationFamily.Psk, false);
         }
 
         /// <summary>
@@ -122,6 +146,8 @@ namespace OpenVSA.Demod.Signal
         /// <param name="name">What the format is called.</param>
         /// <param name="points">The points, in symbol order.</param>
         /// <param name="levelsPerAxis">Distinct levels on the I axis.</param>
+        /// <param name="family">Which family it belongs to; <c>Custom</c> when it is nobody's.</param>
+        /// <param name="isOffset">Whether I and Q are staggered by half a symbol.</param>
         /// <returns>The constellation.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="points"/> is null.</exception>
         /// <exception cref="ArgumentException">
@@ -129,7 +155,11 @@ namespace OpenVSA.Demod.Signal
         /// the origin.
         /// </exception>
         public static Constellation FromPoints(
-            string name, IList<ConstellationPoint> points, int levelsPerAxis)
+            string name,
+            IList<ConstellationPoint> points,
+            int levelsPerAxis,
+            ModulationFamily family = ModulationFamily.Custom,
+            bool isOffset = false)
         {
             if (points == null)
             {
@@ -181,7 +211,9 @@ namespace OpenVSA.Demod.Signal
                 name ?? string.Empty,
                 bits,
                 levelsPerAxis < 2 ? 2 : levelsPerAxis,
-                normalised);
+                normalised,
+                family,
+                isOffset);
         }
 
         /// <summary>The nearest point to a measured sample, as a symbol value.</summary>
