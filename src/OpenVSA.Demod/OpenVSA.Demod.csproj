@@ -7,6 +7,30 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      The chain's steps, its context and its signal helpers are internal: a step is defined by what
+      it does to a partly-demodulated intermediate, and that is not an API. The tests need them all
+      the same, because REQ-DEM-001's criterion is that a step executing out of the declared order
+      FAILS, and provoking that needs a step that misbehaves on purpose.
+    -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>OpenVSA.Demod.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The user help REQ-DEM-001 asks for, compiled in rather than installed beside the program: a
+      file on disk can go missing or be edited, and the test that holds the help to the declared
+      processing order has to be testing what actually ships. LogicalName fixes the resource's name
+      so it does not follow the file's path.
+    -->
+    <EmbeddedResource Include="..\..\docs\help\demodulation-processing-order.md">
+      <LogicalName>OpenVSA.Demod.Help.demodulation-processing-order.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
     <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
   </ItemGroup>
