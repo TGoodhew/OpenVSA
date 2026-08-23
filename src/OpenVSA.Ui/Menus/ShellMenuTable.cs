@@ -538,9 +538,10 @@ namespace OpenVSA.Ui.Menus
             Item("Help", "F1", "Help (F1)"),
             Item("Dynamic Help", "Ctrl+F1"),
             Off("Getting Started",
-                "No help content ships with this build. Help and Dynamic Help say so plainly " +
-                "rather than opening an empty window, which is the only honest thing an " +
-                "unwritten manual can do."),
+                "No getting-started guide is written yet. The one topic this build does carry, " +
+                "the demodulation processing order of REQ-DEM-001, is what Help (F1) and Dynamic " +
+                "Help show; naming this item after it would be naming a manual after its one " +
+                "page."),
             Off("Demos",
                 "The demonstration signals of REQ-DEM-001 are Phase 3."),
             Off("Examples",

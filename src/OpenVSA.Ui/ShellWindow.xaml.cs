@@ -23,6 +23,7 @@ using OpenVSA.Measurement.Limits;
 using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.Dialogs;
+using OpenVSA.Ui.Help;
 using OpenVSA.Ui.HotSpots;
 using OpenVSA.Dsp.Zoom;
 using OpenVSA.Ui.Layout;
@@ -1983,24 +1984,53 @@ namespace OpenVSA.Ui
         }
 
         /// <summary>
-        /// Answers the help keys (<c>REQ-UI-065</c>).
+        /// Answers the help keys (<c>REQ-UI-065</c>), showing the help this build carries.
         /// </summary>
         /// <remarks>
-        /// The bindings are reachable and they do something visible. What they cannot do yet is
-        /// show help: this build has no help content, and saying so in the status bar and the event
-        /// log is the honest answer, because a key that appears to do nothing is
-        /// indistinguishable from a binding that was never wired up.
+        /// <para>
+        /// The topic is written into the Output window and named on the status bar, which is what
+        /// Help &gt; Privacy and Help &gt; About already do. See <see cref="HelpPresentation"/> for
+        /// why it is not a window or a tool window of its own.
+        /// </para>
+        /// <para>
+        /// <strong>Dynamic Help says what it is not.</strong> Ctrl+F1 shows the same topic as F1,
+        /// because nothing here yet knows what the user is looking at. Saying so costs a line and
+        /// is the difference between a feature that is not finished and one that appears to be
+        /// broken.
+        /// </para>
         /// </remarks>
         private void ShowHelp(ShellShortcut shortcut)
         {
             LastShortcut = shortcut.Action;
 
-            string message = shortcut.Action + " is bound to " + shortcut.Gesture +
-                ", but this build carries no help content yet.";
+            bool dynamic = shortcut.Action == ShellShortcuts.DynamicHelp.Action;
 
-            StatusText.Content = message;
-            _eventLog.Append(message);
+            if (dynamic)
+            {
+                _outputLog.Append(
+                    "Dynamic Help is not context-sensitive in this build: it shows the same topic " +
+                    "as Help (F1), whatever has the focus.");
+            }
+
+            string title = HelpPresentation.Title(HelpPresentation.DefaultTopic);
+
+            _outputLog.Append(title);
+
+            foreach (string line in HelpPresentation.Lines(HelpPresentation.DefaultTopic))
+            {
+                _outputLog.Append(line);
+            }
+
+            StatusText.Content = shortcut.Action + ": " + title;
+
+            if (_toolWindows != null)
+            {
+                _toolWindows.SetOpen(ToolWindow.Output, true);
+            }
         }
+
+        /// <summary>The Output window's log, for the tests that read what was written to it.</summary>
+        internal ToolWindowLog OutputLog => _outputLog;
 
         /// <summary>
         /// Scales the shell content (<c>REQ-NFR-007a</c>, <c>REQ-UI-065</c>).

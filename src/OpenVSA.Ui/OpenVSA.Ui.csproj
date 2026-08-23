@@ -119,6 +119,7 @@
     <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
     <ProjectReference Include="..\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
     <ProjectReference Include="..\OpenVSA.Capture\OpenVSA.Capture.csproj" />
+    <ProjectReference Include="..\OpenVSA.Demod\OpenVSA.Demod.csproj" />
     <ProjectReference Include="..\OpenVSA.Measurement\OpenVSA.Measurement.csproj" />
     <ProjectReference Include="..\OpenVSA.Personality\OpenVSA.Personality.csproj" />
     <ProjectReference Include="..\OpenVSA.Api\OpenVSA.Api.csproj" />
