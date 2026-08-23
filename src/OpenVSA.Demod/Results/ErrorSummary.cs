@@ -185,14 +185,53 @@ namespace OpenVSA.Demod.Results
                 throw new ArgumentNullException(nameof(trace));
             }
 
+            return For(trace.Measured, trace.Ideal);
+        }
+
+        /// <summary>
+        /// Computes the same summary from the points alone, before there is a trace to hold them.
+        /// </summary>
+        /// <param name="measured">The measured point for each symbol.</param>
+        /// <param name="ideal">The ideal point for each symbol, in the same order.</param>
+        /// <exception cref="ArgumentNullException">A list is null.</exception>
+        /// <exception cref="ArgumentException">The lists are different lengths.</exception>
+        /// <remarks>
+        /// The demodulation chain of <c>REQ-DEM-001</c> computes its error metrics at step 13 and
+        /// generates its result traces at step 14, in that order, so at the moment the metrics are
+        /// wanted there is no <see cref="SymbolTrace"/> yet. Rather than compute EVM twice — once
+        /// here and once in whatever step 13 grew of its own — <see cref="For(SymbolTrace)"/>
+        /// delegates to this, and there is one implementation of the four metrics the geometry
+        /// supports.
+        /// </remarks>
+        public static ErrorSummary For(
+            IReadOnlyList<ConstellationPoint> measured, IReadOnlyList<ConstellationPoint> ideal)
+        {
+            if (measured == null)
+            {
+                throw new ArgumentNullException(nameof(measured));
+            }
+
+            if (ideal == null)
+            {
+                throw new ArgumentNullException(nameof(ideal));
+            }
+
+            if (measured.Count != ideal.Count)
+            {
+                throw new ArgumentException(
+                    "There are " + measured.Count + " measured points and " + ideal.Count +
+                    " ideal ones. A metric is a comparison, so they come in pairs.",
+                    nameof(measured));
+            }
+
             var summary = new ErrorSummary();
 
-            if (trace.SymbolCount == 0)
+            if (measured.Count == 0)
             {
                 return summary;
             }
 
-            double reference = ReferencePower(trace);
+            double reference = ReferencePower(ideal);
 
             double errorSquared = 0.0;
             double magSquared = 0.0;
@@ -209,11 +248,12 @@ namespace OpenVSA.Demod.Results
             double offsetI = 0.0;
             double offsetQ = 0.0;
 
-            for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
+            for (int symbol = 0; symbol < measured.Count; symbol++)
             {
-                ConstellationPoint measured = trace.Measured[symbol];
-                ConstellationPoint ideal = trace.Ideal[symbol];
-                ConstellationPoint error = trace.ErrorAt(symbol);
+                ConstellationPoint point = measured[symbol];
+                ConstellationPoint idealPoint = ideal[symbol];
+                var error = new ConstellationPoint(
+                    point.I - idealPoint.I, point.Q - idealPoint.Q);
 
                 double magnitude = Math.Sqrt(error.I * error.I + error.Q * error.Q) / reference;
 
@@ -225,8 +265,11 @@ namespace OpenVSA.Demod.Results
                     worstErrorAt = symbol;
                 }
 
-                double idealMagnitude = Math.Sqrt(ideal.I * ideal.I + ideal.Q * ideal.Q);
-                double measuredMagnitude = Math.Sqrt(measured.I * measured.I + measured.Q * measured.Q);
+                double idealMagnitude = Math.Sqrt(
+                    (idealPoint.I * idealPoint.I) +
+                    (idealPoint.Q * idealPoint.Q));
+
+                double measuredMagnitude = Math.Sqrt((point.I * point.I) + (point.Q * point.Q));
 
                 double magError = idealMagnitude < 1e-12
                     ? 0.0
@@ -241,7 +284,8 @@ namespace OpenVSA.Demod.Results
                 }
 
                 double phaseError = Wrap(
-                    Math.Atan2(measured.Q, measured.I) - Math.Atan2(ideal.Q, ideal.I)) *
+                    Math.Atan2(point.Q, point.I) -
+                    Math.Atan2(idealPoint.Q, idealPoint.I)) *
                     180.0 / Math.PI;
 
                 phaseSquared += phaseError * phaseError;
@@ -256,7 +300,7 @@ namespace OpenVSA.Demod.Results
                 offsetQ += error.Q;
             }
 
-            int count = trace.SymbolCount;
+            int count = measured.Count;
 
             summary.Add(new ErrorMetric(
                 "EVM", "%rms", Math.Sqrt(errorSquared / count) * 100.0, worstError * 100.0, worstErrorAt));
@@ -395,16 +439,16 @@ namespace OpenVSA.Demod.Results
         private static string Significant(double value) =>
             value.ToString("G7", CultureInfo.InvariantCulture);
 
-        private static double ReferencePower(SymbolTrace trace)
+        private static double ReferencePower(IReadOnlyList<ConstellationPoint> ideal)
         {
             double sum = 0.0;
 
-            foreach (ConstellationPoint ideal in trace.Ideal)
+            foreach (ConstellationPoint point in ideal)
             {
-                sum += ideal.I * ideal.I + ideal.Q * ideal.Q;
+                sum += (point.I * point.I) + (point.Q * point.Q);
             }
 
-            double rms = Math.Sqrt(sum / trace.SymbolCount);
+            double rms = Math.Sqrt(sum / ideal.Count);
 
             return rms < 1e-12 ? 1.0 : rms;
         }
