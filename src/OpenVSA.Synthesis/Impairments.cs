@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace OpenVSA.TestHarness.Synthesis
+namespace OpenVSA.Synthesis
 {
     /// <summary>
     /// The impairments <c>REQ-SIM-002</c> requires, injected independently and quantitatively.

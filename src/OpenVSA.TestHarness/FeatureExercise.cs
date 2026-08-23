@@ -19,6 +19,7 @@ using OpenVSA.Measurement.Markers;
 using OpenVSA.Measurement.State;
 using OpenVSA.Demod.Results;
 using OpenVSA.Personality;
+using OpenVSA.Synthesis;
 using OpenVSA.TestHarness.Synthesis;
 
 namespace OpenVSA.TestHarness

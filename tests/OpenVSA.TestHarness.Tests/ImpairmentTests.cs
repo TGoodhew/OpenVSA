@@ -1,5 +1,5 @@
 using System;
-using OpenVSA.TestHarness.Synthesis;
+using OpenVSA.Synthesis;
 using Xunit;
 using Xunit.Abstractions;
 

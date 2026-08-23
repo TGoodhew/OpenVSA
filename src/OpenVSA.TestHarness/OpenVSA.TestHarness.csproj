@@ -16,6 +16,7 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+    <ProjectReference Include="..\OpenVSA.Synthesis\OpenVSA.Synthesis.csproj" />
     <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
     <ProjectReference Include="..\OpenVSA.Hal.Visa\OpenVSA.Hal.Visa.csproj" />
     <ProjectReference Include="..\OpenVSA.Capture\OpenVSA.Capture.csproj" />

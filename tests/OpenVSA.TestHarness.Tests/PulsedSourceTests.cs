@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using OpenVSA.TestHarness.Synthesis;
+using OpenVSA.Synthesis;
 using Xunit;
 using Xunit.Abstractions;
 

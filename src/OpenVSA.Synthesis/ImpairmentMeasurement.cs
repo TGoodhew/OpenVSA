@@ -1,6 +1,6 @@
 using System;
 
-namespace OpenVSA.TestHarness.Synthesis
+namespace OpenVSA.Synthesis
 {
     /// <summary>
     /// Recovers each injected impairment from the samples, without demodulating

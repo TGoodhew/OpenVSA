@@ -8,6 +8,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenVSA.Core\OpenVSA.Core.csproj" />
+
+    <!--
+      REQ-SIM-001: "SimulatedFrontEnd shall generate IQ for any modulation format supported by the
+      demodulator". The generator that does it lives in OpenVSA.Synthesis, which references
+      OpenVSA.Core and nothing else, so this reference puts no analysis assembly underneath a
+      transport, which is what kept the two apart until now.
+    -->
+    <ProjectReference Include="..\OpenVSA.Synthesis\OpenVSA.Synthesis.csproj" />
     <ProjectReference Include="..\OpenVSA.Hal\OpenVSA.Hal.csproj" />
   </ItemGroup>
 

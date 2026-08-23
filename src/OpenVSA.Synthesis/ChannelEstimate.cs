@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 
-namespace OpenVSA.TestHarness.Synthesis
+namespace OpenVSA.Synthesis
 {
     /// <summary>
     /// A tapped-delay-line channel recovered from the samples, with the confidence that it could be
