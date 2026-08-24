@@ -298,6 +298,31 @@ namespace OpenVSA.Demod.Chain
                 ReferenceFilterCutoff,
                 ReferenceFilterTaps);
 
+        /// <summary>
+        /// Whether the input spectrum is conjugated before anything else (<c>REQ-DEM-035</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Conjugating a complex waveform mirrors its spectrum about the centre: a tone at +f
+        /// appears at −f. Required for signals that arrive the wrong way round — a vestigial-sideband
+        /// signal with a high-side pilot, or any down-conversion with an odd number of high-side
+        /// mixes.
+        /// </para>
+        /// <para>
+        /// <strong>Applied at step 1, before anything reads the waveform.</strong> Anywhere later
+        /// and some estimate would have been made on the un-mirrored signal and carried forward; at
+        /// step 1 the rest of the chain simply sees the signal the right way round and needs to know
+        /// nothing about it.
+        /// </para>
+        /// <para>
+        /// <strong>It is its own inverse</strong>, so switching it on twice is switching it off —
+        /// which is a property worth a test rather than a comment, because it is the cheapest
+        /// possible check that the operation is a conjugation and not something that merely looks
+        /// like one.
+        /// </para>
+        /// </remarks>
+        public bool MirrorSpectrum { get; set; }
+
         /// <summary>Whether step 2 runs.</summary>
         public bool BurstSearchEnabled { get; set; }
 
