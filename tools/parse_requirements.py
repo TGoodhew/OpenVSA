@@ -1,7 +1,17 @@
 """Parse requirements/OpenVSA-Requirements.md into a JSON list of requirement records.
 
 Emits tools/requirements.json with one record per REQ-<AREA>-<nnn> definition.
-Not part of the product build; a one-off authoring aid for GitHub issue creation.
+Not part of the product build; an authoring aid, and the input create_issues.py and
+sync_issues.py reconcile the backlog from.
+
+    python tools/parse_requirements.py            regenerate the register
+    python tools/parse_requirements.py --check    fail if the register is out of date
+
+--check exists because the register is a GENERATED FILE THAT IS COMMITTED, which is a shape that
+rots quietly: CI regenerated it into the runner's working copy and then checked something else,
+so the committed copy could disagree with the specification indefinitely and nothing would say
+so. It did -- by 83 lines, for the better part of a month, including an acceptance-criterion
+edit -- and the tools that build the backlog read the committed copy.
 """
 import json
 import os
@@ -244,7 +254,9 @@ def short_title(text):
     return t
 
 
-def main():
+def main(argv=None):
+    check_only = "--check" in (argv or sys.argv[1:])
+
     with open(DOC, encoding="utf-8") as fh:
         lines = fh.read().split("\n")
 
@@ -334,8 +346,34 @@ def main():
         print("ERROR: RETIRED names requirements that are defined after all:", revived)
         return 1
 
-    with open(OUT, "w", encoding="utf-8") as fh:
-        json.dump(records, fh, indent=1, ensure_ascii=False)
+    rendered = json.dumps(records, indent=1, ensure_ascii=False)
+
+    if check_only:
+        try:
+            with open(OUT, encoding="utf-8") as fh:
+                committed = fh.read()
+        except IOError:
+            print("ERROR: tools/requirements.json is missing. Run this script without --check.")
+            return 1
+
+        if committed != rendered:
+            print(
+                "ERROR: tools/requirements.json is out of date with "
+                "requirements/OpenVSA-Requirements.md.")
+            print(
+                "       The specification has been edited since the register was last "
+                "generated, so create_issues.py and sync_issues.py would work from a stale "
+                "copy of it.")
+            print("       Run: python tools/parse_requirements.py   and commit the result.")
+
+            _report_drift(committed, records)
+
+            return 1
+
+        print("tools/requirements.json is current with the specification.")
+    else:
+        with open(OUT, "w", encoding="utf-8") as fh:
+            fh.write(rendered)
 
     areas = {}
     pris = {}
@@ -359,6 +397,46 @@ def main():
     print("mentioned but never defined ({}):".format(len(missing)))
     for rid in missing:
         print("   ", rid)
+
+
+def _report_drift(committed, records):
+    """Says which requirements differ, rather than only that something does."""
+    try:
+        was = {r["id"]: r for r in json.loads(committed)}
+    except ValueError:
+        print("       The committed register is not readable as JSON.")
+        return
+
+    now = {r["id"]: r for r in records}
+
+    added = sorted(set(now) - set(was))
+    removed = sorted(set(was) - set(now))
+
+    # Line numbers move whenever anything above them is edited, so a register that differs only
+    # in those is stale in a way nobody needs listing requirement by requirement.
+    changed = sorted(
+        rid for rid in set(was) & set(now)
+        if {k: v for k, v in was[rid].items() if k != "line"} !=
+           {k: v for k, v in now[rid].items() if k != "line"})
+
+    moved = sorted(
+        rid for rid in set(was) & set(now)
+        if was[rid].get("line") != now[rid].get("line"))
+
+    if added:
+        print("       added ({}): {}".format(len(added), ", ".join(added)))
+
+    if removed:
+        print("       removed ({}): {}".format(len(removed), ", ".join(removed)))
+
+    if changed:
+        print("       changed ({}): {}".format(len(changed), ", ".join(changed)))
+
+    if moved and not (added or removed or changed):
+        print("       {} requirement(s) moved in the document; nothing else "
+              "differs.".format(len(moved)))
+    elif moved:
+        print("       and {} moved in the document.".format(len(moved)))
 
 
 if __name__ == "__main__":

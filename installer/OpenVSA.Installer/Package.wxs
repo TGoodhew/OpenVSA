@@ -12,10 +12,20 @@
       nothing here that could legally or usefully be redistributed. Detected below and warned
       about, never blocked — REQ-NFR-032 requires OpenVSA to run with no VISA installed at all.
 
-    * Any Syncfusion licence key. The key is a build-time credential injected by
-      /p:EmbedSyncfusionLicenseKey=true and it never reaches source control or an installer input.
-      local.secrets.config is excluded by name below, because a developer machine may well have
-      one sitting in the payload directory and harvesting it would ship that developer's key.
+    * Any Syncfusion licence key AS A FILE. Read the next paragraph before repeating the shorter
+      claim: this package does carry a key, inside a binary.
+
+      A release build compiles the key into OpenVSA.exe as a constant, from
+      /p:EmbedSyncfusionLicenseKey=true and the SYNCFUSION_LICENSE_KEY in that build's
+      environment, so the executable this installer bundles contains it and it can be recovered
+      from the shipped MSI with a regular expression. That is Syncfusion's own distribution
+      model (a shipped application carries a registered key) and it is deliberate; see the
+      remarks on GenerateSyncfusionLicenseKey in OpenVSA.Ui.csproj.
+
+      What is true, and what this exclusion is about, is that no key ships as a FILE and none
+      reaches source control. local.secrets.config is excluded by name below, because a developer
+      machine may well have one sitting in the payload directory and harvesting it would ship
+      that developer's key rather than the build's.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
