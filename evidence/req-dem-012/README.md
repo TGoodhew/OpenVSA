@@ -76,6 +76,23 @@ The chain prefers the alignment nearest the one step 7 nominated, and by a facto
 a rounding error. That buys repeatability — the same signal measured twice gives the same
 constellation rather than one turned by a quarter — and it resolves nothing.
 
+## 🔴 CORRECTED 24 August 2026 — the 50.10 % figures below were an artefact
+
+The differential cases are reported here as scoring **50.10 %**, "exactly chance". That number came
+from the harness, not from the signal: `BitStreamAlignment.Find` was asked to search one rotation for
+a differential stream by passing a *state count* of one, which also collapsed every symbol to zero in
+the bit extraction, and a stream of zeroes scores about half against anything. The tell is visible in
+the tables below — **"best 50.10 % against a typical 50.10 %"**, the best and the typical being equal
+because every candidate reading was the same one.
+
+Corrected, those cases read **74.95 %** and **66.60 %**: the Gray-versus-natural mismatch, which for
+two bits is 75 % and for three is 66.7 %.
+
+**The conclusions on this page stand**, because none of them rested on that number — they came from
+the relabelling analyser, which does not go through the broken path, and they were confirmed a second
+way once `REQ-DEM-011` could apply a Gray labelling: the same signals then returned 1022 and 1533
+bits of 1022 and 1533. See `../req-dem-011/README.md`.
+
 ## Against the bench, 24 August 2026
 
 `OpenVSA.Verify --demod-check`, E4438C into E4406A at 500 ksym/s, root raised cosine α = 0.35, PN9

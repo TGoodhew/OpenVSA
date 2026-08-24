@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using OpenVSA.Core;
 using OpenVSA.Demod.Chain;
+using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
 using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
@@ -342,6 +343,50 @@ namespace OpenVSA.Measurement.State
         /// </remarks>
         public int PointsPerSymbol { get; set; } = 4;
 
+        /// <summary>Which bits the constellation's points carry (<c>REQ-DEM-011</c>).</summary>
+        /// <remarks>
+        /// Defaults to <see cref="BitMapping.Natural"/>, which is what every format in this
+        /// catalogue meant before the choice existed and therefore what a version 3 state file
+        /// implies. <see cref="BitMappingTable"/> supplies the table when this is
+        /// <see cref="BitMapping.Explicit"/>.
+        /// </remarks>
+        public BitMapping BitMapping { get; set; } = BitMapping.Natural;
+
+        /// <summary>
+        /// What each point carries, when <see cref="BitMapping"/> is
+        /// <see cref="BitMapping.Explicit"/> (<c>REQ-DEM-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// Empty for the other mappings, and empty by default: a state's members all have defaults,
+        /// per <c>REQ-STA-005</c>, and the default of a table nobody supplied is no table rather
+        /// than a table of zeroes — which would be a labelling that sends every point to the same
+        /// value, and is refused when applied.
+        /// </remarks>
+        public List<int> BitMappingTable { get; set; } = new List<int>();
+
+        /// <summary>
+        /// The rings a user-defined constellation is built from (<c>REQ-DEM-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Read only when <see cref="Format"/> names no catalogue format, which is how a state says
+        /// "this one is mine". Empty by default, and empty is what a state file written before
+        /// <c>REQ-DEM-011</c> has.
+        /// </para>
+        /// <para>
+        /// <strong>Rings and points are alternatives, not layers.</strong> A definition is one or
+        /// the other; a state holding both is refused rather than silently preferring one, because
+        /// which one it preferred would decide what was measured.
+        /// </para>
+        /// </remarks>
+        public List<ApskRingState> CustomRings { get; set; } = new List<ApskRingState>();
+
+        /// <summary>
+        /// The explicit points a user-defined constellation is built from (<c>REQ-DEM-011</c>).
+        /// </summary>
+        public List<ConstellationPointState> CustomPoints { get; set; } =
+            new List<ConstellationPointState>();
+
         /// <summary>What a symbol's bits are read against (<c>REQ-DEM-012</c>).</summary>
         /// <remarks>
         /// <para>
@@ -409,7 +454,7 @@ namespace OpenVSA.Measurement.State
         {
             var settings = new DemodSettings
             {
-                Constellation = Constellation.ByName(Format),
+                Constellation = Labelled(Resolve()),
                 DifferentialReference = DifferentialReference,
                 MeasurementFilter = MeasurementFilter,
                 SymbolRateHz = SymbolRateHz,
@@ -429,10 +474,147 @@ namespace OpenVSA.Measurement.State
             return settings;
         }
 
+        /// <summary>
+        /// The constellation this state describes: a catalogue format, or the user's own.
+        /// </summary>
+        /// <returns>The constellation, before its labelling is applied.</returns>
+        /// <exception cref="ArgumentException">
+        /// The definition is both rings and points, or neither and the format is not one this build
+        /// knows.
+        /// </exception>
+        /// <remarks>
+        /// A definition present at all is what makes the format a user-defined one, so a state that
+        /// carries one is not consulted for a catalogue name — otherwise a file naming <c>QPSK</c>
+        /// and carrying four rings would measure one of them, and which would depend on the order
+        /// the two were read in.
+        /// </remarks>
+        private Constellation Resolve()
+        {
+            bool rings = CustomRings != null && CustomRings.Count > 0;
+            bool points = CustomPoints != null && CustomPoints.Count > 0;
+
+            if (rings && points)
+            {
+                throw new ArgumentException(
+                    "A user-defined constellation is either rings or points, and this state has " +
+                    CustomRings.Count + " ring(s) and " + CustomPoints.Count + " point(s). " +
+                    "Whichever was preferred would decide what was measured, so neither is.");
+            }
+
+            if (rings)
+            {
+                var specification = new List<Constellation.ApskRing>(CustomRings.Count);
+
+                foreach (ApskRingState ring in CustomRings)
+                {
+                    specification.Add(
+                        new Constellation.ApskRing(
+                            ring.Radius,
+                            ring.Points,
+                            ring.PhaseDegrees * Math.PI / 180.0));
+                }
+
+                return Constellation.Apsk(Format, specification);
+            }
+
+            if (points)
+            {
+                var list = new List<ConstellationPoint>(CustomPoints.Count);
+                var ordered = new List<ConstellationPointState>(CustomPoints);
+
+                // The requirement's point list is (I, Q, symbol value), so the order a file happens
+                // to hold them in is not the order they mean. Sorted by the value each one carries,
+                // which is what Constellation indexes by.
+                ordered.Sort((first, second) => first.Symbol.CompareTo(second.Symbol));
+
+                for (int index = 0; index < ordered.Count; index++)
+                {
+                    if (ordered[index].Symbol != index)
+                    {
+                        throw new ArgumentException(
+                            "A point list gives every symbol value from 0 to " +
+                            (ordered.Count - 1) + " exactly once; this one has " +
+                            ordered[index].Symbol + " where " + index + " should be.");
+                    }
+
+                    list.Add(new ConstellationPoint(ordered[index].I, ordered[index].Q));
+                }
+
+                return Constellation.FromPoints(Format, list, LevelsIn(list));
+            }
+
+            return Constellation.ByName(Format);
+        }
+
+        /// <summary>Applies this state's labelling to a constellation.</summary>
+        private Constellation Labelled(Constellation constellation)
+        {
+            if (BitMapping == BitMapping.Explicit)
+            {
+                return constellation.WithMapping(
+                    BitMappingTable ?? new List<int>());
+            }
+
+            return constellation.WithMapping(BitMapping);
+        }
+
+        /// <summary>Distinct levels on the I axis, counted from the points.</summary>
+        /// <remarks>
+        /// Counted rather than declared, for the reason <c>REQ-DEM-010</c>'s catalogue counts them:
+        /// an eight-point ring has five distinct cosines and not eight, and a declared number was
+        /// wrong the one time it was declared.
+        /// </remarks>
+        private static int LevelsIn(IList<ConstellationPoint> points)
+        {
+            var levels = new HashSet<double>();
+
+            foreach (ConstellationPoint point in points)
+            {
+                levels.Add(Math.Round(point.I, 6));
+            }
+
+            return levels.Count;
+        }
+
         /// <inheritdoc />
         public override string ToString() =>
             Format + " at " + SymbolRateHz.ToString("G6", CultureInfo.InvariantCulture) +
             " symbols/s, " + ResultLengthSymbols.ToString(CultureInfo.InvariantCulture) + " symbols";
+    }
+
+    /// <summary>One ring of a user-defined constellation, as a state file holds it.</summary>
+    /// <remarks>
+    /// Degrees rather than radians, because a state file is meant to be read and edited by a person
+    /// (<c>REQ-STA-003</c>) and nobody writes a ring offset as 0.7853981633974483.
+    /// </remarks>
+    public sealed class ApskRingState
+    {
+        /// <summary>The ring's radius, in the same arbitrary units as the other rings.</summary>
+        public double Radius { get; set; } = 1.0;
+
+        /// <summary>How many points are spaced evenly around it.</summary>
+        public int Points { get; set; } = 4;
+
+        /// <summary>Where its first point sits, anticlockwise from the I axis, in degrees.</summary>
+        public double PhaseDegrees { get; set; }
+    }
+
+    /// <summary>One point of a user-defined constellation, as a state file holds it.</summary>
+    /// <remarks>
+    /// <c>REQ-DEM-011</c>'s point list is <em>(I, Q, symbol value)</em> — the value is carried with
+    /// the coordinates rather than implied by the position in the file, so that a list can be
+    /// reordered, diffed and merged without changing what it means.
+    /// </remarks>
+    public sealed class ConstellationPointState
+    {
+        /// <summary>The in-phase coordinate.</summary>
+        public double I { get; set; }
+
+        /// <summary>The quadrature coordinate.</summary>
+        public double Q { get; set; }
+
+        /// <summary>Which symbol value sits here.</summary>
+        public int Symbol { get; set; }
     }
 
     /// <summary>

@@ -58,10 +58,18 @@ namespace OpenVSA.Demod.Chain.Steps
 
             for (int symbol = 0; symbol < data.Length; symbol++)
             {
-                int[] carried = constellation.BitsOf(data[symbol]);
+                // The plain binary of the value, NOT Constellation.BitsOf: that takes a point and
+                // applies the labelling, and these have been through it already. Sending them
+                // through twice would compose the mapping with itself — which for the natural one
+                // is invisible, for Gray is a different labelling nobody chose, and for an explicit
+                // table is nonsense.
+                int value = data[symbol];
 
-                Array.Copy(
-                    carried, 0, bits, symbol * constellation.BitsPerSymbol, carried.Length);
+                for (int bit = 0; bit < constellation.BitsPerSymbol; bit++)
+                {
+                    bits[(symbol * constellation.BitsPerSymbol) + bit] =
+                        (value >> (constellation.BitsPerSymbol - 1 - bit)) & 1;
+                }
             }
 
             context.Symbols = symbols;
@@ -77,12 +85,28 @@ namespace OpenVSA.Demod.Chain.Steps
         /// <param name="constellation">What they were decided against.</param>
         /// <param name="differentially">Whether the bits are the change rather than the symbol.</param>
         /// <returns>One symbol value per symbol of data.</returns>
+        /// <remarks>
+        /// <strong>Two steps, and the order of them matters.</strong> The difference is taken
+        /// between <em>points</em>, because it is a change of phase; the labelling is applied to the
+        /// difference, because that is what the signal carried. Applying the labels first and
+        /// subtracting afterwards would subtract two Gray codes, which is not a phase change and not
+        /// anything else either. The bench settles that it is this way round: an E4438C's D8PSK is
+        /// recovered symbol for symbol when the difference of the points is labelled with a Gray
+        /// code, and not otherwise.
+        /// </remarks>
         private static int[] Carried(
             int[] symbols, Constellation constellation, bool differentially)
         {
             if (!differentially)
             {
-                return symbols;
+                var absolute = new int[symbols.Length];
+
+                for (int symbol = 0; symbol < symbols.Length; symbol++)
+                {
+                    absolute[symbol] = constellation.CarriedBy(symbols[symbol]);
+                }
+
+                return absolute;
             }
 
             if (symbols.Length < 2)
@@ -94,8 +118,8 @@ namespace OpenVSA.Demod.Chain.Steps
 
             for (int symbol = 1; symbol < symbols.Length; symbol++)
             {
-                data[symbol - 1] =
-                    constellation.DifferenceFrom(symbols[symbol], symbols[symbol - 1]);
+                data[symbol - 1] = constellation.CarriedBy(
+                    constellation.DifferenceFrom(symbols[symbol], symbols[symbol - 1]));
             }
 
             return data;
