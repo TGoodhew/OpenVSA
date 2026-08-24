@@ -64,6 +64,7 @@ namespace OpenVSA.Ui
         private Button _fullSpanButton;
 
         private MeasurementKind _measurementKind = MeasurementKind.Spectrum;
+        private MenuItem _demodulationTypeItem;
 
         private StimulusRegistry _stimulusRegistry;
         private SourceControlWindow _sourceControl;
@@ -230,6 +231,11 @@ namespace OpenVSA.Ui
                 case "Analysis > Type > Spectrum":
                     return _spectrumTypeItem = Ticked(
                         true, (sender, e) => ChooseMeasurementKind(MeasurementKind.Spectrum));
+
+                case "Analysis > Type > Digital Demodulation":
+                    return _demodulationTypeItem = Ticked(
+                        false,
+                        (sender, e) => ChooseMeasurementKind(MeasurementKind.DigitalDemodulation));
 
                 // ---- Trace --------------------------------------------------------------------
                 case "Trace > Trace List":
@@ -1363,7 +1369,16 @@ namespace OpenVSA.Ui
                 : "The " + what + " needs an instrument: choose one under Hardware > Instruments….";
         }
 
-        /// <summary>Chooses what kind of measurement this is.</summary>
+        /// <summary>
+        /// Chooses what kind of measurement this is (<c>REQ-UI-061</c> Analysis &gt; Type).
+        /// </summary>
+        /// <param name="kind">The type chosen.</param>
+        /// <remarks>
+        /// The ticks are set from the chosen kind rather than toggled by the click, so the two items
+        /// cannot both end up ticked and a second click on the one already chosen leaves it ticked
+        /// rather than turning the measurement off. What the choice then means is
+        /// <c>ApplyMeasurementKind</c>'s, which puts it on the active context.
+        /// </remarks>
         private void ChooseMeasurementKind(MeasurementKind kind)
         {
             _measurementKind = kind;
@@ -1373,9 +1388,14 @@ namespace OpenVSA.Ui
                 _spectrumTypeItem.IsChecked = kind == MeasurementKind.Spectrum;
             }
 
+            if (_demodulationTypeItem != null)
+            {
+                _demodulationTypeItem.IsChecked = kind == MeasurementKind.DigitalDemodulation;
+            }
+
             SelectPersonality(null);
 
-            StatusText.Content = "Measurement type: " + kind;
+            ApplyMeasurementKind(kind);
         }
 
         /// <summary>

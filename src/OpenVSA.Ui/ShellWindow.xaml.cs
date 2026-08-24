@@ -286,6 +286,12 @@ namespace OpenVSA.Ui
             // it reads two other fields, and repointed by ActivateContext from then on.
             _markers = _contextSet.Active.Markers.ForTrace('A');
             _contextAnalyser = new ContextAnalyser(_contextSet) { Primary = _contextSet.Active };
+
+            // The demodulation leg of the same contexts (REQ-DEM-001). Subscribed here rather than
+            // when a measurement type is chosen: a context's kind changes while it is running, and
+            // subscribing at that moment would mean the first result after the change arrived at
+            // nobody.
+            WatchForResults();
             _automation = new OpenVSA.Api.VsaApplication(_contextSet);
 
             _registry = FrontEndRegistry.CreateDefault();
@@ -2031,6 +2037,9 @@ namespace OpenVSA.Ui
 
         /// <summary>The Output window's log, for the tests that read what was written to it.</summary>
         internal ToolWindowLog OutputLog => _outputLog;
+
+        /// <summary>The Event Log window's log, for the tests that read what was written to it.</summary>
+        internal ToolWindowLog EventLog => _eventLog;
 
         /// <summary>
         /// Scales the shell content (<c>REQ-NFR-007a</c>, <c>REQ-UI-065</c>).
@@ -3785,6 +3794,13 @@ namespace OpenVSA.Ui
         {
             ApplicationState state = ApplicationState.Default(_contextSet.Active.Name);
             MeasurementState measurement = state.Measurements[0];
+
+            // What the controls do not hold, carried from the context rather than reset to a
+            // default: the measurement's kind and the demodulator's settings have no box in the
+            // Measurement pane, and rebuilding the setup from the controls alone would turn a
+            // demodulating context back into a spectrum one every time it was captured.
+            measurement.Kind = _contextSet.Active.Setup.Kind;
+            measurement.Demod = _contextSet.Active.Setup.Demod;
 
             double parsed;
 
