@@ -101,6 +101,17 @@ namespace OpenVSA.Demod.Chain
         public SymbolTrace Trace { get; }
 
         /// <summary>
+        /// The waveform quality factor (<c>REQ-DEM-068</c>), or <c>NaN</c> when there was nothing to
+        /// compute it from.
+        /// </summary>
+        /// <remarks>
+        /// One for a perfect match and never more. It is not a row of <see cref="Summary"/> because
+        /// <c>REQ-UI-053</c> fixes the label set and rho is not in it; where it belongs on screen is
+        /// <c>REQ-DEM-070</c>'s question.
+        /// </remarks>
+        public double Rho => Summary == null ? double.NaN : Summary.Rho;
+
+        /// <summary>
         /// Whether the demodulation locked, and what the signal says about why it did not
         /// (<c>REQ-DEM-036</c>).
         /// </summary>

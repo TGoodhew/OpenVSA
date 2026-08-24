@@ -27,14 +27,36 @@ namespace OpenVSA.Demod.Chain
             double offsetQ,
             double gainImbalanceDb,
             double quadratureSkewDegrees,
-            double amplitudeDroopDbPerSymbol)
+            double amplitudeDroopDbPerSymbol,
+            double residualRotationDegrees)
         {
             OffsetI = offsetI;
             OffsetQ = offsetQ;
             GainImbalanceDb = gainImbalanceDb;
             QuadratureSkewDegrees = quadratureSkewDegrees;
             AmplitudeDroopDbPerSymbol = amplitudeDroopDbPerSymbol;
+            ResidualRotationDegrees = residualRotationDegrees;
         }
+
+        /// <summary>
+        /// What the impairment fit found left over as a rotation, in degrees
+        /// (<c>REQ-DEM-067a</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>This is the number that says the skew and the carrier phase were separated.</strong>
+        /// Step 8 estimates and removes the carrier phase; step 12 then fits a general affine map
+        /// and splits it into a rotation, two gains and a symmetric skew. On a signal whose only
+        /// impairment is quadrature skew this comes out near zero, because the symmetric model has
+        /// no rotational component for step 8 to have absorbed.
+        /// </para>
+        /// <para>
+        /// A one-sided shear model would put half the skew here instead, and
+        /// <see cref="QuadratureSkewDegrees"/> would be short by the same amount — which is the
+        /// failure <c>REQ-DEM-067a</c> is written against and what its test looks for.
+        /// </para>
+        /// </remarks>
+        public double ResidualRotationDegrees { get; }
 
         /// <summary>The in-phase part of the origin offset, in the constellation's units.</summary>
         public double OffsetI { get; }

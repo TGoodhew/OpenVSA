@@ -31,6 +31,9 @@
     <EmbeddedResource Include="..\..\docs\help\demodulation-filters.md">
       <LogicalName>OpenVSA.Demod.Help.demodulation-filters.md</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\..\docs\help\demodulation-error-metrics.md">
+      <LogicalName>OpenVSA.Demod.Help.demodulation-error-metrics.md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

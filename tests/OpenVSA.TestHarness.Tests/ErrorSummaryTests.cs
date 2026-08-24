@@ -150,7 +150,7 @@ namespace OpenVSA.TestHarness.Tests
                 _output.WriteLine(row);
             }
 
-            Assert.Equal(4, rows.Count);
+            Assert.Equal(5, rows.Count);
 
             // Each row has the shape the model shows: label, = at its column, a value with a unit.
             foreach (string row in rows)
@@ -162,11 +162,19 @@ namespace OpenVSA.TestHarness.Tests
             Assert.StartsWith("Mag Err", rows[1]);
             Assert.StartsWith("Phase Err", rows[2]);
             Assert.StartsWith("IQ Offset", rows[3]);
+            Assert.StartsWith("SNR (MER)", rows[4]);
 
-            // Every label the summary produces is one the requirement lists.
+            // Every label the summary produces is one the analyser can show.
+            //
+            // 🔴 Against MetricApplicability's list and not ErrorSummary.Labels, and the two are not
+            // the same list. ErrorSummary.Labels is REQ-UI-053's, which is the layout model given by
+            // a real analyser of this family; MetricApplicability's is every row this analyser has a
+            // metric for. They differ in both directions on purpose: REQ-UI-053 lists "EVM Pk",
+            // which is a column of the EVM row rather than a row of its own, and REQ-DEM-069 adds
+            // "SNR (MER)", which REQ-UI-053's model did not show.
             foreach (ErrorMetric metric in summary.Metrics)
             {
-                Assert.Contains(metric.Label, ErrorSummary.Labels);
+                Assert.Contains(metric.Label, MetricApplicability.AllLabels);
             }
         }
 

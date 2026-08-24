@@ -108,6 +108,25 @@ namespace OpenVSA.Demod.Results
         public const int EqualsColumn = 11;
 
         /// <summary>
+        /// What an origin offset of nothing at all is reported as, in decibels
+        /// (<c>REQ-DEM-066</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The requirement asks for "minus infinity dB (or the stated floor) rather than a large
+        /// negative artefact", and this is the stated floor. Minus two hundred: no real measurement
+        /// reaches minus eighty, so nothing can be mistaken for a reading, and it is a number rather
+        /// than an infinity, so it renders, sorts and serialises like every other row.
+        /// </para>
+        /// <para>
+        /// The artefact the requirement is guarding against is the other behaviour — an offset of
+        /// exactly zero put through a logarithm gives whatever the last bits of the arithmetic
+        /// happened to leave, and minus 137.4 dB reads like a measurement of something.
+        /// </para>
+        /// </remarks>
+        public const double NoOriginOffsetDb = -200.0;
+
+        /// <summary>
         /// The row labels of <c>REQ-UI-053</c>, exactly as it lists them.
         /// </summary>
         /// <remarks>
@@ -237,6 +256,32 @@ namespace OpenVSA.Demod.Results
         public EvmReference Reference { get; private set; }
 
         /// <summary>
+        /// The waveform quality factor (<c>REQ-DEM-068</c>), or <c>NaN</c> when there was nothing
+        /// to compute it from.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The normalised correlated power between the measured and reference symbols,
+        /// <c>|sum z r*|^2 / ((sum |z|^2)(sum |r|^2))</c>: one for a perfect match and never more,
+        /// by Cauchy and Schwarz.
+        /// </para>
+        /// <para>
+        /// <strong>A property rather than a row.</strong> <c>REQ-UI-053</c> fixes the label set the
+        /// error summary shows and rho is not in it; where it belongs on screen is
+        /// <c>REQ-DEM-070</c>'s question, since rho is a format-specific figure in the standards
+        /// that use it. It is computed here because this is where the two symbol sets meet.
+        /// </para>
+        /// <para>
+        /// <strong>It is invariant to a common scale and a common rotation of the measured
+        /// symbols</strong>, which is what makes it a statement about waveform quality rather than
+        /// about amplitude: multiplying every <c>z</c> by any non-zero complex number leaves it
+        /// unchanged, because the numerator and the denominator both scale by the same
+        /// <c>|a|^2</c>.
+        /// </para>
+        /// </remarks>
+        public double Rho { get; private set; } = double.NaN;
+
+        /// <summary>
         /// Computes the same summary from the points alone, before there is a trace to hold them.
         /// </summary>
         /// <param name="measured">The measured point for each symbol.</param>
@@ -330,6 +375,14 @@ namespace OpenVSA.Demod.Results
             double offsetI = 0.0;
             double offsetQ = 0.0;
 
+            // REQ-DEM-068 and REQ-DEM-069 read from the same pass: the correlation between the two
+            // symbol sets, and the two energies it is normalised by.
+            double correlationI = 0.0;
+            double correlationQ = 0.0;
+            double measuredEnergy = 0.0;
+            double idealEnergy = 0.0;
+            double errorEnergy = 0.0;
+
             for (int symbol = 0; symbol < measured.Count; symbol++)
             {
                 ConstellationPoint point = measured[symbol];
@@ -390,6 +443,15 @@ namespace OpenVSA.Demod.Results
 
                 offsetI += error.I;
                 offsetQ += error.Q;
+
+                // z r*, summed. The conjugate is on the reference, so a common rotation of the
+                // measured symbols turns this whole sum and leaves its magnitude alone.
+                correlationI += (point.I * idealPoint.I) + (point.Q * idealPoint.Q);
+                correlationQ += (point.Q * idealPoint.I) - (point.I * idealPoint.Q);
+
+                measuredEnergy += (point.I * point.I) + (point.Q * point.Q);
+                idealEnergy += (idealPoint.I * idealPoint.I) + (idealPoint.Q * idealPoint.Q);
+                errorEnergy += (error.I * error.I) + (error.Q * error.Q);
             }
 
             int count = measured.Count;
@@ -405,12 +467,40 @@ namespace OpenVSA.Demod.Results
 
             // The mean error vector as a level below the reference: a constellation whose centre of
             // gravity is off the origin has a carrier leaking through, and that is what this reads.
+            //
+            // 🔴 Normalised to the RMS magnitude of the reference and NOT to V_norm, which
+            // REQ-DEM-066 is explicit about: the IQ offset is a property of the signal and must not
+            // move when an EVM display option changes. On 16-QAM the two differ by
+            // 20 log10(sqrt(1.8)) = 2.55 dB, so the naive version reports the same feedthrough as
+            // two different numbers depending on a setting that has nothing to do with it.
             double offset = Math.Sqrt(
                 (offsetI / count) * (offsetI / count) + (offsetQ / count) * (offsetQ / count)) /
-                volts;
+                norm.RmsMagnitude;
 
             summary.Add(new ErrorMetric(
-                "IQ Offset", "dB", offset < 1e-12 ? -200.0 : 20.0 * Math.Log10(offset)));
+                "IQ Offset",
+                "dB",
+                offset < 1e-12 ? NoOriginOffsetDb : 20.0 * Math.Log10(offset)));
+
+            // REQ-DEM-069. "Noise power includes anything that causes the symbol to deviate from
+            // the ideal state position, including additive noise, distortion, and ISI" -- which is
+            // the reference product's own wording, and is why the denominator is the total error
+            // energy rather than an estimate of an additive-noise term. A signal degraded by ISI
+            // alone therefore reports a finite figure, which is the check that this definition was
+            // implemented and not the conventional one.
+            summary.Add(new ErrorMetric(
+                MetricApplicability.SignalToNoise,
+                "dB",
+                errorEnergy < 1e-300
+                    ? -NoOriginOffsetDb
+                    : 10.0 * Math.Log10(idealEnergy / errorEnergy)));
+
+            // REQ-DEM-068.
+            double denominator = measuredEnergy * idealEnergy;
+
+            summary.Rho = denominator < 1e-300
+                ? double.NaN
+                : (((correlationI * correlationI) + (correlationQ * correlationQ)) / denominator);
 
             return summary;
         }
@@ -442,7 +532,7 @@ namespace OpenVSA.Demod.Results
         /// </remarks>
         public ErrorSummary AsTableFor(ModulationFamily family, bool isOffset)
         {
-            var table = new ErrorSummary { Reference = Reference };
+            var table = new ErrorSummary { Reference = Reference, Rho = Rho };
 
             foreach (string label in MetricApplicability.LabelsFor(family, isOffset))
             {

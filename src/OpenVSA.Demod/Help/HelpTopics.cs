@@ -44,8 +44,23 @@ namespace OpenVSA.Demod.Help
         /// </remarks>
         public const string Filters = "demodulation-filters";
 
+        /// <summary>
+        /// What the error metrics are relative to, and the ambiguity they cannot resolve
+        /// (<c>REQ-DEM-061</c>, <c>REQ-DEM-067a</c>).
+        /// </summary>
+        /// <remarks>
+        /// Two requirements ask for something in the user help rather than only in the code.
+        /// <c>REQ-DEM-061</c> wants the EVM normalisation stated rather than inherited silently,
+        /// because it is the commonest reason two instruments appear to disagree about the same
+        /// signal. <c>REQ-DEM-067a</c> wants the gain-imbalance/quadrature-error ambiguity
+        /// documented, because it is a property of the geometry that no estimator can resolve and a
+        /// user who does not know about it will look for it in the hardware.
+        /// </remarks>
+        public const string ErrorMetrics = "demodulation-error-metrics";
+
         private static readonly ReadOnlyCollection<string> Topics =
-            new ReadOnlyCollection<string>(new List<string> { ProcessingOrder, Filters });
+            new ReadOnlyCollection<string>(
+                new List<string> { ProcessingOrder, Filters, ErrorMetrics });
 
         /// <summary>Every topic that ships, by name.</summary>
         public static IReadOnlyList<string> Names => Topics;

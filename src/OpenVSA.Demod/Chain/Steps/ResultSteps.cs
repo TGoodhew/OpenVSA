@@ -85,6 +85,35 @@ namespace OpenVSA.Demod.Chain.Steps
                     PeakSymbol(atOneInstant, "EVM")));
             }
 
+            // REQ-DEM-066: the origin offset comes from step 12's fit, not from the mean of the
+            // error vectors this summary computed for itself. The two agree on a long balanced
+            // block and part company on a short unbalanced one, where the mean of z - r carries
+            // (g - 1) times the mean of r and reports a gain error as a carrier feedthrough. The
+            // requirement names that case, and the fit is the thing that does not have it.
+            if (context.Impairments != null && reference != null)
+            {
+                double magnitude = Math.Sqrt(
+                    (context.Impairments.OffsetI * context.Impairments.OffsetI) +
+                    (context.Impairments.OffsetQ * context.Impairments.OffsetQ)) /
+                    reference.RmsMagnitude;
+
+                computed.Replace(new ErrorMetric(
+                    "IQ Offset",
+                    "dB",
+                    magnitude < 1e-12
+                        ? ErrorSummary.NoOriginOffsetDb
+                        : 20.0 * Math.Log10(magnitude)));
+
+                computed.Replace(new ErrorMetric(
+                    "IQ Gain Imbalance", "dB", context.Impairments.GainImbalanceDb));
+
+                computed.Replace(new ErrorMetric(
+                    "IQ Quad. Error", "deg", context.Impairments.QuadratureSkewDegrees));
+
+                computed.Replace(new ErrorMetric(
+                    "Amp Droop", "dB/sym", context.Impairments.AmplitudeDroopDbPerSymbol));
+            }
+
             // REQ-DEM-065: the shift the analyser applied to achieve lock, which is step 3's coarse
             // estimate plus everything step 8 accumulated on top of it. It is a property of the
             // chain rather than of the constellation geometry, so it is added here and not inside

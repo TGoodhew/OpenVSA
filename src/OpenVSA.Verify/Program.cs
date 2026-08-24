@@ -349,11 +349,25 @@ namespace OpenVSA.Verify
             /// more than one.
             /// </summary>
             /// <remarks>
+            /// <para>
             /// An offset format's half-symbol pairing is a free parameter — reading half a symbol
             /// late and turning by 90° gives an equally valid demodulation carrying different bits,
             /// and which one a measurement lands on depends on where the capture happened to start.
-            /// So one acquisition of OQPSK is a coin toss, and a single non-match says nothing. Four
-            /// of them say a great deal: if the mapping were wrong, none would ever match.
+            /// So one acquisition of OQPSK is a coin toss, and a single non-match says nothing.
+            /// Several of them say a great deal: if the mapping were wrong, none would ever match.
+            /// </para>
+            /// <para>
+            /// <strong>How many is set by the false-alarm rate it leaves.</strong> A coin toss
+            /// repeated <c>n</c> times misses altogether once in <c>2^n</c> runs, so four
+            /// acquisitions report a good bench as bad in one run of sixteen — measured, twice, over
+            /// the course of one afternoon's checks, and each time it costs a re-run to establish
+            /// that nothing is wrong. Eight brings that to one run in 256.
+            /// </para>
+            /// <para>
+            /// It costs almost nothing, because the loop stops at the first acquisition that comes
+            /// out as expected: the <em>typical</em> case takes two acquisitions whether the bound
+            /// is four or eight, and only the runs that were going to be a false alarm take longer.
+            /// </para>
             /// </remarks>
             public int Repeats { get; }
 
@@ -471,7 +485,7 @@ namespace OpenVSA.Verify
                     "on is a coin toss and a mis-paired reading scores 75.10 % -- the SAME number " +
                     "a Gray mapping gives, and not a mapping error. Four acquisitions: if the " +
                     "mapping were wrong, none of them would ever match",
-                    repeats: 4),
+                    repeats: 8),
                 new DemodCase(
                     "P4DQPSK",
                     false,

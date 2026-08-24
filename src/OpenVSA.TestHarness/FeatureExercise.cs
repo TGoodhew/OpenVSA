@@ -3771,9 +3771,15 @@ namespace OpenVSA.TestHarness
                     aligned &= row.IndexOf('E' + "+", StringComparison.Ordinal) < 0;
                 }
 
+                // Against MetricApplicability's list rather than ErrorSummary.Labels, and the two
+                // are deliberately not the same. ErrorSummary.Labels is REQ-UI-053's own, taken from
+                // a real analyser's display; MetricApplicability's is every row THIS analyser has a
+                // metric for. They differ both ways: REQ-UI-053 lists "EVM Pk", which is a column of
+                // the EVM row rather than a row, and REQ-DEM-069 adds "SNR (MER)", which the model
+                // display did not show.
                 foreach (ErrorMetric metric in summary.Metrics)
                 {
-                    labelled &= ErrorSummary.Labels.Contains(metric.Label);
+                    labelled &= MetricApplicability.AllLabels.Contains(metric.Label);
                 }
 
                 string evm = rows.Count > 0 ? rows[0] : string.Empty;
