@@ -557,6 +557,81 @@ namespace OpenVSA.Demod.Tests
         }
 
         [Fact]
+        public void EachFilterTakesEffectOnItsOwnPathThroughTheChain()
+        {
+            // Settings that report the right thing are not the same claim as a chain that uses
+            // them, so this reads what each filter actually changes -- and they change different
+            // things, which is the point of their being two.
+            //
+            // 🔴 THE REFERENCE FILTER DOES NOT CHANGE EVM, AND THAT IS CORRECT. EVM is computed at
+            // the symbol instants, against the constellation points the decisions landed on
+            // (REQ-DEM-060). The reference filter shapes the ideal WAVEFORM -- what the equaliser
+            // fits towards and what REQ-DEM-080's IQ Reference Time draws -- which lives between
+            // the symbol instants. The first version of this test asserted EVM would move and it
+            // did not move at all: 0.0287 %rms either way, to four figures. That is the chain being
+            // right and the test being wrong about what to look at.
+            var source = new ContinuousModulatedSource
+            {
+                Scheme = ModulationScheme.Qpsk(),
+                SymbolRateHz = 1e6,
+                SampleRateHz = 16e6,
+                RollOff = 0.35,
+                PulseSpanSymbols = 20,
+                Seed = 20260824,
+            };
+
+            var samples = new float[2 * (int)Math.Ceiling(4000 * source.SamplesPerSymbol)];
+
+            source.Fill(samples);
+
+            DemodResult matched = Run(
+                samples, source, PulseFilterType.RootRaisedCosine, PulseFilterType.RaisedCosine);
+
+            DemodResult otherReference = Run(
+                samples, source, PulseFilterType.RootRaisedCosine, PulseFilterType.Gaussian);
+
+            DemodResult otherMeasurement = Run(
+                samples, source, PulseFilterType.Gaussian, PulseFilterType.RaisedCosine);
+
+            // The measurement filter is on the signal's path, so it moves the error vector.
+            _output.WriteLine(
+                "EVM: matched pair " +
+                matched.EvmPercent.ToString("F4", CultureInfo.InvariantCulture) +
+                " %rms, measurement filter changed " +
+                otherMeasurement.EvmPercent.ToString("F4", CultureInfo.InvariantCulture) +
+                " %rms, reference filter changed " +
+                otherReference.EvmPercent.ToString("F4", CultureInfo.InvariantCulture) + " %rms");
+
+            Assert.True(
+                otherMeasurement.EvmPercent > 10.0 * matched.EvmPercent,
+                "Changing the measurement filter moved EVM from " + matched.EvmPercent + " to " +
+                otherMeasurement.EvmPercent + ", which is not enough to say step 5 read it.");
+
+            Assert.Equal(matched.EvmPercent, otherReference.EvmPercent, 6);
+
+            // The reference filter is on the ideal waveform's path, so it moves that instead.
+            double worst = 0.0;
+
+            for (int sample = 0; sample < matched.ReferenceWaveform.Length; sample++)
+            {
+                worst = Math.Max(
+                    worst,
+                    Math.Abs(matched.ReferenceWaveform[sample] -
+                        otherReference.ReferenceWaveform[sample]));
+            }
+
+            _output.WriteLine(
+                "the reference waveform moved by " +
+                worst.ToString("F4", CultureInfo.InvariantCulture) +
+                " at its worst sample when the reference filter changed");
+
+            Assert.True(
+                worst > 0.01,
+                "Changing the reference filter moved the reference waveform by " + worst +
+                ", which is not enough to say step 10 read it.");
+        }
+
+        [Fact]
         public void TheHelpExplainsTheTransmitterAndReceiverSplit()
         {
             // "The help text states the transmitter/receiver split."
@@ -923,6 +998,27 @@ namespace OpenVSA.Demod.Tests
             }
 
             return worst;
+        }
+
+        private static DemodResult Run(
+            float[] samples,
+            ContinuousModulatedSource source,
+            PulseFilterType measurement,
+            PulseFilterType reference)
+        {
+            var settings = new DemodSettings
+            {
+                Constellation = Constellation.Qpsk(),
+                SymbolRateHz = source.SymbolRateHz,
+                ResultLengthSymbols = 512,
+                FilterSymbolSpan = source.PulseSpanSymbols,
+                MeasurementFilter = measurement,
+                ReferenceFilter = reference,
+                MeasurementFilterAlpha = source.RollOff,
+                ReferenceFilterAlpha = source.RollOff,
+            };
+
+            return new Demodulator().Run(samples, source.SampleRateHz, settings);
         }
 
         private static double Evm(
