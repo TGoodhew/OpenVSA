@@ -28,7 +28,7 @@ reference trace you were comparing against.
 The container carries `schemaVersion`; the measurements do not carry their own. There is therefore
 one answer to "what shape is this file", and migration has one place to happen.
 
-- **Current schema version: 5.**
+- **Current schema version: 6.**
 - **Oldest readable: 1.**
 
 A file with no `schemaVersion` is refused as not being an OpenVSA state. A file older than the
@@ -52,6 +52,7 @@ a generic parse failure some way downstream of the cause.
 |---|---|---|
 | — | 1 | Initial schema. |
 | 1 | 2 | Each measurement carries `demod`: the digital demodulator's format, symbol rate, filters, window lengths and equaliser settings. A version 1 file has none and the model's defaults supply them, so the migration transforms nothing. |
+| 5 | 6 | `demod` carries `displayPointsPerSymbol`: how finely the traces are drawn (`REQ-DEM-034`), which is not the internal processing rate and must not follow it (`REQ-DEM-034a`). A version 5 file has none and drew its traces at the internal rate, which is the default. The migration transforms nothing. |
 | 4 | 5 | `demod` carries `referenceFilter` and the parameters of `REQ-DEM-021`'s catalogue: `measurementFilterBandwidthTime`, `referenceFilterBandwidthTime`, the two cutoffs, the two tap lists and `userFilterSamplesPerSymbol`. A version 4 file has none: its reference filter was a raised cosine and its measurement filter a root, which are the defaults. The migration transforms nothing. |
 | 3 | 4 | `demod` carries `bitMapping` and, for a user-defined constellation, its definition as `customRings` or `customPoints` (`REQ-DEM-011`). A version 3 file has none: the natural mapping is what its formats meant, and no definition means a format from the catalogue. The migration transforms nothing. |
 | 2 | 3 | `demod` carries `differentialReference`: what a symbol's bits are read against (`REQ-DEM-012`). A version 2 file has none, and the default — follow the format — is what such a file meant, so the migration transforms nothing. |

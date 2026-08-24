@@ -199,6 +199,34 @@ namespace OpenVSA.Demod.Signal
         /// <summary>Which bits the points carry (<c>REQ-DEM-011</c>).</summary>
         public BitMapping Mapping { get; }
 
+        /// <summary>
+        /// The shortest Result Length that reliably locks to this format, in symbols
+        /// (<c>REQ-DEM-031</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The requirement gives two anchors and the word "approximately":</strong> about
+        /// 50 symbols for QPSK and 16-QAM, rising to about 4 000 for 2048- and 4096-QAM. What lies
+        /// between is the implementation's to choose, and the choice here is
+        /// <c>max(50, points)</c> — a floor of fifty, and one symbol per constellation point above
+        /// it.
+        /// </para>
+        /// <para>
+        /// <strong>Why one per point.</strong> A block carrier estimate's phase variance falls as
+        /// 1/N, and the phase error a constellation tolerates before its decisions start moving
+        /// falls with its minimum distance — which for a QAM shrinks as 1/√(points). Requiring the
+        /// estimate to stay inside a fixed fraction of that distance gives N proportional to the
+        /// number of points. It lands on 4 096 for 4096-QAM, which is the requirement's "about
+        /// 4 000", and on 2 048 for 2048-QAM, which is within a factor of two of it.
+        /// </para>
+        /// <para>
+        /// The floor of fifty is the requirement's own number for the small formats, where the
+        /// proportional rule would ask for four symbols and a block estimator needs rather more
+        /// than that to be a block.
+        /// </para>
+        /// </remarks>
+        public int RecommendedResultLengthSymbols => Math.Max(50, _points.Count);
+
         /// <summary>The points, indexed by symbol value.</summary>
         public IReadOnlyList<ConstellationPoint> Points => _points;
 

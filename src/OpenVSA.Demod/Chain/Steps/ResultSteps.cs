@@ -136,12 +136,22 @@ namespace OpenVSA.Demod.Chain.Steps
 
             int perSymbol = settings.PointsPerSymbol;
             int count = context.Symbols.Length;
+
+            // REQ-DEM-034: the traces are drawn at the DISPLAY rate, which is not the rate anything
+            // was computed at. Steps 1 to 13 worked at the internal rate and every metric came from
+            // the symbol instants; this step is the only one that reads the display setting, which
+            // is what makes "no effect on computed EVM" true by construction rather than by care.
+            int drawn = settings.DisplayPointsPerSymbol;
+            double step = perSymbol / (double)drawn;
+
             double stagger = ReferenceRegenerationStep.Stagger(settings);
 
             // Half a symbol of tail for an offset format: its last Q symbol is sent after its last
             // I symbol, and a grid that stopped at the I instant would draw both traces falling
-            // away from a symbol that had not happened yet.
-            int samples = ((count - 1) * perSymbol) + 1 + (int)stagger;
+            // away from a symbol that had not happened yet. In drawn points, half a symbol is
+            // drawn/2 -- and at one point a symbol there is no half to draw.
+            int tail = drawn / 2;
+            int samples = ((count - 1) * drawn) + 1 + (stagger > 0.0 ? tail : 0);
 
             double omega =
                 2.0 * Math.PI * context.PassFrequencyHz / settings.SymbolRateHz;
@@ -160,17 +170,17 @@ namespace OpenVSA.Demod.Chain.Steps
                 context.IdealSymbols,
                 0.0,
                 samples,
-                perSymbol,
+                drawn,
                 settings.FilterSymbolSpan,
                 settings.ReferencePulse,
-                stagger);
+                stagger > 0.0 ? drawn / 2.0 : 0.0);
 
             for (int sample = 0; sample < samples; sample++)
             {
-                double position = timing + sample;
+                double position = timing + (sample * step);
 
                 Iq measured = Interpolator.At(result, position);
-                Iq turn = Iq.FromPhase(-(((omega * sample) / perSymbol) + phase));
+                Iq turn = Iq.FromPhase(-(((omega * sample) / drawn) + phase));
                 Iq corrected = (measured * turn) / gain;
 
                 waveform[2 * sample] = (float)corrected.I;
@@ -184,7 +194,7 @@ namespace OpenVSA.Demod.Chain.Steps
 
             for (int symbol = 0; symbol < count; symbol++)
             {
-                decisions.Add(symbol * perSymbol);
+                decisions.Add(symbol * drawn);
             }
 
             context.TraceWaveform = waveform;
@@ -199,7 +209,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 ErrorMetricStep.Points(context.MeasuredSymbols),
                 decisions,
                 waveform,
-                perSymbol,
+                drawn,
                 settings.SymbolRateHz);
 
             return StepOutcome.Continue;

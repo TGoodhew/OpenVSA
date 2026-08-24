@@ -37,6 +37,16 @@ namespace OpenVSA.Demod.Chain
         /// <summary>The default bound on step 8's iterations.</summary>
         public const int DefaultMaxRefinementIterations = 20;
 
+        /// <summary>
+        /// The least internal processing rate the chain will work at (<c>REQ-DEM-034a</c>).
+        /// </summary>
+        /// <remarks>
+        /// Two, which that requirement calls the absolute minimum, against a recommended four that
+        /// <see cref="DefaultPointsPerSymbol"/> supplies. Below two a shaped symbol has no shape
+        /// left to filter, and an offset format has nowhere to put its half-symbol stagger.
+        /// </remarks>
+        public const int MinimumPointsPerSymbol = 2;
+
         /// <summary>The default bound on the number of passes over the chain.</summary>
         /// <remarks>
         /// Three: the first pass, and two chances for the equaliser to improve on it. The bound
@@ -69,7 +79,33 @@ namespace OpenVSA.Demod.Chain
         public double SymbolRateHz { get; set; }
 
         /// <summary>The internal processing rate, in samples per symbol.</summary>
+        /// <remarks>
+        /// <strong>Not the displayed points per symbol.</strong> <c>REQ-DEM-034a</c> requires the
+        /// two to be decoupled, and gives the reason: an RRC-shaped signal occupies (1+α)/T, so at
+        /// one sample a symbol it is below Nyquist and the matched filter cannot be applied without
+        /// aliasing. A display setting that reached in here would make
+        /// <see cref="DisplayPointsPerSymbol"/> = 1 a demodulation of something else.
+        /// </remarks>
         public int PointsPerSymbol { get; set; } = DefaultPointsPerSymbol;
+
+        /// <summary>
+        /// How many points a symbol the traces are drawn at (<c>REQ-DEM-034</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Trace resolution only.</strong> It changes the point count of the waveform
+        /// traces and nothing else — every metric is computed at the symbol decision instants, from
+        /// values step 8 read at the internal rate, so EVM and its relatives are bit-identical
+        /// across every setting of this. A test asserts exact equality rather than a tolerance,
+        /// because any difference at all would mean a metric was being evaluated somewhere other
+        /// than a decision instant.
+        /// </para>
+        /// <para>
+        /// The requirement names 1, 2, 4, 5, 10 and 20 as the typical values. Any positive number
+        /// works; those six are the ones the tests walk.
+        /// </para>
+        /// </remarks>
+        public int DisplayPointsPerSymbol { get; set; } = DefaultPointsPerSymbol;
 
         /// <summary>
         /// Which bits the constellation's points carry (<c>REQ-DEM-011</c>).
@@ -310,12 +346,56 @@ namespace OpenVSA.Demod.Chain
             }
         }
 
+        /// <summary>
+        /// What to say about a Result Length too short for the format, or <c>null</c>
+        /// (<c>REQ-DEM-031</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Advice rather than a refusal.</strong> A short Result Length on a dense
+        /// constellation does not fail — it produces a carrier estimate too noisy to lock, and a
+        /// measurement that looks like a bad signal rather than like a setting. So the chain runs it
+        /// and says so, which is what the requirement asks the UI to surface.
+        /// </para>
+        /// <para>
+        /// The recommendation itself is <c>Constellation.RecommendedResultLengthSymbols</c>.
+        /// </para>
+        /// </remarks>
+        public string ResultLengthAdvice
+        {
+            get
+            {
+                int wanted = Constellation.RecommendedResultLengthSymbols;
+
+                if (ResultLengthSymbols >= wanted)
+                {
+                    return null;
+                }
+
+                return "A Result Length of " +
+                    ResultLengthSymbols.ToString(CultureInfo.InvariantCulture) + " symbols is " +
+                    "below the " + wanted.ToString(CultureInfo.InvariantCulture) +
+                    " recommended for " + Constellation.Name + " (REQ-DEM-031). Carrier lock on a " +
+                    Constellation.Count.ToString(CultureInfo.InvariantCulture) +
+                    "-point constellation needs the symbols to estimate it from, and a short block " +
+                    "reads as a poor signal rather than as a setting.";
+            }
+        }
+
         /// <summary>Checks the settings hold together, before anything is measured with them.</summary>
         /// <exception cref="ArgumentException">A setting is outside its range.</exception>
         public void Validate()
         {
             Require(SymbolRateHz > 0.0, "The symbol rate is supplied and positive (REQ-DEM-030).");
-            Require(PointsPerSymbol >= 2, "The internal processing rate is at least 2 points per symbol.");
+            Require(
+                PointsPerSymbol >= MinimumPointsPerSymbol,
+                "The internal processing rate is at least " +
+                MinimumPointsPerSymbol.ToString(CultureInfo.InvariantCulture) +
+                " points per symbol (REQ-DEM-034a), whatever the display asks for.");
+
+            Require(
+                DisplayPointsPerSymbol >= 1,
+                "A trace is drawn at at least one point per symbol (REQ-DEM-034).");
 
             Require(
                 !Constellation.IsOffset || (PointsPerSymbol % 2) == 0,

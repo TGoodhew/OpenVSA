@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows.Threading;
 using OpenVSA.Demod.Chain;
 using OpenVSA.Demod.Results;
@@ -33,6 +34,18 @@ namespace OpenVSA.Ui
     public partial class ShellWindow
     {
         private DemodResult _result;
+
+        /// <summary>
+        /// The notices already said, so that one is not repeated for every block.
+        /// </summary>
+        /// <remarks>
+        /// A demodulation raises a result per acquired block — many a second — and most of its
+        /// notices are properties of the SETUP rather than of the block: a Result Length short for
+        /// the format says the same thing every time. Saying it once is a warning; saying it sixty
+        /// times a second is a reason to stop reading the event log. Cleared when the setup changes,
+        /// because that is when a notice can become true or stop being true.
+        /// </remarks>
+        private readonly HashSet<string> _saidNotices = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>The newest demodulation the shell has drawn, or <c>null</c>.</summary>
         internal DemodResult LatestResult => _result;
@@ -149,7 +162,42 @@ namespace OpenVSA.Ui
                 plot.Result = result.Trace;
             }
 
+            SayAnythingNew(result);
             ShowResultReadout(result);
+        }
+
+        /// <summary>
+        /// Puts a demodulation's notices in the event log, once each (<c>REQ-DEM-031</c>).
+        /// </summary>
+        /// <param name="result">The result.</param>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-DEM-031</c> asks the UI to warn when the Result Length is below the recommended
+        /// minimum for the format, and the chain already works out what to say — it is the thing
+        /// that knows both numbers. This is where it becomes visible.
+        /// </para>
+        /// <para>
+        /// Everything else the chain wants said arrives the same way: a bound reached, a window
+        /// shortened, a step that declined to estimate. They are all facts a user would otherwise
+        /// have to infer from a measurement that looks merely disappointing.
+        /// </para>
+        /// </remarks>
+        private void SayAnythingNew(DemodResult result)
+        {
+            if (result.Notices == null)
+            {
+                return;
+            }
+
+            foreach (string notice in result.Notices)
+            {
+                if (string.IsNullOrEmpty(notice) || !_saidNotices.Add(notice))
+                {
+                    continue;
+                }
+
+                _eventLog.Append(notice);
+            }
         }
 
         /// <summary>Says what the demodulation measured, in the status bar.</summary>
@@ -192,6 +240,10 @@ namespace OpenVSA.Ui
         private void ApplyMeasurementKind(MeasurementKind kind)
         {
             MeasurementContext active = _contextSet.Active;
+
+            // A different measurement is a different set of notices, and one already said about the
+            // old setup would otherwise never be said again about the new one.
+            _saidNotices.Clear();
 
             active.Setup.SelectKind(kind);
 

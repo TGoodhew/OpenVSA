@@ -284,6 +284,14 @@ namespace OpenVSA.Measurement.State
                         // meant, so this step transforms nothing either.
                         break;
 
+                    case 5:
+                        // Version 6 added REQ-DEM-034's displayed points per symbol. A version 5
+                        // file has none, and its traces were drawn at the internal rate -- which is
+                        // this member's default, so the migration transforms nothing. The fifth in
+                        // a row that does not, and each is here so that a version number can be
+                        // traced to a change.
+                        break;
+
                     case 4:
                         // Version 5 gave the reference filter a type of its own and added the
                         // parameters REQ-DEM-021's catalogue needs -- bandwidth-time, cutoff, and

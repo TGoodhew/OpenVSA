@@ -84,7 +84,7 @@ namespace OpenVSA.Demod.Results
         /// <param name="measured">The measured point for each symbol, in the same order.</param>
         /// <param name="decisionSampleIndices">Which sample each decision instant falls on.</param>
         /// <param name="samples">Interleaved real and imaginary samples the result came from.</param>
-        /// <param name="samplesPerSymbol">The symbol clock, in samples; at least two.</param>
+        /// <param name="samplesPerSymbol">The symbol clock, in drawn points; at least one.</param>
         /// <param name="symbolRateHz">The symbol rate, in hertz.</param>
         /// <param name="modulationTypes">
         /// Which modulation each symbol belongs to, for a mixed-modulation signal
@@ -144,12 +144,11 @@ namespace OpenVSA.Demod.Results
                     "A modulation has at least two levels on an axis.");
             }
 
-            if (samplesPerSymbol < 2)
+            if (samplesPerSymbol < 1)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(samplesPerSymbol), samplesPerSymbol,
-                    "A symbol needs at least two samples for an eye to have a shape between " +
-                    "decisions.");
+                    "A trace carries at least one point per symbol.");
             }
 
             if (ideal.Count != symbols.Count ||
@@ -237,6 +236,21 @@ namespace OpenVSA.Demod.Results
         public int SampleCount => _samples.Length / 2;
 
         /// <summary>The symbol clock, in samples.</summary>
+        /// <remarks>
+        /// <para>
+        /// The <em>drawn</em> rate of <c>REQ-DEM-034</c>, not the rate anything was computed at.
+        /// One point per symbol is allowed and is one of the settings that requirement names: the
+        /// trace is then the symbol instants and nothing between them, which is exactly what a
+        /// constellation is.
+        /// </para>
+        /// <para>
+        /// <strong>This used to demand two</strong>, on the grounds that an eye needs something
+        /// between decisions to fold. It does — but that is a fact about the eye rather than about
+        /// the data, and refusing to carry the trace would have refused a display setting the
+        /// requirement lists. The eye traces say so for themselves now: see
+        /// <c>ResultTraces.ReasonUnavailable</c>.
+        /// </para>
+        /// </remarks>
         public int SamplesPerSymbol { get; }
 
         /// <summary>The symbol rate, in hertz.</summary>
