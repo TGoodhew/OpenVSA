@@ -70,11 +70,18 @@ namespace OpenVSA.Synthesis
         private readonly ReadOnlyCollection<SymbolPoint> _points;
 
         private ModulationScheme(
-            string name, int bitsPerSymbol, int levelsPerAxis, IList<SymbolPoint> points)
+            string name,
+            int bitsPerSymbol,
+            int levelsPerAxis,
+            IList<SymbolPoint> points,
+            bool isOffset = false,
+            double rotationPerSymbolRadians = 0.0)
         {
             Name = name;
             BitsPerSymbol = bitsPerSymbol;
             LevelsPerAxis = levelsPerAxis;
+            IsOffset = isOffset;
+            RotationPerSymbolRadians = rotationPerSymbolRadians;
             _points = new ReadOnlyCollection<SymbolPoint>(points);
         }
 
@@ -97,6 +104,22 @@ namespace OpenVSA.Synthesis
 
         /// <summary>How many symbol values there are.</summary>
         public int Order => _points.Count;
+
+        /// <summary>
+        /// Whether the Q axis is sent half a symbol after the I axis, as OQPSK is
+        /// (<c>REQ-DEM-012</c>).
+        /// </summary>
+        public bool IsOffset { get; }
+
+        /// <summary>
+        /// How far the constellation is turned between one symbol and the next, in radians.
+        /// </summary>
+        /// <remarks>
+        /// π/4 for π/4-DQPSK, zero for everything that does not turn. A transmitter applies it; a
+        /// demodulator takes it out again, which is <c>REQ-DEM-012</c>'s business rather than this
+        /// project's.
+        /// </remarks>
+        public double RotationPerSymbolRadians { get; }
 
         /// <summary>Binary phase shift keying: two points on the I axis.</summary>
         public static ModulationScheme Bpsk() =>
@@ -146,6 +169,10 @@ namespace OpenVSA.Synthesis
         /// </summary>
         /// <param name="name">What to call it.</param>
         /// <param name="points">The points, indexed by symbol value.</param>
+        /// <param name="isOffset">Whether Q is sent half a symbol after I.</param>
+        /// <param name="rotationPerSymbolRadians">
+        /// How far the points turn between one symbol and the next.
+        /// </param>
         /// <returns>The scheme.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="points"/> is null.</exception>
         /// <exception cref="ArgumentException">
@@ -166,7 +193,11 @@ namespace OpenVSA.Synthesis
         /// instrument's Gray-coded QPSK scored 75.10 % against this project's natural mapping.
         /// </para>
         /// </remarks>
-        public static ModulationScheme FromPoints(string name, IList<SymbolPoint> points)
+        public static ModulationScheme FromPoints(
+            string name,
+            IList<SymbolPoint> points,
+            bool isOffset = false,
+            double rotationPerSymbolRadians = 0.0)
         {
             if (points == null)
             {
@@ -202,7 +233,13 @@ namespace OpenVSA.Synthesis
                 levels.Add(Math.Round(point.I, 6));
             }
 
-            return Normalised(name, bits, levels.Count, new List<SymbolPoint>(points));
+            return Normalised(
+                name,
+                bits,
+                levels.Count,
+                new List<SymbolPoint>(points),
+                isOffset,
+                rotationPerSymbolRadians);
         }
 
         /// <summary>Every scheme this harness can generate.</summary>
@@ -309,7 +346,12 @@ namespace OpenVSA.Synthesis
 
         /// <summary>Scales a constellation to unit average power.</summary>
         private static ModulationScheme Normalised(
-            string name, int bits, int levels, List<SymbolPoint> points)
+            string name,
+            int bits,
+            int levels,
+            List<SymbolPoint> points,
+            bool isOffset = false,
+            double rotationPerSymbolRadians = 0.0)
         {
             double power = 0.0;
 
@@ -325,7 +367,8 @@ namespace OpenVSA.Synthesis
                 points[i] = new SymbolPoint(points[i].I * scale, points[i].Q * scale);
             }
 
-            return new ModulationScheme(name, bits, levels, points);
+            return new ModulationScheme(
+                name, bits, levels, points, isOffset, rotationPerSymbolRadians);
         }
     }
 }

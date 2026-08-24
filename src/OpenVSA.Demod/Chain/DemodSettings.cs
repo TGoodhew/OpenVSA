@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Chain
@@ -60,6 +61,51 @@ namespace OpenVSA.Demod.Chain
 
         /// <summary>The internal processing rate, in samples per symbol.</summary>
         public int PointsPerSymbol { get; set; } = DefaultPointsPerSymbol;
+
+        /// <summary>What a symbol's bits are read against (<c>REQ-DEM-012</c>).</summary>
+        /// <remarks>
+        /// Left at <see cref="DifferentialReference.PerFormat"/> the format decides, which is what a
+        /// user selecting DQPSK from a menu means. The other two values are how the selection is
+        /// shown to be effective: forcing <see cref="DifferentialReference.None"/> on a
+        /// differentially encoded signal returns the encoded symbols instead of the data, which is
+        /// wrong in a way that can be predicted and therefore tested.
+        /// </remarks>
+        public DifferentialReference DifferentialReference { get; set; } =
+            DifferentialReference.PerFormat;
+
+        /// <summary>
+        /// Whether this measurement decodes differentially, once the format and the selection are
+        /// both accounted for.
+        /// </summary>
+        public bool DecodesDifferentially =>
+            DifferentialReference == DifferentialReference.PreviousSymbol ||
+            (DifferentialReference == DifferentialReference.PerFormat &&
+             Constellation.IsDifferential);
+
+        /// <summary>
+        /// How many instants of the waveform one symbol is read at: two for an offset format, one
+        /// for every other (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Not a setting, and deliberately: <c>REQ-DEM-012</c> makes it a property of the format,
+        /// and <c>REQ-DEM-034a</c> requires that no display parameter change it. An offset format
+        /// staggers I half a symbol from Q, so a chain that read one instant per symbol would read
+        /// one of the two axes halfway between its symbols — where a pulse-shaped waveform is the
+        /// average of two neighbours rather than either. The resulting EVM looks plausible, in the
+        /// several-per-cent region, which is exactly why this is stated rather than left to whoever
+        /// writes the next step.
+        /// </para>
+        /// <para>
+        /// Two instants is also where the requirement's number comes from. At two points per symbol
+        /// the second instant falls on the sample between two symbol instants — the whole reason
+        /// that is the rate it names — and <see cref="Validate"/> therefore holds an offset format
+        /// to an even internal rate. The interpolator would resolve an odd one, since the timing
+        /// estimate is already fractional; requiring evenness keeps the second instant on the same
+        /// grid as the first rather than permanently between two of its samples.
+        /// </para>
+        /// </remarks>
+        public int InstantsPerSymbol => Constellation.IsOffset ? 2 : 1;
 
         /// <summary>Where the Search Length window starts in Main Time, in samples.</summary>
         public int SearchStartSample { get; set; }
@@ -167,6 +213,21 @@ namespace OpenVSA.Demod.Chain
         {
             Require(SymbolRateHz > 0.0, "The symbol rate is supplied and positive (REQ-DEM-030).");
             Require(PointsPerSymbol >= 2, "The internal processing rate is at least 2 points per symbol.");
+
+            Require(
+                !Constellation.IsOffset || (PointsPerSymbol % 2) == 0,
+                Constellation.Name + " staggers I and Q by half a symbol, so REQ-DEM-012 " +
+                "demodulates it at two instants per symbol. An internal rate of " +
+                PointsPerSymbol.ToString(CultureInfo.InvariantCulture) + " points per symbol " +
+                "would put the second of them between two samples on every symbol; an even rate " +
+                "puts it on one.");
+
+            Require(
+                !DecodesDifferentially || Constellation.IsIndexedRing,
+                "A differential decode reads the change from one symbol to the next as a change " +
+                "of phase, so it needs a constellation whose symbol values run around one ring. " +
+                Constellation.Name + "'s do not, and subtracting two of them would give a " +
+                "well-formed bit stream that meant nothing.");
             Require(ResultLengthSymbols >= 4, "A Result Length of fewer than 4 symbols cannot be fitted to.");
             Require(SearchStartSample >= 0, "The Search Length window starts at or after the first sample.");
             Require(SearchLengthSamples >= 0, "A Search Length of zero means the rest of Main Time.");

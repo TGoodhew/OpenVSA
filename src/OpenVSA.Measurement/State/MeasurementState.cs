@@ -342,6 +342,23 @@ namespace OpenVSA.Measurement.State
         /// </remarks>
         public int PointsPerSymbol { get; set; } = 4;
 
+        /// <summary>What a symbol's bits are read against (<c>REQ-DEM-012</c>).</summary>
+        /// <remarks>
+        /// <para>
+        /// Defaults to <see cref="DifferentialReference.PerFormat"/>, which is what choosing DQPSK
+        /// from a menu means and what a version 2 state file implies: it had no such member, and a
+        /// format that carries its bits differentially was demodulated that way.
+        /// </para>
+        /// <para>
+        /// It is here rather than derived at the point of use because it is a choice a user makes
+        /// and a setup should carry — and because a signal is not obliged to be encoded the way its
+        /// format's name suggests. That is the whole of what <c>REQ-DEM-012</c> means by
+        /// selectable.
+        /// </para>
+        /// </remarks>
+        public DifferentialReference DifferentialReference { get; set; } =
+            DifferentialReference.PerFormat;
+
         /// <summary>How many symbols the Result Length window holds (<c>REQ-DEM-031</c>).</summary>
         public int ResultLengthSymbols { get; set; } = 256;
 
@@ -393,6 +410,7 @@ namespace OpenVSA.Measurement.State
             var settings = new DemodSettings
             {
                 Constellation = Constellation.ByName(Format),
+                DifferentialReference = DifferentialReference,
                 MeasurementFilter = MeasurementFilter,
                 SymbolRateHz = SymbolRateHz,
                 PointsPerSymbol = PointsPerSymbol,

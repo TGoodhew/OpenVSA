@@ -277,6 +277,7 @@ namespace OpenVSA.Demod.Chain
                 context.Trace,
                 context.Summary,
                 context.Symbols,
+                context.DataSymbols,
                 context.Bits,
                 context.CoarseFrequencyHz + context.ResidualFrequencyHz,
                 context.Impairments,

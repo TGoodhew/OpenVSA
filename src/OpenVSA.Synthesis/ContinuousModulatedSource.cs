@@ -213,17 +213,23 @@ namespace OpenVSA.Synthesis
                         continue;
                     }
 
+                    // The Q axis is shaped by a pulse train of its own, half a symbol behind, when
+                    // the format is an offset one: that is the whole of what makes OQPSK OQPSK, and
+                    // it is why REQ-DEM-012 has a demodulator read two instants a symbol.
                     double weight = Weight(pulse, position - symbol);
+                    double quadratureWeight = _scheme.IsOffset
+                        ? Weight(pulse, position - symbol - 0.5)
+                        : weight;
 
-                    if (weight == 0.0)
+                    if (weight == 0.0 && quadratureWeight == 0.0)
                     {
                         continue;
                     }
 
-                    SymbolPoint point = _scheme.IdealPoints[SymbolAt(symbol)];
+                    SymbolPoint point = Transmitted(symbol);
 
                     i += point.I * weight;
-                    q += point.Q * weight;
+                    q += point.Q * quadratureWeight;
                 }
 
                 double angle = (turnPerSample * index) + PhaseRadians;
@@ -264,6 +270,66 @@ namespace OpenVSA.Synthesis
             ulong mixed = Mix((ulong)Seed * 0x9E3779B97F4A7C15UL ^ (ulong)symbol);
 
             return (int)(mixed % (ulong)_scheme.IdealPoints.Count);
+        }
+
+        /// <summary>
+        /// What a symbol carries when the receiver decodes differentially (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <param name="symbol">The symbol's index from the start of the signal; at least one.</param>
+        /// <returns>The change from the symbol before it, as a symbol value.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The index is zero or negative: the first symbol is a reference and carries nothing.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>The data is defined as the difference rather than the difference being computed
+        /// from the data, and that is deliberate.</strong> A differential encoder is an accumulator,
+        /// so a transmitter that started from data would have to sum every symbol from the beginning
+        /// of the signal to produce the one at index 400 000 — and this source's whole design is that
+        /// any block can be produced without producing the ones before it. Defining the data as the
+        /// change keeps both the transmitted symbol and the data it carries pure functions of the
+        /// index, and a differential receiver has exactly the same work to do either way.
+        /// </para>
+        /// <para>
+        /// What it does <em>not</em> do is test the mapping: both ends read the difference off the
+        /// same two hashes. Only a transmitter settles that, which on this bench is the E4438C's
+        /// <c>P4DQPSK</c> and <c>D8PSK</c> against an independently generated PN sequence.
+        /// </para>
+        /// </remarks>
+        public int DataSymbolAt(long symbol)
+        {
+            if (symbol < 1)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(symbol),
+                    symbol,
+                    "A differential symbol is a change from the one before it, so the first symbol " +
+                    "of a signal is a reference and carries no data.");
+            }
+
+            int order = _scheme.IdealPoints.Count;
+            int difference = (SymbolAt(symbol) - SymbolAt(symbol - 1)) % order;
+
+            return difference < 0 ? difference + order : difference;
+        }
+
+        /// <summary>The point actually sent for a symbol, turned if the format turns.</summary>
+        /// <param name="symbol">The symbol's index from the start of the signal.</param>
+        private SymbolPoint Transmitted(long symbol)
+        {
+            SymbolPoint point = _scheme.IdealPoints[SymbolAt(symbol)];
+
+            if (_scheme.RotationPerSymbolRadians == 0.0)
+            {
+                return point;
+            }
+
+            double angle = (_scheme.RotationPerSymbolRadians * symbol) % (2.0 * Math.PI);
+            double cos = Math.Cos(angle);
+            double sin = Math.Sin(angle);
+
+            return new SymbolPoint(
+                (point.I * cos) - (point.Q * sin), (point.I * sin) + (point.Q * cos));
         }
 
         private static ulong Mix(ulong value)

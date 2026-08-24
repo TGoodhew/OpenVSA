@@ -59,13 +59,17 @@ namespace OpenVSA.Demod.Signal
             int levelsPerAxis,
             IList<ConstellationPoint> points,
             ModulationFamily family,
-            bool isOffset)
+            bool isOffset,
+            bool isDifferential = false,
+            double rotationPerSymbolRadians = 0.0)
         {
             Name = name;
             BitsPerSymbol = bitsPerSymbol;
             LevelsPerAxis = levelsPerAxis;
             Family = family;
             IsOffset = isOffset;
+            IsDifferential = isDifferential;
+            RotationPerSymbolRadians = rotationPerSymbolRadians;
             _points = new ReadOnlyCollection<ConstellationPoint>(points);
         }
 
@@ -94,6 +98,94 @@ namespace OpenVSA.Demod.Signal
         /// the summary shows, and <c>REQ-DEM-012</c> is where it decides rather more than that.
         /// </remarks>
         public bool IsOffset { get; }
+
+        /// <summary>
+        /// Whether the bits are carried by the change from one symbol to the next rather than by
+        /// the symbol itself (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Also a property of the format rather than of its points: DQPSK's constellation is QPSK's.
+        /// What it says is that the decided symbol is an accumulation and the data is its
+        /// difference, which is <c>DemodStep.SymbolDecisions</c>'s to undo.
+        /// </para>
+        /// <para>
+        /// <strong>It is what the format expects, not what will be done.</strong>
+        /// <c>REQ-DEM-012</c> requires the reference to be selectable, so
+        /// <see cref="OpenVSA.Demod.Chain.DemodSettings.DifferentialReference"/> is what actually decides, and this
+        /// is only what it follows when it is left to the format.
+        /// </para>
+        /// </remarks>
+        public bool IsDifferential { get; }
+
+        /// <summary>
+        /// How far the constellation is turned between one symbol and the next, in radians.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// π/4 for π/4-DQPSK, and zero for everything that does not rotate. Symbol <em>k</em> is
+        /// decided against the points turned by <em>k</em> times this, which is why
+        /// <see cref="Decide(Iq, int)"/> and <see cref="Ideal(int, int)"/> take a symbol index at
+        /// all.
+        /// </para>
+        /// <para>
+        /// <strong>The rotation has to come out before the carrier is fitted, not after.</strong> A
+        /// fixed turn per symbol is indistinguishable from a carrier frequency offset of that many
+        /// cycles per symbol — π/4 per symbol is exactly Rs/8 — so a chain that left it in would fit
+        /// it as frequency error, report Rs/8 of carrier error that is not there, and hand the
+        /// decisions a constellation that had been turned by however much of it the fit did not
+        /// absorb.
+        /// </para>
+        /// </remarks>
+        public double RotationPerSymbolRadians { get; }
+
+        /// <summary>
+        /// Whether the points are one ring with the symbol value running around it, which is what a
+        /// difference of symbol values has to be a change of phase.
+        /// </summary>
+        /// <remarks>
+        /// True of the phase-keyed family and of nothing else in this catalogue: a QAM's indices run
+        /// along rows and its points are at several radii, so subtracting two of them is arithmetic
+        /// on a table index rather than a phase. <c>REQ-DEM-012</c>'s differential decoding is
+        /// refused on a constellation this is false of — refused rather than allowed to produce the
+        /// well-formed, meaningless bit stream it otherwise would.
+        /// </remarks>
+        public bool IsIndexedRing
+        {
+            get
+            {
+                const double Tolerance = 1e-9;
+
+                double radius = Math.Sqrt(
+                    (_points[0].I * _points[0].I) + (_points[0].Q * _points[0].Q));
+
+                if (radius < Tolerance)
+                {
+                    return false;
+                }
+
+                double step = (2.0 * Math.PI) / _points.Count;
+                double first = Math.Atan2(_points[0].Q, _points[0].I);
+
+                for (int symbol = 0; symbol < _points.Count; symbol++)
+                {
+                    ConstellationPoint point = _points[symbol];
+                    double here = Math.Sqrt((point.I * point.I) + (point.Q * point.Q));
+
+                    double turned = Math.Atan2(point.Q, point.I) - first - (step * symbol);
+
+                    // Onto one turn, so that the comparison is not defeated by the wrap.
+                    turned -= 2.0 * Math.PI * Math.Round(turned / (2.0 * Math.PI));
+
+                    if (Math.Abs(here - radius) > Tolerance || Math.Abs(turned) > Tolerance)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        }
 
         /// <summary>The points, indexed by symbol value.</summary>
         public IReadOnlyList<ConstellationPoint> Points => _points;
@@ -141,7 +233,7 @@ namespace OpenVSA.Demod.Signal
         /// <returns>The constellation.</returns>
         /// <remarks>
         /// The one member of the catalogue with a point at the origin, which is why
-        /// <see cref="Symmetry"/> has to survive one. It is amplitude shift keying with two levels
+        /// <see cref="RotationalSymmetry"/> has to survive one. It is amplitude shift keying with two levels
         /// and the lower level switched off, and <c>REQ-DEM-010</c> lists it under the custom APSK
         /// row because that is where the reference product puts it.
         /// </remarks>
@@ -414,6 +506,114 @@ namespace OpenVSA.Demod.Signal
         }
 
         /// <summary>
+        /// Offset QPSK: QPSK's four points, with Q sent half a symbol after I
+        /// (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <returns>The constellation.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>The points are QPSK's, and that is the point.</strong> Offsetting the two axes
+        /// changes when the signal passes through each state, not which states it has: it exists to
+        /// keep the trajectory away from the origin, so that an amplifier does not have to be linear
+        /// through zero. A constellation display of OQPSK and of QPSK are the same four points.
+        /// </para>
+        /// <para>
+        /// What differs is everything about <em>when</em>: the chain samples I at the symbol instant
+        /// and Q half a symbol later, which is why <c>REQ-DEM-012</c> requires two points per symbol
+        /// internally and why the timing estimator needs its own treatment here — see
+        /// <c>JointRefinementStep</c>.
+        /// </para>
+        /// </remarks>
+        public static Constellation Oqpsk() => Qpsk().Staggered("OQPSK");
+
+        /// <summary>
+        /// Differential QPSK: QPSK's four points, carrying their bits in the change of phase.
+        /// </summary>
+        /// <returns>The constellation.</returns>
+        public static Constellation Dqpsk() => Qpsk().Differential("DQPSK", 0.0);
+
+        /// <summary>
+        /// Differential 8PSK: the eight-point ring, carrying its bits in the change of phase.
+        /// </summary>
+        /// <returns>The constellation.</returns>
+        public static Constellation D8psk() => Psk(8).Differential("D8PSK", 0.0);
+
+        /// <summary>
+        /// π/4-DQPSK: differential QPSK whose constellation turns by π/4 every symbol.
+        /// </summary>
+        /// <returns>The constellation.</returns>
+        /// <remarks>
+        /// <para>
+        /// The transmitted points alternate between two QPSK sets a quarter-turn apart, so a
+        /// constellation display of the signal shows eight. It is nonetheless a four-point format:
+        /// the eight positions are two views of the same four states, and taking the turn out —
+        /// which is what <see cref="RotationPerSymbolRadians"/> makes the chain do — leaves QPSK.
+        /// </para>
+        /// <para>
+        /// <strong>Deciding against eight points instead would lose the ambiguity, not resolve
+        /// it.</strong> The phase changes π/4-DQPSK sends are odd multiples of π/4; an eight-point
+        /// decision would accept the even ones too and so would decode a signal that could not have
+        /// been transmitted, quietly, rather than showing the error as a symbol that missed.
+        /// </para>
+        /// </remarks>
+        public static Constellation Pi4Dqpsk() => Qpsk().Differential("PI4DQPSK", Math.PI / 4.0);
+
+        /// <summary>The same points, sent with Q staggered half a symbol behind I.</summary>
+        /// <param name="name">What the offset format is called.</param>
+        private Constellation Staggered(string name) =>
+            new Constellation(
+                name,
+                BitsPerSymbol,
+                LevelsPerAxis,
+                new List<ConstellationPoint>(_points),
+                Family,
+                true,
+                IsDifferential,
+                RotationPerSymbolRadians);
+
+        /// <summary>The same points, carrying their bits in the change from symbol to symbol.</summary>
+        /// <param name="name">What the differential format is called.</param>
+        /// <param name="rotationPerSymbolRadians">How far the points turn between symbols.</param>
+        /// <exception cref="InvalidOperationException">
+        /// The points are not a ring whose index runs around it, so a difference of indices would
+        /// not be a change of phase.
+        /// </exception>
+        /// <remarks>
+        /// <strong>The guard is the whole reason this is a method and not a constructor
+        /// argument.</strong> <see cref="DifferenceFrom"/> subtracts indices, which is a phase
+        /// change only when the points sit at one radius with the index running around the circle.
+        /// A differential variant of a QAM would subtract indices happily and produce a bit stream
+        /// that meant nothing, at a perfectly respectable EVM. This refuses to build one.
+        /// </remarks>
+        private Constellation Differential(string name, double rotationPerSymbolRadians)
+        {
+            RequireRing(name);
+
+            return new Constellation(
+                name,
+                BitsPerSymbol,
+                LevelsPerAxis,
+                new List<ConstellationPoint>(_points),
+                Family,
+                IsOffset,
+                true,
+                rotationPerSymbolRadians);
+        }
+
+        /// <summary>Checks the points are one ring, indexed around it.</summary>
+        /// <param name="name">The name of the format being built, for the message.</param>
+        private void RequireRing(string name)
+        {
+            if (!IsIndexedRing)
+            {
+                throw new InvalidOperationException(
+                    name + " would carry its bits in the change from one symbol to the next, " +
+                    "which is a change of phase — so its points have to be one ring with the " +
+                    "symbol value running around it, and " + Name + "'s are not.");
+            }
+        }
+
+        /// <summary>
         /// The constellation a format name asks for.
         /// </summary>
         /// <param name="name">The format's name, compared without regard to case.</param>
@@ -439,7 +639,7 @@ namespace OpenVSA.Demod.Signal
         /// </remarks>
         public static Constellation ByName(string name)
         {
-            string wanted = (name ?? string.Empty).Trim().ToUpperInvariant();
+            string wanted = Canonical(name);
 
             switch (wanted)
             {
@@ -451,6 +651,19 @@ namespace OpenVSA.Demod.Signal
 
                 case "OOK":
                     return Ook();
+
+                case "OQPSK":
+                    return Oqpsk();
+
+                case "DQPSK":
+                    return Dqpsk();
+
+                case "D8PSK":
+                    return D8psk();
+
+                case "PI4DQPSK":
+                case "P4DQPSK":
+                    return Pi4Dqpsk();
             }
 
             int order;
@@ -472,10 +685,48 @@ namespace OpenVSA.Demod.Signal
 
             throw new ArgumentException(
                 "No format called \"" + (name ?? "(none)") + "\" is supported. This build " +
-                "demodulates " + string.Join(", ", Names) + "; the offset, differential and " +
-                "frequency-keyed formats of REQ-DEM-010 need REQ-DEM-012's chain handling and " +
-                "arrive with it.",
+                "demodulates " + string.Join(", ", Names) + "; the frequency-keyed formats of " +
+                "REQ-DEM-010, its vestigial-sideband ones and the shaped members of the offset " +
+                "family are not point lists and arrive with the chain handling they need.",
                 nameof(name));
+        }
+
+        /// <summary>A format name in the one spelling <see cref="ByName"/> compares against.</summary>
+        /// <param name="name">The name as it was given.</param>
+        /// <returns>Upper case, with the separators and the Greek dropped.</returns>
+        /// <remarks>
+        /// One format in this catalogue is habitually written four ways — π/4-DQPSK, PI/4 DQPSK,
+        /// PI4DQPSK and, on the instrument that generates it, <c>P4DQPSK</c>. A state file, a bench
+        /// script and a menu should not have to agree on which, so the punctuation and the Greek are
+        /// removed before the comparison rather than four names being listed. Nothing else in the
+        /// catalogue contains a separator, so this changes no other name.
+        /// </remarks>
+        private static string Canonical(string name)
+        {
+            string upper = (name ?? string.Empty).Trim().ToUpperInvariant();
+            var canonical = new System.Text.StringBuilder(upper.Length);
+
+            foreach (char letter in upper)
+            {
+                switch (letter)
+                {
+                    case '-':
+                    case '/':
+                    case ' ':
+                    case '_':
+                        break;
+
+                    case 'Π':
+                        canonical.Append("PI");
+                        break;
+
+                    default:
+                        canonical.Append(letter);
+                        break;
+                }
+            }
+
+            return canonical.ToString();
         }
 
         /// <summary>Reads the order off the front of a name like <c>256QAM</c>.</summary>
@@ -499,12 +750,13 @@ namespace OpenVSA.Demod.Signal
         /// <remarks>
         /// <para>
         /// The formats of <c>REQ-DEM-010</c> that the chain can demodulate as it stands: those whose
-        /// only requirement is a point list. The rest of that catalogue — the offset formats, the
-        /// differential ones, EDGE's rotation, FSK, VSB, MSK and GMSK — are not point lists. They
-        /// need the chain to sample the two axes half a symbol apart, to decode a phase difference
-        /// rather than a phase, or to discriminate frequency, and that handling is
-        /// <c>REQ-DEM-012</c>'s and <c>REQ-DEM-021</c>'s. Listing them here without it would offer a
-        /// user a format that demodulates to nonsense.
+        /// only requirement is a point list, and — since <c>REQ-DEM-012</c> — the offset and
+        /// differential members of the phase-keyed family, whose points are a point list and whose
+        /// difference is in when and against what they are decided. The rest of that catalogue —
+        /// EDGE's rotation, FSK, VSB, MSK, GMSK and the shaped offset formats — are not point lists
+        /// at all. They need a pulse this build does not have or a discriminator rather than a
+        /// decision, and that handling is <c>REQ-DEM-021</c>'s. Listing them here without it would
+        /// offer a user a format that demodulates to nonsense.
         /// </para>
         /// <para>
         /// APSK is absent from this list and present in the catalogue: <see cref="Apsk"/> builds one
@@ -522,6 +774,10 @@ namespace OpenVSA.Demod.Signal
                 "8PSK",
                 "16PSK",
                 "OOK",
+                "OQPSK",
+                "DQPSK",
+                "PI4DQPSK",
+                "D8PSK",
                 "16QAM",
                 "32QAM",
                 "64QAM",
@@ -741,6 +997,39 @@ namespace OpenVSA.Demod.Signal
             return best;
         }
 
+        /// <summary>
+        /// The change from one symbol to the next, as a symbol value of this constellation.
+        /// </summary>
+        /// <param name="symbol">The symbol decided at this instant.</param>
+        /// <param name="previous">The symbol decided at the instant before.</param>
+        /// <returns>The symbol value the change stands for.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Either symbol is not in the constellation.</exception>
+        /// <remarks>
+        /// <para>
+        /// The difference of the two indices, taken around the ring. For the constellations a
+        /// differential format is built from — and <see cref="Differential"/> refuses to build one
+        /// from any other — the index runs around the circle, so the index difference <em>is</em> the
+        /// phase change, in units of a full turn divided by the order.
+        /// </para>
+        /// <para>
+        /// <strong>This is what makes a differential format immune to a turned
+        /// constellation.</strong> Turning every symbol by the same amount adds the same index to
+        /// both, and the difference is unchanged — which is why a differentially decoded bit stream
+        /// needs no rotation searched to compare it with the sequence that was sent, and why the
+        /// rotation ambiguity that <c>evidence/req-e44-007/</c> had to search for QPSK simply does
+        /// not arise here.
+        /// </para>
+        /// </remarks>
+        public int DifferenceFrom(int symbol, int previous)
+        {
+            RequireSymbol(symbol, nameof(symbol));
+            RequireSymbol(previous, nameof(previous));
+
+            int difference = (symbol - previous) % _points.Count;
+
+            return difference < 0 ? difference + _points.Count : difference;
+        }
+
         /// <summary>The bits a symbol value carries, most significant first.</summary>
         /// <param name="symbol">The symbol value.</param>
         /// <returns><see cref="BitsPerSymbol"/> bits, each zero or one.</returns>
@@ -771,6 +1060,66 @@ namespace OpenVSA.Demod.Signal
         internal Iq Ideal(int symbol) => new Iq(_points[symbol].I, _points[symbol].Q);
 
         /// <summary>
+        /// How far the constellation has turned by a symbol index (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <param name="symbolIndex">Which symbol of the result window, counting from zero.</param>
+        /// <returns>The unit vector the points are turned by; unity for a format that does not turn.</returns>
+        /// <remarks>
+        /// Reduced onto one turn before the trigonometry rather than after: at the far end of a
+        /// 40 000-symbol Result Length <c>REQ-DEM-013</c> allows, π/4 per symbol has accumulated to
+        /// about 31 000 radians, where a double's spacing is a hundred-millionth of a radian. That is
+        /// still far below anything a measurement resolves — but the reduction costs one modulo and
+        /// removes the question.
+        /// </remarks>
+        internal Iq Rotation(int symbolIndex)
+        {
+            if (RotationPerSymbolRadians == 0.0)
+            {
+                return new Iq(1.0, 0.0);
+            }
+
+            const double Turn = 2.0 * Math.PI;
+            double angle = (RotationPerSymbolRadians * symbolIndex) % Turn;
+
+            return Iq.FromPhase(angle);
+        }
+
+        /// <summary>The nearest point to a sample, allowing for the format's own rotation.</summary>
+        /// <param name="value">The measured sample, already corrected for carrier and gain.</param>
+        /// <param name="symbolIndex">Which symbol of the result window it is.</param>
+        /// <returns>The symbol value of the nearest point.</returns>
+        internal int Decide(Iq value, int symbolIndex)
+        {
+            if (RotationPerSymbolRadians == 0.0)
+            {
+                return Decide(value.I, value.Q);
+            }
+
+            // Turn the sample back rather than the constellation forward: one rotation instead of
+            // one per point, and the decision is the same either way.
+            Iq unturned = value * Rotation(symbolIndex).Conjugate();
+
+            return Decide(unturned.I, unturned.Q);
+        }
+
+        /// <summary>The point a symbol occupies at a given instant, allowing for the rotation.</summary>
+        /// <param name="symbol">The symbol value.</param>
+        /// <param name="symbolIndex">Which symbol of the result window it is.</param>
+        internal Iq Ideal(int symbol, int symbolIndex) =>
+            RotationPerSymbolRadians == 0.0
+                ? Ideal(symbol)
+                : Ideal(symbol) * Rotation(symbolIndex);
+
+        private void RequireSymbol(int symbol, string parameter)
+        {
+            if (symbol < 0 || symbol >= _points.Count)
+            {
+                throw new ArgumentOutOfRangeException(
+                    parameter, symbol, "The constellation has " + _points.Count + " points.");
+            }
+        }
+
+        /// <summary>
         /// The largest <em>m</em> for which turning the constellation by a full turn divided by
         /// <em>m</em> leaves it looking the same.
         /// </summary>
@@ -792,11 +1141,69 @@ namespace OpenVSA.Demod.Signal
             {
                 if (_symmetry == 0)
                 {
-                    _symmetry = LargestSymmetry();
+                    _symmetry = WithRotation(LargestSymmetry());
                 }
 
                 return _symmetry;
             }
+        }
+
+        /// <summary>
+        /// The power that strips the modulation off a format that turns as well as keys.
+        /// </summary>
+        /// <param name="points">The symmetry of the point list on its own.</param>
+        /// <returns>The symmetry of everything the signal actually visits.</returns>
+        /// <remarks>
+        /// <para>
+        /// Step 3 strips the modulation by raising the signal to this power, which works because
+        /// every symbol's phase then lands at the same angle. A format that turns by θ every symbol
+        /// visits its points <em>and</em> every rotation of them, so the power has to annihilate the
+        /// turn too: it must be a multiple of the point list's own symmetry and of the number of
+        /// symbols the turn takes to come back round.
+        /// </para>
+        /// <para>
+        /// π/4-DQPSK is four points and eight positions, so its power is eight and not four.
+        /// Raising it to the fourth instead turns the alternation into a line half a symbol rate
+        /// away from the carrier, and step 3 would report that as the carrier offset — a confident,
+        /// entirely wrong answer of Rs/2 rather than a failure.
+        /// </para>
+        /// </remarks>
+        private int WithRotation(int points)
+        {
+            if (RotationPerSymbolRadians == 0.0)
+            {
+                return points;
+            }
+
+            double perTurn = (2.0 * Math.PI) / Math.Abs(RotationPerSymbolRadians);
+            int rounded = (int)Math.Round(perTurn);
+
+            if (rounded < 2 || Math.Abs(perTurn - rounded) > 1e-9)
+            {
+                throw new InvalidOperationException(
+                    Name + " turns by " + RotationPerSymbolRadians.ToString(
+                        "G6", CultureInfo.InvariantCulture) +
+                    " radians a symbol, which is not a whole fraction of a turn. No power of the " +
+                    "signal strips a rotation like that, so step 3 could not find its carrier.");
+            }
+
+            return LeastCommonMultiple(points, rounded);
+        }
+
+        private static int LeastCommonMultiple(int a, int b)
+        {
+            int first = a;
+            int second = b;
+
+            while (second != 0)
+            {
+                int remainder = first % second;
+
+                first = second;
+                second = remainder;
+            }
+
+            return a / first * b;
         }
 
         private int LargestSymmetry()

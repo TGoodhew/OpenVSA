@@ -58,6 +58,7 @@ namespace OpenVSA.Demod.Chain
         private readonly ReadOnlyCollection<string> _notices;
         private readonly ReadOnlyCollection<int> _bits;
         private readonly ReadOnlyCollection<int> _symbols;
+        private readonly ReadOnlyCollection<int> _dataSymbols;
 
         private readonly float[] _reference;
         private readonly ReadOnlyCollection<ConstellationPoint> _equaliser;
@@ -66,6 +67,7 @@ namespace OpenVSA.Demod.Chain
             SymbolTrace trace,
             ErrorSummary summary,
             int[] symbols,
+            int[] dataSymbols,
             int[] bits,
             double carrierFrequencyErrorHz,
             ImpairmentEstimate impairments,
@@ -83,6 +85,7 @@ namespace OpenVSA.Demod.Chain
             Trace = trace;
             Summary = summary;
             _symbols = new ReadOnlyCollection<int>(symbols ?? new int[0]);
+            _dataSymbols = new ReadOnlyCollection<int>(dataSymbols ?? symbols ?? new int[0]);
             _bits = new ReadOnlyCollection<int>(bits ?? new int[0]);
             CarrierFrequencyErrorHz = carrierFrequencyErrorHz;
             Impairments = impairments;
@@ -117,10 +120,36 @@ namespace OpenVSA.Demod.Chain
         /// <summary>The error summary, as <c>REQ-UI-053</c> lays it out.</summary>
         public ErrorSummary Summary { get; }
 
-        /// <summary>The decided symbol values.</summary>
+        /// <summary>The symbol decided at each symbol instant.</summary>
+        /// <remarks>
+        /// One per point of <see cref="Trace"/>'s constellation, and what a display draws. For a
+        /// differentially decoded measurement this is <em>not</em> the data — see
+        /// <see cref="DataSymbols"/>, which is shorter by the reference symbol.
+        /// </remarks>
         public IReadOnlyList<int> Symbols => _symbols;
 
-        /// <summary>The detected bits, most significant first within each symbol.</summary>
+        /// <summary>
+        /// The symbol values the signal carried (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The same list as <see cref="Symbols"/> for every format that carries its bits in the
+        /// symbol itself. For a differential decode it is the change from each symbol to the next,
+        /// so it is one shorter: the first symbol of the window is the reference and carries no
+        /// data.
+        /// </para>
+        /// <para>
+        /// This is the list to compare against a transmitted sequence, and <see cref="Symbols"/> is
+        /// not — they are the same numbers only when the reference is
+        /// <see cref="DifferentialReference.None"/>. <see cref="Bits"/> is always this list's bits.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<int> DataSymbols => _dataSymbols;
+
+        /// <summary>
+        /// The detected bits, most significant first within each symbol, of
+        /// <see cref="DataSymbols"/>.
+        /// </summary>
         public IReadOnlyList<int> Bits => _bits;
 
         /// <summary>

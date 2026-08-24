@@ -27,12 +27,14 @@ namespace OpenVSA.Demod.Tests
     /// done for each. See <c>evidence/req-e44-007/</c>.
     /// </para>
     /// <para>
-    /// <strong>The formats absent from these tests are absent from the product.</strong> The offset,
-    /// differential, frequency-keyed and vestigial-sideband rows of the requirement are not point
-    /// lists and the chain cannot demodulate them yet; they arrive with <c>REQ-DEM-012</c> and
-    /// <c>REQ-DEM-021</c>. A test that skipped them quietly would leave the catalogue looking
-    /// complete, so <see cref="TheCatalogueSaysWhichRowsOfTheRequirementItDoesNotYetCover"/> names
-    /// them instead.
+    /// <strong>The formats absent from these tests are absent from the product.</strong> The
+    /// frequency-keyed, vestigial-sideband and shaped-offset rows of the requirement are not point
+    /// lists and the chain cannot demodulate them yet; they arrive with <c>REQ-DEM-021</c>. A test
+    /// that skipped them quietly would leave the catalogue looking complete, so
+    /// <see cref="TheCatalogueSaysWhichRowsOfTheRequirementItDoesNotYetCover"/> names them instead.
+    /// The offset and differential rows were among them until <c>REQ-DEM-012</c> arrived on
+    /// 24 August 2026; <c>DifferentialAndOffsetTests</c> is where those are exercised, because what
+    /// they need proving is not the point list.
     /// </para>
     /// </remarks>
     public class FormatCatalogueTests
@@ -415,7 +417,11 @@ namespace OpenVSA.Demod.Tests
                 Assert.Throws<ArgumentException>(() => Constellation.ByName("GMSK"));
 
             Assert.Contains("GMSK", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("REQ-DEM-012", refused.Message, StringComparison.Ordinal);
+
+            // What GMSK is still waiting for is its pulse, and the message says so. It used to say
+            // REQ-DEM-012 instead, because the offset and differential formats were waiting too;
+            // they are not, so the message no longer sends anyone there.
+            Assert.Contains("frequency-keyed", refused.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -428,8 +434,8 @@ namespace OpenVSA.Demod.Tests
             // status rather than leaving it half true.
             string[] notYet =
             {
-                "OQPSK", "SOQPSK", "DQPSK", "PI4DQPSK", "D8PSK",
-                "MSK", "GMSK", "2FSK", "4FSK", "8FSK", "16FSK", "8VSB", "16VSB", "DVBQAM",
+                "SOQPSK", "MSK", "GMSK", "2FSK", "4FSK", "8FSK", "16FSK", "8VSB", "16VSB",
+                "DVBQAM",
             };
 
             foreach (string format in notYet)
@@ -439,7 +445,9 @@ namespace OpenVSA.Demod.Tests
 
             _output.WriteLine(
                 "Still owed by REQ-DEM-010: " + string.Join(", ", notYet) +
-                " -- offset and differential handling is REQ-DEM-012, EDGE's pulse REQ-DEM-021.");
+                " -- every one of them wants a pulse or a discriminator rather than a point list, " +
+                "which is REQ-DEM-021's. The offset and differential rows left this list on " +
+                "24 August 2026 with REQ-DEM-012.");
         }
 
         private static double Radius(ConstellationPoint point) =>

@@ -289,16 +289,62 @@ namespace OpenVSA.Verify
         /// <summary>One case of the bit-level cross-check: what to transmit, and what to expect.</summary>
         private sealed class DemodCase
         {
-            public DemodCase(string format, bool mirrored, bool expectMatch, string expectation)
+            public DemodCase(
+                string format,
+                bool mirrored,
+                bool expectMatch,
+                string expectation,
+                string demodulated = null,
+                int repeats = 1,
+                DifferentialReference reference = DifferentialReference.PerFormat,
+                bool? expectRelabelling = null)
             {
+                ExpectRelabelling = expectRelabelling;
                 Format = format;
                 Mirrored = mirrored;
                 ExpectMatch = expectMatch;
                 Expectation = expectation;
+                Demodulated = demodulated ?? format;
+                Repeats = repeats;
+                Reference = reference;
             }
+
+            /// <summary>What a symbol's bits are read against (<c>REQ-DEM-012</c>).</summary>
+            /// <remarks>
+            /// A case of its own rather than a property of the format, because which encoding an
+            /// instrument used is a fact about the instrument. This bench answered it: the ESG's
+            /// Custom personality loads <c>P4DQPSK</c> and <c>D8PSK</c> as I/Q maps and leaves
+            /// differential encoding to a separate switch, so its signals are read absolutely and
+            /// the differential reading of them is the negative control.
+            /// </remarks>
+            public DifferentialReference Reference { get; }
 
             /// <summary>The generator's modulation format.</summary>
             public string Format { get; }
+
+            /// <summary>
+            /// What OpenVSA demodulates it as, which is not always spelled the same.
+            /// </summary>
+            /// <remarks>
+            /// The instrument calls its eight-point ring <c>PSK8</c> and its sixteen-point QAM
+            /// <c>QAM16</c>; this catalogue calls them 8PSK and 16QAM. Where the two names differ
+            /// the case says both, rather than a translation table sitting between them deciding
+            /// which format a measurement was really of.
+            /// </remarks>
+            public string Demodulated { get; }
+
+            /// <summary>
+            /// How many acquisitions to take before the case is judged, and the reason it is ever
+            /// more than one.
+            /// </summary>
+            /// <remarks>
+            /// An offset format's half-symbol pairing is a free parameter — reading half a symbol
+            /// late and turning by 90° gives an equally valid demodulation carrying different bits,
+            /// and which one a measurement lands on depends on where the capture happened to start.
+            /// So one acquisition of OQPSK is a coin toss, and a single non-match says nothing. Four
+            /// of them say a great deal: if the mapping were wrong, none would ever match.
+            /// </remarks>
+            public int Repeats { get; }
 
             /// <summary>Whether to invert the modulated spectrum (<c>REQ-DEM-035</c>).</summary>
             public bool Mirrored { get; }
@@ -306,12 +352,42 @@ namespace OpenVSA.Verify
             /// <summary>Whether the bits are expected to be the sequence.</summary>
             public bool ExpectMatch { get; }
 
+            /// <summary>
+            /// Whether a <em>relabelling</em> of the symbols is expected to be the sequence, or
+            /// <c>null</c> not to ask.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// The distinction this bench needs and a bit comparison cannot draw. A stream that is
+            /// not the sequence can fail in two entirely different ways: the geometry and the
+            /// arithmetic can be right with the labels somebody else's, in which case exactly one
+            /// relabelling accounts for every symbol; or the demodulation can be wrong, in which
+            /// case nothing accounts for it. Asserting which of the two happened is what turns
+            /// "these bits are not the sequence" from a shrug into a measurement.
+            /// </para>
+            /// <para>
+            /// It is what verified the differential half of <c>REQ-DEM-012</c> against a real
+            /// transmitter: the E4438C's P4DQPSK and D8PSK are symbol-differential and Gray
+            /// labelled, so OpenVSA's natural labelling misses the bits and a Gray relabelling
+            /// accounts for 511 of 511 symbols of both. The arithmetic is right and the convention
+            /// differs, which is exactly what could not be said before.
+            /// </para>
+            /// </remarks>
+            public bool? ExpectRelabelling { get; }
+
             /// <summary>Why that is expected, in the words the run prints.</summary>
             public string Expectation { get; }
 
             /// <inheritdoc />
             public override string ToString() =>
-                Format + (Mirrored ? ", spectrum inverted" : string.Empty);
+                Format +
+                (string.Equals(Demodulated, Format, StringComparison.Ordinal)
+                    ? string.Empty
+                    : " demodulated as " + Demodulated) +
+                (Reference == DifferentialReference.PerFormat
+                    ? string.Empty
+                    : ", reference " + Reference) +
+                (Mirrored ? ", spectrum inverted" : string.Empty);
         }
 
         /// <summary>
@@ -372,7 +448,54 @@ namespace OpenVSA.Verify
                     "GRAYQPSK",
                     false,
                     false,
-                    "a Gray mapping transposes two symbols, which no rotation undoes"),
+                    "a Gray mapping transposes two symbols, which no rotation undoes",
+                    demodulated: "QPSK"),
+                new DemodCase(
+                    "OQPSK",
+                    false,
+                    true,
+                    "the same points as QPSK with Q sent half a symbol late. Half a symbol and a " +
+                    "quarter-turn together are a free parameter, so which pairing a capture lands " +
+                    "on is a coin toss and a mis-paired reading scores 75.10 % -- the SAME number " +
+                    "a Gray mapping gives, and not a mapping error. Four acquisitions: if the " +
+                    "mapping were wrong, none of them would ever match",
+                    repeats: 4),
+                new DemodCase(
+                    "P4DQPSK",
+                    false,
+                    false,
+                    "the reference the format asks for, which is the one this instrument used. " +
+                    "The bits will NOT be the sequence, because the instrument labels its phase " +
+                    "changes with a Gray code and OpenVSA labels them naturally -- and a Gray " +
+                    "relabelling will then account for every symbol, which is the whole claim: " +
+                    "the differential arithmetic is right and the convention differs",
+                    demodulated: "PI4DQPSK",
+                    expectRelabelling: true),
+                new DemodCase(
+                    "P4DQPSK",
+                    false,
+                    false,
+                    "the same waveform with the reference forced to None, and REQ-DEM-012's " +
+                    "criterion on real hardware: nothing accounts for it, under any labelling. " +
+                    "Reading a differentially encoded signal absolutely does not degrade the " +
+                    "answer, it destroys it -- and the demodulation converges and reports a " +
+                    "perfectly good EVM while doing so",
+                    demodulated: "PI4DQPSK",
+                    reference: DifferentialReference.None,
+                    expectRelabelling: false),
+                new DemodCase(
+                    "D8PSK",
+                    false,
+                    false,
+                    "the same claim on eight points and three bits",
+                    expectRelabelling: true),
+                new DemodCase(
+                    "D8PSK",
+                    false,
+                    false,
+                    "and the same control",
+                    reference: DifferentialReference.None,
+                    expectRelabelling: false),
             };
 
             Console.WriteLine("OpenVSA demodulation cross-check");
@@ -414,16 +537,36 @@ namespace OpenVSA.Verify
                             continue;
                         }
 
-                        bool asExpected = await RunDemodCase(
-                            frontEnd, stimulus, digital, options, scenario)
-                            .ConfigureAwait(false);
+                        bool asExpected = false;
+
+                        for (int attempt = 1; attempt <= scenario.Repeats; attempt++)
+                        {
+                            if (scenario.Repeats > 1)
+                            {
+                                Console.WriteLine(
+                                    "  acquisition " + attempt + " of " + scenario.Repeats + ":");
+                            }
+
+                            asExpected = await RunDemodCase(
+                                frontEnd, stimulus, digital, options, scenario)
+                                .ConfigureAwait(false);
+
+                            Console.WriteLine();
+
+                            // Repeats exist for one reason -- a free parameter the capture's timing
+                            // chooses -- so the case is judged on whether the expected outcome ever
+                            // happened, and stopping at the first one that does is the same
+                            // statement in less bench time.
+                            if (asExpected)
+                            {
+                                break;
+                            }
+                        }
 
                         if (!asExpected)
                         {
                             wrong++;
                         }
-
-                        Console.WriteLine();
                     }
                 }
                 finally
@@ -507,7 +650,8 @@ namespace OpenVSA.Verify
 
             setup.SelectKind(MeasurementKind.DigitalDemodulation);
 
-            setup.Demod.Format = "QPSK";
+            setup.Demod.Format = scenario.Demodulated;
+            setup.Demod.DifferentialReference = scenario.Reference;
             setup.Demod.SymbolRateHz = digital.SymbolRateHz;
             setup.Demod.ResultLengthSymbols = ResultLengthSymbols;
             setup.Demod.MeasurementFilter = PulseFilterType.RootRaisedCosine;
@@ -633,12 +777,52 @@ namespace OpenVSA.Verify
             }
 
             BitStreamMatch match = BitStreamAlignment.Find(
-                measured.Symbols,
+                measured.DataSymbols,
                 measured.Trace.BitsPerSymbol,
-                1 << measured.Trace.BitsPerSymbol,
+
+                // How many rotations to search. Every rotation, for a format whose bits are its
+                // symbol -- a turned constellation is a freedom nothing in the chain resolves. ONE,
+                // for a differential decode: the difference of two symbols is unchanged by turning
+                // both, so the rotation has already been divided out and searching it again would
+                // only be offering the comparison extra chances to agree by accident.
+                setup.Demod.ToSettings().DecodesDifferentially
+                    ? 1
+                    : 1 << measured.Trace.BitsPerSymbol,
                 Pattern);
 
             Console.WriteLine("    against " + Pattern + "      " + match);
+
+            SymbolRelabellingMatch relabelling = null;
+
+            if (!match.Found)
+            {
+                // The number a non-match leaves behind is the interesting one. If the geometry is
+                // right and only the labels are somebody else's, a relabelling explains the stream
+                // outright and this names it -- which is the difference between "this instrument
+                // labels its constellation differently" and "something is wrong".
+                relabelling = SymbolRelabelling.Explain(
+                    measured.DataSymbols,
+                    measured.Trace.BitsPerSymbol,
+                    1 << measured.Trace.BitsPerSymbol,
+                    Pattern);
+
+                Console.WriteLine("    relabelling      " + relabelling);
+            }
+
+            if (scenario.ExpectRelabelling.HasValue &&
+                (relabelling == null || relabelling.Found) != scenario.ExpectRelabelling.Value)
+            {
+                Console.WriteLine(
+                    "    OUTCOME          NOT AS EXPECTED: a relabelling was " +
+                    (scenario.ExpectRelabelling.Value ? "expected to" : "expected not to") +
+                    " account for these symbols and " +
+                    (relabelling != null && relabelling.Found ? "one does" : "none does") +
+                    ". The bits failing to be the sequence is one statement; whether the " +
+                    "demodulation was nonetheless right up to a labelling is another, and it is " +
+                    "the one that was wrong here.");
+
+                return false;
+            }
 
             if (match.Found == scenario.ExpectMatch)
             {

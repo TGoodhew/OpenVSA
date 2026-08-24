@@ -277,6 +277,13 @@ namespace OpenVSA.Measurement.State
                         // whether or not this one does any work.
                         break;
 
+                    case 2:
+                        // Version 3 added REQ-DEM-012's differential reference to each
+                        // measurement's demodulator settings. A version 2 file has none, and the
+                        // model's default -- follow the format -- is exactly what a version 2 file
+                        // meant, so this step transforms nothing either.
+                        break;
+
                     default:
                         throw new StateFormatException(
                             "No migration from schema version " +
