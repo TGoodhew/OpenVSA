@@ -77,10 +77,12 @@ namespace OpenVSA.Demod.Chain
             float[] reference,
             IList<ConstellationPoint> equaliser,
             LockReport lockReport,
-            MeasurementProvenance provenance)
+            MeasurementProvenance provenance,
+            ChannelResponse channel)
         {
             Lock = lockReport;
             Provenance = provenance;
+            ChannelResponse = channel;
 
             _reference = reference ?? new float[0];
             _equaliser = equaliser == null
@@ -136,6 +138,18 @@ namespace OpenVSA.Demod.Chain
         /// metrics, a display that has one has the other.
         /// </remarks>
         public MeasurementProvenance Provenance { get; }
+
+        /// <summary>
+        /// The channel the equaliser found, or <c>null</c> when the equaliser did not run
+        /// (<c>REQ-DEM-053</c>).
+        /// </summary>
+        /// <remarks>
+        /// The regularised inverse of <see cref="EqualiserCoefficients"/>, which is the impulse
+        /// response of the equaliser itself. Null rather than empty when there is no equaliser, for
+        /// the same reason the coefficients are: a trace that does not exist is a different thing
+        /// from one with no data in it.
+        /// </remarks>
+        public ChannelResponse ChannelResponse { get; }
 
         /// <summary>
         /// Step 10's regenerated ideal waveform, on the same grid as <see cref="Trace"/>'s samples.

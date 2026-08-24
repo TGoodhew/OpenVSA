@@ -149,6 +149,27 @@ namespace OpenVSA.Demod.Chain
             return Execute(mainTime, sampleRateHz, settings);
         }
 
+        /// <summary>What the measurement reported as its signal-to-noise ratio, for REQ-DEM-053's
+        /// regularisation.</summary>
+        private static double SignalToNoiseDb(ErrorSummary summary)
+        {
+            if (summary == null)
+            {
+                return double.NaN;
+            }
+
+            foreach (ErrorMetric metric in summary.Metrics)
+            {
+                if (string.Equals(
+                    metric.Label, MetricApplicability.SignalToNoise, StringComparison.Ordinal))
+                {
+                    return metric.Rms;
+                }
+            }
+
+            return double.NaN;
+        }
+
         /// <summary>The equaliser's taps as points, or null when it did not run.</summary>
         private static List<ConstellationPoint> Points(Iq[] taps)
         {
@@ -273,6 +294,14 @@ namespace OpenVSA.Demod.Chain
                 start = ProcessingOrder.PositionOf(ProcessingOrder.ReEntryPoint);
             }
 
+            // REQ-DEM-053: the channel the equaliser undoes, from the taps the chain finished
+            // with. Computed here rather than in step 11 because the equaliser re-enters while its
+            // coefficients are still moving, and only the last set is the answer.
+            ChannelResponse channel = ChannelEstimate.For(
+                context.EqualiserCoefficients,
+                settings.SymbolRateHz * settings.PointsPerSymbol,
+                SignalToNoiseDb(context.Summary));
+
             // REQ-DEM-072: built from the same settings, in the same pass, as the metrics. That is
             // what makes "the two can never disagree" structural rather than a discipline: one
             // result carries both, so anything handed the metrics has already been handed the
@@ -311,7 +340,8 @@ namespace OpenVSA.Demod.Chain
                 context.ReferenceWaveform,
                 Points(context.EqualiserCoefficients),
                 judgement,
-                provenance);
+                provenance,
+                channel);
         }
     }
 }
