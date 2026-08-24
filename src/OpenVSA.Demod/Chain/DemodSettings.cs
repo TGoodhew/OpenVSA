@@ -308,7 +308,115 @@ namespace OpenVSA.Demod.Chain
         public bool EqualiserEnabled { get; set; }
 
         /// <summary>The symbol values step 6 looks for, when it runs.</summary>
+        /// <remarks>
+        /// The form the correlation uses. <see cref="SyncPatternBits"/> is the form
+        /// <c>REQ-DEM-040</c> states — a user knows a sync word as bits — and setting it fills this
+        /// in through the constellation's own labelling, so a Gray-mapped format looks for the
+        /// points that carry those bits rather than the points whose index happens to match them.
+        /// </remarks>
         public int[] SyncPattern { get; set; }
+
+        /// <summary>
+        /// The sync pattern as bits, most significant first within each symbol
+        /// (<c>REQ-DEM-040</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A multiple of the constellation's bits per symbol in length, as the requirement says: a
+        /// pattern that ended part-way through a symbol would be a pattern the transmitter could
+        /// not have sent.
+        /// </para>
+        /// <para>
+        /// Setting this replaces <see cref="SyncPattern"/>. Reading it back returns what was set.
+        /// </para>
+        /// </remarks>
+        public int[] SyncPatternBits { get; set; }
+
+        /// <summary>
+        /// Where the Result Length window starts relative to the sync pattern, in symbols
+        /// (<c>REQ-DEM-040</c>).
+        /// </summary>
+        /// <remarks>
+        /// Zero starts the window on the pattern's first symbol. Positive moves it later — past a
+        /// preamble, into the payload — and negative earlier, which is how a measurement includes
+        /// the run-up to a burst it is synchronised to. The requirement calls it the Search Offset
+        /// and asks that the window land there "to the symbol".
+        /// </remarks>
+        public int SearchOffsetSymbols { get; set; }
+
+        /// <summary>
+        /// The sync pattern as symbol values, whichever form it was given in.
+        /// </summary>
+        /// <returns>The symbols, or <c>null</c> when no pattern was given.</returns>
+        /// <exception cref="ArgumentException">
+        /// The bit pattern's length is not a multiple of the constellation's bits per symbol, or a
+        /// group of bits is not a value the constellation carries.
+        /// </exception>
+        /// <remarks>
+        /// <strong>Through the labelling, not through the index.</strong> A sync word is bits, and
+        /// which point carries those bits is exactly what <c>REQ-DEM-011</c>'s mapping decides. On a
+        /// Gray-labelled format the two differ, and a search that correlated against the points
+        /// whose <em>index</em> matched the bits would be looking for a pattern nobody transmitted.
+        /// </remarks>
+        public int[] SyncSymbols()
+        {
+            if (SyncPatternBits == null || SyncPatternBits.Length == 0)
+            {
+                return SyncPattern;
+            }
+
+            int bits = Constellation.BitsPerSymbol;
+
+            if ((SyncPatternBits.Length % bits) != 0)
+            {
+                throw new ArgumentException(
+                    "A sync pattern is a whole number of symbols, so its length is a multiple of " +
+                    "the " + bits.ToString(CultureInfo.InvariantCulture) + " bits " +
+                    Constellation.Name + " carries per symbol (REQ-DEM-040). This one is " +
+                    SyncPatternBits.Length.ToString(CultureInfo.InvariantCulture) + " bits.");
+            }
+
+            var symbols = new int[SyncPatternBits.Length / bits];
+
+            for (int symbol = 0; symbol < symbols.Length; symbol++)
+            {
+                int carried = 0;
+
+                for (int bit = 0; bit < bits; bit++)
+                {
+                    int value = SyncPatternBits[(symbol * bits) + bit];
+
+                    if (value != 0 && value != 1)
+                    {
+                        throw new ArgumentException(
+                            "A sync pattern is bits: " + value.ToString(CultureInfo.InvariantCulture) +
+                            " is not one.");
+                    }
+
+                    carried = (carried << 1) | value;
+                }
+
+                symbols[symbol] = PointCarrying(carried);
+            }
+
+            return symbols;
+        }
+
+        /// <summary>Which point carries a value, under the constellation's labelling.</summary>
+        private int PointCarrying(int carried)
+        {
+            for (int point = 0; point < Constellation.Count; point++)
+            {
+                if (Constellation.CarriedBy(point) == carried)
+                {
+                    return point;
+                }
+            }
+
+            throw new ArgumentException(
+                "No point of " + Constellation.Name + " carries the value " +
+                carried.ToString(CultureInfo.InvariantCulture) + ".");
+        }
 
         /// <summary>How many taps the equaliser has; an odd count.</summary>
         public int EqualiserTaps { get; set; } = 21;
@@ -492,13 +600,15 @@ namespace OpenVSA.Demod.Chain
             Require(RefinementTolerance > 0.0, "The convergence criterion is a positive tolerance.");
             Require(MaxPasses >= 1, "The chain runs at least one pass.");
 
+            int[] sync = SyncSymbols();
+
             Require(
-                !SyncSearchEnabled || (SyncPattern != null && SyncPattern.Length > 0),
+                !SyncSearchEnabled || (sync != null && sync.Length > 0),
                 "Step 6 is enabled with no sync pattern to search for.");
 
-            if (SyncPattern != null)
+            if (sync != null)
             {
-                foreach (int symbol in SyncPattern)
+                foreach (int symbol in sync)
                 {
                     Require(
                         symbol >= 0 && symbol < Constellation.Count,
