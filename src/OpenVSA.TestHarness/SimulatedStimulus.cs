@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace OpenVSA.TestHarness
 {
@@ -40,7 +42,7 @@ namespace OpenVSA.TestHarness
     /// </remarks>
     [StimulusProvider("Simulated source (no instrument)")]
     public sealed class SimulatedStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus,
-        IStimulusLimits
+        IStimulusLimits, IDigitalModulationStimulus
     {
         /// <summary>Lowest carrier the modelled instrument produces, in hertz.</summary>
         /// <remarks>From the instrument's own <c>:FREQuency:CW? MIN</c>, not from the data sheet.</remarks>
@@ -174,6 +176,144 @@ namespace OpenVSA.TestHarness
             // One personality at a time, as on the real source.
             ToneCount = 0;
             ToneSpacingHz = 0.0;
+        }
+
+        // ---- IDigitalModulationStimulus, modelled ----------------------------------------------
+
+        /// <summary>
+        /// The formats this stand-in offers, which are the E4438C's Custom personality's.
+        /// </summary>
+        /// <remarks>
+        /// The same list the instrument driver declares, for the reason the frequency and level
+        /// limits are the instrument's: a stand-in that accepted more than the real thing would let
+        /// a scenario pass here and fail on the bench, which is the failure this class exists to
+        /// prevent rather than to cause.
+        /// </remarks>
+        public IReadOnlyList<string> Formats { get; } = new ReadOnlyCollection<string>(
+            new List<string>
+            {
+                "BPSK", "QPSK", "GRAYQPSK", "OQPSK", "P4DQPSK", "PSK8", "PSK16", "D8PSK",
+                "MSK", "FSK2", "FSK4", "FSK8", "FSK16",
+                "QAM4", "QAM16", "QAM32", "QAM64", "QAM128", "QAM256",
+            });
+
+        /// <inheritdoc />
+        public IReadOnlyList<string> DataPatterns { get; } = new ReadOnlyCollection<string>(
+            new List<string> { "PN9", "PN11", "PN15", "PN20", "PN23" });
+
+        /// <inheritdoc />
+        public string Format { get; private set; }
+
+        /// <inheritdoc />
+        public double SymbolRateHz { get; private set; }
+
+        /// <inheritdoc />
+        public StimulusPulseFilter PulseFilter { get; private set; }
+
+        /// <inheritdoc />
+        public double Alpha { get; private set; }
+
+        /// <inheritdoc />
+        public string DataPattern { get; private set; }
+
+        /// <inheritdoc />
+        public bool IsSpectrumInverted { get; private set; }
+
+        /// <inheritdoc />
+        public double MinimumSymbolRateHz => 4.0;
+
+        /// <summary>
+        /// A symbol rate to report back instead of the one asked for, or NaN to report it faithfully.
+        /// </summary>
+        /// <remarks>
+        /// The same lie <see cref="CoerceFrequencyTo"/> tells, for the same reason: the instrument
+        /// reconfigures its baseband generator when the symbol rate changes and need not land on the
+        /// figure requested. A harness that took its expectation from the request rather than from
+        /// the read-back would pass that and should not.
+        /// </remarks>
+        public double CoerceSymbolRateTo { get; set; } = double.NaN;
+
+        /// <inheritdoc />
+        public double MaximumSymbolRateHz(StimulusPulseFilter filter)
+        {
+            return filter == StimulusPulseFilter.Gaussian ? 6.25e6 : 12.5e6;
+        }
+
+        /// <inheritdoc />
+        public void SetDigitalModulation(
+            double frequencyHz,
+            double levelDbm,
+            string format,
+            double symbolRateHz,
+            StimulusPulseFilter filter,
+            double alpha,
+            string dataPattern)
+        {
+            RequireOffered(Formats, format, "format");
+            RequireOffered(DataPatterns, dataPattern, "data pattern");
+
+            double ceiling = MaximumSymbolRateHz(filter);
+
+            if (symbolRateHz < MinimumSymbolRateHz || symbolRateHz > ceiling)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(symbolRateHz),
+                    symbolRateHz,
+                    "This source produces " + MinimumSymbolRateHz + " to " + ceiling +
+                    " symbols per second with the " + filter + " filter.");
+            }
+
+            if (alpha < 0.0 || alpha > 1.0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(alpha), alpha, "The filter's roll-off runs from 0 to 1.");
+            }
+
+            SetContinuousWave(frequencyHz, levelDbm);
+
+            Format = format;
+            DataPattern = dataPattern;
+            PulseFilter = filter;
+
+            Alpha = filter == StimulusPulseFilter.Gaussian ? double.NaN : alpha;
+
+            SymbolRateHz = double.IsNaN(CoerceSymbolRateTo) ? symbolRateHz : CoerceSymbolRateTo;
+
+            // The comb and the noise are the other two things this source can be doing, and it does
+            // one at a time. Clearing them keeps a read-back from describing two signals at once.
+            ToneCount = 0;
+            ToneSpacingHz = 0.0;
+            NoiseBandwidthHz = 0.0;
+        }
+
+        /// <inheritdoc />
+        public void SetSpectrumInverted(bool inverted) => IsSpectrumInverted = inverted;
+
+        /// <inheritdoc />
+        public void StopDigitalModulation()
+        {
+            Format = null;
+            DataPattern = null;
+            SymbolRateHz = 0.0;
+            Alpha = 0.0;
+            IsSpectrumInverted = false;
+        }
+
+        private static void RequireOffered(
+            IReadOnlyList<string> offered, string wanted, string what)
+        {
+            foreach (string candidate in offered)
+            {
+                if (string.Equals(candidate, wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            throw new ArgumentException(
+                "This source does not offer the " + what + " asked for. It offers: " +
+                string.Join(", ", new List<string>(offered).ToArray()) + ".",
+                what);
         }
 
         /// <inheritdoc />

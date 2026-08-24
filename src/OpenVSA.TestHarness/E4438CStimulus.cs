@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using OpenVSA.Hal.Visa;
 
@@ -27,7 +28,7 @@ namespace OpenVSA.TestHarness
         RequiresResource = true,
         DefaultResource = DefaultResource)]
     public sealed class E4438CStimulus : IStimulusSource, IMultitoneStimulus, INoiseStimulus,
-        IStimulusLimits
+        IStimulusLimits, IDigitalModulationStimulus
     {
         /// <summary>Resource used when configuration names none.</summary>
         /// <remarks>
@@ -326,6 +327,227 @@ namespace OpenVSA.TestHarness
             Refresh();
         }
 
+        // ---- IDigitalModulationStimulus (Option 001/601 or 002/602) ----------------------------
+
+        /// <summary>
+        /// The Custom personality's formats, named as the instrument names them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A subset of what <c>:RADio:CUSTom:MODulation:TYPE</c> accepts — the manual lists forty-odd
+        /// entries including the IS-95 and APCO variants, the APSK code rates and user files. These
+        /// are the ones a demodulator built to <c>REQ-DEM-010</c> has anything to say about, and
+        /// naming only those keeps a scenario from setting a signal nothing can measure.
+        /// </para>
+        /// <para>
+        /// <strong>QPSK and GRAYQPSK are both here on purpose.</strong> They differ only in bit
+        /// mapping, so running one measurement against each is what settles which mapping OpenVSA
+        /// implements — a question its own generator cannot answer, because both ends of that
+        /// comparison would be OpenVSA's.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<string> Formats { get; } = new ReadOnlyCollection<string>(
+            new List<string>
+            {
+                "BPSK", "QPSK", "GRAYQPSK", "OQPSK", "P4DQPSK", "PSK8", "PSK16", "D8PSK",
+                "MSK", "FSK2", "FSK4", "FSK8", "FSK16",
+                "QAM4", "QAM16", "QAM32", "QAM64", "QAM128", "QAM256",
+            });
+
+        /// <summary>
+        /// The pseudo-random patterns the Custom personality transmits.
+        /// </summary>
+        /// <remarks>
+        /// <c>FIX4</c> and file-based patterns are left out: a fixed four-bit pattern makes a
+        /// constellation of four points whatever the format is, and a file pattern is only as
+        /// reproducible as the file. A PN sequence can be generated outside the instrument, which is
+        /// what makes "the recovered bits are the transmitted bits" a comparison rather than a
+        /// demodulator agreeing with itself.
+        /// </remarks>
+        public IReadOnlyList<string> DataPatterns { get; } = new ReadOnlyCollection<string>(
+            new List<string> { "PN9", "PN11", "PN15", "PN20", "PN23" });
+
+        /// <inheritdoc />
+        public string Format { get; private set; }
+
+        /// <inheritdoc />
+        public double SymbolRateHz { get; private set; }
+
+        /// <inheritdoc />
+        public StimulusPulseFilter PulseFilter { get; private set; }
+
+        /// <inheritdoc />
+        public double Alpha { get; private set; }
+
+        /// <inheritdoc />
+        public string DataPattern { get; private set; }
+
+        /// <inheritdoc />
+        public bool IsSpectrumInverted { get; private set; }
+
+        /// <summary>The slowest symbol rate the Custom personality produces.</summary>
+        /// <remarks>
+        /// The manual's floor for every filter in its symbol-rate table is 4 symbols per second. Not
+        /// probed: a range query this firmware rejects does not answer at all, it times out — see
+        /// the note beside the multitone limits for what that costs.
+        /// </remarks>
+        public double MinimumSymbolRateHz => 4.0;
+
+        /// <summary>
+        /// The fastest symbol rate the Custom personality produces for a filter.
+        /// </summary>
+        /// <param name="filter">The pulse-shaping filter.</param>
+        /// <returns>The maximum symbol rate, in symbols per second.</returns>
+        /// <remarks>
+        /// <para>
+        /// From the manual's symbol-rate table at the 32-symbol filter length the instrument
+        /// truncates to in order to reach its higher rates: QPSK and QAM4 reach 12.5 Msps, the
+        /// Gaussian-filtered formats less. The ceiling is filter-dependent because the instrument
+        /// shortens its filter to reach higher rates and refuses to shorten below a minimum length,
+        /// so the limit belongs to the pair rather than to the instrument.
+        /// </para>
+        /// <para>
+        /// <strong>The analyser is the tighter constraint on this bench.</strong>
+        /// <c>REQ-E44-002b</c> measured the E4406A's capture path at 7.5 MS/s maximum, so a scenario
+        /// runs out of samples per symbol long before it reaches these figures. Recorded because a
+        /// source should know its own limits, not because anything will approach them.
+        /// </para>
+        /// </remarks>
+        public double MaximumSymbolRateHz(StimulusPulseFilter filter)
+        {
+            return filter == StimulusPulseFilter.Gaussian ? 6.25e6 : 12.5e6;
+        }
+
+        /// <inheritdoc />
+        public void SetDigitalModulation(
+            double frequencyHz,
+            double levelDbm,
+            string format,
+            double symbolRateHz,
+            StimulusPulseFilter filter,
+            double alpha,
+            string dataPattern)
+        {
+            IInstrumentSession session = RequireSession();
+
+            RequireOffered(Formats, format, "format");
+            RequireOffered(DataPatterns, dataPattern, "data pattern");
+
+            double ceiling = MaximumSymbolRateHz(filter);
+
+            if (symbolRateHz < MinimumSymbolRateHz || symbolRateHz > ceiling)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(symbolRateHz),
+                    symbolRateHz,
+                    "This source produces " + Number(MinimumSymbolRateHz) + " to " +
+                    Number(ceiling) + " symbols per second with the " + filter + " filter.");
+            }
+
+            if (alpha < 0.0 || alpha > 1.0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(alpha), alpha, "The filter's roll-off runs from 0 to 1.");
+            }
+
+            Send(session, ":FREQuency:CW " + Number(frequencyHz) + " HZ");
+            Send(session, ":POWer:AMPLitude " + Number(levelDbm) + " dBm");
+
+            Send(session, ":RADio:CUSTom:MODulation:TYPE " + format);
+            Send(session, ":RADio:CUSTom:SRATe " + Number(symbolRateHz));
+            Send(session, ":RADio:CUSTom:FILTer " + FilterWord(filter));
+
+            // Only the Nyquist pair has a roll-off. Sending one to the Gaussian filter would leave
+            // an error in the queue for whatever ran next to be blamed for.
+            if (filter != StimulusPulseFilter.Gaussian)
+            {
+                Send(session, ":RADio:CUSTom:ALPHa " + Number(alpha));
+            }
+
+            Send(session, ":RADio:CUSTom:DATA " + dataPattern);
+
+            Send(session, ":RADio:CUSTom:STATe ON");
+            Send(session, ":OUTPut:MODulation:STATe ON");
+
+            Query(session, "*OPC?");
+            ThrowOnInstrumentError(session, "setting the digital modulation");
+
+            Refresh();
+        }
+
+        /// <inheritdoc />
+        public void SetSpectrumInverted(bool inverted)
+        {
+            IInstrumentSession session = RequireSession();
+
+            Send(session, ":RADio:CUSTom:POLarity:ALL " + (inverted ? "INVerted" : "NORMal"));
+
+            Query(session, "*OPC?");
+            ThrowOnInstrumentError(
+                session, inverted ? "inverting the spectrum" : "restoring the spectrum");
+
+            Refresh();
+        }
+
+        /// <inheritdoc />
+        public void StopDigitalModulation()
+        {
+            IInstrumentSession session = RequireSession();
+
+            Send(session, ":RADio:CUSTom:STATe OFF");
+
+            Query(session, "*OPC?");
+            ThrowOnInstrumentError(session, "stopping the digital modulation");
+
+            Refresh();
+        }
+
+        private static string FilterWord(StimulusPulseFilter filter)
+        {
+            switch (filter)
+            {
+                case StimulusPulseFilter.RaisedCosine:
+                    return "NYQuist";
+
+                case StimulusPulseFilter.Gaussian:
+                    return "GAUSsian";
+
+                default:
+                    return "RNYQuist";
+            }
+        }
+
+        private static StimulusPulseFilter FilterFrom(string word)
+        {
+            string trimmed = (word ?? string.Empty).Trim().ToUpperInvariant();
+
+            if (trimmed.StartsWith("NYQ", StringComparison.Ordinal))
+            {
+                return StimulusPulseFilter.RaisedCosine;
+            }
+
+            return trimmed.StartsWith("GAUS", StringComparison.Ordinal)
+                ? StimulusPulseFilter.Gaussian
+                : StimulusPulseFilter.RootRaisedCosine;
+        }
+
+        private static void RequireOffered(
+            IReadOnlyList<string> offered, string wanted, string what)
+        {
+            foreach (string candidate in offered)
+            {
+                if (string.Equals(candidate, wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            throw new ArgumentException(
+                "This source does not offer the " + what + " asked for. It offers: " +
+                string.Join(", ", new List<string>(offered).ToArray()) + ".",
+                what);
+        }
+
         /// <summary>Switches the noise off and leaves an unmodulated carrier.</summary>
         public void StopNoise()
         {
@@ -392,6 +614,37 @@ namespace OpenVSA.TestHarness
             NoiseBandwidthHz = QueryDouble(session, ":RADio:AWGN:ARB:STATe?") > 0.5
                 ? QueryDouble(session, ":RADio:AWGN:ARB:BWIDth?")
                 : 0.0;
+            // Null and zero when the Custom personality is off, for the reason the tone count and
+            // the noise bandwidth are: what a scenario checks its expectation against has to be what
+            // the generator says it is producing now, not what it was last asked for.
+            bool modulated = QueryDouble(session, ":RADio:CUSTom:STATe?") > 0.5;
+
+            Format = modulated ? Query(session, ":RADio:CUSTom:MODulation:TYPE?").Trim() : null;
+            SymbolRateHz = modulated ? QueryDouble(session, ":RADio:CUSTom:SRATe?") : 0.0;
+            DataPattern = modulated ? Query(session, ":RADio:CUSTom:DATA?").Trim() : null;
+
+            if (modulated)
+            {
+                PulseFilter = FilterFrom(Query(session, ":RADio:CUSTom:FILTer?"));
+
+                // Not asked for at all on a Gaussian filter, which has no roll-off: the query
+                // would be refused, and a refused query on this firmware does not answer, it
+                // times out.
+                Alpha = PulseFilter == StimulusPulseFilter.Gaussian
+                    ? double.NaN
+                    : QueryDouble(session, ":RADio:CUSTom:ALPHa?");
+
+                IsSpectrumInverted = Query(session, ":RADio:CUSTom:POLarity:ALL?")
+                    .Trim()
+                    .ToUpperInvariant()
+                    .StartsWith("INV", StringComparison.Ordinal);
+            }
+            else
+            {
+                Alpha = 0.0;
+                IsSpectrumInverted = false;
+            }
+
         }
 
         /// <summary>How long to allow a limit probe before giving up on it.</summary>
