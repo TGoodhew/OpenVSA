@@ -58,9 +58,16 @@ namespace OpenVSA.Demod.Chain.Steps
             // Widened here, where the window's length is known, rather than on the way in.
             var search = new double[2 * length];
 
-            for (int index = 0; index < 2 * length; index++)
+            // REQ-DEM-035: mirroring the spectrum is conjugating the waveform, and it happens here
+            // because here is before anything has read it. The quadrature part is negated as the
+            // samples are widened, which costs nothing over the copy that was happening anyway.
+            double sense = context.Settings.MirrorSpectrum ? -1.0 : 1.0;
+
+            for (int sample = 0; sample < length; sample++)
             {
-                search[index] = context.MainTime[(2 * start) + index];
+                search[2 * sample] = context.MainTime[(2 * start) + (2 * sample)];
+                search[(2 * sample) + 1] =
+                    sense * context.MainTime[(2 * start) + (2 * sample) + 1];
             }
 
             context.Search = search;
