@@ -284,6 +284,15 @@ namespace OpenVSA.Measurement.State
                         // meant, so this step transforms nothing either.
                         break;
 
+                    case 4:
+                        // Version 5 gave the reference filter a type of its own and added the
+                        // parameters REQ-DEM-021's catalogue needs -- bandwidth-time, cutoff, and
+                        // the taps of a user-defined filter. A version 4 file has none of them, and
+                        // the defaults are what such a file meant: a root raised cosine measuring
+                        // and a raised cosine referencing. Transforms nothing, like the three
+                        // before it, and exists for the same reason.
+                        break;
+
                     case 3:
                         // Version 4 added REQ-DEM-011's bit mapping and the definition of a
                         // user-defined constellation. A version 3 file has neither; the natural

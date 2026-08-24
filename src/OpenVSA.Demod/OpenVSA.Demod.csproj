@@ -28,6 +28,9 @@
     <EmbeddedResource Include="..\..\docs\help\demodulation-processing-order.md">
       <LogicalName>OpenVSA.Demod.Help.demodulation-processing-order.md</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\..\docs\help\demodulation-filters.md">
+      <LogicalName>OpenVSA.Demod.Help.demodulation-filters.md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
