@@ -2502,7 +2502,7 @@
   "num": "010",
   "priority": "P0",
   "title": "Three independently coloured zones",
-  "body": "**`REQ-UI-010` (P0) — Three independently coloured zones.**\nThis is the single most load-bearing layout fact, taken from the reference product's own\ndisplay-colour enumeration: **[V]**\n\n```\n┌─────────────────────────────────────────────────┐  ← AnnotationBackground\n│  annotation text (Annotation colour)            │     (outer band)\n│   ┌───────────────────────────────────────┐     │\n│   │                                       │     │  ← TraceBackground\n│   │   graticule (Grid colour)             │     │     (inner rectangle,\n│   │   trace geometry                      │     │      behind the graticule)\n│   │                                       │     │\n│   └───────────────────────────────────────┘     │\n│  annotation text                                │\n└─────────────────────────────────────────────────┘\n```\n\nVerbatim definitions: `TraceBackground` — \"Color for the background of the trace data (behind\nthe graticule)\"; `Grid` — \"Color for the graticule lines\"; `Annotation` — \"Color for the trace\nannotation (text outside of the graticule)\"; `AnnotationBackground` — \"Color for background of\narea outside of the trace graticule\".\n\n**AC:** `TraceBackground`, `Grid`, `Annotation` and `AnnotationBackground` are four\nindependently settable colours. Set each to a distinct value and render: sampling the\nrendered frame returns `TraceBackground` inside the graticule rectangle away from any grid\nline or trace, `Grid` on a graticule line, `AnnotationBackground` in the surrounding band away\nfrom text, and `Annotation` on annotation glyphs. Changing any one of the four leaves the\nother three regions' sampled values unchanged — the zones are genuinely independent, not two\ncolours with a shared background.",
+  "body": "**`REQ-UI-010` (P0) — Three independently coloured zones.**\nThis is the single most load-bearing layout fact, taken from the reference product's own\ndisplay-colour enumeration: **[V]**\n\n```\n┌─────────────────────────────────────────────────┐  ← AnnotationBackground\n│  annotation text (Annotation colour)            │     (outer band)\n│   ┌───────────────────────────────────────┐     │\n│   │                                       │     │  ← TraceBackground\n│   │   graticule (Grid colour)             │     │     (inner rectangle,\n│   │   trace geometry                      │     │      behind the graticule)\n│   │                                       │     │\n│   └───────────────────────────────────────┘     │\n│  annotation text                                │\n└─────────────────────────────────────────────────┘\n```\n\nVerbatim definitions: `TraceBackground` — \"Color for the background of the trace data (behind\nthe graticule)\"; `Grid` — \"Color for the graticule lines\"; `Annotation` — \"Color for the trace\nannotation (text outside of the graticule)\"; `AnnotationBackground` — \"Color for background of\narea outside of the trace graticule\".\n\n**AC:** `TraceBackground`, `Grid`, `Annotation` and `AnnotationBackground` are four\nindependently settable colours. Set each to a distinct value and render: sampling the\nrendered frame returns `TraceBackground` inside the graticule rectangle away from any grid\nline or trace, `Grid` on a graticule line, `AnnotationBackground` in the surrounding band away\nfrom text, and `Annotation` on the glyphs of **measurement-wide** annotation. Changing any one\nof the four leaves the other three regions' sampled values unchanged — the zones are genuinely\nindependent, not two colours with a shared background.\n\n> **Which annotation `Annotation` colours, and which `Trace` does.** This definition and\n> `REQ-UI-021`'s overlap: \"text outside of the graticule\" and \"specified trace **and its\n> annotation**\" describe the same band. Both are verbatim from the reference product, which has\n> both entries, so neither can simply win. The division is by what the text is *about*.\n>\n> Annotation describing **that trace** takes the trace's colour, per `REQ-UI-021`: its Y-axis top\n> and bottom scale, its per-division value, its format, its averaging and transform notes, and its\n> active-marker readout. Annotation describing **the measurement** takes `Annotation`: the centre\n> frequency, the main time length, the resolution bandwidth and the trigger channel.\n>\n> The overlay is what settles it. Four traces share one acquisition, so there is one centre\n> frequency and one resolution bandwidth on screen for all of them — painting those in trace A's\n> colour states that they belong to trace A, which is false and is exactly the misreading\n> `REQ-UI-021`'s per-trace tinting exists to prevent. The trace indicator strings keep `Indicator`,\n> which `REQ-UI-022` lists separately and `REQ-UI-040` places inside the graticule.\n>\n> *Recorded 2026-07-29, after `REQ-UI-010` was found unmeetable as implemented: every annotation\n> element had been given the trace colour, which satisfied `REQ-UI-021` and left `Annotation`\n> colouring no glyph anywhere — so its fourth sample could not be taken however the test was\n> written.*",
   "phase": 1,
   "evidence": [
    "verified"
@@ -2524,7 +2524,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3021
+  "line": 3042
  },
  {
   "id": "REQ-UI-012",
@@ -2537,7 +2537,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3028
+  "line": 3049
  },
  {
   "id": "REQ-UI-013",
@@ -2552,7 +2552,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3044
+  "line": 3065
  },
  {
   "id": "REQ-UI-014",
@@ -2567,7 +2567,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3058
+  "line": 3079
  },
  {
   "id": "REQ-UI-015",
@@ -2580,7 +2580,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3067
+  "line": 3088
  },
  {
   "id": "REQ-UI-020",
@@ -2595,7 +2595,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3085
+  "line": 3106
  },
  {
   "id": "REQ-UI-021",
@@ -2603,14 +2603,14 @@
   "num": "021",
   "priority": "P0",
   "title": "A trace's line and its annotation text share one colour",
-  "body": "**`REQ-UI-021` (P0) — A trace's line and its annotation text share one colour.**\n`Trace` is defined as \"Color for specified trace **and its annotation**\". **[V]**\n*This is a genuine visual signature of the product — the numbers describing a trace are\ntinted to match the trace itself, which is how a user reads a four-trace overlay at a glance.\nCorroborated from the other direction by an 89400 firmware defect report: \"Trace A shows wrong\nannotation color after preset.\"*\n**AC:** A trace's line and its annotation text sample to the same colour in the rendered\nframe, for every trace in a multi-trace overlay. They stay equal after the operations that\nhistorically broke it: changing the trace colour, preset, state recall, and theme change —\nthe 89400 defect quoted above is exactly the post-preset case, so preset is tested\nexplicitly. One colour setting drives both; there is no separate annotation-colour entry per\ntrace to drift out of step.",
+  "body": "**`REQ-UI-021` (P0) — A trace's line and its annotation text share one colour.**\n`Trace` is defined as \"Color for specified trace **and its annotation**\". **[V]**\n*This is a genuine visual signature of the product — the numbers describing a trace are\ntinted to match the trace itself, which is how a user reads a four-trace overlay at a glance.\nCorroborated from the other direction by an 89400 firmware defect report: \"Trace A shows wrong\nannotation color after preset.\"*\n**AC:** A trace's line and *its own* annotation text sample to the same colour in the rendered\nframe, for every trace in a multi-trace overlay. They stay equal after the operations that\nhistorically broke it: changing the trace colour, preset, state recall, and theme change —\nthe 89400 defect quoted above is exactly the post-preset case, so preset is tested\nexplicitly. One colour setting drives both; there is no separate annotation-colour entry per\ntrace to drift out of step. Measurement-wide annotation is **not** a trace's own and does not\nfollow the trace colour — see the note under `REQ-UI-010` for the division and why the overlay\nsettles it.",
   "phase": 1,
   "evidence": [
    "verified"
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3096
+  "line": 3117
  },
  {
   "id": "REQ-UI-022",
@@ -2623,7 +2623,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3109
+  "line": 3132
  },
  {
   "id": "REQ-UI-023",
@@ -2638,7 +2638,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3129
+  "line": 3152
  },
  {
   "id": "REQ-UI-024",
@@ -2653,7 +2653,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3147
+  "line": 3170
  },
  {
   "id": "REQ-UI-030",
@@ -2668,7 +2668,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3173
+  "line": 3196
  },
  {
   "id": "REQ-UI-031",
@@ -2683,7 +2683,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3193
+  "line": 3216
  },
  {
   "id": "REQ-UI-032",
@@ -2698,7 +2698,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3204
+  "line": 3227
  },
  {
   "id": "REQ-UI-033",
@@ -2713,7 +2713,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3218
+  "line": 3241
  },
  {
   "id": "REQ-UI-040",
@@ -2726,7 +2726,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3229
+  "line": 3252
  },
  {
   "id": "REQ-UI-041",
@@ -2741,7 +2741,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3252
+  "line": 3275
  },
  {
   "id": "REQ-UI-042",
@@ -2756,7 +2756,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3271
+  "line": 3294
  },
  {
   "id": "REQ-UI-050",
@@ -2771,7 +2771,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3301
+  "line": 3324
  },
  {
   "id": "REQ-UI-051",
@@ -2786,7 +2786,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3317
+  "line": 3340
  },
  {
   "id": "REQ-UI-052",
@@ -2801,7 +2801,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3333
+  "line": 3356
  },
  {
   "id": "REQ-UI-053",
@@ -2816,7 +2816,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3356
+  "line": 3379
  },
  {
   "id": "REQ-UI-054",
@@ -2831,7 +2831,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3382
+  "line": 3405
  },
  {
   "id": "REQ-UI-060",
@@ -2844,7 +2844,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3398
+  "line": 3421
  },
  {
   "id": "REQ-UI-061",
@@ -2859,7 +2859,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3416
+  "line": 3439
  },
  {
   "id": "REQ-UI-062",
@@ -2874,7 +2874,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3456
+  "line": 3479
  },
  {
   "id": "REQ-UI-063",
@@ -2889,7 +2889,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3468
+  "line": 3491
  },
  {
   "id": "REQ-UI-064",
@@ -2904,7 +2904,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3490
+  "line": 3513
  },
  {
   "id": "REQ-UI-065",
@@ -2919,7 +2919,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3498
+  "line": 3521
  },
  {
   "id": "REQ-UI-070",
@@ -2934,7 +2934,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3524
+  "line": 3547
  },
  {
   "id": "REQ-UI-071",
@@ -2949,7 +2949,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3536
+  "line": 3559
  },
  {
   "id": "REQ-UI-072",
@@ -2964,7 +2964,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3559
+  "line": 3582
  },
  {
   "id": "REQ-UI-073",
@@ -2979,7 +2979,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3565
+  "line": 3588
  },
  {
   "id": "REQ-UI-080",
@@ -2995,7 +2995,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3576
+  "line": 3599
  },
  {
   "id": "REQ-UI-081",
@@ -3010,7 +3010,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3593
+  "line": 3616
  },
  {
   "id": "REQ-UI-082",
@@ -3025,7 +3025,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3614
+  "line": 3637
  },
  {
   "id": "REQ-UI-083",
@@ -3038,7 +3038,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3629
+  "line": 3652
  },
  {
   "id": "REQ-UI-090",
@@ -3051,7 +3051,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3664
+  "line": 3687
  },
  {
   "id": "REQ-UI-091",
@@ -3064,7 +3064,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3696
+  "line": 3719
  },
  {
   "id": "REQ-STA-001",
@@ -3079,7 +3079,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3760
+  "line": 3783
  },
  {
   "id": "REQ-STA-002",
@@ -3094,7 +3094,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3774
+  "line": 3797
  },
  {
   "id": "REQ-STA-003",
@@ -3109,7 +3109,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3784
+  "line": 3807
  },
  {
   "id": "REQ-STA-004",
@@ -3124,7 +3124,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3792
+  "line": 3815
  },
  {
   "id": "REQ-STA-005",
@@ -3137,7 +3137,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3802
+  "line": 3825
  },
  {
   "id": "REQ-API-001",
@@ -3152,7 +3152,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3814
+  "line": 3837
  },
  {
   "id": "REQ-API-002",
@@ -3165,7 +3165,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3849
+  "line": 3872
  },
  {
   "id": "REQ-API-003",
@@ -3180,7 +3180,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3855
+  "line": 3878
  },
  {
   "id": "REQ-API-004",
@@ -3193,7 +3193,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3868
+  "line": 3891
  },
  {
   "id": "REQ-API-005",
@@ -3208,7 +3208,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3881
+  "line": 3904
  },
  {
   "id": "REQ-API-006",
@@ -3223,7 +3223,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3891
+  "line": 3914
  },
  {
   "id": "REQ-API-007",
@@ -3238,7 +3238,7 @@
   ],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3902
+  "line": 3925
  },
  {
   "id": "REQ-NFR-030",
@@ -3251,7 +3251,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3921
+  "line": 3944
  },
  {
   "id": "REQ-NFR-031",
@@ -3264,7 +3264,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3922
+  "line": 3945
  },
  {
   "id": "REQ-NFR-032",
@@ -3277,7 +3277,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3923
+  "line": 3946
  },
  {
   "id": "REQ-NFR-033",
@@ -3290,7 +3290,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3924
+  "line": 3947
  },
  {
   "id": "REQ-NFR-034",
@@ -3303,7 +3303,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3925
+  "line": 3948
  },
  {
   "id": "REQ-NFR-035",
@@ -3316,7 +3316,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3926
+  "line": 3949
  },
  {
   "id": "REQ-NFR-036",
@@ -3329,7 +3329,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3927
+  "line": 3950
  },
  {
   "id": "REQ-NFR-037",
@@ -3342,7 +3342,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3928
+  "line": 3951
  },
  {
   "id": "REQ-NFR-040",
@@ -3355,7 +3355,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3929
+  "line": 3952
  },
  {
   "id": "REQ-NFR-041",
@@ -3368,7 +3368,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3930
+  "line": 3953
  },
  {
   "id": "REQ-NFR-042",
@@ -3381,7 +3381,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3931
+  "line": 3954
  },
  {
   "id": "REQ-NFR-038",
@@ -3394,7 +3394,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3932
+  "line": 3955
  },
  {
   "id": "REQ-NFR-039",
@@ -3407,7 +3407,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3933
+  "line": 3956
  },
  {
   "id": "REQ-NFR-032a",
@@ -3420,7 +3420,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 3959
+  "line": 3982
  },
  {
   "id": "REQ-NFR-036a",
@@ -3433,7 +3433,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4023
+  "line": 4046
  },
  {
   "id": "REQ-LIC-010",
@@ -3446,7 +3446,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4109
+  "line": 4132
  },
  {
   "id": "REQ-LIC-010a",
@@ -3459,7 +3459,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4125
+  "line": 4148
  },
  {
   "id": "REQ-LIC-011",
@@ -3472,7 +3472,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4136
+  "line": 4159
  },
  {
   "id": "REQ-TST-001",
@@ -3485,7 +3485,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4160
+  "line": 4183
  },
  {
   "id": "REQ-TST-002",
@@ -3498,7 +3498,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4185
+  "line": 4208
  },
  {
   "id": "REQ-TST-003",
@@ -3511,7 +3511,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4212
+  "line": 4235
  },
  {
   "id": "REQ-TST-004",
@@ -3524,7 +3524,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4220
+  "line": 4243
  },
  {
   "id": "REQ-TST-004a",
@@ -3537,7 +3537,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4235
+  "line": 4258
  },
  {
   "id": "REQ-TST-005",
@@ -3550,7 +3550,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4252
+  "line": 4275
  },
  {
   "id": "REQ-TST-006",
@@ -3563,7 +3563,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4265
+  "line": 4288
  },
  {
   "id": "REQ-TST-007",
@@ -3576,7 +3576,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4286
+  "line": 4309
  },
  {
   "id": "REQ-TST-007a",
@@ -3589,7 +3589,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4298
+  "line": 4321
  },
  {
   "id": "REQ-TST-008",
@@ -3602,7 +3602,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4305
+  "line": 4328
  },
  {
   "id": "REQ-TST-008a",
@@ -3615,7 +3615,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4314
+  "line": 4337
  },
  {
   "id": "REQ-TST-009",
@@ -3628,7 +3628,7 @@
   "evidence": [],
   "has_ac": true,
   "ac_exempt": false,
-  "line": 4324
+  "line": 4347
  },
  {
   "id": "REQ-PLN-001",
@@ -3641,6 +3641,6 @@
   "evidence": [],
   "has_ac": false,
   "ac_exempt": true,
-  "line": 4362
+  "line": 4385
  }
 ]

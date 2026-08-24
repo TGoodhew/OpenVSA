@@ -28,9 +28,13 @@ jobs:
       # criteria depend on a later phase makes its own phase unclosable, which is how Phase 1
       # came to be declared complete with 37 Phase 0 issues open. Cheap to check, and it only
       # ever regresses through a specification edit, so it runs before the build.
+      # --check, not a plain run: the register is a generated file that is COMMITTED, and
+      # regenerating it here only ever checked the runner's throwaway copy. The committed one
+      # drifted 83 lines from the specification, for weeks, including an acceptance-criterion
+      # edit -- and create_issues.py and sync_issues.py build the backlog from the committed one.
       - name: Check delivery phases are self-contained
         run: |
-          python tools/parse_requirements.py
+          python tools/parse_requirements.py --check
           python tools/check_phase_atomicity.py
 
       # REQ-NFR-008. Cheap, and it only regresses through an edit to a project file or to the
