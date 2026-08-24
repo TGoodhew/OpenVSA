@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -140,6 +140,70 @@ namespace OpenVSA.Synthesis
 
         /// <summary>Sixty-four-point quadrature amplitude modulation: an 8 × 8 grid.</summary>
         public static ModulationScheme Qam64() => SquareQam("64QAM", 8, 6);
+
+        /// <summary>
+        /// A scheme from an explicit point list, normalised to unit mean power.
+        /// </summary>
+        /// <param name="name">What to call it.</param>
+        /// <param name="points">The points, indexed by symbol value.</param>
+        /// <returns>The scheme.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="points"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// There are fewer than two points, or the count is not a power of two.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// How a format from <c>REQ-DEM-010</c>'s catalogue is generated without this project having
+        /// to know that catalogue exists. <c>OpenVSA.Synthesis</c> sits outside the analysis stack so
+        /// that a transport can use it, which means it cannot reference <c>OpenVSA.Demod</c> — so the
+        /// demodulator's constellation is handed in as points rather than looked up.
+        /// </para>
+        /// <para>
+        /// <strong>A round trip built this way tests the chain, not the constellation.</strong> Both
+        /// ends then share one point list, so it proves that timing, carrier, gain and the decisions
+        /// recover what was sent — and proves nothing about whether the geometry matches anybody's
+        /// standard. Only a transmitter can say that; see <c>evidence/req-e44-007/</c>, where an
+        /// instrument's Gray-coded QPSK scored 75.10 % against this project's natural mapping.
+        /// </para>
+        /// </remarks>
+        public static ModulationScheme FromPoints(string name, IList<SymbolPoint> points)
+        {
+            if (points == null)
+            {
+                throw new ArgumentNullException(nameof(points));
+            }
+
+            if (points.Count < 2)
+            {
+                throw new ArgumentException(
+                    "A modulation needs at least two points to carry a bit.", nameof(points));
+            }
+
+            int bits = 0;
+
+            while ((1 << bits) < points.Count)
+            {
+                bits++;
+            }
+
+            if ((1 << bits) != points.Count)
+            {
+                throw new ArgumentException(
+                    points.Count + " points do not carry a whole number of bits per symbol.",
+                    nameof(points));
+            }
+
+            // Counted from the points, never declared: an eight-point ring has five distinct
+            // cosines and not eight, and REQ-UI-051's eye count is derived from this.
+            var levels = new HashSet<double>();
+
+            foreach (SymbolPoint point in points)
+            {
+                levels.Add(Math.Round(point.I, 6));
+            }
+
+            return Normalised(name, bits, levels.Count, new List<SymbolPoint>(points));
+        }
 
         /// <summary>Every scheme this harness can generate.</summary>
         public static IReadOnlyList<ModulationScheme> All =>

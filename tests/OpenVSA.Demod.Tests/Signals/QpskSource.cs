@@ -1,4 +1,6 @@
-using System;
+﻿using System;
+using OpenVSA.Demod.Results;
+using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Tests.Signals
 {
@@ -26,6 +28,24 @@ namespace OpenVSA.Demod.Tests.Signals
         {
             _random = new Random(seed);
         }
+
+        /// <summary>
+        /// The constellation to transmit; QPSK unless something else is asked for.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The points were written out here by hand until <c>REQ-DEM-010</c>'s catalogue existed, and
+        /// the four they produced are exactly <c>Constellation.Qpsk</c>'s four, so every test written
+        /// against this generator keeps the numbers it had.
+        /// </para>
+        /// <para>
+        /// <strong>Both ends of a round trip then share one point list</strong>, which is what makes
+        /// such a test prove that the chain recovers what was sent and prove nothing about whether
+        /// the geometry is anybody's standard. Only a transmitter settles that — see
+        /// <c>evidence/req-e44-007/</c>.
+        /// </para>
+        /// </remarks>
+        internal Constellation Constellation { get; set; } = Constellation.Qpsk();
 
         /// <summary>Symbols per second.</summary>
         internal double SymbolRateHz { get; set; } = 1e6;
@@ -119,14 +139,14 @@ namespace OpenVSA.Demod.Tests.Signals
 
             for (int symbol = 0; symbol < symbolCount; symbol++)
             {
-                symbols[symbol] = _random.Next(4);
+                symbols[symbol] = _random.Next(Constellation.Count);
             }
 
             return Generate(symbols);
         }
 
         /// <summary>Generates a record from given symbols.</summary>
-        /// <param name="symbols">The symbol values, 0 to 3.</param>
+        /// <param name="symbols">The symbol values, indices into the constellation.</param>
         /// <returns>The record, interleaved real and imaginary.</returns>
         internal float[] Generate(int[] symbols)
         {
@@ -144,8 +164,6 @@ namespace OpenVSA.Demod.Tests.Signals
             var shapedI = new double[total];
             var shapedQ = new double[total];
 
-            double unit = 1.0 / Math.Sqrt(2.0);
-
             // The sequence is continued cyclically either side of the symbols being sent, so the
             // record is a continuous transmission rather than one that fades up out of nothing. A
             // dead lead-in is not a neutral choice for a test signal: the demodulator would spend
@@ -157,8 +175,9 @@ namespace OpenVSA.Demod.Tests.Signals
 
                 double centre = lead + ((index + TimingOffsetSymbols) * samplesPerSymbol);
 
-                double i = ((symbol == 0 || symbol == 3) ? unit : -unit);
-                double q = (symbol <= 1 ? unit : -unit);
+                ConstellationPoint point = Constellation.Points[symbol];
+                double i = point.I;
+                double q = point.Q;
 
                 if (index == DisplacedSymbol)
                 {

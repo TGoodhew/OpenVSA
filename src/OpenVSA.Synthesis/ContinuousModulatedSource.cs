@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace OpenVSA.Synthesis
 {
@@ -35,8 +35,8 @@ namespace OpenVSA.Synthesis
     /// </remarks>
     public sealed class ContinuousModulatedSource
     {
-        /// <summary>How many symbol periods either side of centre the pulse spans.</summary>
-        public const int PulseSpanSymbols = 6;
+        /// <summary>The pulse span this source uses unless it is told otherwise.</summary>
+        public const int DefaultPulseSpanSymbols = 6;
 
         /// <summary>Steps per symbol period in the pulse's lookup table.</summary>
         /// <remarks>
@@ -49,6 +49,8 @@ namespace OpenVSA.Synthesis
         private const int TableStepsPerSymbol = 256;
 
         private ModulationScheme _scheme = ModulationScheme.Qpsk();
+
+        private int _pulseSpanSymbols = DefaultPulseSpanSymbols;
 
         private double[] _pulse;
         private double _pulseRollOff = double.NaN;
@@ -71,6 +73,63 @@ namespace OpenVSA.Synthesis
 
         /// <summary>The pulse shape's roll-off, from 0 to 1.</summary>
         public double RollOff { get; set; } = 0.35;
+
+        /// <summary>
+        /// How many symbol periods either side of centre the transmit pulse spans.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">The value is less than one.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>This sets a floor on how good a signal this source can produce, and the floor is
+        /// measured.</strong> A root raised cosine cut off after a few symbols is no longer the
+        /// filter whose cascade with its matched pair is a Nyquist pulse, so the residue is
+        /// intersymbol interference — a real impairment in the signal, not a defect in whatever
+        /// measures it. Demodulated at sixteen samples a symbol with the receive filter spanning the
+        /// same distance, on 24 August 2026:
+        /// </para>
+        /// <code>
+        /// span  6  ->  0.287 %rms      span 12  ->  0.139 %rms
+        /// span  8  ->  0.212 %rms      span 16  ->  0.098 %rms
+        /// span 10  ->  0.273 %rms      span 20  ->  0.020 %rms
+        /// </code>
+        /// <para>
+        /// The default of six stays what it was, because it is what every existing measurement of
+        /// this source was taken against and because the cost is real — the taps, and the work per
+        /// sample, grow with it. A caller that needs a signal clean enough to measure a tenth of a
+        /// per cent against has to ask for it, and <c>REQ-DEM-010</c>'s catalogue tests are the
+        /// callers that do.
+        /// </para>
+        /// <para>
+        /// The trend is not monotone — ten is worse than eight, and twenty-four worse than twenty —
+        /// which is the tail of the pulse changing sign as it is cut. That is worth knowing before
+        /// anyone reads a single comparison of two spans as a trend.
+        /// </para>
+        /// </remarks>
+        public int PulseSpanSymbols
+        {
+            get
+            {
+                return _pulseSpanSymbols;
+            }
+
+            set
+            {
+                if (value < 1)
+                {
+                    throw new ArgumentOutOfRangeException(
+                        nameof(value), value, "A pulse spans at least one symbol either side.");
+                }
+
+                if (value != _pulseSpanSymbols)
+                {
+                    _pulseSpanSymbols = value;
+
+                    // The table is built for a span; changing one invalidates the other.
+                    _pulse = null;
+                    _pulseRollOff = double.NaN;
+                }
+            }
+        }
 
         /// <summary>The carrier's offset from the centre of the analysis, in hertz.</summary>
         public double CarrierOffsetHz { get; set; }
