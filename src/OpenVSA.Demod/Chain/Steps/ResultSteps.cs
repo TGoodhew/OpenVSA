@@ -162,7 +162,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 samples,
                 perSymbol,
                 settings.FilterSymbolSpan,
-                settings.ReferenceFilterAlpha,
+                settings.ReferencePulse,
                 stagger);
 
             for (int sample = 0; sample < samples; sample++)

@@ -416,14 +416,62 @@ namespace OpenVSA.Measurement.State
         /// <summary>Which measurement filter is applied (<c>REQ-DEM-021</c>).</summary>
         public PulseFilterType MeasurementFilter { get; set; } = PulseFilterType.RootRaisedCosine;
 
+        /// <summary>Which reference filter shapes the ideal waveform (<c>REQ-DEM-020</c>).</summary>
+        /// <remarks>
+        /// The raised cosine, because the measured signal has already been through the
+        /// transmitter's root and the analyser's matching half, and the composite of those is a
+        /// raised cosine. A version 4 state file has no such member and meant exactly this, which is
+        /// why the migration to 5 transforms nothing.
+        /// </remarks>
+        public PulseFilterType ReferenceFilter { get; set; } = PulseFilterType.RaisedCosine;
+
         /// <summary>The measurement filter's roll-off (<c>REQ-DEM-020</c>).</summary>
-        public double MeasurementFilterAlpha { get; set; } = 0.35;
+        public double MeasurementFilterAlpha { get; set; } = PulseFilter.DefaultAlpha;
 
         /// <summary>The reference filter's roll-off (<c>REQ-DEM-020</c>).</summary>
-        public double ReferenceFilterAlpha { get; set; } = 0.35;
+        public double ReferenceFilterAlpha { get; set; } = PulseFilter.DefaultAlpha;
 
-        /// <summary>How many symbols either side of centre the filters span (<c>REQ-DEM-023</c>).</summary>
-        public int FilterSymbolSpan { get; set; } = 6;
+        /// <summary>The measurement filter's bandwidth–time product, for the Gaussian.</summary>
+        public double MeasurementFilterBandwidthTime { get; set; } =
+            PulseFilter.DefaultBandwidthTime;
+
+        /// <summary>The reference filter's bandwidth–time product, for the Gaussian.</summary>
+        public double ReferenceFilterBandwidthTime { get; set; } =
+            PulseFilter.DefaultBandwidthTime;
+
+        /// <summary>The measurement filter's cutoff, as a fraction of the symbol rate.</summary>
+        public double MeasurementFilterCutoff { get; set; } = PulseFilter.DefaultCutoff;
+
+        /// <summary>The reference filter's cutoff, as a fraction of the symbol rate.</summary>
+        public double ReferenceFilterCutoff { get; set; } = PulseFilter.DefaultCutoff;
+
+        /// <summary>The taps of a user-defined measurement filter (<c>REQ-DEM-021</c>).</summary>
+        /// <remarks>
+        /// Empty unless the filter is a user-defined one, and empty by default: a state's members
+        /// all have defaults per <c>REQ-STA-005</c>, and the default of a filter nobody supplied is
+        /// no taps rather than a tap of zero.
+        /// </remarks>
+        public List<double> MeasurementFilterTaps { get; set; } = new List<double>();
+
+        /// <summary>The taps of a user-defined reference filter (<c>REQ-DEM-021</c>).</summary>
+        public List<double> ReferenceFilterTaps { get; set; } = new List<double>();
+
+        /// <summary>How many samples a symbol the user's taps were given at.</summary>
+        /// <remarks>
+        /// Part of the filter rather than of the measurement: a tap list is a sampled function and
+        /// nothing about the numbers says how fast it was sampled.
+        /// </remarks>
+        public int UserFilterSamplesPerSymbol { get; set; } = 4;
+
+        /// <summary>
+        /// How many symbols either side of centre the filters span (<c>REQ-DEM-023</c>).
+        /// </summary>
+        /// <remarks>
+        /// Eight, the least that requirement recommends for a root raised cosine, and six until
+        /// 24 August 2026. The measured trade it is the informed end of is in the user help, which
+        /// is where that requirement asks for it.
+        /// </remarks>
+        public int FilterSymbolSpan { get; set; } = DemodSettings.DefaultFilterSymbolSpan;
 
         /// <summary>Whether the burst search of step 2 runs (<c>REQ-DEM-041</c>).</summary>
         public bool BurstSearch { get; set; }
@@ -457,6 +505,20 @@ namespace OpenVSA.Measurement.State
                 Constellation = Labelled(Resolve()),
                 DifferentialReference = DifferentialReference,
                 MeasurementFilter = MeasurementFilter,
+                ReferenceFilter = ReferenceFilter,
+                MeasurementFilterBandwidthTime = MeasurementFilterBandwidthTime,
+                ReferenceFilterBandwidthTime = ReferenceFilterBandwidthTime,
+                MeasurementFilterCutoff = MeasurementFilterCutoff,
+                ReferenceFilterCutoff = ReferenceFilterCutoff,
+                MeasurementFilterTaps =
+                    MeasurementFilterTaps == null || MeasurementFilterTaps.Count == 0
+                        ? null
+                        : MeasurementFilterTaps.ToArray(),
+                ReferenceFilterTaps =
+                    ReferenceFilterTaps == null || ReferenceFilterTaps.Count == 0
+                        ? null
+                        : ReferenceFilterTaps.ToArray(),
+                UserFilterSamplesPerSymbol = UserFilterSamplesPerSymbol,
                 SymbolRateHz = SymbolRateHz,
                 PointsPerSymbol = PointsPerSymbol,
                 ResultLengthSymbols = ResultLengthSymbols,

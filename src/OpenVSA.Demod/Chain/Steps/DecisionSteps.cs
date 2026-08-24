@@ -183,7 +183,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 Iq.Count(result),
                 settings.PointsPerSymbol,
                 settings.FilterSymbolSpan,
-                settings.ReferenceFilterAlpha,
+                settings.ReferencePulse,
                 Stagger(settings));
 
             return StepOutcome.Continue;
@@ -207,7 +207,7 @@ namespace OpenVSA.Demod.Chain.Steps
         /// <param name="samples">How many samples the grid holds.</param>
         /// <param name="perSymbol">Samples per symbol.</param>
         /// <param name="span">How many symbols either side of centre the pulse spans.</param>
-        /// <param name="alpha">The reference filter's roll-off.</param>
+        /// <param name="pulse">The reference filter, from <c>REQ-DEM-021</c>'s catalogue.</param>
         /// <param name="stagger">
         /// How far after I the Q axis is sent, in samples; zero for everything but an offset format.
         /// </param>
@@ -227,16 +227,16 @@ namespace OpenVSA.Demod.Chain.Steps
             int samples,
             int perSymbol,
             int span,
-            double alpha,
+            PulseFilter pulse,
             double stagger)
         {
             var ideal = new double[2 * samples];
 
-            Shape(ideal, symbols, firstInstant, samples, perSymbol, span, alpha, true);
+            Shape(ideal, symbols, firstInstant, samples, perSymbol, span, pulse, true);
 
             if (stagger == 0.0)
             {
-                Shape(ideal, symbols, firstInstant, samples, perSymbol, span, alpha, false);
+                Shape(ideal, symbols, firstInstant, samples, perSymbol, span, pulse, false);
             }
             else
             {
@@ -245,7 +245,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 // aligned. Regenerating it as one and delaying it would put I half a symbol late
                 // as well, and the error metrics would then measure that.
                 Shape(
-                    ideal, symbols, firstInstant + stagger, samples, perSymbol, span, alpha, false);
+                    ideal, symbols, firstInstant + stagger, samples, perSymbol, span, pulse, false);
             }
 
             return ideal;
@@ -258,7 +258,7 @@ namespace OpenVSA.Demod.Chain.Steps
         /// <param name="samples">How many samples the grid holds.</param>
         /// <param name="perSymbol">Samples per symbol.</param>
         /// <param name="span">How many symbols either side of centre the pulse spans.</param>
-        /// <param name="alpha">The reference filter's roll-off.</param>
+        /// <param name="pulse">The reference filter.</param>
         /// <param name="inPhase">Whether this is the I axis rather than the Q axis.</param>
         private static void Shape(
             double[] ideal,
@@ -267,7 +267,7 @@ namespace OpenVSA.Demod.Chain.Steps
             int samples,
             int perSymbol,
             int span,
-            double alpha,
+            PulseFilter pulse,
             bool inPhase)
         {
             int reach = perSymbol * span;
@@ -293,8 +293,8 @@ namespace OpenVSA.Demod.Chain.Steps
 
                 for (int sample = from; sample <= to; sample++)
                 {
-                    double weight =
-                        PulseShaping.RaisedCosineAt((sample - centre) / perSymbol, alpha);
+                    double weight = pulse.Shape(
+                        (sample - centre) / perSymbol, span, FilterRole.Reference);
 
                     ideal[(2 * sample) + part] += amplitude * weight;
                 }

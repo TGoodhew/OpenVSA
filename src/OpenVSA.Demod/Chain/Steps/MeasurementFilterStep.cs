@@ -45,10 +45,10 @@ namespace OpenVSA.Demod.Chain.Steps
                 return StepOutcome.Continue;
             }
 
-            double[] taps = PulseShaping.RootRaisedCosine(
-                context.Settings.MeasurementFilterAlpha,
+            double[] taps = context.Settings.MeasurementPulse.Taps(
                 context.Settings.PointsPerSymbol,
-                context.Settings.FilterSymbolSpan);
+                context.Settings.FilterSymbolSpan,
+                FilterRole.Measurement);
 
             context.Working = PulseShaping.Convolve(working, taps);
 

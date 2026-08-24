@@ -1,0 +1,126 @@
+OpenVSA demodulation cross-check
+  analyser  GPIB0::17::INSTR
+  generator TCPIP0::192.168.1.85::inst1::INSTR
+
+  measuring with Hewlett-Packard,E4406A,US40062429,A.08.10    20041215  12:30:18
+  driving        Agilent Technologies, E4438C, MY45090927, C.05.85
+
+  QPSK:
+    expected         the mapping OpenVSA decodes to should be this instrument's QPSK mapping
+    transmitting     QPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.8981 %rms, carrier error 50.0 Hz, converged in 1 pass
+    against PN9      rotation 0, MSB first, offset 448: 1024 of 1024 bits (100.00 %) against a typical 50.00 %
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  QPSK, spectrum inverted:
+    expected         predicted to match with the bit order flipped, because rotations and bit order together span the reflections
+    transmitting     QPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9570 %rms, carrier error 48.9 Hz, converged in 1 pass
+    against PN9      rotation 3, MSB first, inverted, offset 362: 1024 of 1024 bits (100.00 %) against a typical 50.00 %
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  GRAYQPSK demodulated as QPSK:
+    expected         a Gray mapping transposes two symbols, which no rotation undoes
+    transmitting     GRAYQPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.8570 %rms, carrier error 48.8 Hz, converged in 1 pass
+    against PN9      no reading explained the stream; best 75.10 % against a typical 50.00 %
+    relabelling      a relabelling this does not have a name for (0→1, 1→0, 2→2, 3→3) at offset 307: 512 of 512 symbols (100.00 %) against a typical 25.20 %
+    OUTCOME          as expected: no reading of these bits is the sequence, which is what a wrong mapping looks like and is why a match means something.
+
+  acquisition 1 of 4:
+  OQPSK:
+    expected         the same points as QPSK with Q sent half a symbol late. Half a symbol and a quarter-turn together are a free parameter, so which pairing a capture lands on is a coin toss and a mis-paired reading scores 75.10 % -- the SAME number a Gray mapping gives, and not a mapping error. Four acquisitions: if the mapping were wrong, none of them would ever match
+    transmitting     OQPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9119 %rms, carrier error 49.1 Hz, converged in 1 pass
+    against PN9      rotation 2, MSB first, offset 145: 1024 of 1024 bits (100.00 %) against a typical 50.00 %
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  P4DQPSK demodulated as PI4DQPSK:
+    expected         the reference the format asks for, which is the one this instrument used. The bits will NOT be the sequence, because the instrument labels its phase changes with a Gray code and OpenVSA labels them naturally -- and a Gray relabelling will then account for every symbol, which is the whole claim: the differential arithmetic is right and the convention differs
+    transmitting     P4DQPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9369 %rms, carrier error 49.1 Hz, converged in 1 pass
+    against PN9      no reading explained the stream; best 74.95 % against a typical 50.10 %
+    relabelling      a Gray labelling (0→0, 1→1, 2→3, 3→2) at offset 371: 511 of 511 symbols (100.00 %) against a typical 25.05 %
+    OUTCOME          as expected: no reading of these bits is the sequence, which is what a wrong mapping looks like and is why a match means something.
+
+  P4DQPSK demodulated as PI4DQPSK, reference None:
+    expected         the same waveform with the reference forced to None, and REQ-DEM-012's criterion on real hardware: nothing accounts for it, under any labelling. Reading a differentially encoded signal absolutely does not degrade the answer, it destroys it -- and the demodulation converges and reports a perfectly good EVM while doing so
+    transmitting     P4DQPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9576 %rms, carrier error 49.2 Hz, converged in 1 pass
+    against PN9      no reading explained the stream; best 76.66 % against a typical 50.00 %
+    relabelling      no relabelling explains the stream either; best 53.32 % against a typical 28.13 %
+    OUTCOME          as expected: no reading of these bits is the sequence, which is what a wrong mapping looks like and is why a match means something.
+
+  D8PSK:
+    expected         the same claim on eight points and three bits
+    transmitting     D8PSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9566 %rms, carrier error 49.9 Hz, converged in 1 pass
+    against PN9      no reading explained the stream; best 66.60 % against a typical 50.10 %
+    relabelling      a Gray labelling (0→0, 1→1, 2→3, 3→2, 4→6, 5→7, 6→5, 7→4) at offset 220: 511 of 511 symbols (100.00 %) against a typical 12.52 %
+    OUTCOME          as expected: no reading of these bits is the sequence, which is what a wrong mapping looks like and is why a match means something.
+
+  D8PSK, reference None:
+    expected         and the same control
+    transmitting     D8PSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.8967 %rms, carrier error 48.7 Hz, converged in 1 pass
+    against PN9      no reading explained the stream; best 69.34 % against a typical 50.00 %
+    relabelling      no relabelling explains the stream either; best 32.23 % against a typical 18.16 %
+    OUTCOME          as expected: no reading of these bits is the sequence, which is what a wrong mapping looks like and is why a match means something.
+
+  GRAYQPSK, Gray labelled demodulated as QPSK:
+    expected         the case above with the labelling this instrument actually uses. Same waveform, same decisions, same EVM -- and the bits should now BE the sequence
+    transmitting     GRAYQPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9271 %rms, carrier error 49.6 Hz, converged in 1 pass
+    against PN9      rotation 1, LSB first, inverted, offset 15: 1024 of 1024 bits (100.00 %) against a typical 50.00 %, 2 equivalent readings
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  P4DQPSK, Gray labelled demodulated as PI4DQPSK:
+    expected         differentially decoded and Gray labelled, which is what this instrument sends
+    transmitting     P4DQPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9426 %rms, carrier error 49.6 Hz, converged in 1 pass
+    against PN9      rotation 0, MSB first, offset 219: 1022 of 1022 bits (100.00 %) against a typical 50.10 %
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  D8PSK, Gray labelled:
+    expected         and the same on eight points and three bits
+    transmitting     D8PSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 17725 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.9489 %rms, carrier error 49.2 Hz, converged in 1 pass
+    against PN9      rotation 0, MSB first, offset 376: 1533 of 1533 bits (100.00 %) against a typical 50.10 %
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  polarity normal, modulation off, output off.
+
+  11 of 11 cases came out as expected.

@@ -30,8 +30,22 @@ namespace OpenVSA.Demod.Help
         /// <summary>The topic describing the demodulation chain (<c>REQ-DEM-001</c>).</summary>
         public const string ProcessingOrder = "demodulation-processing-order";
 
+        /// <summary>
+        /// The two filters, the catalogue, and what the span costs (<c>REQ-DEM-020</c>,
+        /// <c>REQ-DEM-021</c>, <c>REQ-DEM-023</c>).
+        /// </summary>
+        /// <remarks>
+        /// Three requirements ask for something to be in the user help rather than only in the
+        /// code: <c>REQ-DEM-020</c> wants the transmitter/receiver split explained,
+        /// <c>REQ-DEM-021</c> wants the catalogue listed, and <c>REQ-DEM-023</c> wants the
+        /// filter-span/accuracy trade reproduced "so the default is an informed choice". Tests
+        /// assert all three are here, because a help page is the easiest thing in a product to let
+        /// drift away from what the product does.
+        /// </remarks>
+        public const string Filters = "demodulation-filters";
+
         private static readonly ReadOnlyCollection<string> Topics =
-            new ReadOnlyCollection<string>(new List<string> { ProcessingOrder });
+            new ReadOnlyCollection<string>(new List<string> { ProcessingOrder, Filters });
 
         /// <summary>Every topic that ships, by name.</summary>
         public static IReadOnlyList<string> Names => Topics;

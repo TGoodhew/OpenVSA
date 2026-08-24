@@ -24,6 +24,24 @@ namespace OpenVSA.Demod.Signal
     /// different one; this note records what is assumed here so that requirement can find it.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Applying a filter to a waveform.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What a filter <em>is</em> lives in <see cref="PulseFilter"/>; this is what is done with one.
+    /// The split matters because of <c>REQ-DEM-022a</c>: there is one place a filter is built and
+    /// one place it is normalised, and this class deliberately has neither.
+    /// </para>
+    /// <para>
+    /// <strong>It used to have both.</strong> A root raised cosine was built here and normalised to
+    /// unit energy — a third convention alongside the raised cosine's unit peak and the Gaussian's
+    /// unit area, which is the exact situation that requirement exists to end. The raised cosine's
+    /// removable singularity was also handled here by averaging two points either side of it, which
+    /// the same requirement names as the thing not to do. Both are gone; the analytic limits and the
+    /// single normalisation are in <see cref="PulseFilter"/>.
+    /// </para>
+    /// </remarks>
     internal static class PulseShaping
     {
         /// <summary>
@@ -36,69 +54,6 @@ namespace OpenVSA.Demod.Signal
         /// </param>
         /// <returns>An odd number of taps, symmetric about the centre, of unit energy.</returns>
         /// <exception cref="ArgumentOutOfRangeException">An argument is outside its range.</exception>
-        internal static double[] RootRaisedCosine(
-            double alpha, int samplesPerSymbol, int symbolSpan)
-        {
-            if (alpha < 0.0 || alpha > 1.0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(alpha), alpha, "Roll-off runs from 0 to 1.");
-            }
-
-            if (samplesPerSymbol < 2)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(samplesPerSymbol), samplesPerSymbol,
-                    "A pulse needs at least two samples per symbol to have a shape.");
-            }
-
-            if (symbolSpan < 1)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(symbolSpan), symbolSpan, "A pulse spans at least one symbol either side.");
-            }
-
-            int half = samplesPerSymbol * symbolSpan;
-            var taps = new double[(2 * half) + 1];
-
-            for (int tap = 0; tap < taps.Length; tap++)
-            {
-                double t = (tap - half) / (double)samplesPerSymbol;
-
-                taps[tap] = Impulse(t, alpha);
-            }
-
-            double energy = 0.0;
-
-            foreach (double tap in taps)
-            {
-                energy += tap * tap;
-            }
-
-            double scale = 1.0 / Math.Sqrt(energy);
-
-            for (int tap = 0; tap < taps.Length; tap++)
-            {
-                taps[tap] *= scale;
-            }
-
-            return taps;
-        }
-
-        /// <summary>
-        /// Convolves an interleaved signal with real taps, keeping the input's length and its
-        /// timing.
-        /// </summary>
-        /// <param name="interleaved">The signal, real and imaginary alternating.</param>
-        /// <param name="taps">The taps; an odd count, so the centre is a sample and not a gap.</param>
-        /// <returns>A new buffer of the same length as the input.</returns>
-        /// <remarks>
-        /// The output is aligned on the taps' centre, so a symmetric filter leaves the signal's
-        /// timing alone. Anything else would put a delay of half the filter into the chain that
-        /// step 8 would then have to estimate away as a timing offset, and a timing estimate that
-        /// is really a filter delay is the kind of thing that works until the filter length
-        /// changes.
-        /// </remarks>
         internal static double[] Convolve(double[] interleaved, double[] taps)
         {
             int samples = Iq.Count(interleaved);
@@ -152,72 +107,5 @@ namespace OpenVSA.Demod.Signal
         /// their composite's centre is the sum of the squares of the taps, and that is one.
         /// </para>
         /// </remarks>
-        internal static double RaisedCosineAt(double symbols, double alpha)
-        {
-            const double Tiny = 1e-9;
-
-            double sinc;
-
-            if (Math.Abs(symbols) < Tiny)
-            {
-                sinc = 1.0;
-            }
-            else
-            {
-                sinc = Math.Sin(Math.PI * symbols) / (Math.PI * symbols);
-            }
-
-            if (alpha < Tiny)
-            {
-                return sinc;
-            }
-
-            double denominator = 1.0 - ((2.0 * alpha * symbols) * (2.0 * alpha * symbols));
-
-            if (Math.Abs(denominator) < 1e-7)
-            {
-                // The removable singularity at t = ±1/2α. The limit is πsin(π/2α)/(4·π/2α)·…, and
-                // rather than write that out it is evaluated as the average of two points either
-                // side, which is exact to the precision this pulse is used at and cannot be got
-                // subtly wrong.
-                return 0.5 *
-                    (RaisedCosineAt(symbols - 1e-5, alpha) + RaisedCosineAt(symbols + 1e-5, alpha));
-            }
-
-            return sinc * Math.Cos(Math.PI * alpha * symbols) / denominator;
-        }
-
-        private static double Impulse(double t, double alpha)
-        {
-            const double Tiny = 1e-9;
-
-            if (Math.Abs(t) < Tiny)
-            {
-                return 1.0 + (alpha * ((4.0 / Math.PI) - 1.0));
-            }
-
-            if (alpha > Tiny && Math.Abs(Math.Abs(t) - (1.0 / (4.0 * alpha))) < Tiny)
-            {
-                // The removable singularity at t = ±T/4α, where the denominator's
-                // 1 − (4αt)² term vanishes. Evaluated by its limit rather than by the
-                // general form, which would divide by something near zero.
-                double angle = Math.PI / (4.0 * alpha);
-
-                return (alpha / Math.Sqrt(2.0)) *
-                    (((1.0 + (2.0 / Math.PI)) * Math.Sin(angle)) +
-                     ((1.0 - (2.0 / Math.PI)) * Math.Cos(angle)));
-            }
-
-            double numerator =
-                Math.Sin(Math.PI * t * (1.0 - alpha)) +
-                (4.0 * alpha * t * Math.Cos(Math.PI * t * (1.0 + alpha)));
-
-            // πt(1 − (4αt)²), written in that form so it can be read against the standard
-            // definition rather than against an algebraically equivalent rearrangement of it.
-            double denominator =
-                Math.PI * t * (1.0 - ((4.0 * alpha * t) * (4.0 * alpha * t)));
-
-            return numerator / denominator;
-        }
     }
 }
