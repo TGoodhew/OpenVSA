@@ -84,6 +84,69 @@ namespace OpenVSA.Ui.Tests
         }
 
         [Fact]
+        public void AResultLengthTooShortForTheFormatIsWarnedAboutInTheEventLog()
+        {
+            // REQ-DEM-031: "The UI shall warn when Result Length is below the recommended minimum
+            // for the chosen format", and its criterion names the case — 1024-QAM at a Result
+            // Length of 50 produces "a visible, specific warning naming the recommended minimum".
+            //
+            // The chain works out what to say, because it is the thing that knows both numbers; the
+            // shell is where it becomes visible. Said ONCE rather than per block: a demodulation
+            // raises a result many times a second and this notice is a property of the setup.
+            _host.Run(() =>
+            {
+                ShellWindow shell = Built();
+
+                try
+                {
+                    Choose(shell, "Digital Demodulation");
+
+                    MeasurementContext active = shell.Contexts.Active;
+
+                    active.Setup.Demod.SymbolRateHz =
+                        12.8e6 / SyntheticSymbolSource.DefaultSamplesPerSymbol;
+
+                    active.Setup.Demod.Format = "1024QAM";
+                    active.Setup.Demod.ResultLengthSymbols = 50;
+                    active.Setup.Demod.MeasurementFilter = PulseFilterType.None;
+
+                    for (int block = 0; block < 3; block++)
+                    {
+                        using (IqBlock samples = Block(400))
+                        {
+                            active.Analyse(samples);
+                        }
+                    }
+
+                    string log = string.Join(
+                        Environment.NewLine, shell.EventLog.Lines);
+
+                    _output.WriteLine(log);
+
+                    Assert.Contains("below the 1024 recommended", log, StringComparison.Ordinal);
+                    Assert.Contains("REQ-DEM-031", log, StringComparison.Ordinal);
+
+                    // Once, not three times: three blocks were analysed.
+                    int said = 0;
+                    int at = log.IndexOf("below the 1024 recommended", StringComparison.Ordinal);
+
+                    while (at >= 0)
+                    {
+                        said++;
+                        at = log.IndexOf(
+                            "below the 1024 recommended", at + 1, StringComparison.Ordinal);
+                    }
+
+                    Assert.Equal(1, said);
+                }
+                finally
+                {
+                    shell.Close();
+                }
+            });
+        }
+
+        [Fact]
         public void ADemodulatedBlockReachesTheDisplay()
         {
             _host.Run(() =>

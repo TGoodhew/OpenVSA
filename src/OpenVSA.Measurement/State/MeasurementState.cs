@@ -404,6 +404,18 @@ namespace OpenVSA.Measurement.State
         public DifferentialReference DifferentialReference { get; set; } =
             DifferentialReference.PerFormat;
 
+        /// <summary>
+        /// How many points a symbol the traces are drawn at (<c>REQ-DEM-034</c>).
+        /// </summary>
+        /// <remarks>
+        /// Trace resolution only: it cannot change a measured metric, because every metric is
+        /// computed at the symbol decision instants and this is read by step 14 alone. Distinct
+        /// from <see cref="PointsPerSymbol"/>, which is the internal rate and must not follow it —
+        /// <c>REQ-DEM-034a</c> gives the reason. A version 5 state file has no such member and its
+        /// traces were drawn at the internal rate, which is this member's default.
+        /// </remarks>
+        public int DisplayPointsPerSymbol { get; set; } = 4;
+
         /// <summary>How many symbols the Result Length window holds (<c>REQ-DEM-031</c>).</summary>
         public int ResultLengthSymbols { get; set; } = 256;
 
@@ -521,6 +533,7 @@ namespace OpenVSA.Measurement.State
                 UserFilterSamplesPerSymbol = UserFilterSamplesPerSymbol,
                 SymbolRateHz = SymbolRateHz,
                 PointsPerSymbol = PointsPerSymbol,
+                DisplayPointsPerSymbol = DisplayPointsPerSymbol,
                 ResultLengthSymbols = ResultLengthSymbols,
                 SearchLengthSamples = SearchLengthSamples,
                 MeasurementFilterAlpha = MeasurementFilterAlpha,

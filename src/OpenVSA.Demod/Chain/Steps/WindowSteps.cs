@@ -110,6 +110,15 @@ namespace OpenVSA.Demod.Chain.Steps
                     "short for these settings.");
             }
 
+            string advice = context.Settings.ResultLengthAdvice;
+
+            if (advice != null)
+            {
+                // REQ-DEM-031: said once, where a caller will see it, rather than left for a user
+                // to infer from a measurement that looks like a bad signal.
+                context.Note(advice);
+            }
+
             if (count < wanted)
             {
                 context.Note(

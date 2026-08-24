@@ -202,6 +202,15 @@ namespace OpenVSA.Demod.Results
                     return result.EqualiserCoefficients != null &&
                            result.EqualiserCoefficients.Count > 0;
 
+                case ResultTrace.EyeI:
+                case ResultTrace.EyeQ:
+                case ResultTrace.Trellis:
+                    // An eye is the waveform folded on the symbol clock, so it needs something
+                    // between the decisions to fold. At one point a symbol (REQ-DEM-034's lowest
+                    // setting) there is nothing there, and the honest answer is that the trace does
+                    // not exist rather than a fold of one point per symbol drawn as though it did.
+                    return result.Trace.SamplesPerSymbol >= 2;
+
                 default:
                     return true;
             }
@@ -222,6 +231,15 @@ namespace OpenVSA.Demod.Results
             if (result.Trace == null)
             {
                 return "This demodulation produced no result to draw.";
+            }
+
+            if (trace == ResultTrace.EyeI || trace == ResultTrace.EyeQ ||
+                trace == ResultTrace.Trellis)
+            {
+                return "The traces are drawn at one point per symbol, so there is nothing between " +
+                    "the decisions to fold an eye on. Raise points per symbol (REQ-DEM-034) and " +
+                    "the trace appears; the metrics do not change, because they are computed at " +
+                    "the decision instants either way.";
             }
 
             return "The equaliser did not run, so there are no coefficients and no channel " +
