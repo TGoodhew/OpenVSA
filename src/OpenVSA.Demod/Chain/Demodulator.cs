@@ -273,6 +273,16 @@ namespace OpenVSA.Demod.Chain
                 start = ProcessingOrder.PositionOf(ProcessingOrder.ReEntryPoint);
             }
 
+            // REQ-DEM-036: the judgement is made once, at the end, on everything the chain has --
+            // and the explanation goes into the notices as well as into the result, because the
+            // shell already says the notices out loud and a diagnosis nobody is shown is not one.
+            LockReport judgement = LockDiagnosis.For(context);
+
+            if (!judgement.Locked)
+            {
+                context.Note(judgement.Explanation);
+            }
+
             return new DemodResult(
                 context.Trace,
                 context.Summary,
@@ -285,7 +295,8 @@ namespace OpenVSA.Demod.Chain
                 journal,
                 new List<string>(context.Notices),
                 context.ReferenceWaveform,
-                Points(context.EqualiserCoefficients));
+                Points(context.EqualiserCoefficients),
+                judgement);
         }
     }
 }

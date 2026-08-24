@@ -75,8 +75,11 @@ namespace OpenVSA.Demod.Chain
             ChainJournal journal,
             IList<string> notices,
             float[] reference,
-            IList<ConstellationPoint> equaliser)
+            IList<ConstellationPoint> equaliser,
+            LockReport lockReport)
         {
+            Lock = lockReport;
+
             _reference = reference ?? new float[0];
             _equaliser = equaliser == null
                 ? null
@@ -96,6 +99,19 @@ namespace OpenVSA.Demod.Chain
 
         /// <summary>The result trace: the constellation, the symbols and the samples behind them.</summary>
         public SymbolTrace Trace { get; }
+
+        /// <summary>
+        /// Whether the demodulation locked, and what the signal says about why it did not
+        /// (<c>REQ-DEM-036</c>).
+        /// </summary>
+        /// <remarks>
+        /// Present whether or not it locked, because the four quantities it is built on -- the
+        /// signal's own symbol rate, the bandwidth it occupies, the bandwidth the filter passes and
+        /// how far off centre it sits -- are worth reading on a measurement that worked. When it did
+        /// not lock, <see cref="LockReport.Explanation"/> is also among the
+        /// <see cref="Notices"/>.
+        /// </remarks>
+        public LockReport Lock { get; }
 
         /// <summary>
         /// Step 10's regenerated ideal waveform, on the same grid as <see cref="Trace"/>'s samples.

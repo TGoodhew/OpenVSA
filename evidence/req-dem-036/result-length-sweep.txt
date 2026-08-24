@@ -1,0 +1,115 @@
+Does a Result Length below the format's recommendation break carrier lock?
+=========================================================================
+
+Measured 2026-08-24 against the chain at 77125c1, through OpenVSA.Demod.Tests.
+
+Fixture
+    symbol rate      1 MHz
+    sample rate      16 MHz
+    shaping          root raised cosine, alpha 0.35, 20 symbols span
+    measurement      root raised cosine, alpha 0.35 -- matched
+    carrier offset   30 kHz, so that step 8 has a frequency to estimate
+    seed             20260824
+    record           4000 symbols
+
+"Locked" is LockDiagnosis's own judgement: EVM below 25 %rms. The recommendation is
+Constellation.RecommendedResultLengthSymbols = max(50, points).
+
+
+Square and cross QAM, recommendation down to 8 symbols
+------------------------------------------------------
+
+  256-QAM   (recommendation 256 symbols)
+    noise-free   256 sym   0.0258 %rms   locked
+    noise-free    32 sym   0.0185 %rms   locked
+    noise-free    16 sym   0.0168 %rms   locked
+    noise-free     8 sym   5.745  %rms   locked
+    25 dB        256 sym   2.698  %rms   locked
+    25 dB         32 sym   2.681  %rms   locked
+    25 dB         16 sym   5.994  %rms   locked
+    25 dB          8 sym   5.981  %rms   locked
+
+  32-point star QAM   (recommendation 50 symbols)
+    noise-free   256 sym   0.0260 %rms   locked
+    noise-free    32 sym   0.0255 %rms   locked
+    noise-free    16 sym   0.0252 %rms   locked
+    noise-free     8 sym   0.0273 %rms   locked
+    25 dB        256 sym   2.694  %rms   locked
+    25 dB         32 sym   2.867  %rms   locked
+    25 dB         16 sym   2.905  %rms   locked
+    25 dB          8 sym   2.740  %rms   locked
+
+  16-QAM   (recommendation 50 symbols)
+    noise-free   256 sym   0.0267 %rms   locked
+    noise-free    32 sym   0.0260 %rms   locked
+    noise-free    16 sym   0.0214 %rms   locked
+    noise-free     8 sym   0.0208 %rms   locked
+    25 dB        256 sym   2.731  %rms   locked
+    25 dB         32 sym   2.710  %rms   locked
+    25 dB         16 sym   2.768  %rms   locked
+    25 dB          8 sym   3.141  %rms   locked
+
+
+Pushed to the shortest window the settings allow
+-------------------------------------------------
+
+DemodSettings.Validate refuses fewer than 4 symbols ("a Result Length of fewer than 4
+symbols cannot be fitted to"), so 4 is the floor.
+
+  256-QAM   (recommendation 256 symbols -- 4 symbols is 1/64 of it)
+    25 dB        256 sym   2.698  %rms   locked
+    25 dB          8 sym   5.981  %rms   locked
+    25 dB          6 sym   4.922  %rms   locked
+    25 dB          4 sym   5.186  %rms   locked
+    20 dB        256 sym   4.547  %rms   locked
+    20 dB          8 sym   6.251  %rms   locked
+    20 dB          6 sym   5.638  %rms   locked
+    20 dB          4 sym   4.647  %rms   locked
+    15 dB        256 sym   6.254  %rms   locked
+    15 dB          8 sym   5.861  %rms   locked
+    15 dB          6 sym   4.846  %rms   locked
+    15 dB          4 sym   3.168  %rms   locked
+
+  128-QAM (cross)   (recommendation 128 symbols)
+    25 dB        256 sym   2.685  %rms   locked
+    25 dB          8 sym  10.08   %rms   locked
+    25 dB          6 sym   5.366  %rms   locked
+    25 dB          4 sym   8.785  %rms   locked
+    20 dB        256 sym   4.765  %rms   locked
+    20 dB          8 sym  11.17   %rms   locked
+    20 dB          6 sym  10.22   %rms   locked
+    20 dB          4 sym   7.550  %rms   locked
+    15 dB        256 sym   7.612  %rms   locked
+    15 dB          8 sym  10.47   %rms   locked
+    15 dB          6 sym  12.14   %rms   locked
+    15 dB          4 sym   6.493  %rms   locked
+
+
+Reading
+-------
+
+56 of 56 locked. The worst reading anywhere in the sweep is 12.14 %rms, half the 25 %
+that separates a poor demodulation from one that is not locked -- and it is at 15 dB on a
+128-point cross constellation, where 7.6 %rms is what the SAME format reads at the full
+recommended length. Most of that is the noise, not the window.
+
+The EVM does not even fall monotonically with the window: 256-QAM at 15 dB reads 6.25 %rms
+at 256 symbols and 3.17 %rms at 4. A four-symbol window is not a better measurement; it is
+a measurement of four symbols, whose EVM is the spread of four points and not of the
+format. That is the sense in which the Result Length is too short -- unrepresentative, not
+unlocked.
+
+So REQ-DEM-036's fourth cause cannot be injected in isolation against this chain, and the
+acceptance test injects it alongside a filter mismatch that does break the lock. See #429.
+
+
+A note on what was NOT swept
+----------------------------
+
+pi/4-DQPSK was in an earlier version of this sweep and was removed: the fixture was wrong
+rather than the chain. A generator given the rotation but not told to encode differentially
+transmits something the demodulator is not decoding, and the chain reported 43-47 %rms at
+every Result Length including the full one. The diagnosis blamed the centre frequency,
+which is CORRECT -- an unhandled rotation of pi/4 per symbol is indistinguishable from a
+carrier offset of one eighth of the symbol rate, and it said so. That is worth recording as
+a case the diagnostic gets right for the right reason.
