@@ -165,9 +165,19 @@ before the instrument has been configured, so its error makes captures shorter i
 while still delivering the requested number of samples. It is a lower bound in this region, and
 nothing should treat it as more than one.
 
-**Fixing it properly needs a measurement that has not been made:** the actual bandwidth and aperture
-across the whole RBW range, in the instrument's own steps, rather than at the six points entry 3 and
-`REQ-E44-002b` between them happen to cover.
+**MEASURED AND FIXED, 2026-08-24.** The sweep entry 7 called for was run — 40 geometric points over
+the whole 10 Hz to 10 MHz range, every step boundary bisected to better than 130 Hz,
+`OpenVSA.Verify --probe-bandwidth`, readings in `evidence/req-e44-007/bandwidth-law.tsv`. The result:
+$F_s = 4.83871 \times W_{actual}$ exactly, both quantities being $1/n$ of 15 MHz and 3.1 MHz for an
+integer $n$; a commanded bandwidth rounded **up** to the next step; and the rate clamped at 15 MS/s
+from about 1.56 MHz commanded all the way to 10 MHz. The full statement, and the two things the sweep
+did **not** establish, are in `REQ-E44-002b` and in `E4406ASampleRate`'s remarks.
+
+**The linear interpolation was worse than this entry first said.** Measured against the sweep it
+reported **×0.170** of the true rate at 1.70 MHz commanded — a 5.9× under-estimate, not the 2× the
+single 5 MHz point suggested. It has been replaced by the measured law, and the reference bandwidth it
+needs is now read from the instrument at connect. **A wider span is no longer a way to buy samples per
+symbol on this instrument:** everything from 1.56 MHz up samples at 15 MS/s.
 
 ### 6. Bench environment, NOT a firmware deviation
 

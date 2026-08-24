@@ -95,3 +95,80 @@ commanded, still unmeasured.
 - **Nothing about the spectral sense**, for the reason given above.
 - **No EDGE or cdmaOne**, which is stage 2 (`#346`, `#64`) and needs `#125` and `REQ-DEM-021`'s EDGE
   pulse first.
+
+---
+
+# The analyser's bandwidth-to-sample-rate law
+
+**Measured 2026-08-24.** `OpenVSA.Verify --probe-bandwidth`; raw output in `bandwidth-law.txt`,
+readings in `bandwidth-law.tsv`.
+
+The demodulation check above turned up a 2× disagreement between the acquisition plan's estimated
+sample rate and the instrument's own answer. Root-causing it exposed something worse than a wrong
+constant: nobody had measured the *shape* of the relationship, so two successive models had been
+fitted to a handful of points and both were wrong in ways that produced plausible numbers rather than
+failures.
+
+- A **linear interpolation** from zero to the rate at the widest bandwidth. Measured against the
+  sweep it reports **×0.170** of the truth at 1.70 MHz commanded — a 5.9× under-estimate.
+- A **fixed 1.5× of the bandwidth** (deviation 3 in `docs/INSTRUMENT-FIRMWARE-DEVIATIONS.md`). That
+  was one real reading taken at the extreme top of the range, where the ratio genuinely is 1.5, read
+  as though it held everywhere. Below the clamp the ratio is 4.83871.
+
+## Method
+
+Forty points, geometric, over the instrument's whole reported range of 10 Hz to 10 MHz. At each,
+command the bandwidth and read back **both** the bandwidth actually in force and the sample period —
+two coercions, not one, since the instrument first picks a filter it can afford and then picks a
+decimation from that.
+
+A ladder alone only *brackets* a step: between two rungs with different periods the boundary could be
+anywhere. So every such gap was then **bisected**, to better than 130 Hz. That is what turns "somewhere
+between 1 MHz and 5 MHz" into a number.
+
+## Result
+
+$$W_{actual} = \frac{W_1}{n}, \qquad F_s = \frac{F_s^{max}}{n}, \qquad
+F_s = \frac{F_s^{max}}{W_1} W_{actual} = 4.83871\,W_{actual}$$
+
+with $W_1 = 3.1$ MHz, $F_s^{max} = 15$ MHz, and $n$ the number of 1/15 MHz ticks in the sample period.
+
+| what | result |
+|---|---|
+| Sample period a whole number of 1/15 MHz ticks | **yes, all 40 points**, $n$ from 1 to 308 805 |
+| Distinct values of $F_s / W_{actual}$ over the sweep | **three**: 4.83871, 2.2388, 1.5 |
+| $F_s = 4.83871 \times W_{actual}$ | **exact** wherever $W_{actual} \le 3.1$ MHz |
+| Commanded bandwidth is rounded | **up**, to the next available step — so $n$ is a floor |
+| 5 → 7.5 MS/s boundary | **1.0368 MHz** commanded (±87 Hz) |
+| 7.5 → 15 MS/s boundary | **1.5578 MHz** commanded (±124 Hz) |
+| Above 3.1 MHz actual | rate **clamps at 15 MS/s**, filter widens alone (3.1, 6.7, 10 MHz seen) |
+| Worst error of the old linear model | **×0.170** at 1.70 MHz commanded |
+
+**The practical consequence, which was not obvious before:** a wider span buys *bandwidth*, not
+samples per symbol. Everything from about 1.56 MHz commanded to the full 10 MHz samples at 15 MS/s, so
+the widest span is the right choice only until the signal fits inside it.
+
+## What the sweep did not establish, stated so it is not mistaken for known
+
+**That every integer $n$ is available.** Forty points landed on 35 distinct ones. Predicting the rate
+from a *commanded* bandwidth is therefore exact only at and above **17 kHz** commanded, and within
+**1.40 %** below it — the instrument chose 3 094 ticks at 1 kHz where $W_1/n$ gives 3 100, and 308 805
+at 10 Hz where it gives 310 000.
+
+That residual is left alone on purpose. The prediction exists to size a block *before* there is an
+instrument to ask, and `REQ-HAL-001`'s negotiation means the driver reads the true period back at
+every configuration and on every block. A per cent does not matter there; 490 % did.
+
+## What changed in the product
+
+`E4406ASampleRate` is the law as a pure function, so it can be tested — which the two wrong models
+never could, living as one of them did inside a private nested class in a VISA transport.
+`E4406ASampleRateTests` asserts it against these readings, both the exact region and the measured
+1.40 % gap, with the boundaries and the clamped region pinned. Connect measures $W_1$ from one reading
+taken at a thirty-second of the maximum bandwidth, which is far enough inside the tracking region that
+the clamp cannot corrupt it.
+
+**Re-verified on the bench after the change**, because it alters real block sizing: cross-validation
+10 of 10, feature exercise 97 of 97, `--demod-check` 3 of 3 with 1024 of 1024 PN9 bits again (block
+length moved from 23 048 to 22 109 samples, now bounded from the true rate). GRAYQPSK reproduced its
+75.10 % to two decimals.
