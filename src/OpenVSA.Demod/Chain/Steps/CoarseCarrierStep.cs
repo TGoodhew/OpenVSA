@@ -76,9 +76,13 @@ namespace OpenVSA.Demod.Chain.Steps
             int order = context.Settings.Constellation.RotationalSymmetry;
             int span = to - from;
 
+            double symbolCycles = context.SampleRateHz <= 0.0
+                ? 0.0
+                : context.Settings.SymbolRateHz / context.SampleRateHz;
+
             double cyclesPerSample = span < 8
                 ? 0.0
-                : Estimate(search, from, span, order);
+                : Estimate(search, from, span, order, symbolCycles);
 
             context.CoarseFrequencyHz = cyclesPerSample * context.SampleRateHz;
             context.Search = Derotate(search, samples, -cyclesPerSample);
@@ -86,7 +90,47 @@ namespace OpenVSA.Demod.Chain.Steps
             return StepOutcome.Continue;
         }
 
-        private static double Estimate(double[] search, int from, int span, int order)
+        /// <summary>
+        /// Reads the carrier offset off the raised signal's spectrum.
+        /// </summary>
+        /// <param name="search">The search window, interleaved.</param>
+        /// <param name="from">Where in it to start.</param>
+        /// <param name="span">How many samples to use.</param>
+        /// <param name="order">The power the modulation is stripped with.</param>
+        /// <param name="symbolCycles">
+        /// The symbol rate in cycles per sample, or zero when it is not usable.
+        /// </param>
+        /// <returns>The offset, in cycles per sample.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>The modulation puts lines at every multiple of the symbol rate, and they are not
+        /// the carrier.</strong> Raising the signal to a power annihilates the symbols' phases and
+        /// leaves the carrier's line at <em>order</em> times the offset — and it also raises the
+        /// signal's envelope to that power, and a pulse-shaped envelope is periodic at the symbol
+        /// rate. So the transform contains the wanted line near zero and unwanted ones at ±Rs, ±2Rs
+        /// and so on, which move with nothing.
+        /// </para>
+        /// <para>
+        /// <strong>Which of them is the tallest depends on the format, and for one of them the
+        /// wrong one wins.</strong> Measured on 24 August 2026, as a fraction of the tallest line
+        /// in the eighth power: 8PSK's carrier line is 1.00 with its envelope lines at 0.57;
+        /// π/4-DQPSK's envelope lines are 1.00 and 0.98 with its carrier line at 0.57. The
+        /// alternation between two QPSK sets makes that format's envelope far more strongly
+        /// periodic than an eight-point ring's, and the peak search took ±Rs and divided it by
+        /// eight — reporting 125.4 kHz of carrier offset on a 1 Msym/s signal that had none, and
+        /// demodulating it at 47 % EVM.
+        /// </para>
+        /// <para>
+        /// <strong>So they are excluded by name rather than competed with.</strong> The symbol rate
+        /// is supplied exactly (<c>REQ-DEM-030</c>), the envelope's lines are impulses at its
+        /// multiples, and the transform's own resolution says how wide an impulse can be. What is
+        /// lost is a carrier offset that lands a raised line exactly on one of them — an offset of
+        /// Rs/<em>order</em>, which no estimator could have told from the envelope in any case, and
+        /// which <c>REQ-DEM-036</c> owns.
+        /// </para>
+        /// </remarks>
+        private static double Estimate(
+            double[] search, int from, int span, int order, double symbolCycles)
         {
             int length = TransformLength(span);
             var raised = new double[2 * length];
@@ -107,11 +151,24 @@ namespace OpenVSA.Demod.Chain.Steps
 
             fft.Forward(new Span<double>(raised));
 
+            // Three times the transform's own resolution either side of a line: the envelope's
+            // contribution at a multiple of the symbol rate is an impulse, and an impulse is as
+            // wide as the window that measured it. The guard is in cycles per sample, and it is
+            // taken from the record's length rather than the padded transform's, because zero
+            // padding interpolates a line without narrowing it.
+            double guard = 3.0 / span;
+            bool notch = symbolCycles > 8.0 * guard;
+
             int peak = 0;
             double best = -1.0;
 
             for (int bin = 0; bin < length; bin++)
             {
+                if (notch && IsEnvelopeLine(bin, length, symbolCycles, guard))
+                {
+                    continue;
+                }
+
                 double magnitude = Iq.At(raised, bin).MagnitudeSquared;
 
                 if (magnitude > best)
@@ -134,6 +191,23 @@ namespace OpenVSA.Demod.Chain.Steps
             }
 
             return bins / (length * (double)order);
+        }
+
+        /// <summary>Whether a bin sits on one of the envelope's lines rather than the carrier's.</summary>
+        /// <param name="bin">Which bin of the transform.</param>
+        /// <param name="length">How many bins there are.</param>
+        /// <param name="symbolCycles">The symbol rate, in cycles per sample.</param>
+        /// <param name="guard">How near a line counts as on it, in cycles per sample.</param>
+        /// <returns><c>true</c> at a non-zero multiple of the symbol rate.</returns>
+        private static bool IsEnvelopeLine(
+            int bin, int length, double symbolCycles, double guard)
+        {
+            double cycles = bin > length / 2 ? (bin - length) / (double)length : bin / (double)length;
+            double multiple = Math.Round(cycles / symbolCycles);
+
+            // Zero is the carrier's own place, and is never excluded.
+            return multiple != 0.0 &&
+                Math.Abs(cycles - (multiple * symbolCycles)) < guard;
         }
 
         private static double Interpolate(double[] transform, int length, int peak)

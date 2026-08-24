@@ -1,0 +1,4 @@
+8PSK        : peak at +0.0000 Rs (=> carrier +0.0000 Rs); tops +0.000Rs:1.00, -1.000Rs:0.57, +1.000Rs:0.56, -2.000Rs:0.11
+PI4DQPSK    : peak at +1.0000 Rs (=> carrier +0.1250 Rs); tops +1.000Rs:1.00, -1.000Rs:0.98, +0.000Rs:0.57, +1.312Rs:0.10
+PI4 derotated: peak at +0.0000 Rs (=> carrier +0.0000 Rs); tops +0.000Rs:1.00, +1.000Rs:0.37, -1.000Rs:0.35, +0.533Rs:0.04
+QPSK        : peak at +0.0000 Rs (=> carrier +0.0000 Rs); tops +0.000Rs:1.00, +1.000Rs:0.37, -1.000Rs:0.35, +0.533Rs:0.04

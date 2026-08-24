@@ -28,7 +28,7 @@ reference trace you were comparing against.
 The container carries `schemaVersion`; the measurements do not carry their own. There is therefore
 one answer to "what shape is this file", and migration has one place to happen.
 
-- **Current schema version: 2.**
+- **Current schema version: 3.**
 - **Oldest readable: 1.**
 
 A file with no `schemaVersion` is refused as not being an OpenVSA state. A file older than the
@@ -52,6 +52,7 @@ a generic parse failure some way downstream of the cause.
 |---|---|---|
 | — | 1 | Initial schema. |
 | 1 | 2 | Each measurement carries `demod`: the digital demodulator's format, symbol rate, filters, window lengths and equaliser settings. A version 1 file has none and the model's defaults supply them, so the migration transforms nothing. |
+| 2 | 3 | `demod` carries `differentialReference`: what a symbol's bits are read against (`REQ-DEM-012`). A version 2 file has none, and the default — follow the format — is what such a file meant, so the migration transforms nothing. |
 
 ## Forward compatibility
 

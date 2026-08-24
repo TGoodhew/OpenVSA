@@ -69,10 +69,33 @@ namespace OpenVSA.Demod.Chain.Steps
             int count = context.ResultSymbolCount;
             int samples = Iq.Count(result);
 
+            // Half a symbol for an offset format, and nothing for every other: REQ-DEM-012's two
+            // instants per symbol, carried through this step as one number so that every place that
+            // reads the waveform at a symbol instant reads both of them or neither.
+            double stagger = constellation.IsOffset ? perSymbol / 2.0 : 0.0;
+
             double omega = 0.0;
             double phase = 0.0;
-            double timing = InitialTiming(result, context.TimingSamples, perSymbol, samples, count);
-            double gain = InitialGain(result, timing, perSymbol, count);
+            double timing;
+
+            if (constellation.IsOffset)
+            {
+                Align(
+                    result,
+                    context.TimingSamples,
+                    perSymbol,
+                    samples,
+                    count,
+                    constellation,
+                    out timing,
+                    out phase);
+            }
+            else
+            {
+                timing = InitialTiming(result, context.TimingSamples, perSymbol, samples, count);
+            }
+
+            double gain = InitialGain(result, timing, perSymbol, count, stagger, phase);
 
             var measured = new Iq[count];
             var decided = new Iq[count];
@@ -85,12 +108,12 @@ namespace OpenVSA.Demod.Chain.Steps
             {
                 iterations = iteration;
 
-                Project(result, measured, timing, omega, phase, gain, perSymbol, count);
+                Project(result, measured, timing, omega, phase, gain, perSymbol, count, stagger);
 
                 for (int symbol = 0; symbol < count; symbol++)
                 {
                     decided[symbol] = constellation.Ideal(
-                        constellation.Decide(measured[symbol].I, measured[symbol].Q));
+                        constellation.Decide(measured[symbol], symbol), symbol);
                 }
 
                 double deltaOmega;
@@ -101,7 +124,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 double gainRatio = FitGain(measured, decided, count);
 
                 double deltaTiming = FitTiming(
-                    result, measured, decided, timing, omega, phase, gain, perSymbol, count);
+                    result, measured, decided, timing, omega, phase, gain, perSymbol, count, stagger);
 
                 double limit = MaximumTimingStepSymbols * perSymbol;
 
@@ -117,7 +140,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 omega += deltaOmega;
                 phase += deltaPhase;
                 gain *= gainRatio;
-                timing = Clamp(timing + deltaTiming, samples, perSymbol, count);
+                timing = Clamp(timing + deltaTiming, samples, perSymbol, count, stagger);
 
                 largest = Math.Max(
                     Math.Abs(deltaOmega) / (2.0 * Math.PI),
@@ -133,7 +156,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 }
             }
 
-            Project(result, measured, timing, omega, phase, gain, perSymbol, count);
+            Project(result, measured, timing, omega, phase, gain, perSymbol, count, stagger);
 
             double frequencyHz = omega * settings.SymbolRateHz / (2.0 * Math.PI);
 
@@ -231,17 +254,182 @@ namespace OpenVSA.Demod.Chain.Steps
 
             shift -= perSymbol * Math.Round(shift / perSymbol);
 
-            return Clamp(nominal + shift, samples, perSymbol, count);
+            return Clamp(nominal + shift, samples, perSymbol, count, 0.0);
         }
 
-        private static double InitialGain(
-            double[] result, double timing, int perSymbol, int count)
+        /// <summary>
+        /// Where an offset format's symbol instants and carrier phase start from, searched rather
+        /// than derived (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <param name="result">The result window.</param>
+        /// <param name="nominal">Where step 7 put the first symbol.</param>
+        /// <param name="perSymbol">The internal processing rate.</param>
+        /// <param name="samples">How long the window is.</param>
+        /// <param name="count">How many symbols it holds.</param>
+        /// <param name="constellation">What the symbols are decided against.</param>
+        /// <param name="timing">The first symbol's instant, in samples from the window's start.</param>
+        /// <param name="phase">The carrier phase to start the iteration from, in radians.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>An offset format has no timing tone to read, and this is why.</strong> The
+        /// square-law estimator the rest of the catalogue uses works because the squared magnitude of
+        /// a pulse-shaped signal carries a component at the symbol rate. For an offset format it does
+        /// not: the I stream contributes one and the Q stream contributes another half a symbol
+        /// later, which is half a cycle at that frequency, and two equal powers half a cycle apart
+        /// cancel exactly. Nor is there anything at twice the rate to fall back on — that would need
+        /// the signal to be more than a symbol rate wide, and a root raised cosine of roll-off α is
+        /// (1 + α)/2 wide. Both were checked before this was written, and both are zero rather than
+        /// small.
+        /// </para>
+        /// <para>
+        /// <strong>And timing cannot be separated from carrier phase here.</strong> The two axes are
+        /// sampled at different instants, so they have to be told apart before either can be read —
+        /// and what tells them apart is the carrier phase, which is not known yet. So the two are
+        /// searched together on a coarse grid, scored by how near the pairs land to the
+        /// constellation, and handed to the iteration to refine. A block estimate, per
+        /// <c>REQ-DEM-002</c>, and one with no starting point of its own to be wrong.
+        /// </para>
+        /// <para>
+        /// <strong>Half a symbol and a quarter-turn together are a free parameter, and no
+        /// estimator can resolve them.</strong> Reading the signal half a symbol late and turning it
+        /// by 90° gives the pair (Q of symbol k, −I of symbol k+1) — every one of them an exact
+        /// constellation point, and so a demodulation with the same near-zero EVM as the intended
+        /// one and a different pairing of the bits. The two alignments score identically here
+        /// because they are identically good; which of them a measurement lands on is settled by the
+        /// sync-pattern search of <c>REQ-DEM-040</c> and by nothing in this step. Reading a passing
+        /// EVM as evidence that the bits are paired the way the transmitter paired them is therefore
+        /// a mistake — the same shape of mistake as reading a passing bit check as evidence about
+        /// spectral sense.
+        /// </para>
+        /// </remarks>
+        private static void Align(
+            double[] result,
+            double nominal,
+            int perSymbol,
+            int samples,
+            int count,
+            Constellation constellation,
+            out double timing,
+            out double phase)
         {
+            // Sixteen positions across a symbol and sixteen angles around the circle. The iteration
+            // that follows converges from a quarter of a symbol and a sixteenth of a turn without
+            // difficulty; a finer grid here would cost time to arrive at the same answer.
+            const int Positions = 16;
+            const int Angles = 16;
+
+            // Scored on at most this many symbols. The measure is an average over symbols, and a
+            // hundred of them settle it to far better than the grid's own spacing, so a 2 048-symbol
+            // Result Length pays for a hundred rather than for all of it.
+            const int MostSymbols = 100;
+
+            double stagger = perSymbol / 2.0;
+            int scored = Math.Min(count, MostSymbols);
+
+            double best = double.MaxValue;
+
+            timing = nominal;
+            phase = 0.0;
+
+            for (int position = 0; position < Positions; position++)
+            {
+                double candidate = Clamp(
+                    nominal + (perSymbol * (Outward(position) / (double)Positions)),
+                    samples,
+                    perSymbol,
+                    count,
+                    stagger);
+
+                for (int angle = 0; angle < Angles; angle++)
+                {
+                    double turn = 2.0 * Math.PI * Outward(angle) / Angles;
+
+                    double residual = Residual(
+                        result, candidate, turn, perSymbol, scored, stagger, constellation);
+
+                    // Twice as good, not merely better, and the search runs outwards from the
+                    // nominal position and from no rotation. There are always four alignments that
+                    // fit — the remarks above say why — and they fit to within a few per cent of one
+                    // another rather than exactly, so a margin of a rounding error would let the
+                    // noise pick between them and a display would turn by a quarter between one
+                    // frame and the next. A factor of two separates them from a genuinely better
+                    // alignment, which is orders of magnitude better and not a few per cent: a
+                    // candidate off the symbol instant leaves the samples halfway between
+                    // constellation points, and the residual says so. It resolves nothing; it only
+                    // stops the tie being broken by noise.
+                    if (residual < best * 0.5)
+                    {
+                        best = residual;
+                        timing = candidate;
+                        phase = turn;
+                    }
+                }
+            }
+        }
+
+        /// <summary>Counts 0, 1, −1, 2, −2 … so that a search runs outwards from its centre.</summary>
+        /// <param name="step">Which step of the search this is, counting from zero.</param>
+        private static int Outward(int step) => ((step + 1) / 2) * ((step % 2) == 0 ? 1 : -1);
+
+        /// <summary>
+        /// How far a candidate alignment leaves the symbols from the constellation, per symbol.
+        /// </summary>
+        /// <remarks>
+        /// Normalised by the signal's own power at those instants, so that the comparison is between
+        /// alignments rather than between gains: an alignment that sampled the waveform where it is
+        /// smaller would otherwise score better for having less of everything, error included.
+        /// </remarks>
+        private static double Residual(
+            double[] result,
+            double timing,
+            double phase,
+            int perSymbol,
+            int count,
+            double stagger,
+            Constellation constellation)
+        {
+            var measured = new Iq[count];
+
+            Project(result, measured, timing, 0.0, phase, 1.0, perSymbol, count, stagger);
+
             double power = 0.0;
 
             for (int symbol = 0; symbol < count; symbol++)
             {
-                power += Interpolator.At(result, timing + (symbol * perSymbol)).MagnitudeSquared;
+                power += measured[symbol].MagnitudeSquared;
+            }
+
+            if (power < 1e-30)
+            {
+                return double.MaxValue;
+            }
+
+            double gain = Math.Sqrt(power / count);
+            double error = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                Iq scaled = measured[symbol] / gain;
+                Iq ideal = constellation.Ideal(constellation.Decide(scaled, symbol), symbol);
+
+                error += (scaled - ideal).MagnitudeSquared;
+            }
+
+            return error / count;
+        }
+
+        private static double InitialGain(
+            double[] result, double timing, int perSymbol, int count, double stagger, double phase)
+        {
+            var measured = new Iq[count];
+
+            Project(result, measured, timing, 0.0, phase, 1.0, perSymbol, count, stagger);
+
+            double power = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                power += measured[symbol].MagnitudeSquared;
             }
 
             double rms = Math.Sqrt(power / count);
@@ -253,6 +441,29 @@ namespace OpenVSA.Demod.Chain.Steps
             return rms < 1e-15 ? 1.0 : rms;
         }
 
+        /// <summary>
+        /// Reads the waveform at the symbol instants, correcting for carrier, phase and gain.
+        /// </summary>
+        /// <param name="result">The result window.</param>
+        /// <param name="measured">Filled with one value per symbol.</param>
+        /// <param name="timing">Where the first symbol's instant falls, in samples.</param>
+        /// <param name="omega">The residual carrier, in radians per symbol.</param>
+        /// <param name="phase">The carrier phase, in radians.</param>
+        /// <param name="gain">The amplitude to divide out.</param>
+        /// <param name="perSymbol">The internal processing rate.</param>
+        /// <param name="count">How many symbols to read.</param>
+        /// <param name="stagger">
+        /// How far after I the Q axis is sampled, in samples: half a symbol for an offset format and
+        /// zero for every other (<c>REQ-DEM-012</c>).
+        /// </param>
+        /// <remarks>
+        /// <strong>The carrier comes out before the axes are split, not after.</strong> What arrives
+        /// is the two staggered streams turned by the carrier's phase, so the I part of the received
+        /// sample is a mixture of both axes until that phase is taken out. Each of the two instants
+        /// is therefore corrected by the phase <em>at that instant</em> — which differ by half a
+        /// symbol's worth of the residual carrier — and only then does one contribute its I and the
+        /// other its Q.
+        /// </remarks>
         private static void Project(
             double[] result,
             Iq[] measured,
@@ -261,14 +472,27 @@ namespace OpenVSA.Demod.Chain.Steps
             double phase,
             double gain,
             int perSymbol,
-            int count)
+            int count,
+            double stagger)
         {
             for (int symbol = 0; symbol < count; symbol++)
             {
                 Iq value = Interpolator.At(result, timing + (symbol * perSymbol));
                 Iq turn = Iq.FromPhase(-((omega * symbol) + phase));
+                Iq inPhase = (value * turn) / gain;
 
-                measured[symbol] = (value * turn) / gain;
+                if (stagger == 0.0)
+                {
+                    measured[symbol] = inPhase;
+
+                    continue;
+                }
+
+                Iq later = Interpolator.At(result, timing + (symbol * perSymbol) + stagger);
+                Iq laterTurn = Iq.FromPhase(-((omega * (symbol + 0.5)) + phase));
+                Iq quadrature = (later * laterTurn) / gain;
+
+                measured[symbol] = new Iq(inPhase.I, quadrature.Q);
             }
         }
 
@@ -339,6 +563,13 @@ namespace OpenVSA.Demod.Chain.Steps
             return projection / reference;
         }
 
+        /// <remarks>
+        /// The two axes move with the timing separately for an offset format, so the slope is read
+        /// at both instants and each axis is paired with its own error. The dot product below is
+        /// then the same arithmetic in both cases — <c>corrected.I × error.I + corrected.Q ×
+        /// error.Q</c> — because each component's derivative already belongs to the instant its
+        /// error came from.
+        /// </remarks>
         private static double FitTiming(
             double[] result,
             Iq[] measured,
@@ -348,7 +579,8 @@ namespace OpenVSA.Demod.Chain.Steps
             double phase,
             double gain,
             int perSymbol,
-            int count)
+            int count,
+            double stagger)
         {
             double projection = 0.0;
             double energy = 0.0;
@@ -359,6 +591,17 @@ namespace OpenVSA.Demod.Chain.Steps
                 Iq turn = Iq.FromPhase(-((omega * symbol) + phase));
 
                 Iq corrected = (slope * turn) / gain;
+
+                if (stagger != 0.0)
+                {
+                    Iq later = Interpolator.SlopeAt(
+                        result, timing + (symbol * perSymbol) + stagger);
+
+                    Iq laterTurn = Iq.FromPhase(-((omega * (symbol + 0.5)) + phase));
+
+                    corrected = new Iq(corrected.I, ((later * laterTurn) / gain).Q);
+                }
+
                 Iq error = decided[symbol] - measured[symbol];
 
                 Iq product = corrected.Conjugate() * error;
@@ -370,9 +613,10 @@ namespace OpenVSA.Demod.Chain.Steps
             return energy < 1e-18 ? 0.0 : projection / energy;
         }
 
-        private static double Clamp(double timing, int samples, int perSymbol, int count)
+        private static double Clamp(
+            double timing, int samples, int perSymbol, int count, double stagger)
         {
-            double last = samples - 1 - ((count - 1) * perSymbol);
+            double last = samples - 1 - ((count - 1) * perSymbol) - stagger;
 
             if (last < 0.0)
             {

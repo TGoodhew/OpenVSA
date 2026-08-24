@@ -136,7 +136,12 @@ namespace OpenVSA.Demod.Chain.Steps
 
             int perSymbol = settings.PointsPerSymbol;
             int count = context.Symbols.Length;
-            int samples = ((count - 1) * perSymbol) + 1;
+            double stagger = ReferenceRegenerationStep.Stagger(settings);
+
+            // Half a symbol of tail for an offset format: its last Q symbol is sent after its last
+            // I symbol, and a grid that stopped at the I instant would draw both traces falling
+            // away from a symbol that had not happened yet.
+            int samples = ((count - 1) * perSymbol) + 1 + (int)stagger;
 
             double omega =
                 2.0 * Math.PI * context.PassFrequencyHz / settings.SymbolRateHz;
@@ -157,7 +162,8 @@ namespace OpenVSA.Demod.Chain.Steps
                 samples,
                 perSymbol,
                 settings.FilterSymbolSpan,
-                settings.ReferenceFilterAlpha);
+                settings.ReferenceFilterAlpha,
+                stagger);
 
             for (int sample = 0; sample < samples; sample++)
             {

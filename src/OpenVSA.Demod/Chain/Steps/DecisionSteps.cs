@@ -7,11 +7,22 @@ namespace OpenVSA.Demod.Chain.Steps
     /// Step 9: decide each symbol, and with it the detected bits.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The decisions of step 8 were provisional — the fit needed something to aim at while the
     /// parameters were still moving. These are made once, on the converged estimates, and they are
     /// the ones the result reports. On a clean signal the two agree symbol for symbol; on a
     /// marginal one they need not, and it is this step's answer that is defensible because it is
     /// the only one taken with the estimation finished.
+    /// </para>
+    /// <para>
+    /// <strong>The symbol that was sent and the bits it carried are two different things.</strong>
+    /// For most of the catalogue they are the same thing said twice, and for a differential format
+    /// they are not: the data is the <em>change</em> from one symbol to the next
+    /// (<c>REQ-DEM-012</c>), so the first symbol of the window is a reference that carries nothing
+    /// and a window of n symbols yields n − 1 symbols of data. This step therefore produces both,
+    /// and they are separate fields rather than one because a constellation display draws the
+    /// symbols and a bit stream reads the data.
+    /// </para>
     /// </remarks>
     internal sealed class SymbolDecisionStep : IChainStep
     {
@@ -27,31 +38,67 @@ namespace OpenVSA.Demod.Chain.Steps
                     "Step 9 ran with nothing from step 8. The chain was executed out of order.");
             }
 
-            Constellation constellation = context.Settings.Constellation;
+            DemodSettings settings = context.Settings;
+            Constellation constellation = settings.Constellation;
             Iq[] measured = context.MeasuredSymbols;
 
             var symbols = new int[measured.Length];
             var ideal = new Iq[measured.Length];
-            var bits = new int[measured.Length * constellation.BitsPerSymbol];
 
             for (int symbol = 0; symbol < measured.Length; symbol++)
             {
-                int decided = constellation.Decide(measured[symbol].I, measured[symbol].Q);
+                int decided = constellation.Decide(measured[symbol], symbol);
 
                 symbols[symbol] = decided;
-                ideal[symbol] = constellation.Ideal(decided);
+                ideal[symbol] = constellation.Ideal(decided, symbol);
+            }
 
-                int[] carried = constellation.BitsOf(decided);
+            int[] data = Carried(symbols, constellation, settings.DecodesDifferentially);
+            var bits = new int[data.Length * constellation.BitsPerSymbol];
+
+            for (int symbol = 0; symbol < data.Length; symbol++)
+            {
+                int[] carried = constellation.BitsOf(data[symbol]);
 
                 Array.Copy(
                     carried, 0, bits, symbol * constellation.BitsPerSymbol, carried.Length);
             }
 
             context.Symbols = symbols;
+            context.DataSymbols = data;
             context.IdealSymbols = ideal;
             context.Bits = bits;
 
             return StepOutcome.Continue;
+        }
+
+        /// <summary>What the decided symbols carried, once the reference is accounted for.</summary>
+        /// <param name="symbols">The symbol decided at each instant.</param>
+        /// <param name="constellation">What they were decided against.</param>
+        /// <param name="differentially">Whether the bits are the change rather than the symbol.</param>
+        /// <returns>One symbol value per symbol of data.</returns>
+        private static int[] Carried(
+            int[] symbols, Constellation constellation, bool differentially)
+        {
+            if (!differentially)
+            {
+                return symbols;
+            }
+
+            if (symbols.Length < 2)
+            {
+                return new int[0];
+            }
+
+            var data = new int[symbols.Length - 1];
+
+            for (int symbol = 1; symbol < symbols.Length; symbol++)
+            {
+                data[symbol - 1] =
+                    constellation.DifferenceFrom(symbols[symbol], symbols[symbol - 1]);
+            }
+
+            return data;
         }
     }
 
@@ -112,10 +159,19 @@ namespace OpenVSA.Demod.Chain.Steps
                 Iq.Count(result),
                 settings.PointsPerSymbol,
                 settings.FilterSymbolSpan,
-                settings.ReferenceFilterAlpha);
+                settings.ReferenceFilterAlpha,
+                Stagger(settings));
 
             return StepOutcome.Continue;
         }
+
+        /// <summary>
+        /// How far after I this format's Q axis is sent, in samples (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <param name="settings">What the demodulation was asked for.</param>
+        /// <returns>Half a symbol for an offset format, and zero for every other.</returns>
+        internal static double Stagger(DemodSettings settings) =>
+            settings.Constellation.IsOffset ? settings.PointsPerSymbol / 2.0 : 0.0;
 
         /// <summary>
         /// Shapes ideal symbols into a waveform on a given grid.
@@ -128,6 +184,9 @@ namespace OpenVSA.Demod.Chain.Steps
         /// <param name="perSymbol">Samples per symbol.</param>
         /// <param name="span">How many symbols either side of centre the pulse spans.</param>
         /// <param name="alpha">The reference filter's roll-off.</param>
+        /// <param name="stagger">
+        /// How far after I the Q axis is sent, in samples; zero for everything but an offset format.
+        /// </param>
         /// <returns>The waveform, interleaved.</returns>
         /// <remarks>
         /// <strong>Shared with step 14, and that is not tidiness.</strong> Step 10 regenerates on
@@ -144,14 +203,56 @@ namespace OpenVSA.Demod.Chain.Steps
             int samples,
             int perSymbol,
             int span,
-            double alpha)
+            double alpha,
+            double stagger)
         {
             var ideal = new double[2 * samples];
+
+            Shape(ideal, symbols, firstInstant, samples, perSymbol, span, alpha, true);
+
+            if (stagger == 0.0)
+            {
+                Shape(ideal, symbols, firstInstant, samples, perSymbol, span, alpha, false);
+            }
+            else
+            {
+                // The Q axis is a pulse train of its own, half a symbol behind: an offset format's
+                // reference is not the same waveform delayed, it is two waveforms that were never
+                // aligned. Regenerating it as one and delaying it would put I half a symbol late
+                // as well, and the error metrics would then measure that.
+                Shape(
+                    ideal, symbols, firstInstant + stagger, samples, perSymbol, span, alpha, false);
+            }
+
+            return ideal;
+        }
+
+        /// <summary>Adds one axis's pulse train to a waveform.</summary>
+        /// <param name="ideal">The waveform being built, interleaved.</param>
+        /// <param name="symbols">The ideal symbol for each decided symbol.</param>
+        /// <param name="firstInstant">Where this axis's first symbol falls, in samples.</param>
+        /// <param name="samples">How many samples the grid holds.</param>
+        /// <param name="perSymbol">Samples per symbol.</param>
+        /// <param name="span">How many symbols either side of centre the pulse spans.</param>
+        /// <param name="alpha">The reference filter's roll-off.</param>
+        /// <param name="inPhase">Whether this is the I axis rather than the Q axis.</param>
+        private static void Shape(
+            double[] ideal,
+            Iq[] symbols,
+            double firstInstant,
+            int samples,
+            int perSymbol,
+            int span,
+            double alpha,
+            bool inPhase)
+        {
             int reach = perSymbol * span;
+            int part = inPhase ? 0 : 1;
 
             for (int symbol = 0; symbol < symbols.Length; symbol++)
             {
                 double centre = firstInstant + (symbol * perSymbol);
+                double amplitude = inPhase ? symbols[symbol].I : symbols[symbol].Q;
 
                 int from = (int)Math.Ceiling(centre - reach);
                 int to = (int)Math.Floor(centre + reach);
@@ -171,12 +272,9 @@ namespace OpenVSA.Demod.Chain.Steps
                     double weight =
                         PulseShaping.RaisedCosineAt((sample - centre) / perSymbol, alpha);
 
-                    ideal[2 * sample] += symbols[symbol].I * weight;
-                    ideal[(2 * sample) + 1] += symbols[symbol].Q * weight;
+                    ideal[(2 * sample) + part] += amplitude * weight;
                 }
             }
-
-            return ideal;
         }
     }
 }

@@ -144,6 +144,12 @@ namespace OpenVSA.Demod.Chain
         /// <summary>Step 9's decided symbol values.</summary>
         internal int[] Symbols { get; set; }
 
+        /// <summary>
+        /// The symbol values the signal carried: the decided ones, or their differences when the
+        /// decode is differential (<c>REQ-DEM-012</c>).
+        /// </summary>
+        internal int[] DataSymbols { get; set; }
+
         /// <summary>Step 9's detected bits, most significant first within each symbol.</summary>
         internal int[] Bits { get; set; }
 
