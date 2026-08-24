@@ -178,9 +178,23 @@ namespace OpenVSA.Ui.Tests
 
                     // Let WPF actually lay the window out, or the resize is a property write and
                     // nothing more.
-                    window.Dispatcher.Invoke(
-                        (Action)(() => { }),
-                        System.Windows.Threading.DispatcherPriority.Background);
+                    //
+                    // UpdateLayout, NOT a priority-ordered Dispatcher.Invoke. This loop runs ON the
+                    // dispatcher thread, so posting an empty action below Background and waiting for
+                    // it pushes a nested frame that returns only once the queue has drained that
+                    // far -- and with a producer thread offering frames as fast as it can make them
+                    // and a resize every iteration, there is no guarantee it ever does. On this
+                    // machine it always did. On GitHub's headless runner, on 24 August 2026, it did
+                    // not: eleven test assemblies finished in 46 seconds and this one hung until the
+                    // run was cancelled twenty minutes later. The same run passed on a retry, which
+                    // is what an intermittent wait on something that may not come looks like.
+                    //
+                    // UpdateLayout does the measure and arrange passes synchronously on this thread.
+                    // It is what the line above was asking for, it cannot wait for a queue, and it
+                    // is the rule this suite already carries: a UI test never waits on a dispatcher
+                    // priority. See the remarks on DemodulationDisplayTests, where the same lesson
+                    // cost half an hour of CI in July.
+                    window.UpdateLayout();
                 }
             }
             finally

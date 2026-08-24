@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Windows;
@@ -129,6 +130,17 @@ namespace OpenVSA.Ui.Tests.Automation
     /// </remarks>
     internal sealed class AutomationDriver
     {
+        /// <summary>
+        /// How long <see cref="Settle"/> waits for the queue before calling it a hang, in seconds.
+        /// </summary>
+        /// <remarks>
+        /// Generous, because it is not a performance budget: everything this waits for is queued
+        /// work on an idle shell and takes milliseconds. It is the line between "this machine is
+        /// busy" and "this will never happen", and it is set where a slow shared runner cannot
+        /// reach it by being slow.
+        /// </remarks>
+        private const double SettleSeconds = 60.0;
+
         private readonly ShellWindow _shell;
         private readonly List<string> _steps = new List<string>();
 
@@ -184,12 +196,54 @@ namespace OpenVSA.Ui.Tests.Automation
         internal void Settle()
         {
             var frame = new DispatcherFrame();
+            bool drained = false;
 
             _shell.Dispatcher.BeginInvoke(
                 DispatcherPriority.ContextIdle,
-                new Action(() => frame.Continue = false));
+                new Action(() =>
+                {
+                    drained = true;
+                    frame.Continue = false;
+                }));
 
-            Dispatcher.PushFrame(frame);
+            // The guard, and the reason it is here: the sentinel above only runs once the queue has
+            // drained to ContextIdle, and NOTHING GUARANTEES THAT IT EVER DOES. On this machine it
+            // is instant. On GitHub's headless runner, on 24 August 2026, a wait of this shape in
+            // the snapshot soak hung the whole assembly for twenty minutes until the run was
+            // cancelled -- eleven other assemblies had finished in 46 seconds -- and the retry
+            // passed, which is what an intermittent one looks like.
+            //
+            // A timer at Send priority runs above everything the sentinel is queued behind, so it
+            // can end the frame even when the queue never settles. What that buys is not
+            // correctness, it is a MESSAGE: the difference between a suite that stops with "the
+            // dispatcher never drained" and one that stops with nothing at all, which is what a
+            // cancelled run after twenty minutes tells you.
+            var guard = new DispatcherTimer(
+                TimeSpan.FromSeconds(SettleSeconds),
+                DispatcherPriority.Send,
+                (sender, ignored) => frame.Continue = false,
+                _shell.Dispatcher);
+
+            guard.Start();
+
+            try
+            {
+                Dispatcher.PushFrame(frame);
+            }
+            finally
+            {
+                guard.Stop();
+            }
+
+            if (!drained)
+            {
+                throw new TimeoutException(
+                    "The dispatcher did not drain to ContextIdle within " +
+                    SettleSeconds.ToString(CultureInfo.InvariantCulture) + " s, so the shell never " +
+                    "finished responding to the last action. That is a hang rather than a slow " +
+                    "machine: a priority-ordered wait returns only when the queue reaches that " +
+                    "priority, and on a headless runner it need not.");
+            }
         }
 
         /// <summary>
