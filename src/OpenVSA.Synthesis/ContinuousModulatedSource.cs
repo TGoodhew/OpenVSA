@@ -151,6 +151,27 @@ namespace OpenVSA.Synthesis
         /// <summary>The seed every stochastic part is derived from (<c>REQ-SIM-003</c>).</summary>
         public long Seed { get; set; }
 
+        /// <summary>
+        /// A known run of symbols to transmit at a known place, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-DEM-040</c>'s acceptance criterion is stated against "a known pattern inserted at a
+        /// known position by the simulator", so the simulator has to be able to. Everything outside
+        /// the run is what it always was, and <see cref="SymbolAt"/> stays a pure function of the
+        /// index — which is what lets any block be produced without producing the ones before it.
+        /// </para>
+        /// <para>
+        /// It is a run of <em>symbols</em> rather than of bits because that is what a generator
+        /// transmits; turning a bit pattern into symbols is the receiver's business, and doing it
+        /// here as well would be two implementations of one mapping.
+        /// </para>
+        /// </remarks>
+        public int[] InsertedSymbols { get; set; }
+
+        /// <summary>Where <see cref="InsertedSymbols"/> begins, as a symbol index.</summary>
+        public long InsertedAtSymbol { get; set; }
+
         /// <summary>How many samples have been produced since the last <see cref="Restart"/>.</summary>
         public long SamplesEmitted => _samplesEmitted;
 
@@ -267,6 +288,13 @@ namespace OpenVSA.Synthesis
         /// </remarks>
         public int SymbolAt(long symbol)
         {
+            if (InsertedSymbols != null &&
+                symbol >= InsertedAtSymbol &&
+                symbol < InsertedAtSymbol + InsertedSymbols.Length)
+            {
+                return InsertedSymbols[(int)(symbol - InsertedAtSymbol)];
+            }
+
             ulong mixed = Mix((ulong)Seed * 0x9E3779B97F4A7C15UL ^ (ulong)symbol);
 
             return (int)(mixed % (ulong)_scheme.IdealPoints.Count);

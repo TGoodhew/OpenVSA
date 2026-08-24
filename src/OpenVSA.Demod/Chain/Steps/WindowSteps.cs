@@ -178,7 +178,11 @@ namespace OpenVSA.Demod.Chain.Steps
         {
             if (context.SyncFound)
             {
-                return context.SyncSampleOffset;
+                // REQ-DEM-040's Search Offset: where the Result Length window sits relative to the
+                // START OF THE PATTERN, in symbols, and negative is allowed -- a measurement is
+                // often wanted from before the word it synchronised on.
+                return context.SyncSampleOffset +
+                    (context.Settings.SearchOffsetSymbols * perSymbol);
             }
 
             int transient = context.Settings.FilterSymbolSpan * perSymbol;
