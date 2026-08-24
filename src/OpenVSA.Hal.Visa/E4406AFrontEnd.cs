@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
@@ -1095,9 +1095,21 @@ namespace OpenVSA.Hal.Visa
             /// aperture measured at connect.
             /// </summary>
             /// <remarks>
+            /// <para>
             /// An estimate, and labelled one. The instrument decimates in steps, so the true rate
             /// for an arbitrary bandwidth is only known once it has been set — which is why
             /// <c>ConfigureAsync</c> asks for it again and every block carries the answer.
+            /// </para>
+            /// <para>
+            /// <strong>Treat it as a lower bound, not an approximation.</strong> Measured
+            /// 23 August 2026: at a 5 MHz span this returns 7.5 MS/s and the instrument delivers
+            /// 15 MS/s, because integer decimation holds the top rate over a range of bandwidths
+            /// where a straight line through the maximum halves it. Sizing a block from this
+            /// therefore asks for a capture shorter in time than intended, while still getting the
+            /// number of samples requested. Nothing downstream may treat it as the rate: see
+            /// <c>docs/INSTRUMENT-FIRMWARE-DEVIATIONS.md</c> entry 7 for what a correct model would
+            /// need, which is a measurement that has not been made.
+            /// </para>
             /// </remarks>
             public double EstimateSampleRate(double spanHz)
             {
