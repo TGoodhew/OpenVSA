@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Threading;
 using OpenVSA.Core;
 using OpenVSA.Demod.Chain;
 using OpenVSA.Demod.Signal;
@@ -21,10 +20,21 @@ namespace OpenVSA.Ui.Tests
     /// result reaching the display (<c>REQ-UI-061</c>, <c>REQ-DEM-001</c>).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Driven through the context, which is how a result reaches the shell in the product: the pump
     /// hands each block to every context, a context whose setup asks for demodulation raises
     /// <c>ResultAnalysed</c>, and the shell draws it. Calling the shell's own handler instead would
     /// prove the handler works and say nothing about whether anything reaches it.
+    /// </para>
+    /// <para>
+    /// <strong>Nothing here waits on a dispatcher priority.</strong> The first version drained the
+    /// queue with <c>Dispatcher.Invoke</c> at <c>Render</c> and <c>ApplicationIdle</c> to let the
+    /// shell's marshalling run. It passed here in six seconds and hung CI for half an hour: a
+    /// priority-ordered wait only returns when the queue drains to that priority, and on a headless
+    /// runner there is no guarantee it ever does. The shell now shows a result inline when it is
+    /// already on the UI thread, which is both less work in the product and a test that cannot wait
+    /// for something that may not come.
+    /// </para>
     /// </remarks>
     [Collection("Shell")]
     public class DemodulationDisplayTests
@@ -102,8 +112,6 @@ namespace OpenVSA.Ui.Tests
                         active.Analyse(block);
                     }
 
-                    shell.Dispatcher.Invoke(new Action(() => { }), DispatcherPriorityRender);
-
                     DemodResult result = shell.LatestResult;
 
                     Assert.NotNull(result);
@@ -149,8 +157,6 @@ namespace OpenVSA.Ui.Tests
                         active.Analyse(block);
                     }
 
-                    shell.Dispatcher.Invoke(new Action(() => { }), DispatcherPriorityRender);
-
                     Assert.NotNull(shell.LatestResult);
 
                     Choose(shell, "Spectrum");
@@ -190,8 +196,6 @@ namespace OpenVSA.Ui.Tests
                     {
                         active.Analyse(block);
                     }
-
-                    shell.Dispatcher.Invoke(new Action(() => { }), DispatcherPriorityBackground);
 
                     Assert.Null(shell.LatestResult);
 
@@ -262,11 +266,6 @@ namespace OpenVSA.Ui.Tests
 
             return null;
         }
-
-        private static DispatcherPriority DispatcherPriorityRender => DispatcherPriority.Render;
-
-        private static DispatcherPriority DispatcherPriorityBackground =>
-            DispatcherPriority.ApplicationIdle;
 
         private static ShellWindow Built()
         {
