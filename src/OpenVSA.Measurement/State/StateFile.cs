@@ -284,6 +284,22 @@ namespace OpenVSA.Measurement.State
                         // meant, so this step transforms nothing either.
                         break;
 
+                    case 6:
+                        // Version 7 states the Search Length in SYMBOLS rather than samples
+                        // (REQ-DEM-033), and adds the pulse's expected on and off times.
+                        //
+                        // THE FIRST MIGRATION THAT ACTUALLY TRANSFORMS SOMETHING, and it cannot
+                        // convert: a length in samples means a number of symbols only at a sample
+                        // rate, and a state file does not carry the rate its Search Length was
+                        // chosen at -- that belongs to the acquisition, which the same file may
+                        // have changed. So the old member is DROPPED rather than converted with an
+                        // invented rate, and the setting returns to its default of "the whole
+                        // record", which is what a Search Length that cannot be interpreted should
+                        // mean. Anything else would silently analyse a different part of the
+                        // signal than the file asked for.
+                        DropSearchLengthSamples(document);
+                        break;
+
                     case 5:
                         // Version 6 added REQ-DEM-034's displayed points per symbol. A version 5
                         // file has none, and its traces were drawn at the internal rate -- which is
@@ -317,6 +333,38 @@ namespace OpenVSA.Measurement.State
             }
 
             return document;
+        }
+
+        /// <summary>
+        /// Removes a version 6 <c>searchLengthSamples</c>, which version 7 has no way to convert.
+        /// </summary>
+        /// <param name="document">The state being migrated.</param>
+        /// <remarks>
+        /// Left in place it would survive as an unknown member — the forward-compatibility rule —
+        /// and a file that had been through this migration would carry a stale length that meant
+        /// nothing and would reappear if it were opened by an older build. Removing it is the
+        /// migration saying what it did.
+        /// </remarks>
+        private static void DropSearchLengthSamples(JObject document)
+        {
+            JToken measurements = document["measurements"];
+
+            if (measurements == null)
+            {
+                return;
+            }
+
+            foreach (JToken measurement in measurements)
+            {
+                var demod = measurement["demod"] as JObject;
+
+                if (demod == null)
+                {
+                    continue;
+                }
+
+                demod.Remove("searchLengthSamples");
+            }
         }
 
         private static int VersionOf(JObject document)
