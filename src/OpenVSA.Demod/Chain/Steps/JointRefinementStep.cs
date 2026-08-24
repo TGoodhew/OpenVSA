@@ -170,6 +170,24 @@ namespace OpenVSA.Demod.Chain.Steps
             context.TimingSamples = timing;
             context.MeasuredSymbols = measured;
 
+            if (stagger != 0.0)
+            {
+                // REQ-DEM-062's other half. The points above are the format's own: I at the symbol
+                // instant and Q half a symbol later, which is where an offset format PUT them.
+                // These are the same waveform read as though it were not an offset format at all --
+                // both parts at the one instant -- and they exist so that the Offset EVM variant has
+                // something to be a variant OF. On a clean OQPSK signal the two differ by orders of
+                // magnitude, and that difference is the evidence that the stagger is honoured
+                // rather than an assertion that it is.
+                //
+                // One extra projection with the converged parameters: no fitting, no iteration.
+                var common = new Iq[count];
+
+                Project(result, common, timing, omega, phase, gain, perSymbol, count, 0.0);
+
+                context.CommonInstantSymbols = common;
+            }
+
             var report = new ConvergenceReport(
                 iterations,
                 settings.MaxRefinementIterations,

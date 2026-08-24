@@ -141,6 +141,16 @@ namespace OpenVSA.Demod.Chain
         /// <summary>The measured point at each symbol instant, after step 8's corrections.</summary>
         internal Iq[] MeasuredSymbols { get; set; }
 
+        /// <summary>
+        /// The measured point at each symbol instant with I and Q taken at the SAME instant, for
+        /// offset formats (<c>REQ-DEM-062</c>).
+        /// </summary>
+        /// <remarks>
+        /// Null for a format that does not stagger, where it would be the same array as
+        /// <see cref="MeasuredSymbols"/> and computing it would be computing it twice.
+        /// </remarks>
+        internal Iq[] CommonInstantSymbols { get; set; }
+
         /// <summary>Step 9's decided symbol values.</summary>
         internal int[] Symbols { get; set; }
 

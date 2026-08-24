@@ -188,8 +188,17 @@ namespace OpenVSA.Ui.Rendering
                 return;
             }
 
+            ErrorSummary summary = ErrorSummary.For(_trace);
+
+            // REQ-DEM-061: "The default for variable-envelope formats shall be stated explicitly in
+            // the UI rather than inherited silently." A percentage whose denominator is not on
+            // screen is the commonest reason two instruments appear to disagree about EVM, and the
+            // requirement says so in as many words -- so the denominator goes on screen, along with
+            // what the other setting would have read.
             _summary.Text = string.Join(
-                Environment.NewLine, ErrorSummary.For(_trace).Render());
+                Environment.NewLine, summary.Render()) +
+                Environment.NewLine + Environment.NewLine +
+                (summary.Reference == null ? string.Empty : summary.Reference.Describe());
 
             IReadOnlyList<string> rows = SymbolTable.Render(
                 _trace.Symbols, _trace.BitsPerSymbol, _format, _charactersPerRow);

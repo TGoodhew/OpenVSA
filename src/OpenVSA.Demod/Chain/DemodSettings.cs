@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Chain
@@ -332,6 +333,34 @@ namespace OpenVSA.Demod.Chain
         /// <summary>Whether step 11 runs.</summary>
         public bool EqualiserEnabled { get; set; }
 
+        /// <summary>
+        /// What the error metrics are expressed as a percentage of (<c>REQ-DEM-061</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The default is stated here rather than inherited silently</strong>, which is the
+        /// requirement's own instruction: the RMS magnitude of the reference constellation. It is
+        /// the convention under which an EVM figure and a level reading are ratios of the same two
+        /// quantities, and it is what most instruments of this family show by default.
+        /// </para>
+        /// <para>
+        /// It has consequences only for variable-envelope formats. On a constant-modulus one the
+        /// two computed choices are the same number and
+        /// <see cref="Results.EvmReference.IsInert"/> says so.
+        /// </para>
+        /// </remarks>
+        public EvmNormalisation EvmNormalisation { get; set; } = EvmNormalisation.RmsMagnitude;
+
+        /// <summary>
+        /// The value <see cref="EvmNormalisation.UserSpecified"/> uses.
+        /// </summary>
+        /// <remarks>
+        /// In the constellation's own units, which is what the ideal points are in. Ignored unless
+        /// <see cref="EvmNormalisation"/> asks for it, and refused at validation when it does and
+        /// this is not positive.
+        /// </remarks>
+        public double EvmNormalisationVolts { get; set; }
+
         /// <summary>The symbol values step 6 looks for, when it runs.</summary>
         /// <remarks>
         /// The form the correlation uses. <see cref="SyncPatternBits"/> is the form
@@ -599,6 +628,12 @@ namespace OpenVSA.Demod.Chain
                 " symbols to be sure of catching a whole pulse, and this one is " +
                 SearchLengthSymbols.ToString(CultureInfo.InvariantCulture) +
                 " (REQ-DEM-033).");
+            Require(
+                EvmNormalisation != EvmNormalisation.UserSpecified || EvmNormalisationVolts > 0.0,
+                "A user-specified EVM normalisation is a positive magnitude; " +
+                EvmNormalisationVolts.ToString("G6", CultureInfo.InvariantCulture) +
+                " would make every error infinite (REQ-DEM-061).");
+
             Require(FilterSymbolSpan >= 1, "A pulse spans at least one symbol either side of centre.");
 
             Require(

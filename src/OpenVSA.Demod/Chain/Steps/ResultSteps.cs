@@ -40,16 +40,71 @@ namespace OpenVSA.Demod.Chain.Steps
             List<ConstellationPoint> measured = Points(context.MeasuredSymbols);
             List<ConstellationPoint> ideal = Points(context.IdealSymbols);
 
-            ErrorSummary computed = ErrorSummary.For(measured, ideal);
+            Constellation format = context.Settings.Constellation;
+
+            // REQ-DEM-061 normalises to "the reference constellation", so the divisor comes from
+            // the FORMAT's points rather than from the ones that happened to be decided. A short
+            // window of 64-QAM visits a handful of its sixty-four points, and a divisor taken from
+            // those would make the same signal read differently from one acquisition to the next.
+            EvmReference reference = EvmReference.FromPoints(
+                context.Settings.EvmNormalisation,
+                format.Points,
+                context.Settings.EvmNormalisationVolts);
+
+            ErrorSummary computed = ErrorSummary.For(measured, ideal, reference);
+
+            if (format.IsOffset && context.CommonInstantSymbols != null)
+            {
+                // REQ-DEM-062. Two rows, two meanings, and the pair is the point:
+                //
+                //   Offset EVM  one point per symbol from I and Q half a symbol apart -- what the
+                //               format actually sent, and what a demodulation of it should read.
+                //   EVM         the same symbols read at one instant, which is REQ-DEM-060's
+                //               formula applied literally and is what an analyser that did not know
+                //               about the stagger would report.
+                //
+                // On a clean OQPSK signal the first is near zero and the second is tens of per
+                // cent. Showing only the first would be showing a good number with no way to tell
+                // whether it was good because the signal was or because the measurement had been
+                // told what it wanted to hear.
+                ErrorSummary atOneInstant = ErrorSummary.For(
+                    Points(context.CommonInstantSymbols), ideal, reference);
+
+                computed.Replace(new ErrorMetric(
+                    "Offset EVM",
+                    "%rms",
+                    Rms(computed, "EVM"),
+                    Peak(computed, "EVM"),
+                    PeakSymbol(computed, "EVM")));
+
+                computed.Replace(new ErrorMetric(
+                    "EVM",
+                    "%rms",
+                    Rms(atOneInstant, "EVM"),
+                    Peak(atOneInstant, "EVM"),
+                    PeakSymbol(atOneInstant, "EVM")));
+            }
+
+            // REQ-DEM-065: the shift the analyser applied to achieve lock, which is step 3's coarse
+            // estimate plus everything step 8 accumulated on top of it. It is a property of the
+            // chain rather than of the constellation geometry, so it is added here and not inside
+            // the summary -- which is handed points and could not know it.
+            computed.Add(new ErrorMetric(
+                "Freq Err", "Hz", context.CoarseFrequencyHz + context.ResidualFrequencyHz));
 
             // The rows the format shows, not just the ones this build can fill in: REQ-DEM-071
             // wants a table whose shape follows the format, with NAN where a metric applies and has
             // not been measured. Reading EVM off the computed summary rather than off the table is
             // deliberate -- they agree today, and the table is the thing that will grow rows.
-            Constellation constellation = context.Settings.Constellation;
+            context.Summary = computed.AsTableFor(format.Family, format.IsOffset);
 
-            context.Summary = computed.AsTableFor(constellation.Family, constellation.IsOffset);
-            context.EvmPercent = Evm(computed);
+            // The headline is the meaningful one. For an offset format that is the Offset EVM: the
+            // chain honours the stagger everywhere else -- the decisions, the reference, the lock
+            // diagnosis -- and a headline that reported the common-instant figure would call a
+            // perfectly good OQPSK measurement a failure.
+            context.EvmPercent = format.IsOffset && context.CommonInstantSymbols != null
+                ? Rms(computed, "Offset EVM")
+                : Evm(computed);
 
             return StepOutcome.Continue;
         }
@@ -64,6 +119,45 @@ namespace OpenVSA.Demod.Chain.Steps
             }
 
             return points;
+        }
+
+        private static double Rms(ErrorSummary summary, string label)
+        {
+            foreach (ErrorMetric metric in summary.Metrics)
+            {
+                if (string.Equals(metric.Label, label, StringComparison.Ordinal))
+                {
+                    return metric.Rms;
+                }
+            }
+
+            return 0.0;
+        }
+
+        private static double Peak(ErrorSummary summary, string label)
+        {
+            foreach (ErrorMetric metric in summary.Metrics)
+            {
+                if (string.Equals(metric.Label, label, StringComparison.Ordinal))
+                {
+                    return metric.Peak;
+                }
+            }
+
+            return 0.0;
+        }
+
+        private static int PeakSymbol(ErrorSummary summary, string label)
+        {
+            foreach (ErrorMetric metric in summary.Metrics)
+            {
+                if (string.Equals(metric.Label, label, StringComparison.Ordinal))
+                {
+                    return metric.PeakSymbol;
+                }
+            }
+
+            return 0;
         }
 
         private static double Evm(ErrorSummary summary)

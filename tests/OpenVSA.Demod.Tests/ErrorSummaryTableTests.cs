@@ -77,20 +77,38 @@ namespace OpenVSA.Demod.Tests
         {
             // The criterion's own words: "A metric that is applicable but not yet computed shows
             // NAN per REQ-UI-032 rather than a stale value from the previous format."
+            //
+            // The unmeasured rows are FOUND rather than named, and that is deliberate: this test
+            // used to name Freq Err as its example, and REQ-DEM-065 then measured it, so the test
+            // failed for the best possible reason. A test that names the gap has to be edited every
+            // time the gap closes; one that looks for it keeps working until there is none left --
+            // at which point it says so, which is the right thing for it to say.
             ErrorSummary summary = Demodulate().Summary;
 
-            ErrorMetric frequency = summary.Metrics.Single(
-                metric => metric.Label == "Freq Err");
+            var unmeasured = summary.Metrics.Where(metric => double.IsNaN(metric.Rms)).ToList();
 
-            Assert.True(double.IsNaN(frequency.Rms));
+            _output.WriteLine(
+                "applicable and not yet measured: " +
+                string.Join(", ", unmeasured.Select(metric => metric.Label).ToArray()));
 
-            string rendered = summary.Render().Single(
-                row => row.StartsWith("Freq Err", StringComparison.Ordinal));
+            Assert.NotEmpty(unmeasured);
 
-            _output.WriteLine(rendered);
+            foreach (ErrorMetric metric in unmeasured)
+            {
+                string rendered = summary.Render().Single(
+                    row => row.StartsWith(metric.Label, StringComparison.Ordinal));
 
-            Assert.Contains("NAN", rendered);
-            Assert.DoesNotContain("NaN", rendered);
+                _output.WriteLine(rendered);
+
+                Assert.Contains("NAN", rendered);
+                Assert.DoesNotContain("NaN", rendered);
+            }
+
+            // And the one that used to stand for the whole class of them is now a number, which is
+            // REQ-DEM-065 having landed rather than this test having been relaxed.
+            ErrorMetric frequency = summary.Metrics.Single(metric => metric.Label == "Freq Err");
+
+            Assert.False(double.IsNaN(frequency.Rms));
         }
 
         [Fact]

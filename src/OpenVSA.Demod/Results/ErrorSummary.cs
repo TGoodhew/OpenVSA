@@ -160,6 +160,39 @@ namespace OpenVSA.Demod.Results
         }
 
         /// <summary>
+        /// Adds a metric, or replaces the one already under that label.
+        /// </summary>
+        /// <param name="metric">The metric.</param>
+        /// <returns>This summary.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="metric"/> is null.</exception>
+        /// <remarks>
+        /// For the metrics a later step knows better than an earlier one: <c>REQ-DEM-062</c>'s
+        /// Offset EVM is computed from the same points as EVM and displaces it, and appending
+        /// instead would leave two rows under one label for the table to choose between.
+        /// </remarks>
+        public ErrorSummary Replace(ErrorMetric metric)
+        {
+            if (metric == null)
+            {
+                throw new ArgumentNullException(nameof(metric));
+            }
+
+            for (int at = 0; at < _metrics.Count; at++)
+            {
+                if (string.Equals(_metrics[at].Label, metric.Label, StringComparison.Ordinal))
+                {
+                    _metrics[at] = metric;
+
+                    return this;
+                }
+            }
+
+            _metrics.Add(metric);
+
+            return this;
+        }
+
+        /// <summary>
         /// Computes the summary a result implies (<c>REQ-DEM-070</c>'s metrics over
         /// <c>REQ-UI-053</c>'s layout).
         /// </summary>
@@ -188,6 +221,21 @@ namespace OpenVSA.Demod.Results
             return For(trace.Measured, trace.Ideal);
         }
 
+        /// <summary>The normalisation the metrics in this summary were referenced to.</summary>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-DEM-072</c>: a percentage whose denominator is unstated is a number without its
+        /// provenance, and <c>REQ-DEM-061</c> makes that denominator a setting. This is what it was
+        /// on the measurement these metrics came from, and <see cref="EvmReference.Describe"/> is
+        /// the sentence to put beside them.
+        /// </para>
+        /// <para>
+        /// Null on a summary assembled by hand from metrics rather than computed from points, and
+        /// on an empty one.
+        /// </para>
+        /// </remarks>
+        public EvmReference Reference { get; private set; }
+
         /// <summary>
         /// Computes the same summary from the points alone, before there is a trace to hold them.
         /// </summary>
@@ -205,6 +253,35 @@ namespace OpenVSA.Demod.Results
         /// </remarks>
         public static ErrorSummary For(
             IReadOnlyList<ConstellationPoint> measured, IReadOnlyList<ConstellationPoint> ideal)
+        {
+            return For(measured, ideal, null);
+        }
+
+        /// <summary>
+        /// The same summary, referenced to a normalisation the caller chose
+        /// (<c>REQ-DEM-061</c>).
+        /// </summary>
+        /// <param name="measured">The measured point for each symbol.</param>
+        /// <param name="ideal">The ideal point for each symbol, in the same order.</param>
+        /// <param name="reference">
+        /// What to divide the errors by, or <c>null</c> to take the RMS of the ideal points — which
+        /// is the default of <c>REQ-DEM-061</c> and what every caller got before it was a choice.
+        /// </param>
+        /// <returns>The summary.</returns>
+        /// <exception cref="ArgumentNullException">A list is null.</exception>
+        /// <exception cref="ArgumentException">The lists are different lengths.</exception>
+        /// <remarks>
+        /// <strong>Pass a reference built from the format, not from these points, when there is
+        /// one.</strong> <c>REQ-DEM-061</c> normalises to "the reference constellation", and a
+        /// divisor computed from the symbols that happened to be decided makes a short window of
+        /// 64-QAM read differently from one acquisition to the next. The chain has the
+        /// constellation and passes it; the callers that hold points and no format get the
+        /// convergent approximation, which is what the <c>null</c> is.
+        /// </remarks>
+        public static ErrorSummary For(
+            IReadOnlyList<ConstellationPoint> measured,
+            IReadOnlyList<ConstellationPoint> ideal,
+            EvmReference reference)
         {
             if (measured == null)
             {
@@ -231,7 +308,12 @@ namespace OpenVSA.Demod.Results
                 return summary;
             }
 
-            double reference = ReferencePower(ideal);
+            EvmReference norm = reference ??
+                EvmReference.FromPoints(EvmNormalisation.RmsMagnitude, ideal, 0.0);
+
+            summary.Reference = norm;
+
+            double volts = norm.Volts;
 
             double errorSquared = 0.0;
             double magSquared = 0.0;
@@ -255,7 +337,7 @@ namespace OpenVSA.Demod.Results
                 var error = new ConstellationPoint(
                     point.I - idealPoint.I, point.Q - idealPoint.Q);
 
-                double magnitude = Math.Sqrt(error.I * error.I + error.Q * error.Q) / reference;
+                double magnitude = Math.Sqrt(error.I * error.I + error.Q * error.Q) / volts;
 
                 errorSquared += magnitude * magnitude;
 
@@ -271,9 +353,12 @@ namespace OpenVSA.Demod.Results
 
                 double measuredMagnitude = Math.Sqrt((point.I * point.I) + (point.Q * point.Q));
 
-                double magError = idealMagnitude < 1e-12
-                    ? 0.0
-                    : (measuredMagnitude - idealMagnitude) / idealMagnitude;
+                // REQ-DEM-063 divides by V_norm, NOT by this symbol's own ideal magnitude. The
+                // difference is invisible on a constant-modulus format and large on a QAM, where a
+                // per-symbol ratio weights an error on an inner point far more heavily than the same
+                // error on an outer one -- and would report a magnitude error that depended on which
+                // symbols were sent. An earlier form of this did exactly that.
+                double magError = (measuredMagnitude - idealMagnitude) / volts;
 
                 magSquared += magError * magError;
 
@@ -283,10 +368,17 @@ namespace OpenVSA.Demod.Results
                     worstMagAt = symbol;
                 }
 
-                double phaseError = Wrap(
-                    Math.Atan2(point.Q, point.I) -
-                    Math.Atan2(idealPoint.Q, idealPoint.I)) *
-                    180.0 / Math.PI;
+                // REQ-DEM-064's arg(z r*), and it is written as the argument of a product rather
+                // than as a difference of two arguments on purpose: the product's argument is
+                // ALREADY the principal value in (-pi, pi], so a symbol whose error approaches +/-pi
+                // lands on the right branch without a wrap step to get wrong. The 180/pi is the
+                // requirement's own emphasis -- the bare expression is radians and the reported
+                // quantity is degrees.
+                var product = new ConstellationPoint(
+                    (point.I * idealPoint.I) + (point.Q * idealPoint.Q),
+                    (point.Q * idealPoint.I) - (point.I * idealPoint.Q));
+
+                double phaseError = Math.Atan2(product.Q, product.I) * 180.0 / Math.PI;
 
                 phaseSquared += phaseError * phaseError;
 
@@ -315,7 +407,7 @@ namespace OpenVSA.Demod.Results
             // gravity is off the origin has a carrier leaking through, and that is what this reads.
             double offset = Math.Sqrt(
                 (offsetI / count) * (offsetI / count) + (offsetQ / count) * (offsetQ / count)) /
-                reference;
+                volts;
 
             summary.Add(new ErrorMetric(
                 "IQ Offset", "dB", offset < 1e-12 ? -200.0 : 20.0 * Math.Log10(offset)));
@@ -350,7 +442,7 @@ namespace OpenVSA.Demod.Results
         /// </remarks>
         public ErrorSummary AsTableFor(ModulationFamily family, bool isOffset)
         {
-            var table = new ErrorSummary();
+            var table = new ErrorSummary { Reference = Reference };
 
             foreach (string label in MetricApplicability.LabelsFor(family, isOffset))
             {
@@ -489,35 +581,6 @@ namespace OpenVSA.Demod.Results
 
         private static string Significant(double value) =>
             value.ToString("G7", CultureInfo.InvariantCulture);
-
-        private static double ReferencePower(IReadOnlyList<ConstellationPoint> ideal)
-        {
-            double sum = 0.0;
-
-            foreach (ConstellationPoint point in ideal)
-            {
-                sum += (point.I * point.I) + (point.Q * point.Q);
-            }
-
-            double rms = Math.Sqrt(sum / ideal.Count);
-
-            return rms < 1e-12 ? 1.0 : rms;
-        }
-
-        private static double Wrap(double radians)
-        {
-            while (radians > Math.PI)
-            {
-                radians -= 2.0 * Math.PI;
-            }
-
-            while (radians < -Math.PI)
-            {
-                radians += 2.0 * Math.PI;
-            }
-
-            return radians;
-        }
 
         /// <inheritdoc />
         public override string ToString() => _metrics.Count + " metric(s)";
