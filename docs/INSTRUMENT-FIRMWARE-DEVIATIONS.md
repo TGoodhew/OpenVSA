@@ -181,6 +181,65 @@ Not a firmware deviation, recorded because it has twice cost time. The generator
 which reads exactly like a powered-off instrument, and was once reported as one. **Confirm the
 address before concluding the bench is off.**
 
+### 3. `:RADio:CUSTom:SRATe? MIN|MAX` answers, and answers a different question — VERIFIED 2026-08-24
+
+**Manual** gives the symbol-rate ceiling as a property of the *format and the filter length*, in a
+table per modulation. For the 32-symbol filter length the instrument truncates to in order to reach
+its higher rates:
+
+> `GRAYQPSK, QAM4` … 4 sps–12.5 Msps  ·  `QAM16` … 8 sps–6.25 Msps
+
+**Firmware C.05.85**, asked for both limits after setting the format and the filter, three runs, six
+combinations:
+
+```
+QPSK    RootRaisedCosine  MIN 1   MAX 50000000
+QPSK    Gaussian          MIN 1   MAX 50000000
+QAM16   RootRaisedCosine  MIN 1   MAX 50000000
+QAM16   Gaussian          MIN 1   MAX 50000000
+QAM256  RootRaisedCosine  MIN 1   MAX 50000000
+QAM256  Gaussian          MIN 1   MAX 50000000
+```
+
+The query answers — unlike `:NTONes? MIN` above, so this is **not** the same deviation — but it
+answers with **the hardware's absolute range and not the range in force**: the same two numbers for
+every format and every filter, 1 sps against the manual's 4 or 8, and 50 Msps against the manual's
+12.5 or 6.25.
+
+**Why this one matters more than it looks.** A driver that ranged a control from this query would
+offer 50 Msps on QAM256 with a root-raised-cosine filter, which the manual says the instrument cannot
+produce. The instrument would then do one of the things instruments do — clip, refuse, or truncate its
+filter, which the manual warns changes both the filter's response and the timing of the modulated
+data — and the signal measured would not be the signal asked for. The failure would appear as a
+measurement disagreement, not as a rejected setting.
+
+**What OpenVSA does instead:** declares the manual's per-format, per-filter limits in
+`E4438CStimulus.MinimumSymbolRateHz` and `MaximumSymbolRateHz(filter)`, and does not use this query to
+range anything. `OpenVSA.Verify --probe-modulation` keeps the probe, because the evidence that the
+query cannot be trusted for this purpose is worth having in a form that can be re-run against a later
+firmware.
+
+**Confirmed working on the same runs**, since a probe that only finds fault is not much of a probe:
+`QPSK` and `GRAYQPSK` both accepted and read back exactly; a symbol rate of 1 Msym/s honoured to the
+symbol; `:ALPHa 0.35` honoured; `PN9` accepted and read back; `:POLarity:ALL INVerted` and `NORMal`
+both applied and reported; and `:RADio:CUSTom:STATe OFF` with `:OUTPut:STATe OFF` leaving the source
+quiet.
+
+### 3a. One unexplained VISA failure, recorded because it is unexplained
+
+The first run of the probe failed part way through with
+
+> The resource descriptor specifies a secure connection, but the device or VISA implementation does
+> not support secure connections, or security has been disabled on the device.
+
+after `*IDN?` had already succeeded on that session. It has **not recurred in four subsequent runs**
+of the same command, so it is not reproduced and not root-caused. Recorded rather than dismissed
+because the message is misleading — nothing in `TCPIP0::192.168.1.85::inst1::INSTR` asks for a secure
+connection — and because the next person to see it should know it has been seen before and that the
+session recovered on its own. `E4438CStimulus.Connect` already does `session.Clear()` and `*CLS`
+before anything else, which is the standard remedy for a session left dirty by a previous program and
+may be why it did not return.
+
 ---
 
 ## The cross-cutting note, and the most useful thing here

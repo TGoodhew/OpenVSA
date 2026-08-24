@@ -1,0 +1,176 @@
+OpenVSA digital-modulation probe
+  generator TCPIP0::192.168.1.85::inst1::INSTR
+
+  driving Agilent Technologies, E4438C, MY45090927, C.05.85
+
+  declared, from the manual:
+    symbol rate      4 to 12500000 sym/s (root raised cosine)
+    formats          19
+    data patterns    5
+
+  probed, from the instrument:
+    QPSK    RootRaisedCosine  MIN 1           MAX 50000000
+    QPSK    Gaussian          MIN 1           MAX 50000000
+    QAM16   RootRaisedCosine  MIN 1           MAX 50000000
+    QAM16   Gaussian          MIN 1           MAX 50000000
+    QAM256  RootRaisedCosine  MIN 1           MAX 50000000
+    QAM256  Gaussian          MIN 1           MAX 50000000
+
+  asked for QPSK at 1 Msym/s, RRC, alpha 0.35, PN9:
+    format           QPSK
+    symbol rate      1000000
+    filter           RootRaisedCosine
+    alpha            0.35
+    data             PN9
+    inverted         False
+    carrier          1E+09
+    level            -20
+
+  asked for GRAYQPSK at 1 Msym/s, RRC, alpha 0.35, PN9:
+    format           GRAYQPSK
+    symbol rate      1000000
+    filter           RootRaisedCosine
+    alpha            0.35
+    data             PN9
+    inverted         False
+    carrier          1E+09
+    level            -20
+
+  after :POLarity INVerted -> inverted True
+  after :POLarity NORMal   -> inverted False
+
+  modulation off, output off.
+
+  SCPI sent, in order:
+    *CLS
+    *IDN?
+    :FREQuency:CW?
+    :POWer:AMPLitude?
+    :OUTPut:STATe?
+    :RADio:MTONe:ARB:STATe?
+    :RADio:AWGN:ARB:STATe?
+    :RADio:CUSTom:STATe?
+    :RADio:CUSTom:MODulation:TYPE QPSK
+    :RADio:CUSTom:FILTer RNYQuist
+    :RADio:CUSTom:SRATe? MIN
+    :RADio:CUSTom:SRATe? MAX
+    :SYSTem:ERRor?
+    :RADio:CUSTom:MODulation:TYPE QPSK
+    :RADio:CUSTom:FILTer GAUSsian
+    :RADio:CUSTom:SRATe? MIN
+    :RADio:CUSTom:SRATe? MAX
+    :SYSTem:ERRor?
+    :RADio:CUSTom:MODulation:TYPE QAM16
+    :RADio:CUSTom:FILTer RNYQuist
+    :RADio:CUSTom:SRATe? MIN
+    :RADio:CUSTom:SRATe? MAX
+    :SYSTem:ERRor?
+    :RADio:CUSTom:MODulation:TYPE QAM16
+    :RADio:CUSTom:FILTer GAUSsian
+    :RADio:CUSTom:SRATe? MIN
+    :RADio:CUSTom:SRATe? MAX
+    :SYSTem:ERRor?
+    :RADio:CUSTom:MODulation:TYPE QAM256
+    :RADio:CUSTom:FILTer RNYQuist
+    :RADio:CUSTom:SRATe? MIN
+    :RADio:CUSTom:SRATe? MAX
+    :SYSTem:ERRor?
+    :RADio:CUSTom:MODulation:TYPE QAM256
+    :RADio:CUSTom:FILTer GAUSsian
+    :RADio:CUSTom:SRATe? MIN
+    :RADio:CUSTom:SRATe? MAX
+    :SYSTem:ERRor?
+    :FREQuency:CW 1000000000 HZ
+    :POWer:AMPLitude -20 dBm
+    :RADio:CUSTom:MODulation:TYPE QPSK
+    :RADio:CUSTom:SRATe 1000000
+    :RADio:CUSTom:FILTer RNYQuist
+    :RADio:CUSTom:ALPHa 0.35
+    :RADio:CUSTom:DATA PN9
+    :RADio:CUSTom:STATe ON
+    :OUTPut:MODulation:STATe ON
+    *OPC?
+    :SYSTem:ERRor?
+    :FREQuency:CW?
+    :POWer:AMPLitude?
+    :OUTPut:STATe?
+    :RADio:MTONe:ARB:STATe?
+    :RADio:AWGN:ARB:STATe?
+    :RADio:CUSTom:STATe?
+    :RADio:CUSTom:MODulation:TYPE?
+    :RADio:CUSTom:SRATe?
+    :RADio:CUSTom:DATA?
+    :RADio:CUSTom:FILTer?
+    :RADio:CUSTom:ALPHa?
+    :RADio:CUSTom:POLarity:ALL?
+    :FREQuency:CW 1000000000 HZ
+    :POWer:AMPLitude -20 dBm
+    :RADio:CUSTom:MODulation:TYPE GRAYQPSK
+    :RADio:CUSTom:SRATe 1000000
+    :RADio:CUSTom:FILTer RNYQuist
+    :RADio:CUSTom:ALPHa 0.35
+    :RADio:CUSTom:DATA PN9
+    :RADio:CUSTom:STATe ON
+    :OUTPut:MODulation:STATe ON
+    *OPC?
+    :SYSTem:ERRor?
+    :FREQuency:CW?
+    :POWer:AMPLitude?
+    :OUTPut:STATe?
+    :RADio:MTONe:ARB:STATe?
+    :RADio:AWGN:ARB:STATe?
+    :RADio:CUSTom:STATe?
+    :RADio:CUSTom:MODulation:TYPE?
+    :RADio:CUSTom:SRATe?
+    :RADio:CUSTom:DATA?
+    :RADio:CUSTom:FILTer?
+    :RADio:CUSTom:ALPHa?
+    :RADio:CUSTom:POLarity:ALL?
+    :RADio:CUSTom:POLarity:ALL INVerted
+    *OPC?
+    :SYSTem:ERRor?
+    :FREQuency:CW?
+    :POWer:AMPLitude?
+    :OUTPut:STATe?
+    :RADio:MTONe:ARB:STATe?
+    :RADio:AWGN:ARB:STATe?
+    :RADio:CUSTom:STATe?
+    :RADio:CUSTom:MODulation:TYPE?
+    :RADio:CUSTom:SRATe?
+    :RADio:CUSTom:DATA?
+    :RADio:CUSTom:FILTer?
+    :RADio:CUSTom:ALPHa?
+    :RADio:CUSTom:POLarity:ALL?
+    :RADio:CUSTom:POLarity:ALL NORMal
+    *OPC?
+    :SYSTem:ERRor?
+    :FREQuency:CW?
+    :POWer:AMPLitude?
+    :OUTPut:STATe?
+    :RADio:MTONe:ARB:STATe?
+    :RADio:AWGN:ARB:STATe?
+    :RADio:CUSTom:STATe?
+    :RADio:CUSTom:MODulation:TYPE?
+    :RADio:CUSTom:SRATe?
+    :RADio:CUSTom:DATA?
+    :RADio:CUSTom:FILTer?
+    :RADio:CUSTom:ALPHa?
+    :RADio:CUSTom:POLarity:ALL?
+    :RADio:CUSTom:STATe OFF
+    *OPC?
+    :SYSTem:ERRor?
+    :FREQuency:CW?
+    :POWer:AMPLitude?
+    :OUTPut:STATe?
+    :RADio:MTONe:ARB:STATe?
+    :RADio:AWGN:ARB:STATe?
+    :RADio:CUSTom:STATe?
+    :OUTPut:STATe OFF
+    *OPC?
+    :SYSTem:ERRor?
+    :FREQuency:CW?
+    :POWer:AMPLitude?
+    :OUTPut:STATe?
+    :RADio:MTONe:ARB:STATe?
+    :RADio:AWGN:ARB:STATe?
+    :RADio:CUSTom:STATe?

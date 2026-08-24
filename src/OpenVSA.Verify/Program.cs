@@ -121,6 +121,166 @@ namespace OpenVSA.Verify
         /// that took a shorter path would confirm the transport and leave the assembled behaviour
         /// unverified, which is the state this was in.
         /// </remarks>
+        /// <summary>
+        /// Asks the generator what it really does with a digital modulation (<c>REQ-E44-007</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The generator alone, with no analyser opened: this answers "does the instrument behave as
+        /// its manual describes", which is a question about one instrument and is worth being able
+        /// to ask when the other is switched off.
+        /// </para>
+        /// <para>
+        /// It writes to the instrument, because there is no other way to find out. It leaves the
+        /// modulation off and the output off when it is done, whatever happened in between.
+        /// </para>
+        /// </remarks>
+        private static int ProbeModulation(Options options)
+        {
+            Console.WriteLine("OpenVSA digital-modulation probe");
+            Console.WriteLine("  generator " + options.GeneratorResource);
+            Console.WriteLine();
+
+            using (IStimulusSource stimulus = CreateStimulus(options))
+            {
+                var digital = stimulus as IDigitalModulationStimulus;
+
+                if (digital == null)
+                {
+                    Console.WriteLine(
+                        "  " + stimulus.DisplayName + " does not offer digital modulation.");
+
+                    return 1;
+                }
+
+                stimulus.Connect();
+
+                Console.WriteLine("  driving " + stimulus.DisplayName);
+                Console.WriteLine();
+
+                try
+                {
+                    Console.WriteLine("  declared, from the manual:");
+                    Console.WriteLine(
+                        "    symbol rate      " + digital.MinimumSymbolRateHz + " to " +
+                        digital.MaximumSymbolRateHz(StimulusPulseFilter.RootRaisedCosine) +
+                        " sym/s (root raised cosine)");
+                    Console.WriteLine("    formats          " + digital.Formats.Count);
+                    Console.WriteLine("    data patterns    " + digital.DataPatterns.Count);
+                    Console.WriteLine();
+
+                    var probing = stimulus as E4438CStimulus;
+
+                    if (probing != null)
+                    {
+                        // Per format and per filter, because the manual's ceiling is a property of
+                        // the pair: QPSK reaches 12.5 Msps and QAM16 half that. If the instrument
+                        // answers the same number for both, the query is reporting the hardware's
+                        // absolute limit rather than the one in force, which is a different fact
+                        // and a more dangerous one to build a scenario on.
+                        Console.WriteLine("  probed, from the instrument:");
+
+                        foreach (string format in new[] { "QPSK", "QAM16", "QAM256" })
+                        {
+                            foreach (StimulusPulseFilter filter in new[]
+                            {
+                                StimulusPulseFilter.RootRaisedCosine,
+                                StimulusPulseFilter.Gaussian,
+                            })
+                            {
+                                double floorHz;
+                                double ceilingHz;
+
+                                probing.ProbeSymbolRateLimits(
+                                    format, filter, out floorHz, out ceilingHz);
+
+                                Console.WriteLine(
+                                    "    " + format.PadRight(8) + filter.ToString().PadRight(18) +
+                                    "MIN " + Reported(floorHz).PadRight(12) + "MAX " +
+                                    Reported(ceilingHz));
+                            }
+                        }
+
+                        Console.WriteLine();
+                    }
+
+                    foreach (string format in new[] { "QPSK", "GRAYQPSK" })
+                    {
+                        digital.SetDigitalModulation(
+                            options.CenterFrequencyHz,
+                            options.LevelDbm,
+                            format,
+                            1e6,
+                            StimulusPulseFilter.RootRaisedCosine,
+                            0.35,
+                            "PN9");
+
+                        Console.WriteLine("  asked for " + format + " at 1 Msym/s, RRC, alpha 0.35, PN9:");
+                        Console.WriteLine("    format           " + digital.Format);
+                        Console.WriteLine("    symbol rate      " + Reported(digital.SymbolRateHz));
+                        Console.WriteLine("    filter           " + digital.PulseFilter);
+                        Console.WriteLine("    alpha            " + Reported(digital.Alpha));
+                        Console.WriteLine("    data             " + digital.DataPattern);
+                        Console.WriteLine("    inverted         " + digital.IsSpectrumInverted);
+                        Console.WriteLine("    carrier          " + Reported(stimulus.FrequencyHz));
+                        Console.WriteLine("    level            " + Reported(stimulus.LevelDbm));
+                        Console.WriteLine();
+                    }
+
+                    digital.SetSpectrumInverted(true);
+                    Console.WriteLine("  after :POLarity INVerted -> inverted " +
+                        digital.IsSpectrumInverted);
+
+                    digital.SetSpectrumInverted(false);
+                    Console.WriteLine("  after :POLarity NORMal   -> inverted " +
+                        digital.IsSpectrumInverted);
+                    Console.WriteLine();
+                }
+                finally
+                {
+                    // Whatever happened, the instrument is not left transmitting something nobody
+                    // chose. The finally is the point: a probe that threw half way through is
+                    // exactly when this matters.
+                    try
+                    {
+                        digital.StopDigitalModulation();
+                        stimulus.SetOutput(false);
+
+                        Console.WriteLine("  modulation off, output off.");
+                    }
+                    catch (Exception failure)
+                    {
+                        Console.WriteLine("  COULD NOT RESTORE THE SOURCE: " + failure.Message);
+                    }
+
+                    // The transcript, because "which command broke it" is the only question worth
+                    // asking of a failure like that and the message never says.
+                    var recorded = stimulus as E4438CStimulus;
+
+                    if (recorded != null)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("  SCPI sent, in order:");
+
+                        foreach (string command in recorded.Sent)
+                        {
+                            Console.WriteLine("    " + command);
+                        }
+                    }
+                }
+
+                return 0;
+            }
+        }
+
+        /// <summary>A probed figure, or a plain statement that the instrument would not say.</summary>
+        private static string Reported(double value)
+        {
+            return double.IsNaN(value)
+                ? "not reported"
+                : value.ToString("G9", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         private static int ListResources()
         {
             FrontEndRegistry registry = FrontEndRegistry.CreateDefault();
@@ -175,6 +335,11 @@ namespace OpenVSA.Verify
             if (options.ListResources)
             {
                 return ListResources();
+            }
+
+            if (options.ProbeModulation)
+            {
+                return ProbeModulation(options);
             }
 
             Console.WriteLine("OpenVSA cross-validation");
@@ -337,6 +502,9 @@ namespace OpenVSA.Verify
             /// <summary>Whether to list what is on the bus and stop.</summary>
             public bool ListResources { get; private set; }
 
+            /// <summary>Whether to ask the generator what it does with a digital modulation.</summary>
+            public bool ProbeModulation { get; private set; }
+
             public string ResultFile { get; private set; }
 
             public bool UseSimulatedStimulus { get; private set; }
@@ -390,6 +558,10 @@ namespace OpenVSA.Verify
                             options.ListResources = true;
                             break;
 
+                        case "--probe-modulation":
+                            options.ProbeModulation = true;
+                            break;
+
                         case "--simulated-stimulus":
                             options.UseSimulatedStimulus = true;
                             break;
@@ -418,6 +590,8 @@ namespace OpenVSA.Verify
                 Console.WriteLine("  --span <hz>             analysis span (default 10e6)");
                 Console.WriteLine("  --resources             list what the resource manager reports,");
                 Console.WriteLine("                          identified where safe, and stop");
+                Console.WriteLine("  --probe-modulation      ask the generator what it really does");
+                Console.WriteLine("                          with a digital modulation, and leave it off");
                 Console.WriteLine("  --exercise              drive every feature against one real");
                 Console.WriteLine("                          acquisition instead of cross-validating");
                 Console.WriteLine("  --results <path>        write tab-separated results here");
