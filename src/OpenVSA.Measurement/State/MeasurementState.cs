@@ -420,10 +420,22 @@ namespace OpenVSA.Measurement.State
         public int ResultLengthSymbols { get; set; } = 256;
 
         /// <summary>
-        /// How long the Search Length window is, in samples; zero for the whole record
+        /// How long the Search Length window is, in symbols; zero for the whole record
         /// (<c>REQ-DEM-033</c>).
         /// </summary>
-        public int SearchLengthSamples { get; set; }
+        /// <remarks>
+        /// Symbols rather than samples, as that requirement states it: every other length here is
+        /// in symbols, and one in samples would be the only number that changed meaning when the
+        /// acquisition's sample rate did. A version 6 file's <c>searchLengthSamples</c> is not
+        /// carried over — see the migration, which is the first that does anything.
+        /// </remarks>
+        public int SearchLengthSymbols { get; set; }
+
+        /// <summary>The longest a pulse is expected to be on, in symbols (<c>REQ-DEM-033</c>).</summary>
+        public int MaximumPulseOnSymbols { get; set; }
+
+        /// <summary>The longest a pulse is expected to be off, in symbols (<c>REQ-DEM-033</c>).</summary>
+        public int MaximumPulseOffSymbols { get; set; }
 
         /// <summary>Which measurement filter is applied (<c>REQ-DEM-021</c>).</summary>
         public PulseFilterType MeasurementFilter { get; set; } = PulseFilterType.RootRaisedCosine;
@@ -535,7 +547,9 @@ namespace OpenVSA.Measurement.State
                 PointsPerSymbol = PointsPerSymbol,
                 DisplayPointsPerSymbol = DisplayPointsPerSymbol,
                 ResultLengthSymbols = ResultLengthSymbols,
-                SearchLengthSamples = SearchLengthSamples,
+                SearchLengthSymbols = SearchLengthSymbols,
+                MaximumPulseOnSymbols = MaximumPulseOnSymbols,
+                MaximumPulseOffSymbols = MaximumPulseOffSymbols,
                 MeasurementFilterAlpha = MeasurementFilterAlpha,
                 ReferenceFilterAlpha = ReferenceFilterAlpha,
                 FilterSymbolSpan = FilterSymbolSpan,

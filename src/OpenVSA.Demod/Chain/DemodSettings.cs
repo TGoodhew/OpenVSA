@@ -166,9 +166,32 @@ namespace OpenVSA.Demod.Chain
         public int SearchStartSample { get; set; }
 
         /// <summary>
-        /// How long the Search Length window is, in samples; zero for the rest of Main Time.
+        /// How long the Search Length window is, in symbols; zero for the rest of Main Time
+        /// (<c>REQ-DEM-033</c>).
         /// </summary>
-        public int SearchLengthSamples { get; set; }
+        /// <remarks>
+        /// <strong>Symbols, not samples.</strong> That requirement says so, and the reason is that
+        /// every other length a user sets here is in symbols — a Search Length in samples would be
+        /// the only number on the page that changed meaning when the acquisition's sample rate did.
+        /// The chain converts it where the sample rate is known.
+        /// </remarks>
+        public int SearchLengthSymbols { get; set; }
+
+        /// <summary>
+        /// The longest a pulse is expected to be on, in symbols; zero when it is not known
+        /// (<c>REQ-DEM-033</c>).
+        /// </summary>
+        /// <remarks>
+        /// Together with <see cref="MaximumPulseOffSymbols"/> this is what makes a Search Length
+        /// long enough to be sure of catching one whole pulse: a window of
+        /// <c>2 × MaxOn + MaxOff</c> contains a complete on-period wherever it happens to start.
+        /// Zero means the user has not said, and the constraint is not applied — a check that
+        /// invented its own numbers would be enforcing a guess.
+        /// </remarks>
+        public int MaximumPulseOnSymbols { get; set; }
+
+        /// <summary>The longest a pulse is expected to be off, in symbols (<c>REQ-DEM-033</c>).</summary>
+        public int MaximumPulseOffSymbols { get; set; }
 
         /// <summary>How many symbols the Result Length window holds (<c>REQ-DEM-031</c>).</summary>
         public int ResultLengthSymbols { get; set; } = 256;
@@ -413,7 +436,36 @@ namespace OpenVSA.Demod.Chain
                 "well-formed bit stream that meant nothing.");
             Require(ResultLengthSymbols >= 4, "A Result Length of fewer than 4 symbols cannot be fitted to.");
             Require(SearchStartSample >= 0, "The Search Length window starts at or after the first sample.");
-            Require(SearchLengthSamples >= 0, "A Search Length of zero means the rest of Main Time.");
+            Require(SearchLengthSymbols >= 0, "A Search Length of zero means the rest of Main Time.");
+
+            // REQ-DEM-033: at least the Result Length, because a window shorter than the block it
+            // is meant to contain cannot contain it. Zero is the whole record and is longer than
+            // anything.
+            Require(
+                SearchLengthSymbols == 0 || SearchLengthSymbols >= ResultLengthSymbols,
+                "A Search Length of " +
+                SearchLengthSymbols.ToString(CultureInfo.InvariantCulture) + " symbols is shorter " +
+                "than the Result Length of " +
+                ResultLengthSymbols.ToString(CultureInfo.InvariantCulture) +
+                " it has to contain (REQ-DEM-033). The minimum is " +
+                ResultLengthSymbols.ToString(CultureInfo.InvariantCulture) + ".");
+
+            Require(
+                MaximumPulseOnSymbols >= 0 && MaximumPulseOffSymbols >= 0,
+                "A pulse's on and off times are not negative.");
+
+            // And, for a pulse search, long enough that one complete pulse must fall inside it
+            // wherever the window lands. AN INEQUALITY: a longer Search Length is fine, and
+            // enforcing equality here is the plausible misreading the requirement warns about.
+            Require(
+                !BurstSearchEnabled || MaximumPulseOnSymbols == 0 || SearchLengthSymbols == 0 ||
+                SearchLengthSymbols >= (2 * MaximumPulseOnSymbols) + MaximumPulseOffSymbols,
+                "A pulse search needs a Search Length of at least 2 x MaxOn + MaxOff = " +
+                ((2 * MaximumPulseOnSymbols) + MaximumPulseOffSymbols).ToString(
+                    CultureInfo.InvariantCulture) +
+                " symbols to be sure of catching a whole pulse, and this one is " +
+                SearchLengthSymbols.ToString(CultureInfo.InvariantCulture) +
+                " (REQ-DEM-033).");
             Require(FilterSymbolSpan >= 1, "A pulse spans at least one symbol either side of centre.");
 
             Require(

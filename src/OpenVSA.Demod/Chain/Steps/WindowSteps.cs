@@ -32,14 +32,25 @@ namespace OpenVSA.Demod.Chain.Steps
             }
 
             int available = total - start;
-            int wanted = context.Settings.SearchLengthSamples;
+
+            // REQ-DEM-033 states the Search Length in symbols; this is where the sample rate is
+            // known, so this is where it becomes a number of samples.
+            double perSymbol = context.Settings.SymbolRateHz <= 0.0
+                ? 0.0
+                : context.SampleRateHz / context.Settings.SymbolRateHz;
+
+            int wanted = context.Settings.SearchLengthSymbols <= 0 || perSymbol <= 0.0
+                ? 0
+                : (int)Math.Round(context.Settings.SearchLengthSymbols * perSymbol);
             int length = wanted == 0 ? available : Math.Min(wanted, available);
 
             if (wanted > available)
             {
                 context.Note(
                     "The Search Length window asked for " +
-                    wanted.ToString(CultureInfo.InvariantCulture) + " samples and Main Time had " +
+                    wanted.ToString(CultureInfo.InvariantCulture) + " samples -- " +
+                    context.Settings.SearchLengthSymbols.ToString(CultureInfo.InvariantCulture) +
+                    " symbols -- and Main Time had " +
                     available.ToString(CultureInfo.InvariantCulture) +
                     " left. The window was shortened to what was there.");
             }
@@ -147,6 +158,22 @@ namespace OpenVSA.Demod.Chain.Steps
             return StepOutcome.Continue;
         }
 
+        /// <remarks>
+        /// <para>
+        /// <strong>Three ways of choosing where to start, in the order <c>REQ-DEM-041</c> gives
+        /// them.</strong> With a sync pattern found, the pattern positions the window and nothing
+        /// else does. Without one but with a pulse found, the window is <em>auto-centred on the
+        /// pulse</em> — that requirement's words — so a burst shorter than the record is analysed
+        /// where the signal is rather than where the record happens to begin. With neither, the
+        /// window starts after the filter's own transient.
+        /// </para>
+        /// <para>
+        /// Centring is not the same as starting at the pulse. A Result Length shorter than the burst
+        /// should sit in the middle of it, away from both edges where the transmitter's own ramps
+        /// are; a Result Length longer than the burst will overrun it either way, and centring at
+        /// least splits the overrun between the two ends instead of putting all of it after.
+        /// </para>
+        /// </remarks>
         private static int FirstSymbolSample(DemodContext context, int perSymbol)
         {
             if (context.SyncFound)
@@ -163,8 +190,15 @@ namespace OpenVSA.Demod.Chain.Steps
                 // written out because a burst position off by the resampling ratio would put the
                 // result window on the wrong part of the signal and still demodulate something.
                 int burst = (int)Math.Round(context.BurstStartSample * context.ResampleRatio);
+                int length = (int)Math.Round(context.BurstLengthSamples * context.ResampleRatio);
 
-                return burst + transient;
+                int wanted = ((context.Settings.ResultLengthSymbols - 1) * perSymbol) + 1;
+                int centred = burst + ((length - wanted) / 2);
+
+                // Never before the filter's transient: the first symbols of the working waveform
+                // are the measurement filter still filling, and a window centred into them would be
+                // measuring the filter.
+                return Math.Max(transient, centred);
             }
 
             return transient;
