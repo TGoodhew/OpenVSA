@@ -639,6 +639,62 @@ namespace OpenVSA.Ui
                 item.Click += (sender, e) => SelectFrontEnd(captured, (MenuItem)sender);
                 _instrumentsMenu.Items.Add(item);
             }
+
+            // A front end that invents its own samples can be told what to invent (REQ-SIM-001).
+            // Under the instrument rather than in a menu of its own: it is a property of the source
+            // that is connected, and REQ-UI-061 fixes the menus' contents exactly, so a new item at
+            // the top level would fail the build as well as being in the wrong place.
+            var synthetic = _activeFrontEnd as ISyntheticSource;
+
+            if (synthetic != null)
+            {
+                _instrumentsMenu.Items.Add(new Separator());
+                _instrumentsMenu.Items.Add(SyntheticSignalMenu(synthetic));
+            }
+        }
+
+        /// <summary>
+        /// The signal menu for a front end that makes its own (<c>REQ-SIM-001</c>).
+        /// </summary>
+        /// <param name="synthetic">The connected source.</param>
+        /// <returns>A submenu of the modulations it declares, with the current one ticked.</returns>
+        /// <remarks>
+        /// Built from <c>Modulations</c> rather than from a list here, per <c>REQ-HAL-002</c>: a UI
+        /// that knew which formats a simulator could produce would be a UI with an instrument's
+        /// capabilities written into it.
+        /// </remarks>
+        internal MenuItem SyntheticSignalMenu(ISyntheticSource synthetic)
+        {
+            var menu = new MenuItem { Header = "Signal" };
+
+            var none = new MenuItem
+            {
+                Header = "Unmodulated carrier",
+                IsCheckable = true,
+                IsChecked = string.IsNullOrEmpty(synthetic.Modulation),
+            };
+
+            none.Click += (sender, e) => ChooseSyntheticSignal(synthetic, null);
+            menu.Items.Add(none);
+            menu.Items.Add(new Separator());
+
+            foreach (string modulation in synthetic.Modulations)
+            {
+                string captured = modulation;
+
+                var item = new MenuItem
+                {
+                    Header = modulation,
+                    IsCheckable = true,
+                    IsChecked = string.Equals(
+                        synthetic.Modulation, modulation, StringComparison.Ordinal),
+                };
+
+                item.Click += (sender, e) => ChooseSyntheticSignal(synthetic, captured);
+                menu.Items.Add(item);
+            }
+
+            return menu;
         }
 
         /// <summary>Fills the trace list with the traces that are open (<c>REQ-UI-020</c>).</summary>

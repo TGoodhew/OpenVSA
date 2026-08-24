@@ -2,6 +2,8 @@ using System;
 using System.Windows.Threading;
 using OpenVSA.Demod.Chain;
 using OpenVSA.Demod.Results;
+using OpenVSA.Hal;
+using OpenVSA.Measurement;
 using OpenVSA.Measurement.Contexts;
 using OpenVSA.Measurement.State;
 using OpenVSA.Ui.Rendering;
@@ -224,6 +226,108 @@ namespace OpenVSA.Ui
 
             StatusText.Content = said;
             _eventLog.Append(said);
+        }
+
+        /// <summary>
+        /// Tells a synthetic front end what to transmit (<c>REQ-SIM-001</c>).
+        /// </summary>
+        /// <param name="synthetic">The connected source.</param>
+        /// <param name="modulation">The format's name, or <c>null</c> for a carrier.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>The symbol rate comes from the measurement, once, at the moment of choosing.</strong>
+        /// A source and an analyser that agreed automatically and permanently would be a pair that
+        /// could never be made to disagree, and disagreeing is a measurement people make on purpose:
+        /// <c>REQ-DEM-030</c>'s whole signature test is what a symbol-rate error looks like. So the
+        /// rate is copied from the active measurement's demodulator settings when the signal is
+        /// chosen, said out loud, and then the two are independent.
+        /// </para>
+        /// <para>
+        /// Refused rather than clipped when the rate the measurement wants is faster than the
+        /// acquisition can carry. The alternative is a source transmitting something other than
+        /// what the readout says, which is the one thing a signal source must never do.
+        /// </para>
+        /// </remarks>
+        private void ChooseSyntheticSignal(ISyntheticSource synthetic, string modulation)
+        {
+            if (synthetic == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(modulation))
+            {
+                synthetic.Modulation = null;
+
+                Said("Simulated source: unmodulated carrier.");
+
+                return;
+            }
+
+            double wanted = _contextSet.Active.Setup.Demod.SymbolRateHz;
+
+            if (wanted <= 0.0)
+            {
+                wanted = DemodState.DefaultSymbolRateFor(_contextSet.Active.Setup.SpanHz);
+            }
+
+            double fastest = FastestSymbolRate(synthetic);
+
+            if (fastest > 0.0 && wanted > fastest)
+            {
+                Said(
+                    "The simulated source cannot transmit " + EngineeringText.Frequency(wanted) +
+                    "sym/s: this acquisition carries " + EngineeringText.Frequency(fastest) +
+                    "sym/s at " + synthetic.MinimumSamplesPerSymbol +
+                    " samples a symbol. Widen the span or lower the symbol rate.");
+
+                return;
+            }
+
+            try
+            {
+                synthetic.Modulation = modulation;
+                synthetic.SymbolRateHz = wanted;
+            }
+            catch (ArgumentException refused)
+            {
+                Said("Simulated source: " + refused.Message);
+
+                return;
+            }
+
+            Said(
+                "Simulated source: " + modulation + " at " + EngineeringText.Frequency(wanted) +
+                "sym/s, roll-off " +
+                synthetic.RollOff.ToString("0.00", System.Globalization.CultureInfo.CurrentCulture) +
+                ".");
+        }
+
+        /// <summary>
+        /// The fastest symbol rate the current acquisition can carry, or zero when unknown.
+        /// </summary>
+        /// <param name="synthetic">The source, which declares the samples a symbol needs.</param>
+        /// <remarks>
+        /// <c>REQ-HAL-002</c>: ranged from what the source and the plan declare, not from anything
+        /// this window assumes about simulators.
+        /// </remarks>
+        private double FastestSymbolRate(ISyntheticSource synthetic)
+        {
+            SpectrumEngine engine = _engine;
+            AcquisitionPlan plan = engine == null ? null : engine.Plan;
+
+            if (plan == null || synthetic.MinimumSamplesPerSymbol <= 0.0)
+            {
+                return 0.0;
+            }
+
+            return plan.SampleRateHz / synthetic.MinimumSamplesPerSymbol;
+        }
+
+        private void Said(string what)
+        {
+            StatusText.Content = what;
+            _eventLog.Append(what);
         }
 
         private void StopShowingResults()
