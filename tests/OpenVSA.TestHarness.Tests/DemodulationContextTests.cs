@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using OpenVSA.Core;
 using OpenVSA.Demod.Chain;
@@ -177,14 +177,18 @@ namespace OpenVSA.TestHarness.Tests
         {
             MeasurementState setup = Setup();
 
-            setup.Demod.Format = "1024QAM";
+            // GMSK, not 1024QAM as this test said until 24 August 2026. REQ-DEM-010's catalogue now
+            // covers every format that is a point list, 1024QAM among them, so naming one of those
+            // would assert a limitation that no longer exists. GMSK is still genuinely out of reach:
+            // it is not a point list, and it needs REQ-DEM-012's handling rather than a table entry.
+            setup.Demod.Format = "GMSK";
 
             ArgumentException failure = Assert.Throws<ArgumentException>(
                 () => setup.Demod.ToSettings());
 
             _output.WriteLine(failure.Message);
 
-            Assert.Contains("1024QAM", failure.Message, StringComparison.Ordinal);
+            Assert.Contains("GMSK", failure.Message, StringComparison.Ordinal);
         }
 
         [Fact]
