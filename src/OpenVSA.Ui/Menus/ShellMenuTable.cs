@@ -364,8 +364,7 @@ namespace OpenVSA.Ui.Menus
                     "Vector analysis — spectrum with phase, and time-domain traces from the same " +
                     "acquisition — is Phase 2. The IQ path that feeds it exists; the measurement " +
                     "type that presents it does not."),
-                Off("Digital Demodulation",
-                    "Digital demodulation is Phase 3, specified from REQ-DEM-001 onwards."),
+                Tick("Digital Demodulation"),
                 Off("Analogue Demodulation",
                     "Analogue demodulation — AM, FM and PM detection — is Phase 3.")),
             Off("Properties…",
