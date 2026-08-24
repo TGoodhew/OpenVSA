@@ -297,9 +297,11 @@ namespace OpenVSA.Verify
                 string demodulated = null,
                 int repeats = 1,
                 DifferentialReference reference = DifferentialReference.PerFormat,
-                bool? expectRelabelling = null)
+                bool? expectRelabelling = null,
+                BitMapping mapping = BitMapping.Natural)
             {
                 ExpectRelabelling = expectRelabelling;
+                Mapping = mapping;
                 Format = format;
                 Mirrored = mirrored;
                 ExpectMatch = expectMatch;
@@ -308,6 +310,15 @@ namespace OpenVSA.Verify
                 Repeats = repeats;
                 Reference = reference;
             }
+
+            /// <summary>Which bits the constellation's points carry (<c>REQ-DEM-011</c>).</summary>
+            /// <remarks>
+            /// A case of its own for the same reason the reference is: which labelling an instrument
+            /// used is a fact about the instrument, and this bench measured it. The same three
+            /// signals appear twice in the matrix, once against each labelling, and exactly one of
+            /// the two readings is the sequence.
+            /// </remarks>
+            public BitMapping Mapping { get; }
 
             /// <summary>What a symbol's bits are read against (<c>REQ-DEM-012</c>).</summary>
             /// <remarks>
@@ -381,6 +392,7 @@ namespace OpenVSA.Verify
             /// <inheritdoc />
             public override string ToString() =>
                 Format +
+                (Mapping == BitMapping.Natural ? string.Empty : ", " + Mapping + " labelled") +
                 (string.Equals(Demodulated, Format, StringComparison.Ordinal)
                     ? string.Empty
                     : " demodulated as " + Demodulated) +
@@ -496,6 +508,33 @@ namespace OpenVSA.Verify
                     "and the same control",
                     reference: DifferentialReference.None,
                     expectRelabelling: false),
+
+                // The same three signals again, against the labelling the relabelling line named.
+                // Each one's pair is the whole of REQ-DEM-011's claim: the geometry and the
+                // arithmetic never changed, only which bits the points are said to carry, and that
+                // is the difference between a stream that is nobody's sequence and one that is
+                // exactly the sequence.
+                new DemodCase(
+                    "GRAYQPSK",
+                    false,
+                    true,
+                    "the case above with the labelling this instrument actually uses. Same " +
+                    "waveform, same decisions, same EVM -- and the bits should now BE the sequence",
+                    demodulated: "QPSK",
+                    mapping: BitMapping.Gray),
+                new DemodCase(
+                    "P4DQPSK",
+                    false,
+                    true,
+                    "differentially decoded and Gray labelled, which is what this instrument sends",
+                    demodulated: "PI4DQPSK",
+                    mapping: BitMapping.Gray),
+                new DemodCase(
+                    "D8PSK",
+                    false,
+                    true,
+                    "and the same on eight points and three bits",
+                    mapping: BitMapping.Gray),
             };
 
             Console.WriteLine("OpenVSA demodulation cross-check");
@@ -594,6 +633,26 @@ namespace OpenVSA.Verify
             }
         }
 
+        /// <summary>What each point of a constellation carries (<c>REQ-DEM-011</c>).</summary>
+        /// <param name="constellation">The constellation the decisions were made against.</param>
+        /// <returns>The table, or <c>null</c> under the natural mapping, where a point carries itself.</returns>
+        private static IReadOnlyList<int> Labels(Constellation constellation)
+        {
+            if (constellation.Mapping == BitMapping.Natural)
+            {
+                return null;
+            }
+
+            var labels = new int[constellation.Count];
+
+            for (int symbol = 0; symbol < labels.Length; symbol++)
+            {
+                labels[symbol] = constellation.CarriedBy(symbol);
+            }
+
+            return labels;
+        }
+
         /// <summary>Runs one case of the bit-level cross-check.</summary>
         /// <returns>Whether the outcome was the one the case expected.</returns>
         private static async Task<bool> RunDemodCase(
@@ -652,6 +711,7 @@ namespace OpenVSA.Verify
 
             setup.Demod.Format = scenario.Demodulated;
             setup.Demod.DifferentialReference = scenario.Reference;
+            setup.Demod.BitMapping = scenario.Mapping;
             setup.Demod.SymbolRateHz = digital.SymbolRateHz;
             setup.Demod.ResultLengthSymbols = ResultLengthSymbols;
             setup.Demod.MeasurementFilter = PulseFilterType.RootRaisedCosine;
@@ -776,19 +836,32 @@ namespace OpenVSA.Verify
                 Console.WriteLine("    notice           " + notice);
             }
 
-            BitStreamMatch match = BitStreamAlignment.Find(
-                measured.DataSymbols,
-                measured.Trace.BitsPerSymbol,
+            // Which stream to compare, and how many rotations to allow, are one decision:
+            //
+            //   Differential -- the DATA, and no rotation. The difference of two symbols is
+            //   unchanged by turning both, so the freedom has already been divided out and
+            //   searching it again would only offer extra chances to agree by accident.
+            //
+            //   Otherwise -- the decided POINTS, every rotation, and the labelling handed over
+            //   separately. A turned constellation moves each point to its neighbour's place and
+            //   what it then carries is whatever the labelling says, so the rotation has to be
+            //   applied first and the labels second. Comparing the carried values directly and
+            //   rotating those would be right only for the natural mapping.
+            DemodSettings applied = setup.Demod.ToSettings();
 
-                // How many rotations to search. Every rotation, for a format whose bits are its
-                // symbol -- a turned constellation is a freedom nothing in the chain resolves. ONE,
-                // for a differential decode: the difference of two symbols is unchanged by turning
-                // both, so the rotation has already been divided out and searching it again would
-                // only be offering the comparison extra chances to agree by accident.
-                setup.Demod.ToSettings().DecodesDifferentially
-                    ? 1
-                    : 1 << measured.Trace.BitsPerSymbol,
-                Pattern);
+            BitStreamMatch match = applied.DecodesDifferentially
+                ? BitStreamAlignment.Find(
+                    measured.DataSymbols,
+                    measured.Trace.BitsPerSymbol,
+                    1 << measured.Trace.BitsPerSymbol,
+                    Pattern,
+                    rotations: 1)
+                : BitStreamAlignment.Find(
+                    measured.Symbols,
+                    measured.Trace.BitsPerSymbol,
+                    1 << measured.Trace.BitsPerSymbol,
+                    Pattern,
+                    Labels(applied.Constellation));
 
             Console.WriteLine("    against " + Pattern + "      " + match);
 

@@ -51,7 +51,12 @@ namespace OpenVSA.Demod.Signal
     {
         private readonly ReadOnlyCollection<ConstellationPoint> _points;
 
+        /// <summary>What each point carries, or <c>null</c> when a point carries its own value.</summary>
+        private readonly int[] _carried;
+
         private int _symmetry;
+
+        private double _stripping = double.NaN;
 
         private Constellation(
             string name,
@@ -61,7 +66,9 @@ namespace OpenVSA.Demod.Signal
             ModulationFamily family,
             bool isOffset,
             bool isDifferential = false,
-            double rotationPerSymbolRadians = 0.0)
+            double rotationPerSymbolRadians = 0.0,
+            BitMapping mapping = BitMapping.Natural,
+            int[] carried = null)
         {
             Name = name;
             BitsPerSymbol = bitsPerSymbol;
@@ -70,6 +77,8 @@ namespace OpenVSA.Demod.Signal
             IsOffset = isOffset;
             IsDifferential = isDifferential;
             RotationPerSymbolRadians = rotationPerSymbolRadians;
+            Mapping = mapping;
+            _carried = carried;
             _points = new ReadOnlyCollection<ConstellationPoint>(points);
         }
 
@@ -186,6 +195,9 @@ namespace OpenVSA.Demod.Signal
                 return true;
             }
         }
+
+        /// <summary>Which bits the points carry (<c>REQ-DEM-011</c>).</summary>
+        public BitMapping Mapping { get; }
 
         /// <summary>The points, indexed by symbol value.</summary>
         public IReadOnlyList<ConstellationPoint> Points => _points;
@@ -1030,23 +1042,248 @@ namespace OpenVSA.Demod.Signal
             return difference < 0 ? difference + _points.Count : difference;
         }
 
+        /// <summary>
+        /// The same points, labelled the way <paramref name="mapping"/> says (<c>REQ-DEM-011</c>).
+        /// </summary>
+        /// <param name="mapping">Natural or Gray; <c>Explicit</c> needs a table.</param>
+        /// <returns>The constellation, relabelled.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <c>Explicit</c> was asked for without a table, or the value is not a mapping.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">
+        /// Gray was asked for and this geometry has no single Gray code — see <see cref="BitMapping"/>.
+        /// </exception>
+        /// <remarks>
+        /// A new constellation rather than a setting on this one: the labelling is part of what a
+        /// format <em>is</em>, and a demodulation half-way through a block that had its labels
+        /// changed under it would report a bit stream belonging to neither.
+        /// </remarks>
+        public Constellation WithMapping(BitMapping mapping)
+        {
+            switch (mapping)
+            {
+                case BitMapping.Natural:
+                    return Relabelled(BitMapping.Natural, null);
+
+                case BitMapping.Gray:
+                    return Relabelled(BitMapping.Gray, GrayLabels());
+
+                case BitMapping.Explicit:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(mapping),
+                        mapping,
+                        "An explicit mapping is a table, so it is given rather than named. Use the " +
+                        "overload that takes one.");
+
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(mapping), mapping, "Not a bit mapping this build knows.");
+            }
+        }
+
+        /// <summary>
+        /// The same points, labelled by an explicit table (<c>REQ-DEM-011</c>).
+        /// </summary>
+        /// <param name="carried">
+        /// What each point carries: <c>carried[n]</c> is the symbol value point <em>n</em> stands
+        /// for. A permutation of 0 to <see cref="Count"/> minus one.
+        /// </param>
+        /// <returns>The constellation, relabelled.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="carried"/> is null.</exception>
+        /// <exception cref="ArgumentException">
+        /// The table is the wrong length, holds a value outside the constellation, or is not a
+        /// permutation.
+        /// </exception>
+        /// <remarks>
+        /// <strong>A permutation, and it is checked.</strong> A table that gave two points the same
+        /// value would make those two symbols indistinguishable in the bit stream while leaving them
+        /// perfectly distinguishable on the constellation — a defect visible only as a bit error
+        /// rate, on a measurement whose EVM is beyond reproach.
+        /// </remarks>
+        public Constellation WithMapping(IList<int> carried)
+        {
+            if (carried == null)
+            {
+                throw new ArgumentNullException(nameof(carried));
+            }
+
+            if (carried.Count != _points.Count)
+            {
+                throw new ArgumentException(
+                    "A mapping table says what each of " + _points.Count + " points carries, and " +
+                    "this one has " + carried.Count + " entries.",
+                    nameof(carried));
+            }
+
+            var seen = new bool[_points.Count];
+            var table = new int[_points.Count];
+
+            for (int symbol = 0; symbol < carried.Count; symbol++)
+            {
+                int value = carried[symbol];
+
+                if (value < 0 || value >= _points.Count)
+                {
+                    throw new ArgumentException(
+                        "Point " + symbol + " is mapped to " + value + ", which " + Name +
+                        " does not have.",
+                        nameof(carried));
+                }
+
+                if (seen[value])
+                {
+                    throw new ArgumentException(
+                        "Two points are mapped to " + value + ". A mapping is a permutation: two " +
+                        "points carrying one value could not be told apart in the bit stream, " +
+                        "while remaining perfectly distinguishable on the constellation.",
+                        nameof(carried));
+                }
+
+                seen[value] = true;
+                table[symbol] = value;
+            }
+
+            return Relabelled(BitMapping.Explicit, table);
+        }
+
+        /// <summary>The symbol value a point carries (<c>REQ-DEM-011</c>).</summary>
+        /// <param name="symbol">Which point, by its position in <see cref="Points"/>.</param>
+        /// <returns>The value it stands for, which is itself under the natural mapping.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Not a point of this constellation.</exception>
+        /// <remarks>
+        /// The one place the distinction between <em>which point</em> and <em>what it means</em> is
+        /// made. A decision returns a point; a bit stream wants what it carried; and under the
+        /// natural mapping the two are the same number, which is exactly why the difference is easy
+        /// to lose.
+        /// </remarks>
+        public int CarriedBy(int symbol)
+        {
+            RequireSymbol(symbol, nameof(symbol));
+
+            return _carried == null ? symbol : _carried[symbol];
+        }
+
+        /// <summary>The same points under a different labelling.</summary>
+        private Constellation Relabelled(BitMapping mapping, int[] carried) =>
+            new Constellation(
+                Name,
+                BitsPerSymbol,
+                LevelsPerAxis,
+                new List<ConstellationPoint>(_points),
+                Family,
+                IsOffset,
+                IsDifferential,
+                RotationPerSymbolRadians,
+                mapping,
+                carried);
+
+        /// <summary>
+        /// The Gray labelling this geometry has, or an explanation of why it has none.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Two geometries, two codes, and the arithmetic is the same in both: the reflected binary
+        /// code of a step to a neighbour. On a ring that step is the index; on a square grid it is
+        /// each axis's level, and the two are then recombined into the same halves the index was
+        /// split into.
+        /// </para>
+        /// <para>
+        /// Anything else is refused. A cross QAM's points do not form a grid, a star's rings are not
+        /// one cycle, and an arbitrary set of rings has no neighbour relation at all — so there is no
+        /// labelling that makes neighbours differ in one bit, and returning one anyway would be
+        /// inventing a standard.
+        /// </para>
+        /// </remarks>
+        private int[] GrayLabels()
+        {
+            var labels = new int[_points.Count];
+
+            if (IsIndexedRing)
+            {
+                for (int symbol = 0; symbol < labels.Length; symbol++)
+                {
+                    labels[symbol] = symbol ^ (symbol >> 1);
+                }
+
+                return labels;
+            }
+
+            int side = LevelsPerAxis;
+
+            if (IsSquareGrid())
+            {
+                for (int i = 0; i < side; i++)
+                {
+                    for (int q = 0; q < side; q++)
+                    {
+                        labels[(i * side) + q] = ((i ^ (i >> 1)) * side) + (q ^ (q >> 1));
+                    }
+                }
+
+                return labels;
+            }
+
+            throw new InvalidOperationException(
+                Name + " is neither a ring nor a square grid, so no single labelling makes " +
+                "neighbouring points differ in one bit — a cross QAM, a star and an arbitrary set " +
+                "of rings each have points whose neighbours are not their neighbours in any one " +
+                "order. Give the table you mean instead of naming a code that does not exist here.");
+        }
+
+        /// <summary>
+        /// Whether the points are a square grid whose index runs along I and then Q.
+        /// </summary>
+        /// <remarks>
+        /// Checked from the geometry rather than from the family, because a constellation built by
+        /// <see cref="FromPoints"/> — which is how <c>REQ-DEM-011</c>'s user-defined ones arrive —
+        /// carries no family to be trusted. The structure is what matters: the I coordinate holds
+        /// still for a block of <em>side</em> consecutive points and the Q coordinate runs through
+        /// the same values in every block, which is what makes a per-axis code well defined.
+        /// </remarks>
+        private bool IsSquareGrid()
+        {
+            const double Tolerance = 1e-9;
+
+            int side = LevelsPerAxis;
+
+            if (side < 2 || side * side != _points.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < side; i++)
+            {
+                for (int q = 0; q < side; q++)
+                {
+                    ConstellationPoint here = _points[(i * side) + q];
+
+                    // The same I all along a block, and the same Q in the same place of every block.
+                    if (Math.Abs(here.I - _points[i * side].I) > Tolerance ||
+                        Math.Abs(here.Q - _points[q].Q) > Tolerance)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
         /// <summary>The bits a symbol value carries, most significant first.</summary>
         /// <param name="symbol">The symbol value.</param>
         /// <returns><see cref="BitsPerSymbol"/> bits, each zero or one.</returns>
         /// <exception cref="ArgumentOutOfRangeException">The symbol is not in the constellation.</exception>
         public int[] BitsOf(int symbol)
         {
-            if (symbol < 0 || symbol >= _points.Count)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(symbol), symbol, "The constellation has " + _points.Count + " points.");
-            }
+            RequireSymbol(symbol, nameof(symbol));
 
+            // What the point carries, which is the point itself only under the natural mapping.
+            int value = CarriedBy(symbol);
             var bits = new int[BitsPerSymbol];
 
             for (int bit = 0; bit < BitsPerSymbol; bit++)
             {
-                bits[bit] = (symbol >> (BitsPerSymbol - 1 - bit)) & 1;
+                bits[bit] = (value >> (BitsPerSymbol - 1 - bit)) & 1;
             }
 
             return bits;
@@ -1204,6 +1441,71 @@ namespace OpenVSA.Demod.Signal
             }
 
             return a / first * b;
+        }
+
+        /// <summary>
+        /// How much of this constellation survives being raised to <see cref="RotationalSymmetry"/>,
+        /// as a fraction (<c>REQ-DEM-002</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Step 3 strips the modulation by raising the signal to that power, which leaves the
+        /// carrier's line at that multiple of the offset. Whether there is a line to find at all is
+        /// a property of the point list, and this is it: the coherent sum of the raised points over
+        /// the sum of their magnitudes. One when every point's raised phase is the same, zero when
+        /// they cancel.
+        /// </para>
+        /// <para>
+        /// <strong>It is not always near one, and the range is enormous.</strong> Measured over the
+        /// whole catalogue (<c>evidence/req-dem-011/stripping-quality.txt</c>): every phase-keyed
+        /// format and every star is exactly 1; square QAM is 0.43 to 0.52; cross QAM is 0.13 to
+        /// 0.15; and a 4/12/16 APSK is <strong>0.0005</strong>. The rings are the reason — twelve
+        /// points raised to the fourth power land on three angles that cancel, sixteen land on four
+        /// that cancel, and only the inner four survive, at the smallest radius of the three.
+        /// </para>
+        /// <para>
+        /// So for such a constellation the tallest line in the raised spectrum is not the carrier's,
+        /// and step 3 reports whatever it is: on a 32-APSK with no offset at all it reported
+        /// 64 481 Hz and the demodulation that followed recovered 43 symbols of 512. Reading this
+        /// first is what lets it decline instead.
+        /// </para>
+        /// </remarks>
+        internal double StrippingQuality
+        {
+            get
+            {
+                if (double.IsNaN(_stripping))
+                {
+                    _stripping = Stripping(RotationalSymmetry);
+                }
+
+                return _stripping;
+            }
+        }
+
+        private double Stripping(int order)
+        {
+            double real = 0.0;
+            double imaginary = 0.0;
+            double magnitude = 0.0;
+
+            foreach (ConstellationPoint point in _points)
+            {
+                double radius = Math.Sqrt((point.I * point.I) + (point.Q * point.Q));
+                double angle = Math.Atan2(point.Q, point.I) * order;
+                double raised = Math.Pow(radius, order);
+
+                real += raised * Math.Cos(angle);
+                imaginary += raised * Math.Sin(angle);
+                magnitude += raised;
+            }
+
+            if (magnitude <= 0.0 || double.IsInfinity(magnitude))
+            {
+                return 0.0;
+            }
+
+            return Math.Sqrt((real * real) + (imaginary * imaginary)) / magnitude;
         }
 
         private int LargestSymmetry()

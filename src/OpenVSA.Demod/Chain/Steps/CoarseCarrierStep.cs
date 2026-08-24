@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using OpenVSA.Dsp.Fft;
 using OpenVSA.Demod.Signal;
 
@@ -57,6 +58,36 @@ namespace OpenVSA.Demod.Chain.Steps
     /// </remarks>
     internal sealed class CoarseCarrierStep : IChainStep
     {
+        /// <summary>
+        /// How much of a constellation must survive being raised to its symmetry for this step to
+        /// believe the line it finds.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Measured, and it sits in a gap two orders of magnitude wide.</strong> Every
+        /// format in the catalogue was computed
+        /// (<c>evidence/req-dem-011/stripping-quality.txt</c>): the phase-keyed family and the stars
+        /// are exactly 1, square QAM 0.43 to 0.52, cross QAM 0.13 to 0.15 — and the multi-ring APSK
+        /// constellations of <c>REQ-DEM-011</c> are 0.006 and 0.0005, because their rings' raised
+        /// points cancel one another and only the innermost ring survives.
+        /// </para>
+        /// <para>
+        /// Three hundredths is the geometric middle of that gap: a factor of four below the weakest
+        /// format this step works for, and a factor of five above the strongest one it does not.
+        /// Nothing in the catalogue lies between, which is what makes the threshold a reading of the
+        /// formats rather than a number chosen to make a test pass.
+        /// </para>
+        /// <para>
+        /// <strong>Below it, declining beats guessing.</strong> On a 32-APSK with no carrier offset
+        /// at all this step reported 64 481 Hz — the tallest line in a spectrum whose carrier line
+        /// was five hundred times smaller — and the demodulation that followed recovered 43 symbols
+        /// of 512 while reporting that it had converged. Reporting nothing leaves step 8 to find a
+        /// carrier it can find, and says so out loud.
+        /// </para>
+        /// </remarks>
+        internal const double MinimumStrippingQuality = 0.03;
+
+
         /// <inheritdoc />
         public DemodStep Step => DemodStep.CoarseCarrier;
 
@@ -73,12 +104,35 @@ namespace OpenVSA.Demod.Chain.Steps
                 ? Math.Min(samples, context.BurstStartSample + context.BurstLengthSamples)
                 : samples;
 
-            int order = context.Settings.Constellation.RotationalSymmetry;
+            Constellation constellation = context.Settings.Constellation;
+
+            int order = constellation.RotationalSymmetry;
             int span = to - from;
 
             double symbolCycles = context.SampleRateHz <= 0.0
                 ? 0.0
                 : context.Settings.SymbolRateHz / context.SampleRateHz;
+
+            double quality = constellation.StrippingQuality;
+
+            if (quality < MinimumStrippingQuality)
+            {
+                // Nothing to find, so nothing is reported. See MinimumStrippingQuality.
+                context.CoarseFrequencyHz = 0.0;
+                context.Search = search;
+
+                context.Note(
+                    "Step 3 did not estimate a carrier offset. Raising " + constellation.Name +
+                    " to the power of " + order.ToString(CultureInfo.InvariantCulture) +
+                    " leaves " + quality.ToString("G3", CultureInfo.InvariantCulture) +
+                    " of it standing, against the " +
+                    MinimumStrippingQuality.ToString("G3", CultureInfo.InvariantCulture) +
+                    " this step needs: its rings cancel one another and the carrier's line is not " +
+                    "the tallest one in that spectrum. Step 8 therefore starts from no offset, so " +
+                    "any real one must be inside what it can pull in (REQ-DEM-036).");
+
+                return StepOutcome.Continue;
+            }
 
             double cyclesPerSample = span < 8
                 ? 0.0

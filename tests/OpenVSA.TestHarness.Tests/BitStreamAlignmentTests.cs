@@ -175,6 +175,100 @@ namespace OpenVSA.TestHarness.Tests
             return symbols;
         }
 
+        [Theory]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(4)]
+        public void SearchingOneRotationLeavesTheSymbolsWithAllOfTheirStates(int bitsPerSymbol)
+        {
+            // How many states a symbol has and how many rotations are worth searching are two
+            // different numbers. A differentially decoded stream needs one rotation searched --
+            // turning both symbols leaves their difference alone, so the freedom has already been
+            // divided out -- and it still has every one of its states.
+            //
+            // Asking for that by passing a state count of one instead collapsed every symbol to
+            // zero, because the state count is also the modulus the symbol goes through on its way
+            // to bits. A stream of nothing but zeroes scores about half against any sequence, which
+            // is why it looked like a plausible negative result rather than a broken measurement:
+            // three bench cases read "best 50.10 % against a typical 50.10 %" and were in fact
+            // perfect. The two numbers being EQUAL is the tell, and this test is the guard.
+            int states = 1 << bitsPerSymbol;
+            int period = PnSequence.PeriodOf("PN9");
+            int[] bits = PnSequence.Generate("PN9", period);
+
+            var symbols = new List<int>(512);
+
+            for (int symbol = 0; symbol < 512; symbol++)
+            {
+                int value = 0;
+
+                for (int bit = 0; bit < bitsPerSymbol; bit++)
+                {
+                    value = (value << 1) | bits[((symbol * bitsPerSymbol) + bit) % period];
+                }
+
+                symbols.Add(value);
+            }
+
+            BitStreamMatch one = BitStreamAlignment.Find(
+                symbols, bitsPerSymbol, states, "PN9", rotations: 1);
+
+            _output.WriteLine(bitsPerSymbol + " bits/symbol, one rotation searched: " + one);
+
+            Assert.True(one.Found);
+            Assert.Equal(one.Compared, one.Matched);
+
+            // And the baseline is not the winner's score, which is what a collapsed alphabet gives.
+            Assert.True(
+                one.Baseline < BitStreamAlignment.MaximumBaseline,
+                "Every candidate reading scored " + one.Baseline +
+                ", which means they were all the same reading.");
+        }
+
+        [Fact]
+        public void ARotationIsAppliedToThePointAndTheLabellingAfterwards()
+        {
+            // The order matters for any labelling but the natural one, where a point and the value
+            // it carries are the same number and the two orders agree by coincidence. Here the
+            // points are Gray labelled and turned, and only rotating first and labelling second
+            // recovers the sequence.
+            const int Rotation = 3;
+
+            int period = PnSequence.PeriodOf("PN9");
+            int[] bits = PnSequence.Generate("PN9", period);
+
+            var carried = new int[8];
+
+            for (int symbol = 0; symbol < carried.Length; symbol++)
+            {
+                carried[symbol] = symbol ^ (symbol >> 1);
+            }
+
+            // What the transmitter sent, as points: the point whose Gray label is the data, turned.
+            var points = new List<int>(512);
+
+            for (int symbol = 0; symbol < 512; symbol++)
+            {
+                int data = 0;
+
+                for (int bit = 0; bit < 3; bit++)
+                {
+                    data = (data << 1) | bits[((symbol * 3) + bit) % period];
+                }
+
+                int point = Array.IndexOf(carried, data);
+
+                points.Add(((point - Rotation) % 8 + 8) % 8);
+            }
+
+            BitStreamMatch found = BitStreamAlignment.Find(points, 3, 8, "PN9", carried);
+
+            _output.WriteLine("Gray labelled, turned by " + Rotation + ": " + found);
+
+            Assert.True(found.Found);
+            Assert.Equal(found.Compared, found.Matched);
+        }
+
         private static string Slice(int[] sequence, int from, int count)
         {
             var text = new char[count];

@@ -62,6 +62,16 @@ namespace OpenVSA.Demod.Chain
         /// <summary>The internal processing rate, in samples per symbol.</summary>
         public int PointsPerSymbol { get; set; } = DefaultPointsPerSymbol;
 
+        /// <summary>
+        /// Which bits the constellation's points carry (<c>REQ-DEM-011</c>).
+        /// </summary>
+        /// <remarks>
+        /// A property of <see cref="Constellation"/> rather than a setting of its own, because a
+        /// labelling belongs to the format: <c>Constellation.WithMapping</c> is how it is chosen, and
+        /// this is here so that a caller can read it back without reaching through.
+        /// </remarks>
+        public BitMapping Mapping => Constellation.Mapping;
+
         /// <summary>What a symbol's bits are read against (<c>REQ-DEM-012</c>).</summary>
         /// <remarks>
         /// Left at <see cref="DifferentialReference.PerFormat"/> the format decides, which is what a

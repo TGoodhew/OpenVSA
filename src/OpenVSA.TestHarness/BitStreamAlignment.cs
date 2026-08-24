@@ -172,8 +172,31 @@ namespace OpenVSA.TestHarness
         /// <returns>What matched, and how convincingly.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="symbols"/> is null.</exception>
         /// <exception cref="ArgumentException">The sequence is not one this knows.</exception>
+        /// <param name="carried">
+        /// What each symbol value carries, when the constellation is labelled with something other
+        /// than the natural mapping (<c>REQ-DEM-011</c>); <c>null</c> when a symbol carries itself.
+        /// </param>
+        /// <param name="rotations">
+        /// How many rotations to search; zero or less for all of them, and one for a stream in which
+        /// the rotation has already been divided out.
+        /// </param>
+        /// <remarks>
+        /// <strong>How many states there are and how many rotations to try are two different
+        /// numbers, and conflating them is not a hypothetical mistake.</strong> A differential
+        /// stream needs one rotation searched and still has all of its states; asking for that by
+        /// passing a state count of one instead collapsed every symbol to zero — a stream of nothing
+        /// but zeroes, which scores about half against any sequence and produced a confident-looking
+        /// "best 50.10 % against a typical 50.10 %" for three bench cases that were in fact perfect.
+        /// The two numbers being equal is what gives it away: every candidate reading scored the
+        /// same because every candidate reading was the same.
+        /// </remarks>
         public static BitStreamMatch Find(
-            IReadOnlyList<int> symbols, int bitsPerSymbol, int statesPerSymbol, string sequence)
+            IReadOnlyList<int> symbols,
+            int bitsPerSymbol,
+            int statesPerSymbol,
+            string sequence,
+            IReadOnlyList<int> carried = null,
+            int rotations = 0)
         {
             if (symbols == null)
             {
@@ -197,10 +220,14 @@ namespace OpenVSA.TestHarness
 
             foreach (bool lsbFirst in new[] { false, true })
             {
-                for (int rotation = 0; rotation < Math.Max(1, statesPerSymbol); rotation++)
+                int tried = rotations > 0
+                    ? Math.Min(rotations, Math.Max(1, statesPerSymbol))
+                    : Math.Max(1, statesPerSymbol);
+
+                for (int rotation = 0; rotation < tried; rotation++)
                 {
                     int[] stream = Stream(
-                        symbols, bitsPerSymbol, statesPerSymbol, rotation, lsbFirst);
+                        symbols, bitsPerSymbol, statesPerSymbol, rotation, lsbFirst, carried);
 
                     foreach (bool inverted in new[] { false, true })
                     {
@@ -263,12 +290,21 @@ namespace OpenVSA.TestHarness
                 ties);
         }
 
+        /// <remarks>
+        /// <strong>The rotation is applied to the point and the labelling afterwards, in that
+        /// order.</strong> A turned constellation moves each point to its neighbour's place, and
+        /// what that point then carries is whatever the labelling says. Adding the rotation to the
+        /// carried value instead would be right only for the natural mapping, where a point and its
+        /// value are the same number — and silently wrong for every other, which is exactly the kind
+        /// of coincidence that hides a defect until somebody changes the mapping.
+        /// </remarks>
         private static int[] Stream(
             IReadOnlyList<int> symbols,
             int bitsPerSymbol,
             int statesPerSymbol,
             int rotation,
-            bool lsbFirst)
+            bool lsbFirst,
+            IReadOnlyList<int> carried)
         {
             var stream = new int[symbols.Count * bitsPerSymbol];
             int states = Math.Max(1, statesPerSymbol);
@@ -276,6 +312,11 @@ namespace OpenVSA.TestHarness
             for (int symbol = 0; symbol < symbols.Count; symbol++)
             {
                 int value = (((symbols[symbol] + rotation) % states) + states) % states;
+
+                if (carried != null)
+                {
+                    value = carried[value];
+                }
 
                 for (int bit = 0; bit < bitsPerSymbol; bit++)
                 {

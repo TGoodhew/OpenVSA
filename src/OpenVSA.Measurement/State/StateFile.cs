@@ -284,6 +284,14 @@ namespace OpenVSA.Measurement.State
                         // meant, so this step transforms nothing either.
                         break;
 
+                    case 3:
+                        // Version 4 added REQ-DEM-011's bit mapping and the definition of a
+                        // user-defined constellation. A version 3 file has neither; the natural
+                        // mapping is what its formats meant, and no definition is what "a format
+                        // from the catalogue" means. Transforms nothing, for the third time -- and
+                        // is here for the reason the first one was.
+                        break;
+
                     default:
                         throw new StateFormatException(
                             "No migration from schema version " +
