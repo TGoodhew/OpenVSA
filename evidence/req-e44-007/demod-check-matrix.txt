@@ -1,0 +1,40 @@
+OpenVSA demodulation cross-check
+  analyser  GPIB0::17::INSTR
+  generator TCPIP0::192.168.1.85::inst1::INSTR
+
+  measuring with Hewlett-Packard,E4406A,US40062429,A.08.10    20041215  12:30:18
+  driving        Agilent Technologies, E4438C, MY45090927, C.05.85
+
+  QPSK:
+    expected         the mapping OpenVSA decodes to should be this instrument's QPSK mapping
+    transmitting     QPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 23048 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.8899 %rms, carrier error 50.2 Hz, converged in 1 pass
+    against PN9      rotation 2, MSB first, offset 178: 1024 of 1024 bits (100.00 %) against a typical 50.00 %
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  QPSK, spectrum inverted:
+    expected         predicted to match with the bit order flipped, because rotations and bit order together span the reflections
+    transmitting     QPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 23048 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.8205 %rms, carrier error 50.3 Hz, converged in 1 pass
+    against PN9      rotation 3, MSB first, inverted, offset 178: 1024 of 1024 bits (100.00 %) against a typical 50.00 %
+    OUTCOME          as expected: the recovered bits are the transmitted sequence.
+
+  GRAYQPSK:
+    expected         a Gray mapping transposes two symbols, which no rotation undoes
+    transmitting     GRAYQPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+    coerced          SamplesPerBlock: requested 32768, honoured 23048 (longer than the instrument's maximum capture at this bandwidth)
+    bandwidth        6.7000 MHz reported, 5.0000 MHz asked for
+    sample rate      15.0000 MS/s reported, 30.00 samples/symbol
+    symbols          512, EVM 0.8296 %rms, carrier error 49.9 Hz, converged in 1 pass
+    against PN9      no reading explained the stream; best 75.10 % against a typical 50.00 %
+    OUTCOME          as expected: no reading of these bits is the sequence, which is what a wrong mapping looks like and is why a match means something.
+
+  polarity normal, modulation off, output off.
+
+  3 of 3 cases came out as expected.
