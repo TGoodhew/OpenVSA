@@ -1221,15 +1221,27 @@ $(I^2+Q^2)/2R$ with $R = 50\,\Omega$.
 
 **`REQ-E44-002b` (P0) — Sample rate is quantised, and is set by RBW. [V]**
 $T_s$ is always an integer multiple of **1/15 MHz ≈ 66.667 ns**, giving a maximum sample rate
-of **7.5 MHz**. Measured values:
+of **15 MHz**. Measured values:
 
-| RBW | $T_s$ | $F_s$ | multiple of 66.667 ns |
-|---|---|---|---|
-| 10 kHz | 7.533 µs | 132.7 kHz | 113 |
-| 100 kHz | 733.33 ns | 1.3636 MHz | 11 |
-| 257.5 kHz | 266.67 ns | 3.75 MHz | 4 |
-| 505 kHz | 200 ns | 5.0 MHz | 3 |
-| 752.5 kHz – 1 MHz | 133.33 ns | 7.5 MHz | 2 |
+| RBW commanded | RBW actual | $T_s$ | $F_s$ | multiple of 66.667 ns |
+|---|---|---|---|---|
+| 10 kHz | — | 7.533 µs | 132.7 kHz | 113 |
+| 100 kHz | — | 733.33 ns | 1.3636 MHz | 11 |
+| 257.5 kHz | — | 266.67 ns | 3.75 MHz | 4 |
+| 505 kHz | — | 200 ns | 5.0 MHz | 3 |
+| 752.5 kHz – 1 MHz | — | 133.33 ns | 7.5 MHz | 2 |
+| 5 MHz | **6.7 MHz** | 66.667 ns | **15.0 MHz** | 1 |
+| 10 MHz | — | 66.667 ns | 15.0 MHz | 1 |
+
+*The 15 MHz maximum was corrected on 23 August 2026.* An earlier revision of this requirement gave
+it as 7.5 MHz, which was the maximum **of the settings then tabulated** — the table stopped at 1 MHz
+RBW — and not the instrument's. Two independent measurements contradict it: entry 3 of
+`docs/INSTRUMENT-FIRMWARE-DEVIATIONS.md` (10 MHz RBW, 8 August 2026) and
+`evidence/req-e44-007/` (5 MHz commanded, 23 August 2026, where a 500 ksym/s QPSK signal
+demodulated at 30 samples a symbol and recovered 1024 of 1024 PN9 bits — which it could not have done
+at half that rate). **The crossover between decimation by 2 and decimation by 1 lies between 1 MHz
+and 5 MHz commanded and has not been measured.** Note also that the actual RBW may be **higher** than
+the one commanded, so it is the actual bandwidth that selects the decimation.
 
 The driver shall therefore **never assume a requested sample rate is honoured**: set
 `:SENSe:WAVeform:BANDwidth:RESolution`, then **read $T_s$ back from scalar 1** and place that
@@ -4418,7 +4430,7 @@ they block, so none is discovered late.
 
 | # | Question | Blocks | How to resolve |
 |---|---|---|---|
-| ~~**Q1**~~ | ~~Exact E4406A SCPI for raw interleaved I/Q retrieval.~~ **RESOLVED 25 July 2026** by direct bench measurement — see `REQ-E44-002`/`002a`/`002b`/`002c`. Suffix 0 = raw interleaved I/Q; values are **peak volts** ($P=(I^2+Q^2)/100$); $T_s$ quantised to multiples of 1/15 MHz, $F_s^{max}$ = 7.5 MHz, RBW-driven; $N_{max}$ = **950 000 samples**, beyond which acquisition is **silently truncated** with error 22. | — | Done. |
+| ~~**Q1**~~ | ~~Exact E4406A SCPI for raw interleaved I/Q retrieval.~~ **RESOLVED 25 July 2026** by direct bench measurement — see `REQ-E44-002`/`002a`/`002b`/`002c`. Suffix 0 = raw interleaved I/Q; values are **peak volts** ($P=(I^2+Q^2)/100$); $T_s$ quantised to multiples of 1/15 MHz, $F_s^{max}$ = 15 MHz (**corrected 23 August 2026** from 7.5 MHz, which was the maximum of the settings first tabulated rather than the instrument's), RBW-driven; $N_{max}$ = **950 000 samples**, beyond which acquisition is **silently truncated** with error 22. | — | Done. |
 | **Q1b** | E4406A GPIB transfer throughput — unmeasured; the bench harness performed bounded reads. | `REQ-NFR-027`, `REQ-E44-002d` | Time a real VISA read of a known-size binary block in Phase 3. |
 | **Q2** | Byte-level SDF header layout (offsets for centre frequency, sample rate, timestamps). | `REQ-REC-005` (SDF) | Obtain the 89400-series "SDF File Format Utilities" manual. |
 | **Q3** | Reference product's exact Trace Layout grid presets. | `REQ-UI-002` | Trial installation or direct help-tree browsing. |

@@ -1,0 +1,46 @@
+OpenVSA demodulation cross-check
+  analyser  GPIB0::17::INSTR
+  generator TCPIP0::192.168.1.85::inst1::INSTR
+
+  measuring with Hewlett-Packard,E4406A,US40062429,A.08.10    20041215  12:30:18
+  driving        Agilent Technologies, E4438C, MY45090927, C.05.85
+
+  transmitting QPSK at 500.000 ksym/s, root raised cosine, alpha 0.35, PN9, -20.00 dBm at 1000.000 MHz
+
+  negotiated:
+    span             5.0000 MHz
+    rate (estimated) 7.5000 MS/s
+    block            23023 samples
+    coerced          SamplesPerBlock: requested 32768, honoured 23023 (longer than the instrument's maximum capture at this bandwidth)
+
+  as the instrument reported it:
+    bandwidth        6.7000 MHz
+    sample rate      15.0000 MS/s
+    samples/symbol   30.00
+
+  measured:
+    symbols          512
+    EVM              0.8478 %rms
+    carrier error    50.6 Hz
+    converged        True
+    passes           1
+
+    EVM        =   847.8229 m%rms      2.605425 % pk at symbol 308
+    Mag Err    =   603.1126 m%rms     -2.361227 % pk at symbol 358
+    Phase Err  =    341.8215 mdeg   -1.337988 deg pk at symbol 308
+    Freq Err   =           NAN Hz
+    Carr Ofst  =           NAN Hz
+    Time Offset=            NAN s
+    SymClk Err =          NAN ppm
+    IQ Offset  =     -58.55427 dB
+    IQ Gain Imbalance=           NAN dB
+    IQ Quad. Error=          NAN deg
+    IQ Timing Skew=            NAN s
+    SNR (MER)  =           NAN dB
+    RSSI       =          NAN dBm
+
+  against PN9 generated from its polynomial:
+    rotation 1, MSB first, offset 184: 1024 of 1024 bits (100.00 %) against a typical 50.00 %
+
+  the recovered bits are the transmitted sequence.
+  modulation off, output off.

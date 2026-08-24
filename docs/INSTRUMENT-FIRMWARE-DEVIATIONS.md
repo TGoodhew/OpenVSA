@@ -112,6 +112,9 @@ Not a manual contradiction, but recorded here because it contradicts the **reaso
 **Never infer the sample rate from the span.** Ask `:SENSe:WAVeform:APERture?` — the relationship
 between the two is this instrument's, not a law of the product. OpenVSA does exactly that.
 
+**The 1.5× itself is one point and not a law — see entry 7.** At 5 MHz commanded the same instrument
+returns 15 MS/s, a ratio of 3.0. The advice above stands; the ratio does not generalise.
+
 ### 4. `:FORMat:DATA REAL,32` is global, not per-query — RECORDED
 
 **Observed:** setting `:FORMat:DATA REAL,32` for the I/Q trace also changes the reply to
@@ -128,6 +131,43 @@ than the capture length asked for, so the returned count must be read from the s
 (`:FETCh:WAVeform1?`, sample-count field) rather than computed from the request.
 
 **Not re-measured since.** OpenVSA already reads the count rather than assuming it.
+
+### 7. The 1.5× ratio of entry 3 is one point, not a law — VERIFIED 2026-08-23
+
+Recorded separately rather than folded into entry 3, because entry 3 is accurate about what it
+measured and the error is in reading a ratio off a single point.
+
+**Measured 2026-08-23** during `OpenVSA.Verify --demod-check`, three consecutive acquisitions:
+
+```
+requested bandwidth                    5.0 MHz
+:SENSe:WAVeform:BANDwidth:RESolution:ACTual?  -> 6.7 MHz     (rounded UP, not down)
+sample interval from :FETCh:WAVeform1? scalar 1 -> 66.667 ns  (15.0000 MS/s)
+```
+
+15 MS/s at 5 MHz commanded is a ratio of **3.0**, and against the 6.7 MHz actually in force
+**2.24**. Entry 3's 1.5× came from RBW 10 MHz → 15 MHz, which is the top of the range. **The
+instrument decimates in integer steps, so the ratio is whatever the current step makes it and is not
+a ratio at all.** It holds 15 MS/s — decimation by one — down to at least 5 MHz commanded.
+
+**This contradicts `REQ-E44-002b`**, which gave the maximum sample rate as 7.5 MHz. That figure was
+read off the end of a table whose widest RBW was 1 MHz; it is the maximum *of those settings*, not of
+the instrument. The requirement has been corrected. **The crossover from 7.5 MS/s to 15 MS/s lies
+somewhere between 1 MHz and 5 MHz commanded and has not been measured** — the two ends are known and
+the step between them is not.
+
+**What it cost, and what it did not.** Nothing measured was wrong: the front end reads the aperture
+back at configure and every block carries the instrument's own answer, which is why a 500 ksym/s
+signal demodulated at 30 samples a symbol and recovered 1024 of 1024 PN9 bits. What is affected is
+`InstrumentLimits.EstimateSampleRate`, which interpolates linearly between zero and the measured
+maximum and therefore reported **half** the true rate at a 5 MHz span. It is used to size a block
+before the instrument has been configured, so its error makes captures shorter in time than intended
+while still delivering the requested number of samples. It is a lower bound in this region, and
+nothing should treat it as more than one.
+
+**Fixing it properly needs a measurement that has not been made:** the actual bandwidth and aperture
+across the whole RBW range, in the instrument's own steps, rather than at the six points entry 3 and
+`REQ-E44-002b` between them happen to cover.
 
 ### 6. Bench environment, NOT a firmware deviation
 
