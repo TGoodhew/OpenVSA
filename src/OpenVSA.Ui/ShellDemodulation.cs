@@ -80,6 +80,17 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            // Already on the UI thread -- a context analysed from the shell's own thread rather
+            // than from the pump -- so show it now. Queueing it would be work for nothing, and it
+            // would make the display's timing depend on a dispatcher priority being reached, which
+            // is not something a caller can wait for without risking waiting for ever.
+            if (Dispatcher.CheckAccess())
+            {
+                ShowResult(result);
+
+                return;
+            }
+
             Dispatcher.BeginInvoke(
                 DispatcherPriority.Render, new Action<DemodResult>(ShowResult), result);
         }
@@ -92,6 +103,13 @@ namespace OpenVSA.Ui
             }
 
             // On the UI thread, because the event log and the status bar are the shell's.
+            if (Dispatcher.CheckAccess())
+            {
+                ReportDemodulationFault(failure.Message);
+
+                return;
+            }
+
             Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
                 new Action<string>(ReportDemodulationFault),
