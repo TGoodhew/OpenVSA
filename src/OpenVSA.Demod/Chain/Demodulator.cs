@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using OpenVSA.Demod.Chain.Steps;
+using OpenVSA.Demod.Results;
+using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Chain
 {
@@ -147,6 +149,24 @@ namespace OpenVSA.Demod.Chain
             return Execute(mainTime, sampleRateHz, settings);
         }
 
+        /// <summary>The equaliser's taps as points, or null when it did not run.</summary>
+        private static List<ConstellationPoint> Points(Iq[] taps)
+        {
+            if (taps == null)
+            {
+                return null;
+            }
+
+            var points = new List<ConstellationPoint>(taps.Length);
+
+            foreach (Iq tap in taps)
+            {
+                points.Add(new ConstellationPoint(tap.I, tap.Q));
+            }
+
+            return points;
+        }
+
         private static Dictionary<DemodStep, IChainStep> DefaultSteps()
         {
             var steps = new IChainStep[]
@@ -262,7 +282,9 @@ namespace OpenVSA.Demod.Chain
                 context.Impairments,
                 passes,
                 journal,
-                new List<string>(context.Notices));
+                new List<string>(context.Notices),
+                context.ReferenceWaveform,
+                Points(context.EqualiserCoefficients));
         }
     }
 }

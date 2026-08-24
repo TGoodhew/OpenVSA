@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -58,6 +59,9 @@ namespace OpenVSA.Demod.Chain
         private readonly ReadOnlyCollection<int> _bits;
         private readonly ReadOnlyCollection<int> _symbols;
 
+        private readonly float[] _reference;
+        private readonly ReadOnlyCollection<ConstellationPoint> _equaliser;
+
         internal DemodResult(
             SymbolTrace trace,
             ErrorSummary summary,
@@ -67,8 +71,15 @@ namespace OpenVSA.Demod.Chain
             ImpairmentEstimate impairments,
             IList<PassResult> passes,
             ChainJournal journal,
-            IList<string> notices)
+            IList<string> notices,
+            float[] reference,
+            IList<ConstellationPoint> equaliser)
         {
+            _reference = reference ?? new float[0];
+            _equaliser = equaliser == null
+                ? null
+                : new ReadOnlyCollection<ConstellationPoint>(equaliser);
+
             Trace = trace;
             Summary = summary;
             _symbols = new ReadOnlyCollection<int>(symbols ?? new int[0]);
@@ -82,6 +93,26 @@ namespace OpenVSA.Demod.Chain
 
         /// <summary>The result trace: the constellation, the symbols and the samples behind them.</summary>
         public SymbolTrace Trace { get; }
+
+        /// <summary>
+        /// Step 10's regenerated ideal waveform, on the same grid as <see cref="Trace"/>'s samples.
+        /// </summary>
+        /// <remarks>
+        /// The waveform a perfect transmitter would have sent, given the symbols that were decided:
+        /// <c>REQ-DEM-080</c>'s IQ Reference Time, and what the error vector is a difference from.
+        /// Interleaved real and imaginary, as bulk samples are carried everywhere else.
+        /// </remarks>
+        public ReadOnlySpan<float> ReferenceWaveform => new ReadOnlySpan<float>(_reference);
+
+        /// <summary>
+        /// The equaliser's coefficients, or <c>null</c> when the equaliser did not run.
+        /// </summary>
+        /// <remarks>
+        /// Null rather than empty, because <c>REQ-DEM-080</c> asks that the traces depending on the
+        /// equaliser be "unavailable rather than empty when the equaliser is off". An empty list is
+        /// a trace with no data in it; nothing is a trace that does not exist.
+        /// </remarks>
+        public IReadOnlyList<ConstellationPoint> EqualiserCoefficients => _equaliser;
 
         /// <summary>The error summary, as <c>REQ-UI-053</c> lays it out.</summary>
         public ErrorSummary Summary { get; }

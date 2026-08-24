@@ -106,19 +106,52 @@ namespace OpenVSA.Demod.Chain.Steps
 
             DemodSettings settings = context.Settings;
 
-            int perSymbol = settings.PointsPerSymbol;
-            int span = settings.FilterSymbolSpan;
-            int reach = perSymbol * span;
-            int samples = Iq.Count(result);
+            context.IdealWaveform = Regenerate(
+                context.IdealSymbols,
+                context.TimingSamples,
+                Iq.Count(result),
+                settings.PointsPerSymbol,
+                settings.FilterSymbolSpan,
+                settings.ReferenceFilterAlpha);
 
-            double alpha = settings.ReferenceFilterAlpha;
+            return StepOutcome.Continue;
+        }
 
+        /// <summary>
+        /// Shapes ideal symbols into a waveform on a given grid.
+        /// </summary>
+        /// <param name="symbols">The ideal symbol for each decided symbol.</param>
+        /// <param name="firstInstant">
+        /// Where the first symbol's instant falls on the grid, in samples.
+        /// </param>
+        /// <param name="samples">How many samples the grid holds.</param>
+        /// <param name="perSymbol">Samples per symbol.</param>
+        /// <param name="span">How many symbols either side of centre the pulse spans.</param>
+        /// <param name="alpha">The reference filter's roll-off.</param>
+        /// <returns>The waveform, interleaved.</returns>
+        /// <remarks>
+        /// <strong>Shared with step 14, and that is not tidiness.</strong> Step 10 regenerates on
+        /// the result window's grid, where the symbols sit at a fractional offset, because that is
+        /// the grid the equaliser fits against. Step 14 regenerates on the symbol's own grid, where
+        /// they sit on whole samples, because that is what a display draws. Producing the second by
+        /// interpolating the first costs about 5e-4 of the constellation's scale -- measured -- and
+        /// it is unnecessary: the pulse has a closed form and both grids are just a list of
+        /// positions to evaluate it at.
+        /// </remarks>
+        internal static double[] Regenerate(
+            Iq[] symbols,
+            double firstInstant,
+            int samples,
+            int perSymbol,
+            int span,
+            double alpha)
+        {
             var ideal = new double[2 * samples];
-            Iq[] symbols = context.IdealSymbols;
+            int reach = perSymbol * span;
 
             for (int symbol = 0; symbol < symbols.Length; symbol++)
             {
-                double centre = context.TimingSamples + (symbol * perSymbol);
+                double centre = firstInstant + (symbol * perSymbol);
 
                 int from = (int)Math.Ceiling(centre - reach);
                 int to = (int)Math.Floor(centre + reach);
@@ -143,9 +176,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 }
             }
 
-            context.IdealWaveform = ideal;
-
-            return StepOutcome.Continue;
+            return ideal;
         }
     }
 }

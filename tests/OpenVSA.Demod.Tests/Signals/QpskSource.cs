@@ -67,6 +67,43 @@ namespace OpenVSA.Demod.Tests.Signals
         /// </remarks>
         internal double[] ChannelTaps { get; set; }
 
+        /// <summary>
+        /// Which symbol to displace from its ideal point, or a negative index for none.
+        /// </summary>
+        /// <remarks>
+        /// One symbol wrong and the rest right, which is what an error-vector trace has to be able
+        /// to point at (<c>REQ-DEM-080</c>). Displacing the symbol rather than adding noise to a
+        /// sample keeps the impairment exactly where the test says it is.
+        /// </remarks>
+        internal int DisplacedSymbol { get; set; } = -1;
+
+        /// <summary>How far the displaced symbol is moved, in constellation units.</summary>
+        internal double Displacement { get; set; }
+
+        /// <summary>An added tone's amplitude, relative to the signal's; zero for none.</summary>
+        /// <remarks>
+        /// An additive periodic impairment, which is the kind that shows as a LINE in an error
+        /// vector spectrum. A phase wobble is periodic too and does not: the error it makes is the
+        /// wobble multiplied by the symbol that was sent, and the symbols are random, so it spreads
+        /// across the spectrum instead of standing up in one bin. Measured, while writing
+        /// REQ-DEM-080's test for that trace.
+        /// </remarks>
+        internal double SpurFraction { get; set; }
+
+        /// <summary>The added tone's offset from the carrier, in hertz.</summary>
+        internal double SpurOffsetHz { get; set; }
+
+        /// <summary>A sinusoidal phase wobble's depth, in radians; zero for none.</summary>
+        /// <remarks>
+        /// A periodic impairment, which <c>REQ-SIM-002</c>'s set does not have one of and
+        /// <c>REQ-DEM-080</c>'s error-vector-spectrum criterion needs: the error sequence then
+        /// carries a tone at a known rate, and the spectrum of that sequence has to show it.
+        /// </remarks>
+        internal double PhaseWobbleRadians { get; set; }
+
+        /// <summary>The phase wobble's rate, in cycles per symbol.</summary>
+        internal double PhaseWobbleCyclesPerSymbol { get; set; } = 0.05;
+
         /// <summary>The symbols the last call generated.</summary>
         internal int[] Symbols { get; private set; }
 
@@ -122,6 +159,12 @@ namespace OpenVSA.Demod.Tests.Signals
 
                 double i = ((symbol == 0 || symbol == 3) ? unit : -unit);
                 double q = (symbol <= 1 ? unit : -unit);
+
+                if (index == DisplacedSymbol)
+                {
+                    i += Displacement;
+                    q -= Displacement;
+                }
 
                 int first = Math.Max(0, (int)Math.Ceiling(centre - reach));
                 int last = Math.Min(total - 1, (int)Math.Floor(centre + reach));
@@ -260,15 +303,32 @@ namespace OpenVSA.Demod.Tests.Signals
             var record = new float[2 * (to - from)];
             double turnPerSample = 2.0 * Math.PI * CarrierOffsetHz / SampleRateHz;
 
+            double wobblePerSample = PhaseWobbleRadians == 0.0
+                ? 0.0
+                : 2.0 * Math.PI * PhaseWobbleCyclesPerSymbol * SymbolRateHz / SampleRateHz;
+
             for (int index = 0; index < to - from; index++)
             {
                 int sample = from + index;
                 double angle = (turnPerSample * index) + PhaseRadians;
+
+                if (wobblePerSample != 0.0)
+                {
+                    angle += PhaseWobbleRadians * Math.Sin(wobblePerSample * index);
+                }
                 double cos = Math.Cos(angle);
                 double sin = Math.Sin(angle);
 
                 double i = ((shapedI[sample] * cos) - (shapedQ[sample] * sin)) * Amplitude;
                 double q = ((shapedI[sample] * sin) + (shapedQ[sample] * cos)) * Amplitude;
+
+                if (SpurFraction > 0.0)
+                {
+                    double spur = 2.0 * Math.PI * SpurOffsetHz * index / SampleRateHz;
+
+                    i += SpurFraction * Amplitude * Math.Cos(spur);
+                    q += SpurFraction * Amplitude * Math.Sin(spur);
+                }
 
                 if (NoiseFraction > 0.0)
                 {

@@ -88,15 +88,30 @@ namespace OpenVSA.Demod.Chain.Steps
     /// The last step of the chain assembles what the displays draw: the constellation's measured
     /// and ideal points, the symbols behind them, the waveform they were taken from and where on it
     /// each decision instant fell. <c>REQ-DEM-080</c> owns the catalogue of traces a demodulation
-    /// offers and <c>REQ-DEM-081</c> onward own how they are drawn; what this step produces is the
-    /// <see cref="SymbolTrace"/> they are all built from.
+    /// offers and <c>REQ-UI-081</c> onward own how they are drawn; what this step produces is what
+    /// they are all built from.
     /// </para>
     /// <para>
-    /// <strong>The decision instants are rounded here and only here.</strong> Step 8's timing
-    /// estimate is fractional and everything upstream uses it as such. A display, though, draws
-    /// samples, so the trace carries the nearest sample to each decision instant. Rounding at the
-    /// point of display rather than at the point of estimation is what keeps the rounding out of
-    /// the measurement.
+    /// <strong>The waveform is put on the symbol's own grid, and that is the whole of this
+    /// step.</strong> What steps 1 to 13 worked on is the result window as it was acquired: the
+    /// symbol instants fall at <c>τ + kP</c>, where τ is a fraction of a sample, and the samples
+    /// carry whatever amplitude and carrier the signal arrived with. Handing that to a display
+    /// gives three separate wrongnesses. A constellation point would not lie on the waveform it was
+    /// taken from, because the nearest whole sample is up to half a sample away and the pulse has
+    /// curvature. An eye folded on the symbol clock would smear, because the clock is not a whole
+    /// number of samples. And the measured waveform and the regenerated reference would be drawn on
+    /// different scales, because one is in the signal's units and the other in the constellation's.
+    /// </para>
+    /// <para>
+    /// So the trace is resampled onto the grid the symbols define: sample <em>n</em> is the waveform
+    /// at <c>τ + n</c>, corrected for the carrier, phase and amplitude step 8 estimated, which puts
+    /// symbol <em>k</em> at index <c>kP</c> exactly. The decision instants are then whole numbers
+    /// because they are, not because they were rounded, and the reference lands on the same grid so
+    /// that the two traces can be drawn together and subtracted point by point.
+    /// </para>
+    /// <para>
+    /// Interpolating rather than rounding costs one pass over the result window with the same
+    /// interpolator step 8 reads through, and buys the property every display downstream assumes.
     /// </para>
     /// </remarks>
     internal sealed class ResultTraceStep : IChainStep
@@ -120,34 +135,54 @@ namespace OpenVSA.Demod.Chain.Steps
             DemodSettings settings = context.Settings;
 
             int perSymbol = settings.PointsPerSymbol;
-            int samples = Iq.Count(result);
             int count = context.Symbols.Length;
+            int samples = ((count - 1) * perSymbol) + 1;
+
+            double omega =
+                2.0 * Math.PI * context.PassFrequencyHz / settings.SymbolRateHz;
+
+            double phase = context.PassPhaseRadians;
+            double gain = context.PassGain;
+            double timing = context.TimingSamples;
+
+            var waveform = new float[2 * samples];
+            var reference = new float[2 * samples];
+
+            // Regenerated on this grid rather than interpolated off step 10's: the symbols sit on
+            // whole samples here, so the reference at a decision instant is exactly the symbol that
+            // was decided, which is what REQ-DEM-080 asks IQ Reference Time to be.
+            double[] ideal = ReferenceRegenerationStep.Regenerate(
+                context.IdealSymbols,
+                0.0,
+                samples,
+                perSymbol,
+                settings.FilterSymbolSpan,
+                settings.ReferenceFilterAlpha);
+
+            for (int sample = 0; sample < samples; sample++)
+            {
+                double position = timing + sample;
+
+                Iq measured = Interpolator.At(result, position);
+                Iq turn = Iq.FromPhase(-(((omega * sample) / perSymbol) + phase));
+                Iq corrected = (measured * turn) / gain;
+
+                waveform[2 * sample] = (float)corrected.I;
+                waveform[(2 * sample) + 1] = (float)corrected.Q;
+
+                reference[2 * sample] = (float)ideal[2 * sample];
+                reference[(2 * sample) + 1] = (float)ideal[(2 * sample) + 1];
+            }
 
             var decisions = new List<int>(count);
 
             for (int symbol = 0; symbol < count; symbol++)
             {
-                int instant = (int)Math.Round(context.TimingSamples + (symbol * perSymbol));
-
-                if (instant < 0)
-                {
-                    instant = 0;
-                }
-
-                if (instant > samples - 1)
-                {
-                    instant = samples - 1;
-                }
-
-                decisions.Add(instant);
+                decisions.Add(symbol * perSymbol);
             }
 
-            var waveform = new float[result.Length];
-
-            for (int index = 0; index < result.Length; index++)
-            {
-                waveform[index] = (float)result[index];
-            }
+            context.TraceWaveform = waveform;
+            context.ReferenceWaveform = reference;
 
             context.Trace = new SymbolTrace(
                 settings.Constellation.Name,

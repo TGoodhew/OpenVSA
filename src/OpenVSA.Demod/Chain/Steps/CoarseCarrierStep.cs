@@ -36,6 +36,18 @@ namespace OpenVSA.Demod.Chain.Steps
     /// each sample by its magnitude first and gave the noise between symbols an equal vote.
     /// </para>
     /// <para>
+    /// <strong>A strong unmodulated spur captures it.</strong> Measured while writing
+    /// <c>REQ-DEM-080</c>'s error-vector-spectrum test: a continuous-wave tone 5 % of the signal's
+    /// amplitude, offset by a twentieth of the symbol rate, moved this estimate from the carrier to
+    /// the spur — 46.8 kHz reported for a signal with no offset at all — and the demodulation that
+    /// followed reported 66 % EVM. At 2 % the estimate held to 55 Hz. The mechanism is that the
+    /// signal's own contribution to the raised spectrum is spread by its modulation while an
+    /// unmodulated tone's is not, so a spur competes on concentration rather than on power.
+    /// <c>REQ-DEM-036</c> is where carrier lock tolerance and its diagnostics belong, and this is
+    /// the case it will want: the failure is silent, and the number it reports is precise, stable
+    /// and wrong.
+    /// </para>
+    /// <para>
     /// <strong>The unambiguous range.</strong> The transform is of the signal raised to the power of
     /// the symmetry, so an offset is only distinguishable up to the sample rate divided by twice
     /// that power. At the rates this chain works with that is a large fraction of the symbol rate,

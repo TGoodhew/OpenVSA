@@ -171,6 +171,15 @@ namespace OpenVSA.Demod.Chain
         /// <summary>Step 14's result trace.</summary>
         internal SymbolTrace Trace { get; set; }
 
+        /// <summary>
+        /// Step 14's measured waveform, on the grid the symbols define rather than the one the
+        /// acquisition happened to use.
+        /// </summary>
+        internal float[] TraceWaveform { get; set; }
+
+        /// <summary>Step 14's reference waveform, on the same grid as <see cref="TraceWaveform"/>.</summary>
+        internal float[] ReferenceWaveform { get; set; }
+
         /// <summary>How many symbols the result window holds.</summary>
         internal int SymbolCount => Symbols == null ? 0 : Symbols.Length;
 
