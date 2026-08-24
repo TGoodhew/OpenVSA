@@ -273,6 +273,20 @@ namespace OpenVSA.Demod.Chain
                 start = ProcessingOrder.PositionOf(ProcessingOrder.ReEntryPoint);
             }
 
+            // REQ-DEM-072: built from the same settings, in the same pass, as the metrics. That is
+            // what makes "the two can never disagree" structural rather than a discipline: one
+            // result carries both, so anything handed the metrics has already been handed the
+            // context that qualifies them.
+            var provenance = new MeasurementProvenance(
+                context.Summary == null ? null : context.Summary.Reference,
+                settings.MeasurementPulse.ToString(),
+                settings.ReferencePulse.ToString(),
+                settings.FilterSymbolSpan,
+                settings.EqualiserEnabled,
+                settings.MirrorSpectrum,
+                settings.BurstSearchEnabled,
+                settings.SyncSearchEnabled);
+
             // REQ-DEM-036: the judgement is made once, at the end, on everything the chain has --
             // and the explanation goes into the notices as well as into the result, because the
             // shell already says the notices out loud and a diagnosis nobody is shown is not one.
@@ -296,7 +310,8 @@ namespace OpenVSA.Demod.Chain
                 new List<string>(context.Notices),
                 context.ReferenceWaveform,
                 Points(context.EqualiserCoefficients),
-                judgement);
+                judgement,
+                provenance);
         }
     }
 }

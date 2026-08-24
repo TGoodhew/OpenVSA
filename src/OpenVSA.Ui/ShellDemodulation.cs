@@ -47,6 +47,12 @@ namespace OpenVSA.Ui
         /// </remarks>
         private readonly HashSet<string> _saidNotices = new HashSet<string>(StringComparer.Ordinal);
 
+        /// <summary>
+        /// The provenance last written to the event log, so it is written when it CHANGES
+        /// (<c>REQ-DEM-072</c>).
+        /// </summary>
+        private string _saidProvenance;
+
         /// <summary>The newest demodulation the shell has drawn, or <c>null</c>.</summary>
         internal DemodResult LatestResult => _result;
 
@@ -163,6 +169,7 @@ namespace OpenVSA.Ui
             }
 
             SayAnythingNew(result);
+            SayProvenanceIfItChanged(result);
             ShowResultReadout(result);
         }
 
@@ -200,12 +207,56 @@ namespace OpenVSA.Ui
             }
         }
 
+        /// <summary>
+        /// Puts the measurement's provenance in the event log whenever it changes
+        /// (<c>REQ-DEM-072</c>).
+        /// </summary>
+        /// <param name="result">The result.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>When it changes, not every sweep.</strong> The provenance is the same on every
+        /// acquisition until a setting moves, and a log that repeated it sixty times a second would
+        /// bury the notices that are worth reading. What the requirement asks for is that a user can
+        /// see what was in force, and that it never lags the number it qualifies — both of which a
+        /// line written the moment it changes satisfies, because it is written from the same result
+        /// the metrics came from.
+        /// </para>
+        /// <para>
+        /// The first demodulation of a session always logs, because there is nothing to have
+        /// changed from.
+        /// </para>
+        /// </remarks>
+        private void SayProvenanceIfItChanged(DemodResult result)
+        {
+            if (result.Provenance == null)
+            {
+                return;
+            }
+
+            string now = result.Provenance.ToString();
+
+            if (string.Equals(now, _saidProvenance, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _saidProvenance = now;
+
+            foreach (string line in result.Provenance.Lines)
+            {
+                _eventLog.Append(line);
+            }
+        }
+
         /// <summary>Says what the demodulation measured, in the status bar.</summary>
         /// <param name="result">The result.</param>
         /// <remarks>
-        /// EVM and the symbol count, which are the two numbers that say at a glance whether a
-        /// demodulation is working. The whole error summary is a trace of its own
-        /// (<c>REQ-DEM-080</c>), reached by putting a trace window into the symbol-table format.
+        /// EVM, the symbol count, and what the EVM is a percentage OF -- which
+        /// <c>REQ-DEM-072</c> requires to be visible for the active measurement and which is the
+        /// single piece of context most likely to make two instruments disagree about the same
+        /// signal. The rest of the provenance goes to the event log when it changes, and the whole
+        /// error summary is a trace of its own (<c>REQ-DEM-080</c>), reached by putting a trace
+        /// window into the symbol-table format.
         /// </remarks>
         private void ShowResultReadout(DemodResult result)
         {
@@ -214,10 +265,30 @@ namespace OpenVSA.Ui
                 return;
             }
 
+            string referenced = result.Provenance == null || result.Provenance.Normalisation == null
+                ? string.Empty
+                : ", " + Referenced(result.Provenance.Normalisation.Choice);
+
             StatusText.Content =
                 result.Trace.Modulation + ": " + result.Trace.SymbolCount + " symbols, EVM " +
                 result.EvmPercent.ToString("G4", System.Globalization.CultureInfo.CurrentCulture) +
-                " %rms";
+                " %rms" + referenced;
+        }
+
+        /// <summary>The normalisation, short enough for a status bar.</summary>
+        private static string Referenced(EvmNormalisation choice)
+        {
+            switch (choice)
+            {
+                case EvmNormalisation.MaximumMagnitude:
+                    return "referenced to peak";
+
+                case EvmNormalisation.UserSpecified:
+                    return "referenced to a user value";
+
+                default:
+                    return "referenced to RMS";
+            }
         }
 
         /// <summary>
@@ -244,6 +315,7 @@ namespace OpenVSA.Ui
             // A different measurement is a different set of notices, and one already said about the
             // old setup would otherwise never be said again about the new one.
             _saidNotices.Clear();
+            _saidProvenance = null;
 
             active.Setup.SelectKind(kind);
 

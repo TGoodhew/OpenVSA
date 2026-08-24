@@ -500,6 +500,31 @@ namespace OpenVSA.Measurement.State
         /// <summary>Whether the burst search of step 2 runs (<c>REQ-DEM-041</c>).</summary>
         public bool BurstSearch { get; set; }
 
+        /// <summary>
+        /// Whether the sync pattern search positions the Result Length window
+        /// (<c>REQ-DEM-040</c>).
+        /// </summary>
+        public bool SyncSearch { get; set; }
+
+        /// <summary>
+        /// Whether to conjugate the input before analysis, for a signal that arrives the wrong way
+        /// round (<c>REQ-DEM-035</c>).
+        /// </summary>
+        public bool MirrorSpectrum { get; set; }
+
+        /// <summary>
+        /// What the error metrics are expressed as a percentage of (<c>REQ-DEM-061</c>).
+        /// </summary>
+        /// <remarks>
+        /// Saved because <c>REQ-DEM-072</c> asks that a measurement's provenance travel with saved
+        /// states: an EVM figure recalled under a different normalisation from the one it was taken
+        /// under is a different number, and the file is the only place that can remember which.
+        /// </remarks>
+        public EvmNormalisation EvmNormalisation { get; set; } = EvmNormalisation.RmsMagnitude;
+
+        /// <summary>The value <see cref="EvmNormalisation.UserSpecified"/> uses.</summary>
+        public double EvmNormalisationVolts { get; set; }
+
         /// <summary>Whether the adaptive equaliser of step 11 runs (<c>REQ-DEM-050</c>).</summary>
         public bool Equaliser { get; set; }
 
@@ -554,6 +579,10 @@ namespace OpenVSA.Measurement.State
                 ReferenceFilterAlpha = ReferenceFilterAlpha,
                 FilterSymbolSpan = FilterSymbolSpan,
                 BurstSearchEnabled = BurstSearch,
+                SyncSearchEnabled = SyncSearch,
+                MirrorSpectrum = MirrorSpectrum,
+                EvmNormalisation = EvmNormalisation,
+                EvmNormalisationVolts = EvmNormalisationVolts,
                 EqualiserEnabled = Equaliser,
                 EqualiserTaps = EqualiserTaps,
             };

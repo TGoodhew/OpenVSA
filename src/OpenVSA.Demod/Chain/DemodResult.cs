@@ -76,9 +76,11 @@ namespace OpenVSA.Demod.Chain
             IList<string> notices,
             float[] reference,
             IList<ConstellationPoint> equaliser,
-            LockReport lockReport)
+            LockReport lockReport,
+            MeasurementProvenance provenance)
         {
             Lock = lockReport;
+            Provenance = provenance;
 
             _reference = reference ?? new float[0];
             _equaliser = equaliser == null
@@ -123,6 +125,17 @@ namespace OpenVSA.Demod.Chain
         /// <see cref="Notices"/>.
         /// </remarks>
         public LockReport Lock { get; }
+
+        /// <summary>
+        /// What was in force when these metrics were computed (<c>REQ-DEM-072</c>).
+        /// </summary>
+        /// <remarks>
+        /// The normalisation reference, both filters with their parameters, and the state of every
+        /// compensation. It travels with the result because a number recalled without its context is
+        /// the failure the requirement prevents — and because it is built in the same pass as the
+        /// metrics, a display that has one has the other.
+        /// </remarks>
+        public MeasurementProvenance Provenance { get; }
 
         /// <summary>
         /// Step 10's regenerated ideal waveform, on the same grid as <see cref="Trace"/>'s samples.

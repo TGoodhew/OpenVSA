@@ -30,6 +30,8 @@ namespace OpenVSA.Ui.Rendering
         private readonly TextBlock _stream;
 
         private SymbolTrace _trace;
+
+        private MeasurementProvenance _provenance;
         private SymbolTableFormat _format = SymbolTableFormat.Binary;
         private int _charactersPerRow = 32;
 
@@ -179,6 +181,25 @@ namespace OpenVSA.Ui.Rendering
             ApplyFont(fonts.Resolve(FontSlot.Tabular), fonts.Choice(FontSlot.Tabular).SizePoints);
         }
 
+        /// <summary>
+        /// The context the metrics were measured in, shown beneath them (<c>REQ-DEM-072</c>).
+        /// </summary>
+        /// <remarks>
+        /// Null until a demodulation has been shown. The panel can be given a trace alone -- the
+        /// generated ones the exercise uses are -- and then there is no provenance to show, only the
+        /// normalisation the summary computed for itself.
+        /// </remarks>
+        public MeasurementProvenance Provenance
+        {
+            get { return _provenance; }
+
+            set
+            {
+                _provenance = value;
+                Refresh();
+            }
+        }
+
         private void Refresh()
         {
             if (_trace == null || _trace.SymbolCount == 0)
@@ -190,15 +211,26 @@ namespace OpenVSA.Ui.Rendering
 
             ErrorSummary summary = ErrorSummary.For(_trace);
 
-            // REQ-DEM-061: "The default for variable-envelope formats shall be stated explicitly in
-            // the UI rather than inherited silently." A percentage whose denominator is not on
-            // screen is the commonest reason two instruments appear to disagree about EVM, and the
-            // requirement says so in as many words -- so the denominator goes on screen, along with
-            // what the other setting would have read.
-            _summary.Text = string.Join(
-                Environment.NewLine, summary.Render()) +
-                Environment.NewLine + Environment.NewLine +
-                (summary.Reference == null ? string.Empty : summary.Reference.Describe());
+            // REQ-DEM-072: the metrics and the context that qualifies them, together, because a
+            // percentage whose denominator is not on screen is the commonest reason two instruments
+            // appear to disagree about EVM -- and the requirement says so in as many words. When
+            // the panel has been given a whole result it shows that result's provenance; with only
+            // a trace it can still say what the figures were referenced to, which is REQ-DEM-061's
+            // half of the same obligation.
+            var text = new List<string>(summary.Render());
+
+            text.Add(string.Empty);
+
+            if (_provenance != null)
+            {
+                text.AddRange(_provenance.Lines);
+            }
+            else if (summary.Reference != null)
+            {
+                text.Add(summary.Reference.Describe());
+            }
+
+            _summary.Text = string.Join(Environment.NewLine, text);
 
             IReadOnlyList<string> rows = SymbolTable.Render(
                 _trace.Symbols, _trace.BitsPerSymbol, _format, _charactersPerRow);
