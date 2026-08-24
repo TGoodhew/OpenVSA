@@ -713,6 +713,70 @@ namespace OpenVSA.TestHarness
             }
         }
 
+
+        /// <summary>
+        /// Asks the instrument what symbol rates it will accept, rather than taking the manual's
+        /// word for it.
+        /// </summary>
+        /// <param name="format">The format to ask about, since the ceiling depends on it.</param>
+        /// <param name="filter">The filter to ask about, for the same reason.</param>
+        /// <param name="minimumHz">What the instrument reports as its floor, or NaN if it will not say.</param>
+        /// <param name="maximumHz">What it reports as its ceiling, or NaN if it will not say.</param>
+        /// <remarks>
+        /// <para>
+        /// The same shape as <see cref="ReadLimits"/> and for the same reason: a query this firmware
+        /// rejects does not answer at all, it times out, so the probe runs under a short timeout and
+        /// answers NaN rather than failing. <c>:RADio:MTONe:ARB:SETup:TABLe:NTONes? MIN</c> is
+        /// already recorded as refused on this firmware, so there is every reason to expect the same
+        /// here and to find out rather than assume.
+        /// </para>
+        /// <para>
+        /// The filter has to be set before asking, because the ceiling is a property of the pair.
+        /// That makes this a probe with a side effect, which is why it is not part of
+        /// <see cref="IDigitalModulationStimulus"/>: a scenario should not be able to change the
+        /// signal by asking a question about it. It is here for the bench run that records what this
+        /// instrument does.
+        /// </para>
+        /// </remarks>
+        public void ProbeSymbolRateLimits(
+            string format,
+            StimulusPulseFilter filter,
+            out double minimumHz,
+            out double maximumHz)
+        {
+            IInstrumentSession session = RequireSession();
+
+            RequireOffered(Formats, format, "format");
+
+            int wasTimeout = session.TimeoutMilliseconds;
+
+            try
+            {
+                Send(session, ":RADio:CUSTom:MODulation:TYPE " + format);
+                Send(session, ":RADio:CUSTom:FILTer " + FilterWord(filter));
+
+                session.TimeoutMilliseconds =
+                    Math.Min(wasTimeout, LimitProbeTimeoutMilliseconds);
+
+                minimumHz = Probe(session, ":RADio:CUSTom:SRATe? MIN");
+                maximumHz = Probe(session, ":RADio:CUSTom:SRATe? MAX");
+            }
+            finally
+            {
+                session.TimeoutMilliseconds = wasTimeout;
+
+                try
+                {
+                    ReadErrors(session);
+                }
+                catch (Exception)
+                {
+                    // As in ReadLimits: an instrument that will not report its errors has larger
+                    // problems, and the next real operation will say so.
+                }
+            }
+        }
+
         /// <summary>A limit query that answers with <c>NaN</c> rather than failing.</summary>
         private double Probe(IInstrumentSession session, string query)
         {
