@@ -75,3 +75,67 @@ same shape of blind spot as the bit check's inability to see a mirrored spectrum
 The chain prefers the alignment nearest the one step 7 nominated, and by a factor of two rather than
 a rounding error. That buys repeatability — the same signal measured twice gives the same
 constellation rather than one turned by a quarter — and it resolves nothing.
+
+## Against the bench, 24 August 2026
+
+`OpenVSA.Verify --demod-check`, E4438C into E4406A at 500 ksym/s, root raised cosine α = 0.35, PN9
+generated on this side from ITU-T O.150's polynomial so the instrument supplies no part of the
+reference. Eight cases, all as expected; the full run is in
+`demod-check-offset-differential.txt`.
+
+| Case | EVM (%rms) | Bits against PN9 | Relabelling |
+|---|---|---|---|
+| QPSK | 0.78 | **1024 of 1024** | — |
+| QPSK, spectrum inverted | 0.88 | 1024 of 1024, inverted | — |
+| GRAYQPSK demodulated as QPSK | 0.81 | no reading; best 75.10 % | one accounts for 512 of 512 |
+| OQPSK, acquisition 1 | 0.96 | no reading; best 75.10 % | **none accounts for it** |
+| OQPSK, acquisition 2 | 1.05 | **1024 of 1024** | — |
+| π/4-DQPSK, differential | 0.87 | no reading; best 50.10 % | **Gray, 511 of 511** |
+| π/4-DQPSK, reference None | 1.03 | no reading; best 76.56 % | none accounts for it |
+| D8PSK, differential | 0.91 | no reading; best 50.10 % | **Gray, 511 of 511** |
+| D8PSK, reference None | 0.98 | no reading; best 69.27 % | none accounts for it |
+
+### The offset half is proved by the second OQPSK acquisition
+
+**1024 of 1024 bits**, against a typical reading of 50.00 %, at 1.05 %rms through both instruments —
+the same region QPSK reads through the same chain (0.78–0.88). The stagger, its direction and the
+bit pairing are all the transmitter's.
+
+The first acquisition is the ambiguity, live: 75.10 %, no match. Which pairing a capture lands on
+depends on where it started relative to the transmitter's symbol clock, so it is a coin toss per
+acquisition — which is why the case takes four and passes on the first that matches. **If the mapping
+were wrong, none of them would ever match.**
+
+### 75.10 % means two entirely different things, and the bits cannot tell them apart
+
+A mis-paired OQPSK reading scores **75.10 %** — the *same* number a Gray-labelled QPSK gives, and the
+same number the GRAYQPSK case has scored since 24 August. That cost an hour: the four mis-paired
+acquisitions of an earlier run were read as evidence that this instrument's OQPSK was Gray labelled,
+and the conclusion was written down before a fifth acquisition matched 1024 of 1024 and refuted it.
+
+The arithmetic behind the coincidence: an offset format's alternate pairing is `(Q of symbol k, −I of
+symbol k+1)`, which on a serial bit stream is the sequence shifted by one bit with alternate bits
+inverted. Half the bits are then the sequence's and half are a coin toss — exactly 75 %.
+
+**What tells them apart is the relabelling line, and that is why it exists.** A Gray labelling is a
+bijection on symbol values, so one relabelling accounts for every symbol; a mis-pairing is not a
+relabelling of anything, and none does. Measured: GRAYQPSK 512 of 512 explained, mis-paired OQPSK
+best 50.20 % and refused.
+
+### The differential half is proved, and the convention is not ours
+
+The bits miss and a **Gray relabelling accounts for 511 of 511 symbols** of both π/4-DQPSK and D8PSK.
+D8PSK's is `0, 1, 3, 2, 6, 7, 5, 4` — the Gray code exactly, unrotated. So:
+
+- **The E4438C's Custom `P4DQPSK` and `D8PSK` are symbol-differentially encoded.** Read absolutely,
+  nothing accounts for them under any labelling (53.13 % and 32.42 %). The manual gave the opposite
+  impression — those softkeys "load an I/Q map", and differential encoding is documented as a
+  separate feature — and the measurement settles it.
+- **OpenVSA's differential decoding is right**: the direction of the difference, the reference, and
+  π/4-DQPSK's de-rotation all recover the transmitted sequence, symbol for symbol.
+- **The instrument Gray-labels its phase changes and OpenVSA labels them naturally.** That is a
+  convention, it is `REQ-DEM-011`'s to offer, and it is not a defect in this requirement.
+
+The pair of cases per format is `REQ-DEM-012`'s own criterion on hardware: the same waveform read
+with the reference the format asks for and with it forced to None. The wrong one does not degrade
+the answer, it destroys it — while converging and reporting a perfectly respectable 1.03 %rms.
