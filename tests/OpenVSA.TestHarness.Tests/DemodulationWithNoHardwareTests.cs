@@ -119,6 +119,78 @@ namespace OpenVSA.TestHarness.Tests
         }
 
         [Fact]
+        public async Task TheSourceCanBeToldWhatToTransmitThroughTheHalAlone()
+        {
+            // REQ-SIM-001 through ISyntheticSource, which is the path the shell has: it may not
+            // reference OpenVSA.Hal.Sim (REQ-ARC-001), so everything it can say to a synthetic
+            // source is said through this interface. Nothing here touches SimulatedSignalSettings.
+            DemodResult result;
+
+            using (var frontEnd = new SimulatedFrontEnd())
+            using (var engine = new SpectrumEngine(frontEnd, null))
+            {
+                ISyntheticSource synthetic = frontEnd;
+
+                Assert.Contains("QPSK", synthetic.Modulations);
+                Assert.True(synthetic.MinimumSamplesPerSymbol >= 2.0);
+                Assert.Null(synthetic.Modulation);
+
+                synthetic.Modulation = "QPSK";
+                synthetic.SymbolRateHz = SymbolRateHz;
+                synthetic.RollOff = 0.35;
+
+                var contexts = new MeasurementContextSet();
+                MeasurementContext demod = contexts.Add("Demod", Setup());
+
+                var analyser = new ContextAnalyser(contexts);
+                var arrived = new ManualResetEventSlim();
+
+                demod.ResultAnalysed += (sender, computed) => arrived.Set();
+
+                analyser.Attach(engine);
+
+                engine.TargetUpdatesPerSecond = 0.0;
+
+                await engine.StartAsync(
+                    new AcquisitionRequest(CentreHz, SpanHz, 65536, 0.0), CancellationToken.None);
+
+                bool came = arrived.Wait(Patience);
+
+                await engine.StopAsync();
+
+                Assert.True(came, "No demodulated result arrived within " + Patience + ".");
+
+                result = demod.LatestResult;
+            }
+
+            _output.WriteLine("EVM " + result.EvmPercent.ToString("F4") + " %rms");
+
+            // No noise was asked for, so what is left is the chain's own residual.
+            Assert.True(
+                result.EvmPercent < 0.5,
+                "EVM off a source driven through the HAL was " + result.EvmPercent + " %rms.");
+        }
+
+        [Fact]
+        public void ASourceRefusesAModulationItDoesNotDeclare()
+        {
+            using (var frontEnd = new SimulatedFrontEnd())
+            {
+                ISyntheticSource synthetic = frontEnd;
+
+                ArgumentException refused = Assert.Throws<ArgumentException>(
+                    () => synthetic.Modulation = "1024QAM");
+
+                _output.WriteLine(refused.Message);
+
+                // Refused by name and still unmodulated: a source that quietly fell back to a
+                // carrier would be measured, and the measurement would be of the wrong thing.
+                Assert.Contains("1024QAM", refused.Message, StringComparison.Ordinal);
+                Assert.Null(synthetic.Modulation);
+            }
+        }
+
+        [Fact]
         public void TheSimulatedSourceStillEmitsAToneWhenNoModulationIsAskedFor()
         {
             // The default has to stay what every spectrum test and demonstration expects. A source

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenVSA.Core;
@@ -72,7 +73,7 @@ namespace OpenVSA.Hal.Sim
     /// constraint rather than a convenience, and this class is where it is honoured.
     /// </remarks>
     [FrontEndProvider("Simulated source")]
-    public sealed class SimulatedFrontEnd : IFrontEnd
+    public sealed class SimulatedFrontEnd : IFrontEnd, ISyntheticSource
     {
         private readonly SimulatedSignalSettings _settings;
         private DeterministicRandom _random;
@@ -129,6 +130,75 @@ namespace OpenVSA.Hal.Sim
 
         /// <inheritdoc />
         public event EventHandler<FrontEndEvent> Notification;
+
+        /// <summary>
+        /// The modulations this source can transmit (<c>REQ-SIM-001</c>).
+        /// </summary>
+        /// <remarks>
+        /// The generator's catalogue, read from it rather than listed again here, so a format added
+        /// to <c>ModulationScheme</c> is offered without anyone remembering to add it twice.
+        /// </remarks>
+        public IReadOnlyList<string> Modulations
+        {
+            get
+            {
+                var names = new List<string>();
+
+                foreach (ModulationScheme scheme in ModulationScheme.All)
+                {
+                    names.Add(scheme.Name);
+                }
+
+                return new ReadOnlyCollection<string>(names);
+            }
+        }
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// Two, which is what <see cref="ContinuousModulatedSource"/> refuses to go below: fewer
+        /// than two samples a symbol is not a shaped symbol, and a source that accepted the setting
+        /// would be producing something no instrument could have delivered.
+        /// </remarks>
+        public double MinimumSamplesPerSymbol => 2.0;
+
+        /// <inheritdoc />
+        /// <exception cref="ArgumentException">A name this source cannot transmit.</exception>
+        public string Modulation
+        {
+            get { return _settings.Modulation; }
+
+            set
+            {
+                if (!string.IsNullOrEmpty(value) && ModulationScheme.ByName(value) == null)
+                {
+                    // Refused by name rather than quietly ignored or fallen back to a carrier: a
+                    // source that silently transmitted something other than what it was asked for
+                    // would still be measured, and the measurement would be of the wrong thing.
+                    // ByName answers null for an unknown format rather than throwing, so the check
+                    // is here.
+                    throw new ArgumentException(
+                        "This source cannot transmit \"" + value + "\". It offers: " +
+                        string.Join(", ", new List<string>(Modulations).ToArray()) + ".",
+                        nameof(value));
+                }
+
+                _settings.Modulation = string.IsNullOrEmpty(value) ? null : value;
+            }
+        }
+
+        /// <inheritdoc />
+        public double SymbolRateHz
+        {
+            get { return _settings.SymbolRateHz; }
+            set { _settings.SymbolRateHz = value; }
+        }
+
+        /// <inheritdoc />
+        public double RollOff
+        {
+            get { return _settings.RollOff; }
+            set { _settings.RollOff = value; }
+        }
 
         /// <inheritdoc />
         public Task ConnectAsync(CancellationToken ct)
