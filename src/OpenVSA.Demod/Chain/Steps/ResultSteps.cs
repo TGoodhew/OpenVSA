@@ -121,6 +121,28 @@ namespace OpenVSA.Demod.Chain.Steps
             computed.Add(new ErrorMetric(
                 "Freq Err", "Hz", context.CoarseFrequencyHz + context.ResidualFrequencyHz));
 
+            // REQ-DEM-070's carrier offset. 🔴 The requirement names it beside REQ-DEM-065's
+            // frequency error without saying how the two differ, and under REQ-DEM-065's own
+            // definition -- "the frequency shift the analyser applied to achieve carrier lock" --
+            // they would be one number in two rows, which reads to a user like a fault.
+            //
+            // So this is step 3's estimate ALONE: where the block-wide search found the carrier
+            // before any decision-directed refinement. The difference between the two rows is then
+            // exactly what step 8 had to pull in, which is the quantity REQ-DEM-036's lock tolerance
+            // is about and the one that says whether a measurement was comfortably locked or
+            // barely. #431 carries the question.
+            computed.Add(new ErrorMetric("Carr Ofst", "Hz", context.CoarseFrequencyHz));
+
+            // REQ-DEM-070's time offset: where the first symbol's decision instant falls inside the
+            // Result Length window. Step 8 estimates it in samples of the internal processing rate,
+            // and seconds is what a user can compare with a symbol period.
+            double internalRateHz = InternalRateHz(context);
+
+            computed.Add(new ErrorMetric(
+                "Time Offset",
+                "s",
+                internalRateHz <= 0.0 ? 0.0 : context.TimingSamples / internalRateHz));
+
             // The rows the format shows, not just the ones this build can fill in: REQ-DEM-071
             // wants a table whose shape follows the format, with NAN where a metric applies and has
             // not been measured. Reading EVM off the computed summary rather than off the table is
@@ -137,6 +159,10 @@ namespace OpenVSA.Demod.Chain.Steps
 
             return StepOutcome.Continue;
         }
+
+        /// <summary>The internal processing rate, which is what step 8's timing is in samples of.</summary>
+        private static double InternalRateHz(DemodContext context) =>
+            context.Settings.SymbolRateHz * context.Settings.PointsPerSymbol;
 
         internal static List<ConstellationPoint> Points(Iq[] values)
         {
