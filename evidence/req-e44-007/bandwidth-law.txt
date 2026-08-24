@@ -1,0 +1,125 @@
+OpenVSA analyser bandwidth law
+  analyser  GPIB0::17::INSTR
+
+  measuring with Hewlett-Packard,E4406A,US40062429,A.08.10    20041215  12:30:18
+  the instrument reports bandwidth limits of 10 Hz to 10 MHz, and a maximum sample rate of 15 MS/s
+
+  ladder of 40 points, geometric:
+    1E-05 MHz asked -> 1.00387E-05 MHz actual, 2.0587E+07 ns, 4.85743E-05 MS/s, 3.088E+05 ticks
+    1.4251E-05 MHz asked -> 1.40542E-05 MHz actual, 1.4705E+07 ns, 6.80041E-05 MS/s, 2.206E+05 ticks
+    2.03092E-05 MHz asked -> 2.00608E-05 MHz actual, 1.0302E+07 ns, 9.70685E-05 MS/s, 1.545E+05 ticks
+    2.89427E-05 MHz asked -> 2.90834E-05 MHz actual, 7.106E+06 ns, 0.000140726 MS/s, 1.066E+05 ticks
+    4.12463E-05 MHz asked -> 4.10705E-05 MHz actual, 5.032E+06 ns, 0.000198728 MS/s, 7.548E+04 ticks
+    5.87802E-05 MHz asked -> 5.90139E-05 MHz actual, 3.502E+06 ns, 0.000285551 MS/s, 5.253E+04 ticks
+    8.37678E-05 MHz asked -> 8.41705E-05 MHz actual, 2.45533E+06 ns, 0.000407277 MS/s, 3.683E+04 ticks
+    0.000119378 MHz asked -> 0.000119185 MHz actual, 1.734E+06 ns, 0.000576701 MS/s, 2.601E+04 ticks
+    0.000170125 MHz asked -> 0.00017018 MHz actual, 1.2144E+06 ns, 0.000823452 MS/s, 1.822E+04 ticks
+    0.000242446 MHz asked -> 0.000242169 MHz actual, 853400 ns, 0.00117178 MS/s, 1.28E+04 ticks
+    0.000345511 MHz asked -> 0.000347339 MHz actual, 595000 ns, 0.00168067 MS/s, 8925 ticks
+    0.000492388 MHz asked -> 0.000492063 MHz actual, 420000 ns, 0.00238095 MS/s, 6300 ticks
+    0.000701704 MHz asked -> 0.000702948 MHz actual, 294000 ns, 0.00340136 MS/s, 4410 ticks
+    0.001 MHz asked -> 0.00100194 MHz actual, 206267 ns, 0.00484809 MS/s, 3094 ticks
+    0.0014251 MHz asked -> 0.00142923 MHz actual, 144600 ns, 0.00691563 MS/s, 2169 ticks
+    0.00203092 MHz asked -> 0.00203412 MHz actual, 101600 ns, 0.00984252 MS/s, 1524 ticks
+    0.00289427 MHz asked -> 0.0028972 MHz actual, 71333.3 ns, 0.0140187 MS/s, 1070 ticks
+    0.00412463 MHz asked -> 0.00413333 MHz actual, 50000 ns, 0.02 MS/s, 750 ticks
+    0.00587802 MHz asked -> 0.00590476 MHz actual, 35000 ns, 0.0285714 MS/s, 525 ticks
+    0.00837678 MHz asked -> 0.00837838 MHz actual, 24666.7 ns, 0.0405405 MS/s, 370 ticks
+    0.0119378 MHz asked -> 0.0120155 MHz actual, 17200 ns, 0.0581395 MS/s, 258 ticks
+    0.0170125 MHz asked -> 0.017033 MHz actual, 12133.3 ns, 0.0824176 MS/s, 182 ticks
+    0.0242446 MHz asked -> 0.0244094 MHz actual, 8466.67 ns, 0.11811 MS/s, 127 ticks
+    0.0345511 MHz asked -> 0.0348315 MHz actual, 5933.33 ns, 0.168539 MS/s, 89 ticks
+    0.0492388 MHz asked -> 0.05 MHz actual, 4133.33 ns, 0.241935 MS/s, 62 ticks
+    0.0701704 MHz asked -> 0.0704545 MHz actual, 2933.33 ns, 0.340909 MS/s, 44 ticks
+    0.1 MHz asked -> 0.1 MHz actual, 2066.67 ns, 0.483871 MS/s, 31 ticks
+    0.14251 MHz asked -> 0.147619 MHz actual, 1400 ns, 0.714286 MS/s, 21 ticks
+    0.203092 MHz asked -> 0.206667 MHz actual, 1000 ns, 1 MS/s, 15 ticks
+    0.289427 MHz asked -> 0.31 MHz actual, 666.667 ns, 1.5 MS/s, 10 ticks
+    0.412463 MHz asked -> 0.442857 MHz actual, 466.667 ns, 2.14286 MS/s, 7 ticks
+    0.587802 MHz asked -> 0.62 MHz actual, 333.333 ns, 3 MS/s, 5 ticks
+    0.837678 MHz asked -> 1.03333 MHz actual, 200 ns, 5 MS/s, 3 ticks
+    1.19378 MHz asked -> 1.55 MHz actual, 133.333 ns, 7.5 MS/s, 2 ticks
+    1.70125 MHz asked -> 3.1 MHz actual, 66.6667 ns, 15 MS/s, 1 ticks
+    2.42446 MHz asked -> 3.1 MHz actual, 66.6667 ns, 15 MS/s, 1 ticks
+    3.45511 MHz asked -> 6.7 MHz actual, 66.6667 ns, 15 MS/s, 1 ticks
+    4.92388 MHz asked -> 6.7 MHz actual, 66.6667 ns, 15 MS/s, 1 ticks
+    7.01704 MHz asked -> 10 MHz actual, 66.6667 ns, 15 MS/s, 1 ticks
+    10 MHz asked -> 10 MHz actual, 66.6667 ns, 15 MS/s, 1 ticks
+
+  boundaries, bisected:
+    10 Hz .. 10.5314 Hz commanded: 4.85743E-05 MS/s (308805 ticks, 10.0387 Hz actual) becomes 5.34274E-05 MS/s (280755 ticks, 11.0417 Hz actual), bracketed to 0.531378 Hz
+    14.251 Hz .. 15.0083 Hz commanded: 6.80041E-05 MS/s (220575 ticks, 14.0542 Hz actual) becomes 7.26069E-05 MS/s (206592 ticks, 15.0054 Hz actual), bracketed to 0.757269 Hz
+    20.3092 Hz .. 20.8488 Hz commanded: 9.70685E-05 MS/s (154530 ticks, 20.0608 Hz actual) becomes 0.000101947 MS/s (147135 ticks, 21.0691 Hz actual), bracketed to 0.539593 Hz
+    28.9427 Hz .. 29.7116 Hz commanded: 0.000140726 MS/s (106590 ticks, 29.0834 Hz actual) becomes 0.000145603 MS/s (103020 ticks, 30.0912 Hz actual), bracketed to 0.768975 Hz
+    41.2463 Hz .. 41.7942 Hz commanded: 0.000198728 MS/s (75480 ticks, 41.0705 Hz actual) becomes 0.000203542 MS/s (73695 ticks, 42.0653 Hz actual), bracketed to 0.547934 Hz
+    58.7802 Hz .. 59.561 Hz commanded: 0.000285551 MS/s (52530 ticks, 59.0139 Hz actual) becomes 0.000291206 MS/s (51510 ticks, 60.1825 Hz actual), bracketed to 0.780863 Hz
+    84.3242 Hz .. 84.8806 Hz commanded: 0.000407277 MS/s (36830 ticks, 84.1705 Hz actual) becomes 0.000411353 MS/s (36465 ticks, 85.013 Hz actual), bracketed to 0.556405 Hz
+    119.378 Hz .. 120.171 Hz commanded: 0.000576701 MS/s (26010 ticks, 119.185 Hz actual) becomes 0.000582411 MS/s (25755 ticks, 120.365 Hz actual), bracketed to 0.792934 Hz
+    170.125 Hz .. 170.69 Hz commanded: 0.000823452 MS/s (18216 ticks, 170.18 Hz actual) becomes 0.0008285 MS/s (18105 ticks, 171.223 Hz actual), bracketed to 0.565006 Hz
+    242.446 Hz .. 243.251 Hz commanded: 0.00117178 MS/s (12801 ticks, 242.169 Hz actual) becomes 0.00117647 MS/s (12750 ticks, 243.137 Hz actual), bracketed to 0.805192 Hz
+    347.232 Hz .. 347.806 Hz commanded: 0.00168067 MS/s (8925 ticks, 347.339 Hz actual) becomes 0.00168729 MS/s (8890 ticks, 348.706 Hz actual), bracketed to 0.57374 Hz
+    492.388 Hz .. 493.206 Hz commanded: 0.00238095 MS/s (6300 ticks, 492.063 Hz actual) becomes 0.00239044 MS/s (6275 ticks, 494.024 Hz actual), bracketed to 0.817639 Hz
+    702.286 Hz .. 702.869 Hz commanded: 0.00340136 MS/s (4410 ticks, 702.948 Hz actual) becomes 0.0034153 MS/s (4392 ticks, 705.829 Hz actual), bracketed to 0.58261 Hz
+    1.00083 kHz .. 1.00166 kHz commanded: 0.00484809 MS/s (3094 ticks, 1.00194 kHz actual) becomes 0.00486855 MS/s (3081 ticks, 1.00617 kHz actual), bracketed to 0.830279 Hz
+    1.42924 kHz .. 1.42984 kHz commanded: 0.00691563 MS/s (2169 ticks, 1.42923 kHz actual) becomes 0.00694444 MS/s (2160 ticks, 1.43519 kHz actual), bracketed to 0.591616 Hz
+    2.03429 kHz .. 2.03513 kHz commanded: 0.00984252 MS/s (1524 ticks, 2.03412 kHz actual) becomes 0.00988142 MS/s (1518 ticks, 2.04216 kHz actual), bracketed to 0.843114 Hz
+    2.89727 kHz .. 2.89787 kHz commanded: 0.0140187 MS/s (1070 ticks, 2.8972 kHz actual) becomes 0.0140845 MS/s (1065 ticks, 2.9108 kHz actual), bracketed to 0.600762 Hz
+    4.13319 kHz .. 4.13404 kHz commanded: 0.02 MS/s (750 ticks, 4.13333 kHz actual) becomes 0.0200803 MS/s (747 ticks, 4.14993 kHz actual), bracketed to 0.856147 Hz
+    5.90547 kHz .. 5.90608 kHz commanded: 0.0285714 MS/s (525 ticks, 5.90476 kHz actual) becomes 0.0287356 MS/s (522 ticks, 5.9387 kHz actual), bracketed to 0.610049 Hz
+    8.37765 kHz .. 8.37852 kHz commanded: 0.0405405 MS/s (370 ticks, 8.37838 kHz actual) becomes 0.0407609 MS/s (368 ticks, 8.42391 kHz actual), bracketed to 0.869382 Hz
+    12.0164 kHz .. 12.0171 kHz commanded: 0.0581395 MS/s (258 ticks, 12.0155 kHz actual) becomes 0.0585937 MS/s (256 ticks, 12.1094 kHz actual), bracketed to 0.61948 Hz
+    17.0328 kHz .. 17.0337 kHz commanded: 0.0824176 MS/s (182 ticks, 17.033 kHz actual) becomes 0.0828729 MS/s (181 ticks, 17.1271 kHz actual), bracketed to 0.882822 Hz
+    24.4107 kHz .. 24.4119 kHz commanded: 0.11811 MS/s (127 ticks, 24.4094 kHz actual) becomes 0.119048 MS/s (126 ticks, 24.6032 kHz actual), bracketed to 1.25811 Hz
+    34.8344 kHz .. 34.8362 kHz commanded: 0.168539 MS/s (89 ticks, 34.8315 kHz actual) becomes 0.170455 MS/s (88 ticks, 35.2273 kHz actual), bracketed to 1.79294 Hz
+    50.0079 kHz .. 50.0105 kHz commanded: 0.241935 MS/s (62 ticks, 50 kHz actual) becomes 0.245902 MS/s (61 ticks, 50.8197 kHz actual), bracketed to 2.55512 Hz
+    70.469 kHz .. 70.4726 kHz commanded: 0.340909 MS/s (44 ticks, 70.4545 kHz actual) becomes 0.348837 MS/s (43 ticks, 72.093 kHz actual), bracketed to 3.64131 Hz
+    100.031 kHz .. 100.036 kHz commanded: 0.483871 MS/s (31 ticks, 100 kHz actual) becomes 0.5 MS/s (30 ticks, 103.333 kHz actual), bracketed to 5.18924 Hz
+    147.687 kHz .. 147.694 kHz commanded: 0.714286 MS/s (21 ticks, 147.619 kHz actual) becomes 0.75 MS/s (20 ticks, 155 kHz actual), bracketed to 7.3952 Hz
+    206.801 kHz .. 206.812 kHz commanded: 1 MS/s (15 ticks, 206.667 kHz actual) becomes 1.07143 MS/s (14 ticks, 221.429 kHz actual), bracketed to 10.5389 Hz
+    310.303 kHz .. 310.333 kHz commanded: 1.5 MS/s (10 ticks, 310 kHz actual) becomes 1.66667 MS/s (9 ticks, 344.444 kHz actual), bracketed to 30.0381 Hz
+    443.455 kHz .. 443.498 kHz commanded: 2.14286 MS/s (7 ticks, 442.857 kHz actual) becomes 2.5 MS/s (6 ticks, 516.667 kHz actual), bracketed to 42.8074 Hz
+    621.232 kHz .. 621.293 kHz commanded: 3 MS/s (5 ticks, 620 kHz actual) becomes 3.75 MS/s (4 ticks, 775 kHz actual), bracketed to 61.0049 Hz
+    1.03677 MHz .. 1.03685 MHz commanded: 5 MS/s (3 ticks, 1.03333 MHz actual) becomes 7.5 MS/s (2 ticks, 1.55 MHz actual), bracketed to 86.9382 Hz
+    1.55778 MHz .. 1.55791 MHz commanded: 7.5 MS/s (2 ticks, 1.55 MHz actual) becomes 15 MS/s (1 ticks, 3.1 MHz actual), bracketed to 123.896 Hz
+
+  the law, as measured:
+    10 Hz .. 10 Hz commanded  ->  4.85743E-05 MS/s, 308805 x 1/15 MHz, actual bandwidth 10.0387 Hz .. 10.0387 Hz
+    14.251 Hz .. 14.251 Hz commanded  ->  6.80041E-05 MS/s, 220575 x 1/15 MHz, actual bandwidth 14.0542 Hz .. 14.0542 Hz
+    20.3092 Hz .. 20.3092 Hz commanded  ->  9.70685E-05 MS/s, 154530 x 1/15 MHz, actual bandwidth 20.0608 Hz .. 20.0608 Hz
+    28.9427 Hz .. 28.9427 Hz commanded  ->  0.000140726 MS/s, 106590 x 1/15 MHz, actual bandwidth 29.0834 Hz .. 29.0834 Hz
+    41.2463 Hz .. 41.2463 Hz commanded  ->  0.000198728 MS/s, 75480 x 1/15 MHz, actual bandwidth 41.0705 Hz .. 41.0705 Hz
+    58.7802 Hz .. 58.7802 Hz commanded  ->  0.000285551 MS/s, 52530 x 1/15 MHz, actual bandwidth 59.0139 Hz .. 59.0139 Hz
+    83.7678 Hz .. 83.7678 Hz commanded  ->  0.000407277 MS/s, 36830 x 1/15 MHz, actual bandwidth 84.1705 Hz .. 84.1705 Hz
+    119.378 Hz .. 119.378 Hz commanded  ->  0.000576701 MS/s, 26010 x 1/15 MHz, actual bandwidth 119.185 Hz .. 119.185 Hz
+    170.125 Hz .. 170.125 Hz commanded  ->  0.000823452 MS/s, 18216 x 1/15 MHz, actual bandwidth 170.18 Hz .. 170.18 Hz
+    242.446 Hz .. 242.446 Hz commanded  ->  0.00117178 MS/s, 12801 x 1/15 MHz, actual bandwidth 242.169 Hz .. 242.169 Hz
+    345.511 Hz .. 345.511 Hz commanded  ->  0.00168067 MS/s, 8925 x 1/15 MHz, actual bandwidth 347.339 Hz .. 347.339 Hz
+    492.388 Hz .. 492.388 Hz commanded  ->  0.00238095 MS/s, 6300 x 1/15 MHz, actual bandwidth 492.063 Hz .. 492.063 Hz
+    701.704 Hz .. 701.704 Hz commanded  ->  0.00340136 MS/s, 4410 x 1/15 MHz, actual bandwidth 702.948 Hz .. 702.948 Hz
+    1000 Hz .. 1000 Hz commanded  ->  0.00484809 MS/s, 3094 x 1/15 MHz, actual bandwidth 1.00194 kHz .. 1.00194 kHz
+    1.4251 kHz .. 1.4251 kHz commanded  ->  0.00691563 MS/s, 2169 x 1/15 MHz, actual bandwidth 1.42923 kHz .. 1.42923 kHz
+    2.03092 kHz .. 2.03092 kHz commanded  ->  0.00984252 MS/s, 1524 x 1/15 MHz, actual bandwidth 2.03412 kHz .. 2.03412 kHz
+    2.89427 kHz .. 2.89427 kHz commanded  ->  0.0140187 MS/s, 1070 x 1/15 MHz, actual bandwidth 2.8972 kHz .. 2.8972 kHz
+    4.12463 kHz .. 4.12463 kHz commanded  ->  0.02 MS/s, 750 x 1/15 MHz, actual bandwidth 4.13333 kHz .. 4.13333 kHz
+    5.87802 kHz .. 5.87802 kHz commanded  ->  0.0285714 MS/s, 525 x 1/15 MHz, actual bandwidth 5.90476 kHz .. 5.90476 kHz
+    8.37678 kHz .. 8.37678 kHz commanded  ->  0.0405405 MS/s, 370 x 1/15 MHz, actual bandwidth 8.37838 kHz .. 8.37838 kHz
+    11.9378 kHz .. 11.9378 kHz commanded  ->  0.0581395 MS/s, 258 x 1/15 MHz, actual bandwidth 12.0155 kHz .. 12.0155 kHz
+    17.0125 kHz .. 17.0125 kHz commanded  ->  0.0824176 MS/s, 182 x 1/15 MHz, actual bandwidth 17.033 kHz .. 17.033 kHz
+    24.2446 kHz .. 24.2446 kHz commanded  ->  0.11811 MS/s, 127 x 1/15 MHz, actual bandwidth 24.4094 kHz .. 24.4094 kHz
+    34.5511 kHz .. 34.5511 kHz commanded  ->  0.168539 MS/s, 89 x 1/15 MHz, actual bandwidth 34.8315 kHz .. 34.8315 kHz
+    49.2388 kHz .. 49.2388 kHz commanded  ->  0.241935 MS/s, 62 x 1/15 MHz, actual bandwidth 50 kHz .. 50 kHz
+    70.1704 kHz .. 70.1704 kHz commanded  ->  0.340909 MS/s, 44 x 1/15 MHz, actual bandwidth 70.4545 kHz .. 70.4545 kHz
+    100 kHz .. 100 kHz commanded  ->  0.483871 MS/s, 31 x 1/15 MHz, actual bandwidth 100 kHz .. 100 kHz
+    142.51 kHz .. 142.51 kHz commanded  ->  0.714286 MS/s, 21 x 1/15 MHz, actual bandwidth 147.619 kHz .. 147.619 kHz
+    203.092 kHz .. 203.092 kHz commanded  ->  1 MS/s, 15 x 1/15 MHz, actual bandwidth 206.667 kHz .. 206.667 kHz
+    289.427 kHz .. 289.427 kHz commanded  ->  1.5 MS/s, 10 x 1/15 MHz, actual bandwidth 310 kHz .. 310 kHz
+    412.463 kHz .. 412.463 kHz commanded  ->  2.14286 MS/s, 7 x 1/15 MHz, actual bandwidth 442.857 kHz .. 442.857 kHz
+    587.802 kHz .. 587.802 kHz commanded  ->  3 MS/s, 5 x 1/15 MHz, actual bandwidth 620 kHz .. 620 kHz
+    837.678 kHz .. 837.678 kHz commanded  ->  5 MS/s, 3 x 1/15 MHz, actual bandwidth 1.03333 MHz .. 1.03333 MHz
+    ~1.03685 MHz .. 1.19378 MHz commanded  ->  7.5 MS/s, 2 x 1/15 MHz, actual bandwidth 1.55 MHz .. 1.55 MHz
+    ~1.55791 MHz .. 10 MHz commanded  ->  15 MS/s, 1 x 1/15 MHz, actual bandwidth 3.1 MHz .. 10 MHz
+
+  every sample period a whole number of 1/15 MHz ticks: yes, at all 40 points
+  the linear estimate's worst error over this ladder: x0.1701 at 1.70125 MHz commanded
+  readings written to evidence\req-e44-007\bandwidth-law.tsv
+  bandwidth left at the widest, as connecting leaves it.

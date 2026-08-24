@@ -1235,13 +1235,39 @@ of **15 MHz**. Measured values:
 
 *The 15 MHz maximum was corrected on 23 August 2026.* An earlier revision of this requirement gave
 it as 7.5 MHz, which was the maximum **of the settings then tabulated** — the table stopped at 1 MHz
-RBW — and not the instrument's. Two independent measurements contradict it: entry 3 of
-`docs/INSTRUMENT-FIRMWARE-DEVIATIONS.md` (10 MHz RBW, 8 August 2026) and
-`evidence/req-e44-007/` (5 MHz commanded, 23 August 2026, where a 500 ksym/s QPSK signal
-demodulated at 30 samples a symbol and recovered 1024 of 1024 PN9 bits — which it could not have done
-at half that rate). **The crossover between decimation by 2 and decimation by 1 lies between 1 MHz
-and 5 MHz commanded and has not been measured.** Note also that the actual RBW may be **higher** than
-the one commanded, so it is the actual bandwidth that selects the decimation.
+RBW — and not the instrument's.
+
+**The whole law was then measured on 24 August 2026** by a 40-point geometric sweep of the entire
+10 Hz to 10 MHz range with every step boundary bisected, replacing the six points above.
+`OpenVSA.Verify --probe-bandwidth` runs it; the readings are in
+`evidence/req-e44-007/bandwidth-law.tsv`. Writing $n$ for the tick count:
+
+$$W_{actual} = \frac{W_1}{n}, \qquad F_s = \frac{F_s^{max}}{n}, \qquad\text{so}\qquad
+F_s = \frac{F_s^{max}}{W_1}\,W_{actual}$$
+
+with $W_1 = 3.1$ MHz and $F_s^{max} = 15$ MHz on the measured instrument, giving
+$F_s = 4.83871\,W_{actual}$. **That relation is exact**: over all 40 points the ratio of rate to
+actual bandwidth took three values and no others — 4.83871 at every bandwidth of 3.1 MHz or narrower,
+then 2.2388 and 1.5 at the two wider filters. Every sample period was a whole number of 1/15 MHz
+ticks, from $n = 1$ to $n = 308\,805$.
+
+Three further facts, each of which had been guessed wrongly before it was measured:
+
+- **A commanded bandwidth is rounded *up* to the next available step**, so $n$ is a floor and not a
+  round. Every bisected boundary sat just above the coarser step's own actual bandwidth.
+- **The boundaries: $5 \to 7.5$ MS/s at 1.0368 MHz commanded and $7.5 \to 15$ MS/s at 1.5578 MHz**,
+  each bracketed to better than 130 Hz. This is what "somewhere between 1 MHz and 5 MHz" became.
+- **Above $W_1$ the rate clamps and the filter widens alone.** From about 1.56 MHz commanded to the
+  full 10 MHz the rate is 15 MS/s throughout, so **a wider span buys bandwidth and not samples per
+  symbol** — it is the right choice only until the signal fits. The oversampling ratio falls to 1.5
+  at the top, which is the single point entry 3 of `docs/INSTRUMENT-FIRMWARE-DEVIATIONS.md` measured
+  and mistook for a law.
+
+**What is still not established:** that every integer $n$ is available. Forty points showed 35
+distinct ones. Predicting $F_s$ from a *commanded* bandwidth is therefore exact only at and above
+17 kHz commanded, and within **1.40 %** below it — the instrument chose 3 094 ticks at 1 kHz where
+$W_1/n$ says 3 100. That residual is left alone deliberately: the prediction exists to size a block
+before there is an instrument to ask, and the driver reads the true period back regardless.
 
 The driver shall therefore **never assume a requested sample rate is honoured**: set
 `:SENSe:WAVeform:BANDwidth:RESolution`, then **read $T_s$ back from scalar 1** and place that
@@ -1255,7 +1281,11 @@ the requested rate — a test requests a rate the instrument cannot honour and a
 block carries the coerced value, with the coercion reported through `REQ-HAL-001`'s
 negotiate-then-configure contract. Every $T_s$ returned is an integer multiple of 1/15 MHz,
 checked across the RBW settings tabulated above, and each tabulated RBW reproduces its
-measured $T_s$. A driver that echoes the requested rate fails, as does one applying the
+measured $T_s$. The rate law itself is a tested pure function, `E4406ASampleRate`, asserted
+against the sweep's own readings in `E4406ASampleRateTests` — exactly at and above 17 kHz
+commanded, and to the measured 1.40 % below it, with both step boundaries and the clamped
+region pinned. A model that interpolates linearly fails, as does one applying a fixed ratio
+of rate to bandwidth. A driver that echoes the requested rate fails, as does one applying the
 reference product's $F_s = 1.28\,\text{Span}$ law to this front end.
 
 **`REQ-E44-002c` (P0) — Record length and the truncation trap. [V]**

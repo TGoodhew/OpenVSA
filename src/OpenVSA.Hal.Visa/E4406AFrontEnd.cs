@@ -642,6 +642,107 @@ namespace OpenVSA.Hal.Visa
             DisconnectAsync().GetAwaiter().GetResult();
         }
 
+        /// <summary>
+        /// What the instrument does with one commanded information bandwidth.
+        /// </summary>
+        /// <remarks>
+        /// Both halves matter and they are not the same question. The instrument coerces the
+        /// bandwidth — "due to memory constraints the actual resolution bandwidth value may vary
+        /// from the value entered by the user" — and it then chooses a decimation from what it
+        /// settled on. So a law expressed in commanded bandwidth is a law about two steps at once.
+        /// </remarks>
+        public sealed class BandwidthReading
+        {
+            internal BandwidthReading(double commandedHz, double actualHz, double apertureSeconds)
+            {
+                CommandedHz = commandedHz;
+                ActualHz = actualHz;
+                ApertureSeconds = apertureSeconds;
+            }
+
+            /// <summary>The bandwidth asked for, in hertz.</summary>
+            public double CommandedHz { get; }
+
+            /// <summary>The bandwidth the instrument said it was using, in hertz.</summary>
+            public double ActualHz { get; }
+
+            /// <summary>The sample period the instrument reported, in seconds.</summary>
+            public double ApertureSeconds { get; }
+
+            /// <summary>The sample rate that period implies, in hertz.</summary>
+            public double SampleRateHz => ApertureSeconds > 0.0 ? 1.0 / ApertureSeconds : 0.0;
+
+            /// <summary>
+            /// How many 1/15 MHz ticks the sample period is, which is the decimation factor
+            /// (<c>REQ-E44-002b</c>).
+            /// </summary>
+            public double Ticks => ApertureSeconds * 15e6;
+
+            /// <inheritdoc />
+            public override string ToString() =>
+                (CommandedHz / 1e6).ToString("G6", CultureInfo.InvariantCulture) + " MHz asked -> " +
+                (ActualHz / 1e6).ToString("G6", CultureInfo.InvariantCulture) + " MHz actual, " +
+                (ApertureSeconds * 1e9).ToString("G6", CultureInfo.InvariantCulture) + " ns, " +
+                (SampleRateHz / 1e6).ToString("G6", CultureInfo.InvariantCulture) + " MS/s, " +
+                Ticks.ToString("G4", CultureInfo.InvariantCulture) + " ticks";
+        }
+
+        /// <summary>
+        /// Sets one information bandwidth and reads back what the instrument did with it
+        /// (<c>REQ-E44-002b</c>).
+        /// </summary>
+        /// <param name="bandwidthHz">The bandwidth to command, in hertz.</param>
+        /// <returns>What the instrument reported.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// Not connected, or a measurement is configured — see the remarks.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// A diagnostic, and the only way to learn this instrument's rate-to-bandwidth relationship
+        /// rather than assume one. <c>InstrumentLimits.EstimateSampleRate</c> interpolates linearly
+        /// between zero and the rate measured at the widest bandwidth, and that was found on
+        /// 23 August 2026 to report half the truth at a 5 MHz span, because the instrument decimates
+        /// in integer steps and holds its top rate over a range of bandwidths. Fixing the model needs
+        /// the steps measured, which needs this.
+        /// </para>
+        /// <para>
+        /// <strong>Refused unless the front end is merely connected.</strong> It moves the bandwidth,
+        /// so running it against a configured or running measurement would change the setting under
+        /// an acquisition and produce data from a configuration nobody chose. The caller restores
+        /// whatever it wants afterwards by configuring as usual; this leaves the bandwidth at the last
+        /// value it commanded and says so rather than pretending to be side-effect free.
+        /// </para>
+        /// </remarks>
+        public BandwidthReading MeasureBandwidthPoint(double bandwidthHz)
+        {
+            ThrowIfDisposed();
+
+            if (State != FrontEndState.Connected)
+            {
+                throw new InvalidOperationException(
+                    "The bandwidth probe moves a setting an acquisition depends on, so it runs only " +
+                    "on a front end that is connected and not yet configured. This one is " +
+                    State + ".");
+            }
+
+            if (!(bandwidthHz > 0.0) || double.IsInfinity(bandwidthHz))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(bandwidthHz), bandwidthHz, "A bandwidth must be positive and finite.");
+            }
+
+            IInstrumentSession session = RequireSession();
+
+            Send(session, E4406ACommands.SetBandwidth(bandwidthHz));
+
+            double actual = QueryDouble(session, E4406ACommands.ActualBandwidth);
+            double aperture = QueryDouble(session, E4406ACommands.Aperture);
+
+            ThrowOnInstrumentError(session, "probing the bandwidth law");
+
+            return new BandwidthReading(bandwidthHz, actual, aperture);
+        }
+
         private InstrumentLimits ProbeCapabilities(IInstrumentSession session)
         {
             double minCentre = QueryDouble(session, E4406ACommands.CenterFrequencyLimit(false));
@@ -655,13 +756,32 @@ namespace OpenVSA.Hal.Visa
             Send(session, E4406ACommands.SetBandwidth(maxSpan));
             double apertureAtMaxSpan = QueryDouble(session, E4406ACommands.Aperture);
 
+            double maxSampleRate = apertureAtMaxSpan > 0.0 ? 1.0 / apertureAtMaxSpan : maxSpan;
+
             double samplesPerSecond = MeasureTransferRate(session, apertureAtMaxSpan);
+
+            // A second reading, taken well inside the region where the rate still tracks the
+            // bandwidth, because the widest bandwidth is in the CLAMPED region and cannot reveal the
+            // constant the law needs. A thirty-second of the maximum is the margin: on the measured
+            // instrument the clamp begins at about a third of the widest bandwidth, so this is an
+            // order of magnitude clear of it, and `ReferenceBandwidthFrom` does not care which
+            // decimation step it lands on. Costs two queries at connect, once.
+            Send(session, E4406ACommands.SetBandwidth(maxSpan / 32.0));
+
+            double referenceBandwidth = E4406ASampleRate.ReferenceBandwidthFrom(
+                QueryDouble(session, E4406ACommands.ActualBandwidth),
+                QueryDouble(session, E4406ACommands.Aperture),
+                maxSampleRate);
+
+            // Handed back at the widest, which is where the rest of connect expects to find it.
+            Send(session, E4406ACommands.SetBandwidth(maxSpan));
 
             return new InstrumentLimits(
                 new FrequencyRange(minCentre, maxCentre),
                 minSpan,
                 maxSpan,
-                apertureAtMaxSpan > 0.0 ? 1.0 / apertureAtMaxSpan : maxSpan,
+                maxSampleRate,
+                referenceBandwidth,
                 maxSweep,
 
                 // The display reference level, not a commanded input range: this instrument
@@ -1013,12 +1133,14 @@ namespace OpenVSA.Hal.Visa
 
             private readonly double _maxSweepSeconds;
             private readonly double _samplesPerSecond;
+            private readonly double _referenceBandwidthHz;
 
             public InstrumentLimits(
                 FrequencyRange centre,
                 double minSpanHz,
                 double maxSpanHz,
                 double maxSampleRateHz,
+                double referenceBandwidthHz,
                 double maxSweepSeconds,
                 AmplitudeRange referenceLevel,
                 double samplesPerSecond)
@@ -1027,10 +1149,17 @@ namespace OpenVSA.Hal.Visa
                 MinSpanHz = minSpanHz;
                 MaxSpanHz = maxSpanHz;
                 MaxSampleRateHz = maxSampleRateHz;
+                _referenceBandwidthHz = referenceBandwidthHz;
                 _maxSweepSeconds = maxSweepSeconds;
                 ReferenceLevelRange = referenceLevel;
                 _samplesPerSecond = samplesPerSecond;
             }
+
+            /// <summary>
+            /// The widest bandwidth at which this instrument still samples at its maximum rate, in
+            /// hertz — measured at connect. Zero if it could not be measured.
+            /// </summary>
+            public double ReferenceBandwidthHz => _referenceBandwidthHz;
 
             /// <summary>Measured transfer rate in samples per second, or 0 if unknown.</summary>
             public double SamplesPerSecond => _samplesPerSecond;
@@ -1096,31 +1225,22 @@ namespace OpenVSA.Hal.Visa
             /// </summary>
             /// <remarks>
             /// <para>
-            /// An estimate, and labelled one. The instrument decimates in steps, so the true rate
-            /// for an arbitrary bandwidth is only known once it has been set — which is why
-            /// <c>ConfigureAsync</c> asks for it again and every block carries the answer.
+            /// Still an estimate, and still labelled one — the instrument is asked again in
+            /// <c>ConfigureAsync</c> and every block carries the period it actually used, which is
+            /// what makes a measurement right. What changed on 24 August 2026 is that this is now
+            /// the measured law rather than a straight line through it.
             /// </para>
             /// <para>
-            /// <strong>Treat it as a lower bound, not an approximation.</strong> Measured
-            /// 23 August 2026: at a 5 MHz span this returns 7.5 MS/s and the instrument delivers
-            /// 15 MS/s, because integer decimation holds the top rate over a range of bandwidths
-            /// where a straight line through the maximum halves it. Sizing a block from this
-            /// therefore asks for a capture shorter in time than intended, while still getting the
-            /// number of samples requested. Nothing downstream may treat it as the rate: see
-            /// <c>docs/INSTRUMENT-FIRMWARE-DEVIATIONS.md</c> entry 7 for what a correct model would
-            /// need, which is a measurement that has not been made.
+            /// <strong>The line it replaced was wrong by 5.9× at its worst.</strong> Interpolating
+            /// linearly between zero and the rate at the widest bandwidth reported ×0.170 of the
+            /// truth at 1.70 MHz commanded, because the top decimation step spans 1.56 MHz to 10 MHz
+            /// at one rate and no straight line fits a staircase. A 40-point sweep with every step
+            /// boundary bisected is in <c>evidence/req-e44-007/</c>; the law itself, and what the
+            /// sweep did NOT establish, is in <see cref="E4406ASampleRate"/>.
             /// </para>
             /// </remarks>
-            public double EstimateSampleRate(double spanHz)
-            {
-                if (!(MaxSpanHz > 0.0))
-                {
-                    return MaxSampleRateHz;
-                }
-
-                double scaled = MaxSampleRateHz * (spanHz / MaxSpanHz);
-                return scaled > MaxSampleRateHz ? MaxSampleRateHz : scaled;
-            }
+            public double EstimateSampleRate(double spanHz) =>
+                E4406ASampleRate.For(spanHz, _referenceBandwidthHz, MaxSampleRateHz);
 
             /// <summary>
             /// Samples the instrument can deliver in one block at a rate.

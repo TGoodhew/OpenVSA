@@ -662,6 +662,356 @@ namespace OpenVSA.Verify
             return false;
         }
 
+        /// <summary>
+        /// Measures the analyser's bandwidth-to-sample-rate law in the instrument's own steps
+        /// (<c>REQ-E44-002b</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Why this exists.</strong> `REQ-E44-002b` had its maximum sample rate wrong until
+        /// 23 August 2026 because it was read off the end of a table of six settings, and
+        /// <c>EstimateSampleRate</c> still interpolates linearly between zero and the rate at the
+        /// widest bandwidth — which measured half the truth at a 5 MHz span. Six points cannot
+        /// distinguish a line from a staircase. This measures the staircase.
+        /// </para>
+        /// <para>
+        /// <strong>A ladder, then a bisection, because a ladder alone only bounds a boundary.</strong>
+        /// A geometric ladder over the whole range finds how many distinct sample periods there are
+        /// and roughly where each begins. That is enough to know the shape and not enough to state a
+        /// law: between two adjacent rungs with different periods the boundary could be anywhere. So
+        /// every such gap is then bisected to a tenth of a per cent, which is what turns "somewhere
+        /// between 1 and 5 MHz" — the honest but useless answer this replaces — into a number.
+        /// </para>
+        /// <para>
+        /// <strong>Two coercions, not one.</strong> The instrument coerces the commanded bandwidth to
+        /// one it can afford, and then picks a decimation from what it settled on. Both are recorded
+        /// at every point, because a law stated in commanded bandwidth silently composes the two and
+        /// would not survive a firmware that changed either.
+        /// </para>
+        /// </remarks>
+        private static async Task<int> ProbeBandwidth(Options options)
+        {
+            const int LadderPoints = 40;
+            const int BisectionLimit = 16;
+
+            Console.WriteLine("OpenVSA analyser bandwidth law");
+            Console.WriteLine("  analyser  " + options.AnalyserResource);
+            Console.WriteLine();
+
+            using (var frontEnd = new E4406AFrontEnd(options.AnalyserResource, null))
+            {
+                await frontEnd.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
+
+                Console.WriteLine("  measuring with " + frontEnd.DisplayName.Split('\n')[0].Trim());
+
+                double minimum = frontEnd.Capabilities.MinSpanHz;
+                double maximum = frontEnd.Capabilities.MaxSpanHz;
+
+                Console.WriteLine(
+                    "  the instrument reports bandwidth limits of " +
+                    Engineering(minimum) + "Hz to " + Engineering(maximum) + "Hz, and a maximum " +
+                    "sample rate of " +
+                    (frontEnd.Capabilities.MaxSampleRateHz / 1e6).ToString(
+                        "G6", CultureInfo.InvariantCulture) + " MS/s");
+                Console.WriteLine();
+
+                var readings = new List<E4406AFrontEnd.BandwidthReading>();
+
+                Console.WriteLine("  ladder of " + LadderPoints + " points, geometric:");
+
+                for (int point = 0; point < LadderPoints; point++)
+                {
+                    double fraction = point / (double)(LadderPoints - 1);
+                    double commanded = minimum * Math.Pow(maximum / minimum, fraction);
+
+                    E4406AFrontEnd.BandwidthReading reading =
+                        frontEnd.MeasureBandwidthPoint(commanded);
+
+                    readings.Add(reading);
+                    Console.WriteLine("    " + reading);
+                }
+
+                Console.WriteLine();
+
+                // Every place two adjacent rungs disagree is a boundary the ladder has only bounded.
+                var steps = new List<StepBoundary>();
+
+                for (int point = 1; point < readings.Count; point++)
+                {
+                    if (SamePeriod(readings[point - 1], readings[point]))
+                    {
+                        continue;
+                    }
+
+                    double low = readings[point - 1].CommandedHz;
+                    double high = readings[point].CommandedHz;
+                    double lowPeriod = readings[point - 1].ApertureSeconds;
+
+                    E4406AFrontEnd.BandwidthReading below = readings[point - 1];
+                    E4406AFrontEnd.BandwidthReading above = readings[point];
+
+                    for (int iteration = 0; iteration < BisectionLimit; iteration++)
+                    {
+                        if (high - low <= Math.Max(1.0, high * 1e-4))
+                        {
+                            break;
+                        }
+
+                        double middle = (low + high) / 2.0;
+                        E4406AFrontEnd.BandwidthReading probe =
+                            frontEnd.MeasureBandwidthPoint(middle);
+
+                        if (Math.Abs(probe.ApertureSeconds - lowPeriod) <=
+                            lowPeriod * PeriodTolerance)
+                        {
+                            low = middle;
+                            below = probe;
+                        }
+                        else
+                        {
+                            high = middle;
+                            above = probe;
+                        }
+                    }
+
+                    steps.Add(new StepBoundary(low, high, below, above));
+                }
+
+                Console.WriteLine("  boundaries, bisected:");
+
+                if (steps.Count == 0)
+                {
+                    Console.WriteLine(
+                        "    none — one sample period covered the whole range, which would make the " +
+                        "linear model wrong everywhere rather than in places.");
+                }
+
+                foreach (StepBoundary step in steps)
+                {
+                    Console.WriteLine("    " + step);
+                }
+
+                Console.WriteLine();
+                Console.WriteLine("  the law, as measured:");
+
+                foreach (string row in Runs(readings, steps))
+                {
+                    Console.WriteLine("    " + row);
+                }
+
+                Console.WriteLine();
+
+                int notIntegral = 0;
+
+                foreach (E4406AFrontEnd.BandwidthReading reading in readings)
+                {
+                    if (Math.Abs(reading.Ticks - Math.Round(reading.Ticks)) > 0.01)
+                    {
+                        Console.WriteLine(
+                            "    NOT A WHOLE NUMBER OF 1/15 MHz TICKS: " + reading);
+                        notIntegral++;
+                    }
+                }
+
+                Console.WriteLine(
+                    "  every sample period a whole number of 1/15 MHz ticks: " +
+                    (notIntegral == 0 ? "yes, at all " + readings.Count + " points"
+                        : "NO, at " + notIntegral + " of " + readings.Count + " points"));
+
+                // Measured against the model the planner actually uses, because "the estimate is
+                // wrong" is worth nothing without the size of the error and where it is worst.
+                double worst = 1.0;
+                double worstDistance = 0.0;
+                double worstAt = 0.0;
+
+                foreach (E4406AFrontEnd.BandwidthReading reading in readings)
+                {
+                    if (!(reading.SampleRateHz > 0.0))
+                    {
+                        continue;
+                    }
+
+                    double estimated = frontEnd.Capabilities.MaxSampleRateHz *
+                        (reading.CommandedHz / frontEnd.Capabilities.MaxSpanHz);
+
+                    if (estimated > frontEnd.Capabilities.MaxSampleRateHz)
+                    {
+                        estimated = frontEnd.Capabilities.MaxSampleRateHz;
+                    }
+
+                    double ratio = estimated / reading.SampleRateHz;
+                    double distance = Math.Abs(Math.Log(ratio));
+
+                    if (distance > worstDistance)
+                    {
+                        worstDistance = distance;
+                        worst = ratio;
+                        worstAt = reading.CommandedHz;
+                    }
+                }
+
+                Console.WriteLine(
+                    "  the linear estimate's worst error over this ladder: x" +
+                    worst.ToString("G4", CultureInfo.InvariantCulture) + " at " +
+                    Engineering(worstAt) + "Hz commanded");
+
+                if (!string.IsNullOrEmpty(options.ResultFile))
+                {
+                    WriteBandwidthFile(options.ResultFile, readings);
+                    Console.WriteLine("  readings written to " + options.ResultFile);
+                }
+
+                // Left at the widest bandwidth, which is where connecting leaves it anyway: probing
+                // the capabilities sets it there. Said rather than implied, because a probe that
+                // moves a setting and stays quiet about it is how a bench ends up in a state nobody
+                // chose.
+                frontEnd.MeasureBandwidthPoint(maximum);
+                Console.WriteLine("  bandwidth left at the widest, as connecting leaves it.");
+
+                return notIntegral == 0 ? 0 : 1;
+            }
+        }
+
+        /// <summary>How closely two sample periods must agree to be the same decimation step.</summary>
+        /// <remarks>
+        /// Loose enough for the instrument's own rounding of a period it reports in nanoseconds,
+        /// tight enough that adjacent steps — which differ by whole ticks, so never by less than a
+        /// half — cannot be confused. Nothing in between exists to be misjudged.
+        /// </remarks>
+        private const double PeriodTolerance = 1e-6;
+
+        private static bool SamePeriod(
+            E4406AFrontEnd.BandwidthReading first, E4406AFrontEnd.BandwidthReading second) =>
+            Math.Abs(first.ApertureSeconds - second.ApertureSeconds) <=
+                Math.Max(first.ApertureSeconds, second.ApertureSeconds) * PeriodTolerance;
+
+        /// <summary>Where the instrument changes decimation, bracketed as tightly as it was found.</summary>
+        private sealed class StepBoundary
+        {
+            public StepBoundary(
+                double lastLowHz,
+                double firstHighHz,
+                E4406AFrontEnd.BandwidthReading below,
+                E4406AFrontEnd.BandwidthReading above)
+            {
+                LastLowHz = lastLowHz;
+                FirstHighHz = firstHighHz;
+                Below = below;
+                Above = above;
+            }
+
+            /// <summary>The widest commanded bandwidth still on the slower side.</summary>
+            public double LastLowHz { get; }
+
+            /// <summary>The narrowest commanded bandwidth found on the faster side.</summary>
+            public double FirstHighHz { get; }
+
+            /// <summary>The reading just below the boundary.</summary>
+            public E4406AFrontEnd.BandwidthReading Below { get; }
+
+            /// <summary>The reading just above it.</summary>
+            public E4406AFrontEnd.BandwidthReading Above { get; }
+
+            /// <inheritdoc />
+            public override string ToString() =>
+                Engineering(LastLowHz) + "Hz .. " + Engineering(FirstHighHz) + "Hz commanded: " +
+                (Below.SampleRateHz / 1e6).ToString("G6", CultureInfo.InvariantCulture) + " MS/s (" +
+                Math.Round(Below.Ticks) + " ticks, " + Engineering(Below.ActualHz) +
+                "Hz actual) becomes " +
+                (Above.SampleRateHz / 1e6).ToString("G6", CultureInfo.InvariantCulture) + " MS/s (" +
+                Math.Round(Above.Ticks) + " ticks, " + Engineering(Above.ActualHz) + "Hz actual)" +
+                ", bracketed to " +
+                (FirstHighHz - LastLowHz <= 0.0
+                    ? "nothing"
+                    : Engineering(FirstHighHz - LastLowHz) + "Hz");
+        }
+
+        /// <summary>Collapses the ladder into the runs of commanded bandwidth that share a rate.</summary>
+        private static IReadOnlyList<string> Runs(
+            IReadOnlyList<E4406AFrontEnd.BandwidthReading> readings,
+            IReadOnlyList<StepBoundary> steps)
+        {
+            var rows = new List<string>();
+
+            if (readings.Count == 0)
+            {
+                return rows;
+            }
+
+            int start = 0;
+
+            for (int point = 1; point <= readings.Count; point++)
+            {
+                bool last = point == readings.Count;
+
+                if (!last && SamePeriod(readings[point - 1], readings[point]))
+                {
+                    continue;
+                }
+
+                E4406AFrontEnd.BandwidthReading first = readings[start];
+                E4406AFrontEnd.BandwidthReading final = readings[point - 1];
+
+                // The run's true lower edge is the bisected boundary below it where there is one,
+                // not the rung that happened to be measured.
+                string from = Engineering(first.CommandedHz) + "Hz";
+
+                foreach (StepBoundary step in steps)
+                {
+                    if (SamePeriod(step.Above, first))
+                    {
+                        from = "~" + Engineering(step.FirstHighHz) + "Hz";
+                    }
+                }
+
+                rows.Add(
+                    from + " .. " + Engineering(final.CommandedHz) + "Hz commanded  ->  " +
+                    (first.SampleRateHz / 1e6).ToString("G6", CultureInfo.InvariantCulture) +
+                    " MS/s, " + Math.Round(first.Ticks) + " x 1/15 MHz, actual bandwidth " +
+                    Engineering(first.ActualHz) + "Hz .. " + Engineering(final.ActualHz) + "Hz");
+
+                start = point;
+            }
+
+            return rows;
+        }
+
+        private static void WriteBandwidthFile(
+            string path, IReadOnlyList<E4406AFrontEnd.BandwidthReading> readings)
+        {
+            var text = new StringBuilder();
+            text.AppendLine("commanded_hz\tactual_hz\taperture_s\tsample_rate_hz\tticks");
+
+            foreach (E4406AFrontEnd.BandwidthReading reading in readings)
+            {
+                text.AppendLine(string.Join(
+                    "\t",
+                    Invariant(reading.CommandedHz),
+                    Invariant(reading.ActualHz),
+                    Invariant(reading.ApertureSeconds),
+                    Invariant(reading.SampleRateHz),
+                    Invariant(reading.Ticks)));
+            }
+
+            File.WriteAllText(path, text.ToString());
+        }
+
+        /// <summary>Formats a frequency with an engineering prefix, so a table can be read.</summary>
+        private static string Engineering(double hertz)
+        {
+            if (hertz >= 1e6)
+            {
+                return (hertz / 1e6).ToString("G6", CultureInfo.InvariantCulture) + " M";
+            }
+
+            if (hertz >= 1e3)
+            {
+                return (hertz / 1e3).ToString("G6", CultureInfo.InvariantCulture) + " k";
+            }
+
+            return hertz.ToString("G6", CultureInfo.InvariantCulture) + " ";
+        }
+
         private static int ListResources()
         {
             FrontEndRegistry registry = FrontEndRegistry.CreateDefault();
@@ -726,6 +1076,11 @@ namespace OpenVSA.Verify
             if (options.CheckDemodulation)
             {
                 return await DemodCheck(options).ConfigureAwait(false);
+            }
+
+            if (options.ProbeBandwidth)
+            {
+                return await ProbeBandwidth(options).ConfigureAwait(false);
             }
 
             Console.WriteLine("OpenVSA cross-validation");
@@ -897,6 +1252,11 @@ namespace OpenVSA.Verify
             /// </summary>
             public bool CheckDemodulation { get; private set; }
 
+            /// <summary>
+            /// Whether to measure the analyser's bandwidth-to-sample-rate law in its own steps.
+            /// </summary>
+            public bool ProbeBandwidth { get; private set; }
+
             public string ResultFile { get; private set; }
 
             public bool UseSimulatedStimulus { get; private set; }
@@ -958,6 +1318,10 @@ namespace OpenVSA.Verify
                             options.CheckDemodulation = true;
                             break;
 
+                        case "--probe-bandwidth":
+                            options.ProbeBandwidth = true;
+                            break;
+
                         case "--simulated-stimulus":
                             options.UseSimulatedStimulus = true;
                             break;
@@ -988,6 +1352,8 @@ namespace OpenVSA.Verify
                 Console.WriteLine("                          identified where safe, and stop");
                 Console.WriteLine("  --probe-modulation      ask the generator what it really does");
                 Console.WriteLine("                          with a digital modulation, and leave it off");
+                Console.WriteLine("  --probe-bandwidth       measure the analyser's bandwidth-to-sample-rate");
+                Console.WriteLine("                          law in its own steps; needs no generator");
                 Console.WriteLine("  --demod-check           demodulate a real modulated signal and check");
                 Console.WriteLine("                          the bits against the sequence sent; chooses its");
                 Console.WriteLine("                          own span, because the span sets the sample rate");
