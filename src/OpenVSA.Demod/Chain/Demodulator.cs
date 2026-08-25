@@ -297,8 +297,15 @@ namespace OpenVSA.Demod.Chain
             // REQ-DEM-053: the channel the equaliser undoes, from the taps the chain finished
             // with. Computed here rather than in step 11 because the equaliser re-enters while its
             // coefficients are still moving, and only the last set is the answer.
+            // 🔴 TWICE the symbol rate, because the taps are spaced half a symbol apart. They used
+            // to be spaced at the internal rate and this said so; when #432 moved them to T/2 the
+            // frequency axis stayed behind, which puts every feature of the response at twice the
+            // frequency it belongs at.
             ChannelResponse channel = ChannelEstimate.For(
                 context.EqualiserCoefficients,
+                2.0 * settings.SymbolRateHz,
+                settings.ReferencePulse.Taps(
+                    settings.PointsPerSymbol, settings.FilterSymbolSpan, FilterRole.Reference),
                 settings.SymbolRateHz * settings.PointsPerSymbol,
                 SignalToNoiseDb(context.Summary));
 

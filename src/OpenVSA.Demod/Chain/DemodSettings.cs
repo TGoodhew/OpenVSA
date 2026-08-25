@@ -58,6 +58,19 @@ namespace OpenVSA.Demod.Chain
         public const int DefaultMaxPasses = 3;
 
         /// <summary>
+        /// The equaliser's filter length in symbols, when nothing says otherwise
+        /// (<c>REQ-DEM-051</c>).
+        /// </summary>
+        /// <remarks>
+        /// Eleven symbols, which at two taps a symbol is twenty-two taps. Long enough to invert the
+        /// channels a receiver meets -- a reflection a symbol or two late needs several symbols of
+        /// filter to undo, because the inverse of a delayed echo is an infinite series that decays
+        /// at the echo's own amplitude -- and short enough that the fit is well determined by a few
+        /// hundred symbols of signal.
+        /// </remarks>
+        public const int DefaultEqualiserLengthSymbols = 11;
+
+        /// <summary>
         /// The default filter span, in symbols either side of centre (<c>REQ-DEM-023</c>).
         /// </summary>
         /// <remarks>
@@ -473,7 +486,26 @@ namespace OpenVSA.Demod.Chain
         }
 
         /// <summary>How many taps the equaliser has; an odd count.</summary>
-        public int EqualiserTaps { get; set; } = 21;
+        public int EqualiserLengthSymbols { get; set; } = DefaultEqualiserLengthSymbols;
+
+        /// <summary>
+        /// How many taps <see cref="EqualiserLengthSymbols"/> comes to (<c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Two taps per symbol, and the requirement asks for that to be said out loud.</strong>
+        /// The taps are spaced half a symbol apart, so an N-symbol filter is <em>2N taps</em> —
+        /// which <c>REQ-DEM-052</c> calls "a frequent source of confusion" and instructs the UI to
+        /// state. It is computed rather than set so the two can never disagree.
+        /// </para>
+        /// <para>
+        /// T/2 rather than the internal rate because the fit's Nyquist frequency then sits at the
+        /// symbol rate, where the signal fills about two thirds of the band. At the internal rate the
+        /// band is twice as wide and two thirds of the solution's degrees of freedom sit where there
+        /// is no signal to constrain them, which is where an ill-conditioned fit gets its bias from.
+        /// </para>
+        /// </remarks>
+        public int EqualiserTaps => 2 * EqualiserLengthSymbols;
 
         /// <summary>
         /// How much the equaliser must change the waveform for it to ask for a re-entry.
@@ -654,8 +686,14 @@ namespace OpenVSA.Demod.Chain
             Require(
                 ReferenceFilterAlpha >= 0.0 && ReferenceFilterAlpha <= 1.0,
                 "The reference filter's roll-off runs from 0 to 1.");
-            Require(EqualiserTaps >= 1 && (EqualiserTaps % 2) == 1, "The equaliser has an odd number of taps.");
-            Require(EqualiserUpdateThreshold >= 0.0, "The equaliser's update threshold is not negative.");
+            Require(
+                EqualiserLengthSymbols >= 1,
+                "The equaliser's filter is at least one symbol long (REQ-DEM-051).");
+
+            Require(
+                EqualiserUpdateThreshold >= 0.0 && EqualiserUpdateThreshold < 1.0,
+                "The equaliser's update threshold is the fraction by which a pass must reduce the " +
+                "fit residual to be worth taking, so it lies in [0, 1).");
             Require(MaxRefinementIterations >= 1, "Step 8 is allowed at least one iteration.");
             Require(RefinementTolerance > 0.0, "The convergence criterion is a positive tolerance.");
             Require(MaxPasses >= 1, "The chain runs at least one pass.");

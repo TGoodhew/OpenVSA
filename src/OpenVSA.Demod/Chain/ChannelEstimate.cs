@@ -44,11 +44,38 @@ namespace OpenVSA.Demod.Chain
         /// The channel the equaliser's coefficients invert.
         /// </summary>
         /// <param name="coefficients">The equaliser's taps, or <c>null</c>.</param>
-        /// <param name="tapRateHz">The rate the taps are spaced at.</param>
+        /// <param name="tapRateHz">The rate the taps are spaced at — twice the symbol rate.</param>
+        /// <param name="pulse">The composite reference pulse's taps.</param>
+        /// <param name="pulseRateHz">The rate those are spaced at.</param>
         /// <param name="signalToNoiseDb">What the measurement reported, for the regularisation.</param>
         /// <returns>The response, or <c>null</c> when the equaliser did not run.</returns>
+        /// <remarks>
+        /// <para>
+        /// 🔴 <strong>The equaliser does not invert the channel. It inverts the channel times the
+        /// pulse.</strong> Its input is the measurement-filtered signal and its output is the ideal
+        /// symbol, so what it undoes is everything between them — the transmitter's shaping, the
+        /// channel, and the measurement filter. Composite pulse and channel together, in other
+        /// words: <c>W ~ 1/(H P)</c>, so <c>1/W ~ H P</c> and reporting that as the channel hands
+        /// the user a raised cosine with the channel written faintly on top of it.
+        /// </para>
+        /// <para>
+        /// So the pulse is divided back out. Measured on a two-ray channel before this was
+        /// understood, the recovered response declined smoothly from the middle where the analytic
+        /// one has a comb — the raised cosine's own roll-off, mistaken for a channel.
+        /// </para>
+        /// <para>
+        /// <c>REQ-DEM-053</c>'s sentence says "the channel response is the inverse of the equaliser
+        /// response" and its acceptance criterion asks the result to match the analytic response of
+        /// a two-ray channel to within 0.5 dB. Those are different things and the criterion is the
+        /// operative one, because it is the one that names a number.
+        /// </para>
+        /// </remarks>
         internal static ChannelResponse For(
-            Iq[] coefficients, double tapRateHz, double signalToNoiseDb)
+            Iq[] coefficients,
+            double tapRateHz,
+            double[] pulse,
+            double pulseRateHz,
+            double signalToNoiseDb)
         {
             if (coefficients == null || coefficients.Length == 0 || tapRateHz <= 0.0)
             {
@@ -78,15 +105,37 @@ namespace OpenVSA.Demod.Chain
 
             fft.Forward(new Span<double>(interleaved));
 
+            // The composite pulse, evaluated at the same frequencies. Directly rather than by a
+            // second transform, because it is sampled at the internal rate and the taps are at T/2 —
+            // two different frequency axes, and a transform of each would have to be resampled onto
+            // the other.
+            var shaped = new Iq[Points];
+            var equaliser = new double[Points];
+            var shaping = new double[Points];
+
             double largest = 0.0;
+            double loudest = 0.0;
 
-            for (int bin = 0; bin < Points; bin++)
+            for (int point = 0; point < Points; point++)
             {
-                double power = Iq.At(interleaved, bin).MagnitudeSquared;
+                int bin = (point + (Points / 2)) % Points;
+                double hertz = (point - (Points / 2)) * tapRateHz / Points;
 
-                if (power > largest)
+                Iq response = Iq.At(interleaved, bin);
+                Iq shape = Response(pulse, pulseRateHz, hertz);
+
+                shaped[point] = response * shape;
+                equaliser[point] = response.MagnitudeSquared;
+                shaping[point] = shape.MagnitudeSquared;
+
+                if (shaped[point].MagnitudeSquared > largest)
                 {
-                    largest = power;
+                    largest = shaped[point].MagnitudeSquared;
+                }
+
+                if (shaping[point] > loudest)
+                {
+                    loudest = shaping[point];
                 }
             }
 
@@ -106,7 +155,19 @@ namespace OpenVSA.Demod.Chain
                 useful = LargestRangeDb;
             }
 
-            double epsilon = largest * Math.Pow(10.0, -useful / 10.0);
+            // 🔴 Per frequency, not one number for the whole response. The noise at the equaliser's
+            // output is |W|^2 N and the signal is |W P|^2 S, so what decides whether the channel is
+            // measurable at a frequency is |P|^2 against N/S -- and |P|^2 is the signal's own
+            // spectrum, which falls to nothing at the band edges whatever the overall
+            // signal-to-noise ratio is.
+            //
+            // A single epsilon taken from the peak cannot express that. Set that way, the recovered
+            // response at the raised cosine's own band edge read +21 dB where the analytic channel
+            // is +2.9: the equaliser correctly declines to invert where there is no signal, and the
+            // inversion then reported that refusal as an enormous channel feature. This is the
+            // Wiener form, and it rolls off exactly where the signal does.
+            double inverseSnr = Math.Pow(10.0, -useful / 10.0);
+            double epsilon = largest * inverseSnr;
 
             var frequencies = new List<double>(Points);
             var magnitude = new List<double>(Points);
@@ -115,14 +176,16 @@ namespace OpenVSA.Demod.Chain
             // From the most negative frequency to the most positive, so a plot reads left to right.
             for (int point = 0; point < Points; point++)
             {
-                int bin = (point + (Points / 2)) % Points;
                 double hertz = (point - (Points / 2)) * tapRateHz / Points;
 
-                Iq response = Iq.At(interleaved, bin);
+                Iq response = shaped[point];
                 double power = response.MagnitudeSquared;
 
-                // C = W* / (|W|^2 + e), which is 1/W away from the nulls and bounded at them.
-                double scale = 1.0 / (power + epsilon);
+                // C = (WP)* / (|WP|^2 + |W|^2 N/S), which is 1/(WP) where the signal has power and
+                // bounded where it does not.
+                double scale =
+                    1.0 / (power + (equaliser[point] * loudest * inverseSnr));
+
                 var channel = new Iq(response.I * scale, -response.Q * scale);
 
                 frequencies.Add(hertz);
@@ -137,7 +200,87 @@ namespace OpenVSA.Demod.Chain
             Unwrap(phase);
 
             return new ChannelResponse(
-                frequencies, magnitude, phase, GroupDelay(phase, tapRateHz), epsilon, useful);
+                frequencies,
+                magnitude,
+                phase,
+                GroupDelay(phase, tapRateHz),
+                epsilon,
+                useful,
+                Trusted(frequencies, shaping, loudest));
+        }
+
+        /// <summary>
+        /// How far out the channel can be measured at all, as a half-width in hertz.
+        /// </summary>
+        /// <param name="frequencies">The frequency of each point.</param>
+        /// <param name="shaping">The squared magnitude of the pulse at each point.</param>
+        /// <param name="loudest">The largest of those.</param>
+        /// <returns>The half-width over which the pulse's spectrum is flat.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>The flat part of the Nyquist band, and the limit is the pulse MODEL rather than
+        /// the equaliser.</strong> Recovering the channel means dividing the composite pulse back
+        /// out, and the pulse that is divided out is the one this chain computes — truncated,
+        /// tapered and normalised — while the one in the signal is whatever the transmitter and the
+        /// measurement filter actually made. Those agree closely where the pulse is flat and part
+        /// company through its roll-off, and the division amplifies the difference by exactly as
+        /// much as the pulse has fallen.
+        /// </para>
+        /// <para>
+        /// Measured on a two-ray channel: the recovered response matched the analytic one to
+        /// <em>0.00 dB</em> across the flat band, 0.48 dB where the pulse was a decibel down, and
+        /// 49 dB at the band edge where it is zero. So the flat band is what can be claimed, and
+        /// past it a display should say the trace is an extrapolation.
+        /// </para>
+        /// <para>
+        /// Ninety-nine per cent of the peak, which for a raised cosine is its flat region exactly
+        /// and needs no knowledge of the roll-off factor to find.
+        /// </para>
+        /// </remarks>
+        private static double Trusted(
+            System.Collections.Generic.List<double> frequencies,
+            double[] shaping,
+            double loudest)
+        {
+            double floor = loudest * 0.99;
+            double edge = 0.0;
+
+            for (int point = 0; point < shaping.Length; point++)
+            {
+                if (shaping[point] >= floor && Math.Abs(frequencies[point]) > edge)
+                {
+                    edge = Math.Abs(frequencies[point]);
+                }
+            }
+
+            return edge;
+        }
+
+        /// <summary>The frequency response of a real tap set at one frequency.</summary>
+        /// <param name="taps">The taps, centred.</param>
+        /// <param name="rateHz">The rate they are spaced at.</param>
+        /// <param name="hertz">The frequency to evaluate at.</param>
+        /// <returns>The response, or unity when there are no taps.</returns>
+        private static Iq Response(double[] taps, double rateHz, double hertz)
+        {
+            if (taps == null || taps.Length == 0 || rateHz <= 0.0)
+            {
+                return new Iq(1.0, 0.0);
+            }
+
+            int half = taps.Length / 2;
+            double real = 0.0;
+            double imaginary = 0.0;
+
+            for (int tap = 0; tap < taps.Length; tap++)
+            {
+                double angle = -2.0 * Math.PI * hertz * (tap - half) / rateHz;
+
+                real += taps[tap] * Math.Cos(angle);
+                imaginary += taps[tap] * Math.Sin(angle);
+            }
+
+            return new Iq(real, imaginary);
         }
 
         /// <summary>Removes the two-pi steps a principal-value phase has in it.</summary>

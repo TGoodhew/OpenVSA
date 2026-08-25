@@ -48,7 +48,8 @@ namespace OpenVSA.Demod.Results
             IList<double> phaseDegrees,
             IList<double> groupDelaySeconds,
             double epsilon,
-            double signalToNoiseDb)
+            double signalToNoiseDb,
+            double trustedHalfWidthHz)
         {
             _frequencies = new ReadOnlyCollection<double>(frequenciesHz);
             _magnitudeDb = new ReadOnlyCollection<double>(magnitudeDb);
@@ -57,6 +58,7 @@ namespace OpenVSA.Demod.Results
 
             Epsilon = epsilon;
             SignalToNoiseDb = signalToNoiseDb;
+            TrustedHalfWidthHz = trustedHalfWidthHz;
         }
 
         /// <summary>The frequency of each point, in hertz, relative to the carrier.</summary>
@@ -86,6 +88,29 @@ namespace OpenVSA.Demod.Results
         /// <summary>The signal-to-noise ratio <see cref="Epsilon"/> was derived from, in decibels.</summary>
         public double SignalToNoiseDb { get; }
 
+        /// <summary>
+        /// How far either side of the carrier the response is a measurement rather than a
+        /// regularisation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A channel cannot be measured where the signal carries no power, and a pulse-shaped signal
+        /// carries almost none at the edge of the band it occupies — the spectrum of a raised cosine
+        /// is zero there by construction. Beyond this half-width the trace is held up by its
+        /// regularisation, and a display should show that it is: greyed, dashed, or simply not
+        /// drawn.
+        /// </para>
+        /// <para>
+        /// Taken as the flat part of the pulse's spectrum — the band where its own power is within
+        /// one per cent of its peak, which for a raised cosine is its Nyquist flat region exactly.
+        /// Beyond it the channel is recovered by dividing out a MODELLED pulse, and the model's own
+        /// error is amplified by however far the pulse has fallen: measured on a two-ray channel,
+        /// the recovered response is exact across the flat band, half a decibel out where the pulse
+        /// is a decibel down, and meaningless at the band edge where the pulse is zero.
+        /// </para>
+        /// </remarks>
+        public double TrustedHalfWidthHz { get; }
+
         /// <summary>How many points the response has.</summary>
         public int Count => _frequencies.Count;
 
@@ -97,13 +122,16 @@ namespace OpenVSA.Demod.Results
         /// and this is the annotation: what was done, why, and the number it was done with.
         /// </remarks>
         public string Regularisation =>
-            "Inverted as W*/(|W|^2 + e) with e = " +
-            Epsilon.ToString("G4", CultureInfo.InvariantCulture) +
-            ", set from the measurement's own signal-to-noise ratio of " +
+            "Inverted as (WP)*/(|WP|^2 + |W|^2 N/S) with the noise-to-signal ratio taken from the " +
+            "measurement's own signal-to-noise ratio of " +
             SignalToNoiseDb.ToString("F1", CultureInfo.InvariantCulture) +
-            " dB. Where the equaliser's response approaches a null the inversion is bounded rather " +
-            "than divergent, so the band edges roll off instead of showing spikes that are not " +
-            "channel features.";
+            " dB, which is e = " + Epsilon.ToString("G4", CultureInfo.InvariantCulture) +
+            " at the response's peak. The composite pulse P is divided back out because the " +
+            "equaliser inverts the channel and the pulse together. Where the signal carries no " +
+            "power the inversion is bounded rather than divergent. Past " +
+            (TrustedHalfWidthHz / 1e3).ToString("G4", CultureInfo.InvariantCulture) +
+            " kHz either side the pulse is no longer flat, and dividing it back out amplifies the " +
+            "error in the model of it -- the trace there is an extrapolation, not a measurement.";
 
         /// <summary>
         /// The magnitude at a frequency, by linear interpolation between points.

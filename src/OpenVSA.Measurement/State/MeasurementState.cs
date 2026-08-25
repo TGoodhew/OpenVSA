@@ -529,7 +529,8 @@ namespace OpenVSA.Measurement.State
         public bool Equaliser { get; set; }
 
         /// <summary>How many taps the equaliser has (<c>REQ-DEM-051</c>).</summary>
-        public int EqualiserTaps { get; set; } = 21;
+        public int EqualiserLengthSymbols { get; set; } =
+            DemodSettings.DefaultEqualiserLengthSymbols;
 
         /// <summary>The symbol rate a newly selected demodulation starts at (<c>REQ-DEM-030</c>).</summary>
         /// <param name="spanHz">The measurement's span.</param>
@@ -584,7 +585,7 @@ namespace OpenVSA.Measurement.State
                 EvmNormalisation = EvmNormalisation,
                 EvmNormalisationVolts = EvmNormalisationVolts,
                 EqualiserEnabled = Equaliser,
-                EqualiserTaps = EqualiserTaps,
+                EqualiserLengthSymbols = EqualiserLengthSymbols,
             };
 
             settings.Validate();

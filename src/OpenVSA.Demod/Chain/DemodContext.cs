@@ -169,6 +169,32 @@ namespace OpenVSA.Demod.Chain
         /// <summary>Step 10's regenerated ideal waveform, at the internal processing rate.</summary>
         internal double[] IdealWaveform { get; set; }
 
+        /// <summary>
+        /// The result window as it arrived, with context either side, kept so that every equaliser
+        /// pass fits ONE filter from the same starting point (<c>#432</c>).
+        /// </summary>
+        /// <remarks>
+        /// Saved on the equaliser's first pass and never replaced. Fitting each pass on the previous
+        /// pass's output makes the total equaliser a product of corrections, each fitted under a
+        /// different assumption about what the signal was, and the biases multiply: measured, that
+        /// walked away from the right answer rather than converging on it.
+        /// </remarks>
+        internal double[] EqualiserSource { get; set; }
+
+        /// <summary>
+        /// How many samples of <see cref="EqualiserSource"/> sit before the result window.
+        /// </summary>
+        internal int EqualiserPad { get; set; }
+
+        /// <summary>
+        /// The fit residual the last accepted equaliser coefficients left, or <c>NaN</c>.
+        /// </summary>
+        /// <remarks>
+        /// A pass has to beat this to be taken. It is what makes more passes unable to make a
+        /// measurement worse — the guarantee, rather than a hope that the fit is well conditioned.
+        /// </remarks>
+        internal double EqualiserResidual { get; set; } = double.NaN;
+
         /// <summary>The equaliser's coefficients, or <c>null</c> before it has run.</summary>
         internal Iq[] EqualiserCoefficients { get; set; }
 
