@@ -294,24 +294,6 @@ namespace OpenVSA.Demod.Chain
                 start = ProcessingOrder.PositionOf(ProcessingOrder.ReEntryPoint);
             }
 
-            // REQ-DEM-051: what Run carries into the next measurement, and what Reset throws
-            // away. Kept here rather than in step 11 for the same reason the channel below is
-            // computed here -- the equaliser re-enters while its coefficients are still moving, and
-            // only the set the chain finished with is the one worth carrying. Hold writes nothing,
-            // which is what makes its coefficients bit-identical from one measurement to the next.
-            if (settings.EqualiserState != null)
-            {
-                if (settings.EqualiserMode == EqualiserMode.Reset)
-                {
-                    settings.EqualiserState.Clear();
-                }
-                else if (settings.EqualiserMode == EqualiserMode.Run &&
-                    settings.EqualiserEnabled && context.EqualiserCoefficients != null)
-                {
-                    settings.EqualiserState.Keep(context.EqualiserCoefficients);
-                }
-            }
-
             // REQ-DEM-053: the channel the equaliser undoes, from the taps the chain finished
             // with. Computed here rather than in step 11 because the equaliser re-enters while its
             // coefficients are still moving, and only the last set is the answer.
@@ -349,6 +331,43 @@ namespace OpenVSA.Demod.Chain
             if (!judgement.Locked)
             {
                 context.Note(judgement.Explanation);
+            }
+
+            // REQ-DEM-051: what Run carries into the next measurement, and what Reset throws away.
+            // Kept here rather than in step 11 for the same reason the channel above is computed
+            // here -- the equaliser re-enters while its coefficients are still moving, and only the
+            // set the chain finished with is the one worth carrying. Hold writes nothing, which is
+            // what makes its coefficients bit-identical from one measurement to the next.
+            //
+            // 🔴 AND ONLY FROM A MEASUREMENT THAT LOCKED. The equaliser fits towards the symbols
+            // step 9 decided, so a block whose decisions are wrong produces a filter that is
+            // excellent at reaching the wrong answer -- the acceptance rule inside step 11 cannot
+            // tell the two apart, because it measures the fit against those same decisions. Carried
+            // into the next measurement it is simply a bad filter, and frozen by Hold it stays one.
+            // The bench found this: one block in a run came back with coefficients of a different
+            // order from its neighbours', and holding them took EVM from 0.78 %rms to 9.30.
+            if (settings.EqualiserState != null)
+            {
+                if (settings.EqualiserMode == EqualiserMode.Reset)
+                {
+                    settings.EqualiserState.Clear();
+                }
+                else if (settings.EqualiserMode == EqualiserMode.Run &&
+                    settings.EqualiserEnabled && context.EqualiserCoefficients != null)
+                {
+                    if (judgement.Locked)
+                    {
+                        settings.EqualiserState.Keep(context.EqualiserCoefficients);
+                    }
+                    else
+                    {
+                        context.Note(
+                            "This measurement did not lock, so the equaliser coefficients it " +
+                            "fitted were not carried into the next one: they were fitted towards " +
+                            "the symbols this measurement decided, and those are the symbols the " +
+                            "diagnosis above is about.");
+                    }
+                }
             }
 
             return new DemodResult(

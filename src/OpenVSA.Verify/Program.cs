@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenVSA.Demod.Chain;
+using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
 using OpenVSA.Hal;
 using OpenVSA.Hal.Visa;
@@ -551,6 +552,8 @@ namespace OpenVSA.Verify
                     mapping: BitMapping.Gray),
             };
 
+            Cases = 0;
+
             Console.WriteLine("OpenVSA demodulation cross-check");
             Console.WriteLine("  analyser  " + options.AnalyserResource);
             Console.WriteLine("  generator " + options.GeneratorResource);
@@ -621,6 +624,14 @@ namespace OpenVSA.Verify
                             wrong++;
                         }
                     }
+
+                    // REQ-DEM-050 to REQ-DEM-052 against a real transmitter and a real front end.
+                    // The unit tests inject channels this program has no way to inject, but they
+                    // cannot say whether the modes behave on a signal nobody synthesised — and the
+                    // equaliser's whole job is a channel nobody described.
+                    Cases += EqualiserCases;
+                    wrong += await EqualiserCheck(frontEnd, stimulus, digital, options)
+                        .ConfigureAwait(false);
                 }
                 finally
                 {
@@ -638,12 +649,433 @@ namespace OpenVSA.Verify
                     }
                 }
 
+                int total = cases.Count + Cases;
+
                 Console.WriteLine();
                 Console.WriteLine(
-                    "  " + (cases.Count - wrong) + " of " + cases.Count +
+                    "  " + (total - wrong) + " of " + total +
                     " cases came out as expected.");
 
                 return wrong == 0 ? 0 : 1;
+            }
+        }
+
+        /// <summary>How many equaliser cases the last run added to the count.</summary>
+        private static int Cases { get; set; }
+
+        /// <summary>How many equaliser cases there are.</summary>
+        private const int EqualiserCases = 6;
+
+        /// <summary>
+        /// The equaliser's modes and algorithms, against a signal from a real transmitter
+        /// (<c>REQ-DEM-050</c>, <c>REQ-DEM-051</c>, <c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <returns>How many cases did not come out as expected.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>What a bench adds here that a unit test cannot.</strong> The unit suite injects
+        /// channels of known shape and checks the equaliser takes them out. It cannot check that the
+        /// modes behave on a channel nobody described — this cable, this attenuator, this
+        /// instrument's own passband — and that is the only kind of channel a user has. The
+        /// improvement measured here is small, because the path is a good one; what is being checked
+        /// is that each mode does what it says on a real one.
+        /// </para>
+        /// <para>
+        /// <strong>One state object across every acquisition</strong>, as a repeating measurement
+        /// has. That is what makes Run's "the coefficients changed" and Hold's "they did not"
+        /// statements about successive measurements rather than about one.
+        /// </para>
+        /// </remarks>
+        private static async Task<int> EqualiserCheck(
+            E4406AFrontEnd frontEnd,
+            IStimulusSource stimulus,
+            IDigitalModulationStimulus digital,
+            Options options)
+        {
+            const double SymbolRateHz = 500e3;
+            const double RollOff = 0.35;
+            const double SpanHz = 5e6;
+
+            // How many blocks a case that compares EVM averages over. Eight, because the bench's
+            // own block-to-block spread is comparable with the difference being looked for: see
+            // Acquired.
+            const int Blocks = 8;
+
+            Console.WriteLine("  The equaliser, on a signal from the generator:");
+
+            digital.SetDigitalModulation(
+                options.CenterFrequencyHz,
+                options.LevelDbm,
+                "QPSK",
+                SymbolRateHz,
+                StimulusPulseFilter.RootRaisedCosine,
+                RollOff,
+                "PN9");
+
+            digital.SetSpectrumInverted(false);
+            stimulus.SetOutput(true);
+
+            var setup = new MeasurementState
+            {
+                CenterFrequencyHz = options.CenterFrequencyHz,
+                SpanHz = SpanHz,
+            };
+
+            setup.SelectKind(MeasurementKind.DigitalDemodulation);
+
+            var contexts = new MeasurementContextSet();
+            MeasurementContext demod = contexts.Add("Equaliser", setup);
+
+            // A CHANGE OF SETUP HANDS OVER A NEW STATE. The context caches the chain's settings
+            // against the state object it built them from, so a property written in place on the
+            // same object is a change nothing sees -- which is how the shell and a recall both work,
+            // and how this has to work to be measuring the product rather than a way round it.
+            Func<EqualiserMode?, EqualiserAlgorithm, double, DemodState> configure =
+                (mode, algorithm, step) =>
+                {
+                    var state = new DemodState
+                    {
+                        Format = "QPSK",
+                        SymbolRateHz = SymbolRateHz,
+                        ResultLengthSymbols = 512,
+                        MeasurementFilter = PulseFilterType.RootRaisedCosine,
+                        MeasurementFilterAlpha = RollOff,
+                        ReferenceFilterAlpha = RollOff,
+                        Equaliser = mode.HasValue,
+                        EqualiserMode = mode ?? EqualiserMode.Run,
+                        EqualiserAlgorithm = algorithm,
+                        EqualiserConvergenceFactor = step,
+                    };
+
+                    setup.Demod = state;
+
+                    return state;
+                };
+
+            int wrong = 0;
+
+            configure(null, EqualiserAlgorithm.LeastSquares, 0.01);
+
+            Acquired off = await Acquire(frontEnd, contexts, demod, options, SpanHz, Blocks)
+                .ConfigureAwait(false);
+
+            configure(EqualiserMode.Run, EqualiserAlgorithm.LeastSquares, 0.01);
+
+            Acquired first = await Acquire(frontEnd, contexts, demod, options, SpanHz, Blocks)
+                .ConfigureAwait(false);
+            Acquired second = await Acquire(frontEnd, contexts, demod, options, SpanHz)
+                .ConfigureAwait(false);
+
+            wrong += EqualiserOutcome(
+                "REQ-DEM-050",
+                "The equaliser does not make a good path worse",
+                first.MeanEvm <= off.MeanEvm * 1.05,
+                "EVM " + off + " with it off, " + first + " with it on");
+
+            wrong += EqualiserOutcome(
+                "REQ-DEM-051",
+                "Run fits each measurement and carries the result to the next",
+                demod.EqualiserAdaptation.IsAdapted && first.Last != null && second.Last != null &&
+                    Moved(first.Last.EqualiserCoefficients, second.Last.EqualiserCoefficients) > 0.0,
+                "held " + demod.EqualiserAdaptation.Taps + " taps of norm " +
+                Norm(first.Last == null ? null : first.Last.EqualiserCoefficients)
+                    .ToString("G4", CultureInfo.InvariantCulture) + " and " +
+                Norm(second.Last == null ? null : second.Last.EqualiserCoefficients)
+                    .ToString("G4", CultureInfo.InvariantCulture) +
+                "; successive measurements moved them by " + Moved(
+                    first.Last == null ? null : first.Last.EqualiserCoefficients,
+                    second.Last == null ? null : second.Last.EqualiserCoefficients)
+                    .ToString("G4", CultureInfo.InvariantCulture));
+
+            configure(EqualiserMode.Hold, EqualiserAlgorithm.LeastSquares, 0.01);
+
+            Acquired held = await Acquire(frontEnd, contexts, demod, options, SpanHz)
+                .ConfigureAwait(false);
+            Acquired again = await Acquire(frontEnd, contexts, demod, options, SpanHz)
+                .ConfigureAwait(false);
+
+            bool frozen = held.Last != null && again.Last != null &&
+                held.Last.EqualiserCoefficients != null &&
+                again.Last.EqualiserCoefficients != null &&
+                Moved(held.Last.EqualiserCoefficients, again.Last.EqualiserCoefficients) == 0.0;
+
+            wrong += EqualiserOutcome(
+                "REQ-DEM-051",
+                "Hold applies bit-identical coefficients to successive measurements",
+                frozen,
+                frozen
+                    ? "two measurements, " + held.Last.EqualiserCoefficients.Count +
+                        " taps, not one bit apart; EVM " + held + " and " + again
+                    : "the held coefficients moved between measurements");
+
+            configure(EqualiserMode.Reset, EqualiserAlgorithm.LeastSquares, 0.01);
+
+            Acquired reset = await Acquire(frontEnd, contexts, demod, options, SpanHz)
+                .ConfigureAwait(false);
+
+            IReadOnlyList<ConstellationPoint> taps =
+                reset.Last == null ? null : reset.Last.EqualiserCoefficients;
+
+            int impulse = setup.Demod.ToSettings().EqualiserImpulseIndex;
+            bool unit = taps != null && taps.Count > impulse &&
+                Math.Abs(taps[impulse].I - 1.0) < 1e-12 &&
+                Math.Abs(taps[impulse].Q) < 1e-12 &&
+                !demod.EqualiserAdaptation.IsAdapted;
+
+            wrong += EqualiserOutcome(
+                "REQ-DEM-051",
+                "Reset returns a unit impulse and forgets what was fitted",
+                unit,
+                "tap " + impulse + " of " + (taps == null ? 0 : taps.Count) +
+                " carries the impulse; EVM " + reset + " against " + off +
+                " with no equaliser");
+
+            // AT A STEP SIZE WHOSE OWN EXCESS ERROR LEAVES ROOM INSIDE THE DECIBEL. An LMS
+            // filter sits mu*L*Px/2 above the optimum in mean-square error before convergence is
+            // even in question, which at 0.01 and these taps is most of the decibel being tested;
+            // at 0.003 it is a fraction of it. Measured on this bench at 0.01: 0.90 dB and 1.17 dB
+            // on two runs, which is a measurement of the step size rather than of the algorithm.
+            configure(EqualiserMode.Run, EqualiserAlgorithm.Lms, 0.003);
+
+            Acquired gradient = await Acquire(frontEnd, contexts, demod, options, SpanHz, Blocks)
+                .ConfigureAwait(false);
+
+            double apart = 20.0 * Math.Log10(gradient.MeanEvm / first.MeanEvm);
+
+            wrong += EqualiserOutcome(
+                "REQ-DEM-052",
+                "LMS lands within a decibel of the exact solution",
+                apart < 1.0,
+                "LMS " + gradient + "; least squares " + first + "; means " +
+                apart.ToString("F2", CultureInfo.InvariantCulture) + " dB apart");
+
+            configure(EqualiserMode.Run, EqualiserAlgorithm.Lms, 5.0);
+
+            Acquired refused = await Acquire(frontEnd, contexts, demod, options, SpanHz)
+                .ConfigureAwait(false);
+
+            string bound = null;
+
+            if (refused.Last != null)
+            {
+                foreach (string notice in refused.Last.Notices)
+                {
+                    if (notice.IndexOf("2/(L*Px)", StringComparison.Ordinal) >= 0)
+                    {
+                        bound = notice;
+                    }
+                }
+            }
+
+            wrong += EqualiserOutcome(
+                "REQ-DEM-052",
+                "A step size past the stability bound is refused, and named",
+                bound != null && refused.Last != null && refused.Last.EvmPercent < 25.0,
+                bound == null
+                    ? "the bound was not reported"
+                    : bound.Substring(0, Math.Min(96, bound.Length)) + "…");
+
+            Console.WriteLine();
+
+            return wrong;
+        }
+
+        /// <summary>Prints one equaliser case, and counts it.</summary>
+        /// <returns><c>1</c> when it failed, so a caller can sum them.</returns>
+        private static int EqualiserOutcome(
+            string requirement, string what, bool held, string detail)
+        {
+            Console.WriteLine(
+                "    " + (held ? "PASS " : "FAIL ") + requirement.PadRight(12) +
+                what.PadRight(58) + " " + detail);
+
+            return held ? 0 : 1;
+        }
+
+        /// <summary>The length of a coefficient vector.</summary>
+        private static double Norm(IReadOnlyList<ConstellationPoint> taps)
+        {
+            if (taps == null)
+            {
+                return double.NaN;
+            }
+
+            double total = 0.0;
+
+            foreach (ConstellationPoint tap in taps)
+            {
+                total += (tap.I * tap.I) + (tap.Q * tap.Q);
+            }
+
+            return Math.Sqrt(total);
+        }
+
+        /// <summary>How far one set of coefficients is from another.</summary>
+        private static double Moved(
+            IReadOnlyList<ConstellationPoint> first, IReadOnlyList<ConstellationPoint> second)
+        {
+            if (first == null || second == null || first.Count != second.Count)
+            {
+                return double.NaN;
+            }
+
+            double total = 0.0;
+
+            for (int tap = 0; tap < first.Count; tap++)
+            {
+                double i = first[tap].I - second[tap].I;
+                double q = first[tap].Q - second[tap].Q;
+
+                total += Math.Sqrt((i * i) + (q * q));
+            }
+
+            return total;
+        }
+
+        /// <summary>Several blocks of one acquisition, and what they said.</summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>One block cannot answer "within 1 dB".</strong> Measured on this bench, EVM moves
+        /// between 0.72 and 0.90 %rms from block to block with the equaliser's coefficients held
+        /// bit-identical — a spread of 1.9 dB on a quantity two algorithms are to be compared within
+        /// 1 dB on. A comparison of one block against one block would be a comparison of two
+        /// different signals, and would pass or fail on which pair of blocks it happened to catch.
+        /// </para>
+        /// <para>
+        /// So a case that compares EVM compares the MEAN over several blocks and prints the spread
+        /// it was drawn from, which is the only form in which the reader can tell the comparison was
+        /// worth making. The blocks come from one acquisition, so nothing is retuned between them.
+        /// </para>
+        /// </remarks>
+        private sealed class Acquired
+        {
+            public Acquired(IReadOnlyList<DemodResult> blocks)
+            {
+                Blocks = blocks;
+            }
+
+            /// <summary>Every block demodulated, in order.</summary>
+            public IReadOnlyList<DemodResult> Blocks { get; }
+
+            /// <summary>The last block, which is the one whose coefficients are the newest.</summary>
+            public DemodResult Last => Blocks.Count == 0 ? null : Blocks[Blocks.Count - 1];
+
+            /// <summary>The mean EVM across the blocks.</summary>
+            public double MeanEvm
+            {
+                get
+                {
+                    if (Blocks.Count == 0)
+                    {
+                        return double.NaN;
+                    }
+
+                    double total = 0.0;
+
+                    foreach (DemodResult block in Blocks)
+                    {
+                        total += block.EvmPercent;
+                    }
+
+                    return total / Blocks.Count;
+                }
+            }
+
+            /// <summary>How far apart the best and worst blocks were, in decibels.</summary>
+            public double SpreadDb
+            {
+                get
+                {
+                    if (Blocks.Count == 0)
+                    {
+                        return double.NaN;
+                    }
+
+                    double least = double.MaxValue;
+                    double most = 0.0;
+
+                    foreach (DemodResult block in Blocks)
+                    {
+                        least = Math.Min(least, block.EvmPercent);
+                        most = Math.Max(most, block.EvmPercent);
+                    }
+
+                    return 20.0 * Math.Log10(most / least);
+                }
+            }
+
+            /// <inheritdoc />
+            public override string ToString() =>
+                MeanEvm.ToString("F4", CultureInfo.InvariantCulture) + " %rms mean of " +
+                Blocks.Count.ToString(CultureInfo.InvariantCulture) + " blocks spanning " +
+                SpreadDb.ToString("F2", CultureInfo.InvariantCulture) + " dB";
+        }
+
+        /// <summary>Takes one acquisition and returns the blocks demodulated from it.</summary>
+        /// <remarks>
+        /// The first block after a retune is dropped: the instrument is still settling through it,
+        /// and a measurement of that is a measurement of the settling.
+        /// </remarks>
+        private static async Task<Acquired> Acquire(
+            E4406AFrontEnd frontEnd,
+            MeasurementContextSet contexts,
+            MeasurementContext demod,
+            Options options,
+            double spanHz,
+            int blocks = 3)
+        {
+            var analyser = new ContextAnalyser(contexts);
+            var results = new List<DemodResult>();
+
+            EventHandler<DemodResult> collect = (sender, result) =>
+            {
+                lock (results)
+                {
+                    results.Add(result);
+                }
+            };
+
+            demod.ResultAnalysed += collect;
+
+            try
+            {
+                using (var engine = new SpectrumEngine(frontEnd, null))
+                {
+                    analyser.Attach(engine);
+
+                    engine.TargetUpdatesPerSecond = 0.0;
+
+                    await engine.StartAsync(
+                        new AcquisitionRequest(options.CenterFrequencyHz, spanHz, 32768, 0.0),
+                        CancellationToken.None).ConfigureAwait(false);
+
+                    for (int wait = 0; wait < 300; wait++)
+                    {
+                        lock (results)
+                        {
+                            if (results.Count > blocks)
+                            {
+                                break;
+                            }
+                        }
+
+                        await Task.Delay(200).ConfigureAwait(false);
+                    }
+
+                    await engine.StopAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                demod.ResultAnalysed -= collect;
+            }
+
+            lock (results)
+            {
+                return new Acquired(
+                    results.Count <= 1
+                        ? new List<DemodResult>(results)
+                        : results.GetRange(1, results.Count - 1));
             }
         }
 

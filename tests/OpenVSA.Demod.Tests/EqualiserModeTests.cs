@@ -117,6 +117,49 @@ namespace OpenVSA.Demod.Tests
         }
 
         [Fact]
+        public void AMeasurementThatDidNotLockDoesNotHandOnItsCoefficients()
+        {
+            // 🔴 The equaliser fits towards the symbols step 9 decided, so a block whose decisions
+            // are wrong yields a filter that is excellent at reaching the wrong answer -- and step
+            // 11's acceptance rule cannot tell that from a good filter, because it is measured
+            // against those same decisions. Run must therefore ask a question step 11 cannot: did
+            // this measurement lock at all.
+            //
+            // The bench found it. One block in a run came back with coefficients of a different
+            // order from its neighbours', and holding them took EVM from 0.78 %rms to 9.30.
+            var state = new EqualiserState();
+
+            // A symbol rate a fifth of the truth: the chain is told something false about the
+            // signal rather than handed a poor signal, which is the reliable way to produce a
+            // measurement that does not lock and still fits something.
+            DemodSettings settings = Settings(EqualiserMode.Run, state);
+
+            settings.SymbolRateHz = SymbolRateHz / 5.0;
+
+            DemodResult wrong = Demodulate(settings, 1)[0];
+
+            _output.WriteLine(
+                "EVM " + wrong.EvmPercent.ToString("F2", CultureInfo.InvariantCulture) +
+                " %rms, " + (wrong.Lock.Locked ? "locked" : "not locked") + "; the state holds " +
+                state.Taps.ToString(CultureInfo.InvariantCulture) + " taps.");
+
+            Assert.False(
+                wrong.Lock.Locked,
+                "The fixture was meant to produce a measurement that does not lock, and this one " +
+                "locked at " + wrong.EvmPercent.ToString("F2", CultureInfo.InvariantCulture) +
+                " %rms. The test cannot say anything about what an unlocked measurement hands on.");
+
+            Assert.False(
+                state.IsAdapted,
+                "A measurement that did not lock handed its coefficients to the next one.");
+
+            Assert.Contains(
+                wrong.Notices,
+                notice => notice.IndexOf(
+                    "were not carried into the next one", StringComparison.Ordinal) >= 0);
+        }
+
+        [Fact]
         public void ResetIsAUnitImpulseAndForgetsWhatWasFitted()
         {
             // REQ-DEM-051: "Reset returns a unit-impulse response."

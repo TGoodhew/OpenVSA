@@ -56,6 +56,8 @@ namespace OpenVSA.Measurement.Contexts
         private SpectrumFrame _latest;
         private long _framesAnalysed;
 
+        private readonly EqualiserState _equaliser = new EqualiserState();
+
         private Demodulator _demodulator;
         private DemodSettings _demodSettings;
         private DemodState _demodSettingsFrom;
@@ -457,12 +459,43 @@ namespace OpenVSA.Measurement.Contexts
         }
 
         /// <summary>
+        /// What the equaliser has learnt, across every measurement this context makes
+        /// (<c>REQ-DEM-051</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The context owns it, not the setup.</strong> Run carries coefficients from one
+        /// measurement into the next and Hold freezes them, so they have to outlive a
+        /// <see cref="DemodSettings"/>, which is rebuilt whenever the setup changes. They have to
+        /// outlive the <see cref="DemodState"/> too: <em>changing the mode is changing the setup</em>,
+        /// and a memory kept on the setup would be lost by the very act of selecting Hold. The
+        /// context is the thing that persists across both, so it is where this belongs.
+        /// </para>
+        /// <para>
+        /// 🔴 It was on the setup first, and the bench found what that costs. Switching the mode
+        /// replaced the state, the new state brought an empty memory, and Hold froze nothing: the
+        /// measurement reported no coefficients at all while EVM moved around with the block. Which
+        /// object owns a piece of state is not bookkeeping when the state is what a mode is
+        /// <em>about</em>.
+        /// </para>
+        /// <para>
+        /// Not saved with a state file. It is the result of measurements taken, not a choice, and
+        /// recalling a setup should not restore an equaliser fitted to a channel that is no longer
+        /// connected.
+        /// </para>
+        /// </remarks>
+        public EqualiserState EqualiserAdaptation => _equaliser;
+
+        /// <summary>
         /// The chain's settings for this context, rebuilt when the setup changes them.
         /// </summary>
         /// <remarks>
         /// Rebuilt rather than remade per block: resolving a format's name allocates its
         /// constellation, and doing that for every acquired block would build a list of points
-        /// sixty times a second to describe something that had not changed.
+        /// sixty times a second to describe something that had not changed. The cache is keyed on
+        /// the <see cref="DemodState"/> instance, so a setting changed in place on the same state
+        /// object does not take effect — changing the setup means handing over a new state, which
+        /// is how the shell and a recall both do it.
         /// </remarks>
         private DemodSettings DemodulationSettings()
         {
@@ -473,6 +506,10 @@ namespace OpenVSA.Measurement.Contexts
                 _demodSettings = state.ToSettings();
                 _demodSettingsFrom = state;
             }
+
+            // Every settings object this context builds shares the one memory, so a rebuilt
+            // settings -- a format change, a mode change, a recall -- does not wipe the equaliser.
+            _demodSettings.EqualiserState = _equaliser;
 
             return _demodSettings;
         }
