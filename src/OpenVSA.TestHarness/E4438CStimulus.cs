@@ -478,6 +478,18 @@ namespace OpenVSA.TestHarness
                 Send(session, ":RADio:CUSTom:MODulation:MSK:PHASe 90");
             }
 
+            // 🔴 THE RESET DEVIATION IS 400 Hz, which on any symbol rate this bench uses is a
+            // modulation index near zero -- a carrier with a wobble on it rather than FSK. Left
+            // alone it would produce a signal that demodulates to noise and looks like a
+            // demodulator fault.
+            if (format.StartsWith("FSK", StringComparison.OrdinalIgnoreCase))
+            {
+                Send(
+                    session,
+                    ":RADio:CUSTom:MODulation:FSK:DEViation " +
+                    Number(DeviationPerSymbolRate * symbolRateHz) + " HZ");
+            }
+
             Send(session, ":RADio:CUSTom:DATA " + dataPattern);
 
             Send(session, ":RADio:CUSTom:STATe ON");
@@ -499,6 +511,17 @@ namespace OpenVSA.TestHarness
         /// signal.
         /// </remarks>
         public double BandwidthTime { get; set; } = 0.3;
+
+        /// <summary>
+        /// The peak FSK deviation to set, as a fraction of the symbol rate.
+        /// </summary>
+        /// <remarks>
+        /// A half, which is a modulation index of one: wide enough that the levels are well apart
+        /// and narrow enough to sit inside the analyser's bandwidth at every order this bench
+        /// measures. The instrument states the same quantity in hertz and resets it to 400, which is
+        /// why it is always sent rather than assumed.
+        /// </remarks>
+        public double DeviationPerSymbolRate { get; set; } = 0.5;
 
         /// <inheritdoc />
         public void SetSpectrumInverted(bool inverted)

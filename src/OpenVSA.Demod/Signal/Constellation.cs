@@ -196,6 +196,59 @@ namespace OpenVSA.Demod.Signal
             }
         }
 
+        /// <summary>
+        /// Whether the points are evenly spaced along one axis with the symbol value running up it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// True of a frequency-keyed format's level ladder and of nothing else here. It matters for
+        /// the same reason <see cref="IsIndexedRing"/> does: a Gray code needs an ORDER for
+        /// "neighbouring" to mean anything, and a ladder has one just as a ring does. A QAM does
+        /// not — its neighbours in index are not its neighbours in the plane — which is why that
+        /// one is coded per axis instead.
+        /// </para>
+        /// <para>
+        /// 🔴 <strong>This is not a detail of presentation.</strong> Measured against an E4438C
+        /// transmitting 4FSK on 31 August 2026, OpenVSA's natural labelling recovered
+        /// <strong>75.10 %</strong> of the sequence — the number a single transposition of two
+        /// symbols gives on four levels — and nothing else explained it. The levels were right and
+        /// the labels were somebody else's, which is exactly the distinction <c>REQ-DEM-011</c>
+        /// exists to make and exactly what a demodulator cannot discover on its own.
+        /// </para>
+        /// </remarks>
+        public bool IsLevelLadder
+        {
+            get
+            {
+                const double Tolerance = 1e-9;
+
+                if (_points.Count < 2)
+                {
+                    return false;
+                }
+
+                double step = _points[1].I - _points[0].I;
+
+                if (Math.Abs(step) < Tolerance)
+                {
+                    return false;
+                }
+
+                for (int symbol = 0; symbol < _points.Count; symbol++)
+                {
+                    ConstellationPoint point = _points[symbol];
+
+                    if (Math.Abs(point.Q) > Tolerance ||
+                        Math.Abs(point.I - (_points[0].I + (step * symbol))) > Tolerance)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+        }
+
         /// <summary>Which bits the points carry (<c>REQ-DEM-011</c>).</summary>
         public BitMapping Mapping { get; }
 
@@ -627,6 +680,70 @@ namespace OpenVSA.Demod.Signal
         public static Constellation Pi4Dqpsk() => Qpsk().Differential("PI4DQPSK", Math.PI / 4.0);
 
         /// <summary>
+        /// Frequency-shift keying of any order: <paramref name="order"/> evenly spaced deviations
+        /// (<c>REQ-DEM-010</c>).
+        /// </summary>
+        /// <param name="order">How many levels; a power of two, at least two.</param>
+        /// <returns>The constellation.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The order is not a power of two of at least two.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>FSK is a constellation of FREQUENCIES, and this is the point list of them.</strong>
+        /// The symbol is not where the signal is in the plane — it is how fast its phase is turning
+        /// — so what the chain decides against is a set of evenly spaced deviations, ±1, ±3 and so
+        /// on, laid on the real axis because a deviation is one number and not two. Step 8
+        /// discriminates the waveform before it reads a symbol out of it, and everything after that
+        /// works exactly as it does for a phase-keyed format: the decisions, the reference, the
+        /// metrics that survive.
+        /// </para>
+        /// <para>
+        /// <strong>The deviation is measured rather than declared.</strong> The points are
+        /// normalised to unit mean power like every other constellation here, so what they carry is
+        /// the SHAPE of the level set and not its size. The size is the signal's frequency deviation,
+        /// and the chain estimates it as the gain — which is what makes <c>REQ-DEM-070</c>'s
+        /// FSK deviation a measurement rather than an echo of a setting the user typed.
+        /// </para>
+        /// <para>
+        /// <strong>What this catalogue entry cannot say is the modulation index.</strong> A
+        /// deviation of a quarter the symbol rate on two levels is MSK, and this build has that as
+        /// its own format with its own pulse; 2FSK here is the general case, at whatever deviation
+        /// the transmitter used.
+        /// </para>
+        /// <para>
+        /// 🔴 <strong>Nor can it say which level carries which symbol, and above two levels a real
+        /// transmitter disagrees.</strong> The numbering here is <c>REQ-DEM-011</c>'s natural one —
+        /// symbol zero is the most negative deviation and the value counts up the ladder. Measured
+        /// against an E4438C on 31 August 2026, its own numbering is not that: <strong>the sign bit
+        /// picks the half and the remaining bits count from the OUTSIDE IN</strong>, so on eight
+        /// levels its symbols 4 to 7 are the deviations +7, +5, +3 and +1 in that order. On four
+        /// levels that coincides with a Gray code and above four it does not.
+        /// </para>
+        /// <para>
+        /// The demodulation is unaffected — the levels, the deviation and the error vector are the
+        /// same either way — and the bits are not. This is <c>REQ-DEM-011</c>'s whole point, and
+        /// <see cref="WithMapping"/> is where a user says which convention their transmitter used.
+        /// </para>
+        /// </remarks>
+        public static Constellation Fsk(int order)
+        {
+            RequirePowerOfTwo(order, nameof(order));
+
+            var points = new List<ConstellationPoint>(order);
+
+            for (int level = 0; level < order; level++)
+            {
+                // Evenly spaced and symmetric about zero: -(M-1), ..., -1, +1, ..., +(M-1) in
+                // odd steps, which is the same ladder a PAM constellation stands on and the one
+                // every FSK transmitter deviates by.
+                points.Add(new ConstellationPoint((2 * level) - (order - 1), 0.0));
+            }
+
+            return FromPoints(order + "FSK", points, order, ModulationFamily.Fsk);
+        }
+
+        /// <summary>
         /// EDGE's 3π/8-8PSK: eight points that turn three sixteenths of a turn every symbol.
         /// </summary>
         /// <returns>The constellation.</returns>
@@ -928,6 +1045,11 @@ namespace OpenVSA.Demod.Signal
                     return Gmsk();
             }
 
+            if (OrderBefore(wanted, "FSK", out int levels))
+            {
+                return Fsk(levels);
+            }
+
             int order;
 
             if (OrderBefore(wanted, "STARQAM", out order))
@@ -1063,6 +1185,10 @@ namespace OpenVSA.Demod.Signal
                 "16STARQAM",
                 "32STARQAM",
                 "3PI8-8PSK",
+                "2FSK",
+                "4FSK",
+                "8FSK",
+                "16FSK",
                 "MSK1",
                 "MSK2",
                 "GMSK",
@@ -1463,8 +1589,12 @@ namespace OpenVSA.Demod.Signal
         {
             var labels = new int[_points.Count];
 
-            if (IsIndexedRing)
+            if (IsIndexedRing || IsLevelLadder)
             {
+                // One dimension either way: a ring's neighbours are its neighbours in index, and so
+                // are a ladder's, so the same reflected binary code makes each pair of neighbours
+                // differ in one bit. The formula is the standard one and the reason it applies to
+                // both is that both are ORDERED.
                 for (int symbol = 0; symbol < labels.Length; symbol++)
                 {
                     labels[symbol] = symbol ^ (symbol >> 1);

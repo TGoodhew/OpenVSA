@@ -75,13 +75,15 @@ namespace OpenVSA.Synthesis
             int levelsPerAxis,
             IList<SymbolPoint> points,
             bool isOffset = false,
-            double rotationPerSymbolRadians = 0.0)
+            double rotationPerSymbolRadians = 0.0,
+            double deviationPerSymbolRate = 0.0)
         {
             Name = name;
             BitsPerSymbol = bitsPerSymbol;
             LevelsPerAxis = levelsPerAxis;
             IsOffset = isOffset;
             RotationPerSymbolRadians = rotationPerSymbolRadians;
+            DeviationPerSymbolRate = deviationPerSymbolRate;
             _points = new ReadOnlyCollection<SymbolPoint>(points);
         }
 
@@ -120,6 +122,29 @@ namespace OpenVSA.Synthesis
         /// project's.
         /// </remarks>
         public double RotationPerSymbolRadians { get; }
+
+        /// <summary>
+        /// The peak frequency deviation, as a fraction of the symbol rate, or zero for a scheme
+        /// that keys phase and amplitude rather than frequency.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Non-zero is what makes a scheme frequency-keyed</strong>, and it changes what the
+        /// points mean: they stop being places in the plane and become deviations, so the
+        /// transmitter shapes them, integrates them into a phase, and sends a constant envelope. A
+        /// quarter is MSK's, which is the smallest deviation that keeps the two tones orthogonal
+        /// over a symbol and is where the family's name comes from.
+        /// </para>
+        /// <para>
+        /// It is the PEAK, matching the way an instrument states it: the outermost level deviates by
+        /// this much, and the rest divide the range evenly. The E4438C's
+        /// <c>:RADio:CUSTom:MODulation:FSK:DEViation</c> is the same quantity in hertz.
+        /// </para>
+        /// </remarks>
+        public double DeviationPerSymbolRate { get; }
+
+        /// <summary>Whether the symbols are carried as frequency rather than as position.</summary>
+        public bool IsFrequencyKeyed => DeviationPerSymbolRate > 0.0;
 
         /// <summary>Binary phase shift keying: two points on the I axis.</summary>
         public static ModulationScheme Bpsk() =>
@@ -193,6 +218,34 @@ namespace OpenVSA.Synthesis
         /// instrument's Gray-coded QPSK scored 75.10 % against this project's natural mapping.
         /// </para>
         /// </remarks>
+        /// <summary>
+        /// The same scheme, sent as frequency: its points become deviations.
+        /// </summary>
+        /// <param name="deviationPerSymbolRate">
+        /// The peak deviation as a fraction of the symbol rate; positive.
+        /// </param>
+        /// <returns>The scheme.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The deviation is not positive.</exception>
+        public ModulationScheme Deviating(double deviationPerSymbolRate)
+        {
+            if (!(deviationPerSymbolRate > 0.0) || double.IsInfinity(deviationPerSymbolRate))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(deviationPerSymbolRate),
+                    deviationPerSymbolRate,
+                    "A frequency deviation is a positive fraction of the symbol rate.");
+            }
+
+            return new ModulationScheme(
+                Name,
+                BitsPerSymbol,
+                LevelsPerAxis,
+                new List<SymbolPoint>(_points),
+                IsOffset,
+                RotationPerSymbolRadians,
+                deviationPerSymbolRate);
+        }
+
         public static ModulationScheme FromPoints(
             string name,
             IList<SymbolPoint> points,
