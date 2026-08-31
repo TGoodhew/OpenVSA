@@ -177,20 +177,21 @@ namespace OpenVSA.TestHarness.Tests
         {
             MeasurementState setup = Setup();
 
-            // 8VSB, and the name in this test has moved twice as the catalogue grew: 1024QAM until
-            // 24 August 2026, when REQ-DEM-010's point-list formats arrived; GMSK until 31 August,
-            // when MSK, GMSK and EDGE turned out to need only a rotation and a pulse the chain
-            // already had. What is left genuinely cannot be reached by a point list at all --
-            // vestigial sideband is a real-valued modulation with a suppressed sideband, and the
-            // frequency-keyed formats need a discriminator rather than a decision.
-            setup.Demod.Format = "8VSB";
+            // SOQPSK, and the name in this test has moved three times as the catalogue grew:
+            // 1024QAM until 24 August 2026, when REQ-DEM-010's point-list formats arrived; GMSK
+            // until 31 August, when MSK, GMSK and EDGE turned out to need only a rotation and a
+            // pulse the chain already had; 8VSB until later the same day, when the frequency-keyed
+            // and vestigial-sideband rows arrived with the models step 8 needed for them. What is
+            // left is genuinely different in kind: SOQPSK is a continuous-phase modulation rather
+            // than a shaped one.
+            setup.Demod.Format = "SOQPSK";
 
             ArgumentException failure = Assert.Throws<ArgumentException>(
                 () => setup.Demod.ToSettings());
 
             _output.WriteLine(failure.Message);
 
-            Assert.Contains("8VSB", failure.Message, StringComparison.Ordinal);
+            Assert.Contains("SOQPSK", failure.Message, StringComparison.Ordinal);
         }
 
         [Fact]

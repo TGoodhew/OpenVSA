@@ -744,6 +744,53 @@ namespace OpenVSA.Demod.Signal
         }
 
         /// <summary>
+        /// Vestigial sideband: <paramref name="order"/> amplitude levels on one axis, sent as a
+        /// single sideband (<c>REQ-DEM-010</c>).
+        /// </summary>
+        /// <param name="order">How many levels; a power of two, at least two.</param>
+        /// <returns>The constellation.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The order is not a power of two of at least two.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>VSB is one-dimensional, and that is the whole of what makes it VSB.</strong> The
+        /// symbol is an amplitude on a single axis — eight of them for the 8VSB that carries
+        /// terrestrial television — so half the plane a quadrature format uses is not carrying
+        /// anything. What the other half carries instead is the <em>Hilbert transform</em> of the
+        /// first: suppressing one sideband of a real signal is exactly what produces it, and the
+        /// result is a complex waveform whose imaginary part is determined by its real part and
+        /// holds no information of its own.
+        /// </para>
+        /// <para>
+        /// So the chain reads the real axis and nothing else. The imaginary part at a symbol
+        /// instant is not zero and is not an error: it is the sideband vestige doing its job, and a
+        /// demodulator that counted it as error vector would report a fault on a perfect signal.
+        /// </para>
+        /// <para>
+        /// <strong>The pilot is a level, not a tone to be found.</strong> A VSB transmitter adds a
+        /// small constant to the real signal before modulating, which puts a carrier at the band
+        /// edge for a receiver to lock to. In the demodulated levels it is a DC offset on the
+        /// ladder, so this chain estimates it as one and reports it as <c>REQ-DEM-070</c>'s
+        /// Pilot Lvl — the same arithmetic that gives a frequency-keyed format its carrier offset,
+        /// used for the other thing an offset can mean.
+        /// </para>
+        /// </remarks>
+        public static Constellation Vsb(int order)
+        {
+            RequirePowerOfTwo(order, nameof(order));
+
+            var points = new List<ConstellationPoint>(order);
+
+            for (int level = 0; level < order; level++)
+            {
+                points.Add(new ConstellationPoint((2 * level) - (order - 1), 0.0));
+            }
+
+            return FromPoints(order + "VSB", points, order, ModulationFamily.Vsb);
+        }
+
+        /// <summary>
         /// EDGE's 3π/8-8PSK: eight points that turn three sixteenths of a turn every symbol.
         /// </summary>
         /// <returns>The constellation.</returns>
@@ -1050,6 +1097,11 @@ namespace OpenVSA.Demod.Signal
                 return Fsk(levels);
             }
 
+            if (OrderBefore(wanted, "VSB", out int steps))
+            {
+                return Vsb(steps);
+            }
+
             int order;
 
             if (OrderBefore(wanted, "STARQAM", out order))
@@ -1069,10 +1121,11 @@ namespace OpenVSA.Demod.Signal
 
             throw new ArgumentException(
                 "No format called \"" + (name ?? "(none)") + "\" is supported. This build " +
-                "demodulates " + string.Join(", ", Names) + "; the frequency-keyed formats of " +
-                "REQ-DEM-010 and its vestigial-sideband ones are not point lists at all — they " +
-                "need a discriminator rather than a decision — and arrive with the chain handling " +
-                "they need.",
+                "demodulates " + string.Join(", ", Names) + ". Two rows of REQ-DEM-010's " +
+                "catalogue are still owed: SOQPSK, which is a continuous-phase modulation rather " +
+                "than a shaped one, and DVB-QAM, whose quadrant-differential encoding is not this " +
+                "catalogue's whole-symbol kind. Both arrive with the chain handling they need " +
+                "rather than as a name that demodulates to nonsense.",
                 nameof(name));
         }
 
@@ -1189,6 +1242,8 @@ namespace OpenVSA.Demod.Signal
                 "4FSK",
                 "8FSK",
                 "16FSK",
+                "8VSB",
+                "16VSB",
                 "MSK1",
                 "MSK2",
                 "GMSK",
