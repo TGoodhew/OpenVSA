@@ -294,6 +294,24 @@ namespace OpenVSA.Demod.Chain
                 start = ProcessingOrder.PositionOf(ProcessingOrder.ReEntryPoint);
             }
 
+            // REQ-DEM-051: what Run carries into the next measurement, and what Reset throws
+            // away. Kept here rather than in step 11 for the same reason the channel below is
+            // computed here -- the equaliser re-enters while its coefficients are still moving, and
+            // only the set the chain finished with is the one worth carrying. Hold writes nothing,
+            // which is what makes its coefficients bit-identical from one measurement to the next.
+            if (settings.EqualiserState != null)
+            {
+                if (settings.EqualiserMode == EqualiserMode.Reset)
+                {
+                    settings.EqualiserState.Clear();
+                }
+                else if (settings.EqualiserMode == EqualiserMode.Run &&
+                    settings.EqualiserEnabled && context.EqualiserCoefficients != null)
+                {
+                    settings.EqualiserState.Keep(context.EqualiserCoefficients);
+                }
+            }
+
             // REQ-DEM-053: the channel the equaliser undoes, from the taps the chain finished
             // with. Computed here rather than in step 11 because the equaliser re-enters while its
             // coefficients are still moving, and only the last set is the answer.

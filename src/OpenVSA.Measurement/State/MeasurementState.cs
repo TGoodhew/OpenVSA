@@ -9,6 +9,7 @@ using OpenVSA.Dsp.Spectrum;
 using OpenVSA.Dsp.Windowing;
 using OpenVSA.Hal;
 using OpenVSA.Measurement.Limits;
+using Newtonsoft.Json;
 
 namespace OpenVSA.Measurement.State
 {
@@ -532,6 +533,64 @@ namespace OpenVSA.Measurement.State
         public int EqualiserLengthSymbols { get; set; } =
             DemodSettings.DefaultEqualiserLengthSymbols;
 
+        /// <summary>
+        /// Whether the equaliser adapts, is frozen, or is a unit impulse (<c>REQ-DEM-051</c>).
+        /// </summary>
+        public EqualiserMode EqualiserMode { get; set; } = EqualiserMode.Run;
+
+        /// <summary>The LMS step size (<c>REQ-DEM-051</c>).</summary>
+        public double EqualiserConvergenceFactor { get; set; } =
+            DemodSettings.DefaultEqualiserConvergenceFactor;
+
+        /// <summary>Which algorithm fits the coefficients (<c>REQ-DEM-052</c>).</summary>
+        public EqualiserAlgorithm EqualiserAlgorithm { get; set; } =
+            EqualiserAlgorithm.LeastSquares;
+
+        /// <summary>
+        /// How a gradient equaliser starts when its decisions cannot be trusted yet
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public EqualiserAcquisition EqualiserAcquisition { get; set; } =
+            EqualiserAcquisition.DecisionDirected;
+
+        /// <summary>
+        /// The EVM at which acquisition hands over to decision-directed adaptation, as a percentage
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public double EqualiserAcquisitionEvmPercent { get; set; } =
+            DemodSettings.DefaultEqualiserAcquisitionEvmPercent;
+
+        /// <summary>
+        /// How many times a gradient equaliser may sweep the block in one pass
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public int EqualiserAdaptationSweeps { get; set; } =
+            DemodSettings.DefaultEqualiserAdaptationSweeps;
+
+        /// <summary>
+        /// The coefficients this measurement's equaliser carries from one block to the next
+        /// (<c>REQ-DEM-051</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>One instance, for the life of the measurement.</strong>
+        /// <see cref="ToSettings"/> builds a fresh <see cref="DemodSettings"/> for every block, so
+        /// coefficients held on the settings would be born empty each time and Hold would hold
+        /// nothing. This object is created once with the state and handed to each settings object in
+        /// turn, which is what gives Run and Hold something to be defined across.
+        /// </para>
+        /// <para>
+        /// <strong>Not a setting, and marked as one thing that is not.</strong> It is the result of
+        /// measurements already taken rather than anything the user chose, so it is neither written
+        /// to a state file nor walked by the checks that hold every setting to save-and-recall:
+        /// recalling a setup should restore the mode and the filter length the user picked, and
+        /// should not restore an equaliser fitted to a channel that is no longer connected.
+        /// </para>
+        /// </remarks>
+        [NotASetting]
+        [JsonIgnore]
+        public EqualiserState EqualiserAdaptation { get; } = new EqualiserState();
+
         /// <summary>The symbol rate a newly selected demodulation starts at (<c>REQ-DEM-030</c>).</summary>
         /// <param name="spanHz">The measurement's span.</param>
         /// <returns>Half the span.</returns>
@@ -586,6 +645,13 @@ namespace OpenVSA.Measurement.State
                 EvmNormalisationVolts = EvmNormalisationVolts,
                 EqualiserEnabled = Equaliser,
                 EqualiserLengthSymbols = EqualiserLengthSymbols,
+                EqualiserMode = EqualiserMode,
+                EqualiserConvergenceFactor = EqualiserConvergenceFactor,
+                EqualiserAlgorithm = EqualiserAlgorithm,
+                EqualiserAcquisition = EqualiserAcquisition,
+                EqualiserAcquisitionEvmPercent = EqualiserAcquisitionEvmPercent,
+                EqualiserAdaptationSweeps = EqualiserAdaptationSweeps,
+                EqualiserState = EqualiserAdaptation,
             };
 
             settings.Validate();

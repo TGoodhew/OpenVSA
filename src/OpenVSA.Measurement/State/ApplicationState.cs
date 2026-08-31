@@ -39,7 +39,7 @@ namespace OpenVSA.Measurement.State
     public sealed class ApplicationState
     {
         /// <summary>The schema version this software writes.</summary>
-        public const int CurrentSchemaVersion = 7;
+        public const int CurrentSchemaVersion = 8;
 
         /// <summary>The oldest schema version this software can read.</summary>
         public const int OldestReadableSchemaVersion = 1;

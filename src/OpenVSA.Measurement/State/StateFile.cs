@@ -284,6 +284,15 @@ namespace OpenVSA.Measurement.State
                         // meant, so this step transforms nothing either.
                         break;
 
+                    case 7:
+                        // Version 8 added REQ-DEM-051's equaliser mode and convergence factor, and
+                        // REQ-DEM-052's algorithm, acquisition mode, handover threshold and sweep
+                        // budget. A version 7 file has none of them, and the defaults are what it
+                        // meant: an equaliser that adapts, solving exactly, which is the only
+                        // behaviour that build had, with the parameters of gradient modes it did
+                        // not offer. Transforms nothing.
+                        break;
+
                     case 6:
                         // Version 7 states the Search Length in SYMBOLS rather than samples
                         // (REQ-DEM-033), and adds the pulse's expected on and off times.

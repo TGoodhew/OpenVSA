@@ -28,7 +28,7 @@ reference trace you were comparing against.
 The container carries `schemaVersion`; the measurements do not carry their own. There is therefore
 one answer to "what shape is this file", and migration has one place to happen.
 
-- **Current schema version: 7.**
+- **Current schema version: 8.**
 - **Oldest readable: 1.**
 
 A file with no `schemaVersion` is refused as not being an OpenVSA state. A file older than the
@@ -52,6 +52,7 @@ a generic parse failure some way downstream of the cause.
 |---|---|---|
 | — | 1 | Initial schema. |
 | 1 | 2 | Each measurement carries `demod`: the digital demodulator's format, symbol rate, filters, window lengths and equaliser settings. A version 1 file has none and the model's defaults supply them, so the migration transforms nothing. |
+| 7 | 8 | `demod` carries `equaliserMode` and `equaliserConvergenceFactor` (`REQ-DEM-051`) and `equaliserAlgorithm`, `equaliserAcquisition`, `equaliserAcquisitionEvmPercent` and `equaliserAdaptationSweeps` (`REQ-DEM-052`): whether the equaliser adapts, is frozen or is a unit impulse; which algorithm fits it; how a gradient mode starts and when it hands over; and the step size and sweep budget those modes use. A version 7 file has none of them. Its equaliser always adapted and always solved exactly, which are the defaults, and it offered no gradient mode for the rest to belong to, so the migration transforms nothing. The coefficients themselves are not in the file at either version — they are the result of measurements taken, not a setting, and a recalled setup should not restore an equaliser fitted to a channel that is no longer connected. |
 | 6 | 7 | `demod` states its Search Length in **symbols** (`searchLengthSymbols`) rather than samples, and carries the pulse's expected `maximumPulseOnSymbols` and `maximumPulseOffSymbols` (`REQ-DEM-033`). **The first migration that transforms anything, and it cannot convert:** a length in samples is a number of symbols only at a sample rate, and a state does not carry the rate its Search Length was chosen at. The old member is dropped and the setting returns to "the whole record"; converting it with an invented rate would silently analyse a different part of the signal than the file asked for. |
 | 5 | 6 | `demod` carries `displayPointsPerSymbol`: how finely the traces are drawn (`REQ-DEM-034`), which is not the internal processing rate and must not follow it (`REQ-DEM-034a`). A version 5 file has none and drew its traces at the internal rate, which is the default. The migration transforms nothing. |
 | 4 | 5 | `demod` carries `referenceFilter` and the parameters of `REQ-DEM-021`'s catalogue: `measurementFilterBandwidthTime`, `referenceFilterBandwidthTime`, the two cutoffs, the two tap lists and `userFilterSamplesPerSymbol`. A version 4 file has none: its reference filter was a raised cosine and its measurement filter a root, which are the defaults. The migration transforms nothing. |
