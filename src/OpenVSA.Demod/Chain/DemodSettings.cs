@@ -84,6 +84,43 @@ namespace OpenVSA.Demod.Chain
         public const double DefaultEqualiserConvergenceFactor = 0.01;
 
         /// <summary>
+        /// How many times a gradient equaliser may sweep the block in one pass
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>A block is finite, and an incremental method is not.</strong> LMS converges in
+        /// updates, not in symbols, and a result window holds a few hundred symbols — far fewer
+        /// updates than a small step size needs. So a pass sweeps the same block repeatedly, which
+        /// turns the incremental method into batch gradient descent on the objective the
+        /// least-squares solution answers exactly.
+        /// </para>
+        /// <para>
+        /// That is worth being plain about: cycling the block is what lets LMS reach the same answer
+        /// the one-shot solution gives. It does not make LMS better, and it does not make it a
+        /// different algorithm — it makes the comparison in <c>REQ-DEM-052</c>'s criterion, "within
+        /// 1 dB of the least-squares EVM", a fair one instead of a test of how long the window is.
+        /// Fifty is enough for the step sizes this equaliser accepts and cheap enough not to be
+        /// noticed: fifty sweeps of five hundred symbols across twenty-two taps is under a million
+        /// multiplies.
+        /// </para>
+        /// </remarks>
+        public const int DefaultEqualiserAdaptationSweeps = 50;
+
+        /// <summary>
+        /// The EVM at which acquisition hands over to decision-directed adaptation, as a percentage
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <remarks>
+        /// Ten per cent. The threshold is a statement about when a decision can be trusted, and for
+        /// the densest format this build demodulates blind, an error vector a tenth of the reference
+        /// magnitude is comfortably inside the decision region; below it, decision-directed
+        /// adaptation has better information than any blind error does, so there is no reason to
+        /// stay in acquisition.
+        /// </remarks>
+        public const double DefaultEqualiserAcquisitionEvmPercent = 10.0;
+
+        /// <summary>
         /// The default filter span, in symbols either side of centre (<c>REQ-DEM-023</c>).
         /// </summary>
         /// <remarks>
@@ -566,6 +603,39 @@ namespace OpenVSA.Demod.Chain
         public EqualiserMode EqualiserMode { get; set; } = EqualiserMode.Run;
 
         /// <summary>
+        /// Which algorithm fits the coefficients (<c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <remarks>
+        /// The exact least-squares solution by default. The gradient modes are there for parity with
+        /// the reference product's controls, and they are the only modes
+        /// <see cref="EqualiserConvergenceFactor"/> and <see cref="EqualiserAcquisition"/> mean
+        /// anything to.
+        /// </remarks>
+        public EqualiserAlgorithm EqualiserAlgorithm { get; set; } =
+            EqualiserAlgorithm.LeastSquares;
+
+        /// <summary>
+        /// How a gradient equaliser starts when its decisions cannot be trusted yet
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public EqualiserAcquisition EqualiserAcquisition { get; set; } =
+            EqualiserAcquisition.DecisionDirected;
+
+        /// <summary>
+        /// The EVM at which acquisition hands over to decision-directed adaptation, as a percentage
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public double EqualiserAcquisitionEvmPercent { get; set; } =
+            DefaultEqualiserAcquisitionEvmPercent;
+
+        /// <summary>
+        /// How many times a gradient equaliser may sweep the block in one pass
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public int EqualiserAdaptationSweeps { get; set; } =
+            DefaultEqualiserAdaptationSweeps;
+
+        /// <summary>
         /// The equaliser's memory between measurements, or <c>null</c> when it has none.
         /// </summary>
         /// <remarks>
@@ -779,6 +849,17 @@ namespace OpenVSA.Demod.Chain
             Require(
                 EqualiserLengthSymbols >= 1,
                 "The equaliser's filter is at least one symbol long (REQ-DEM-051).");
+
+            Require(
+                EqualiserAdaptationSweeps >= 1,
+                "A gradient equaliser is allowed at least one sweep of the block (REQ-DEM-052).");
+
+            Require(
+                EqualiserAcquisitionEvmPercent > 0.0,
+                "The acquisition handover threshold is a positive EVM percentage; " +
+                EqualiserAcquisitionEvmPercent.ToString("G6", CultureInfo.InvariantCulture) +
+                " is a threshold no measurement can reach, so acquisition would never hand over " +
+                "(REQ-DEM-052).");
 
             Require(
                 EqualiserConvergenceFactor > 0.0,

@@ -74,14 +74,65 @@ impulse and say so: coefficients fitted for one tap count mean nothing at anothe
 dropped rather than stretched. Run the equaliser once at the new length to give Hold something to
 freeze.
 
+## Which algorithm fits the filter
+
+**Least squares (the default).** The exact solution, computed in one shot from the whole block. The
+analyser has already regenerated the ideal symbol sequence by the time the equaliser runs, so the
+filter that minimises the error against it can be written down directly rather than crept up on. It
+is optimal, it has no step size, and it gives the same coefficients every time it is run on the same
+samples — run-to-run variation in a least-squares equaliser is a defect, not a tolerance.
+
+**LMS** and **normalised LMS** adapt incrementally, one update per symbol. They are offered because
+an equaliser with a convergence factor and Run/Hold/Reset controls implies incremental adaptation,
+and because a transient can be worth seeing. They are not better: with the reference already in hand
+there is nothing an iterative method can find that the exact solution has not.
+
+Expect a gradient mode to land a little short of the exact one, and know what sets the distance. An
+LMS filter carries an excess error over the optimum of about **µ·L·Pₓ/2** of its mean-square error,
+where L is the tap count and Pₓ the signal's power — so at 42 taps a convergence factor of 0.01
+costs about 0.8 dB of EVM before convergence is even in question, and 0.003 costs a quarter of a
+decibel. Halve the step or shorten the filter, not both at once.
+
 ## Convergence factor
 
-The **convergence factor** is the step size of the LMS adaptation — how far the coefficients move on
-each symbol in response to the error at that symbol. Small values converge slowly and settle quietly;
-large ones converge quickly and leave more of their own noise on the coefficients, and past a bound
-that depends on the signal's power and the tap count they do not converge at all.
+The **convergence factor** is the step size — how far the coefficients move on each symbol in
+response to the error at that symbol. Small values settle quietly and take longer; large ones move
+quickly and leave more of their own noise on the coefficients; past a bound they do not converge at
+all but **diverge**.
 
-It has no effect on the default least-squares fit, which is solved in one shot from the whole block
-and has no step size to set. That is why it is the default: with the reference sequence already
-regenerated, the exact solution is available directly, it is the same every time it is run on the
-same samples, and there is nothing to tune.
+That bound is **µ < 2/(L·Pₓ)**. It depends on the tap count and on the power of the signal actually
+presented, so a step size that is safe on one measurement is not necessarily safe on the next, and
+it is not something you should have to recompute when the reference level changes. The analyser
+evaluates it from the measurement's own samples and **refuses** a step size outside it, reporting the
+bound it violated. Nothing is quietly clamped: a refused step leaves the coefficients as they were,
+which is a measurement you can account for.
+
+**Normalised LMS** exists to make that go away. Its step is divided by the input's own energy, so it
+is stable for any step below **2** whatever the signal level or the tap count — the setting means the
+same thing every time. Its excess error is about µ̃/(2 − µ̃), so 0.1 costs about a fifth of a decibel
+and 0.5 costs more than one.
+
+Neither number affects the least-squares fit, which has no step size at all.
+
+## Getting started when the eye is closed
+
+Decision-directed adaptation measures its error against the nearest constellation point, which is the
+right error only when the nearest point is the one that was sent. On a channel severe enough to close
+the eye it is not, and the filter is then driven confidently towards the wrong symbols. Two
+**acquisition** modes start a gradient equaliser without that assumption:
+
+- **Constant modulus (blind).** Asks only that the output have the right magnitude and says nothing
+  about which symbol it is, so it needs no knowledge at all. It is also blind to phase, which is why
+  it cannot finish the job.
+- **Data-aided.** Where a sync pattern is set and found, the symbols under the pattern are *known*
+  rather than decided, so the ordinary error can be formed from them however closed the eye is.
+  Better than blind where it applies — it fixes the phase too — and it applies only there.
+
+Either way, once EVM falls below the **handover threshold** the equaliser switches to
+decision-directed adaptation for the rest of the block, and says in the measurement's notices how
+many sweeps that took. On this analyser both take a two-ray channel whose second ray is seven tenths
+of the first from an unmeasurable 45 % EVM to about 1 %.
+
+Data-aided acquisition updates only under the pattern — a few tens of symbols in a window of
+hundreds — so it is given the same number of *updates* as any other mode rather than the same number
+of sweeps. Without that it would fail for want of arithmetic rather than for want of information.

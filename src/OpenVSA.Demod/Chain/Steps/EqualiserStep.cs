@@ -167,23 +167,6 @@ namespace OpenVSA.Demod.Chain.Steps
                 return StepOutcome.Continue;
             }
 
-            Iq[] coefficients = Fit(
-                source, symbols, context.TimingSamples, perSymbol, taps, half, stride, pad);
-
-            if (coefficients == null)
-            {
-                context.Note(
-                    "The equaliser's normal equations were singular, so no coefficients could be " +
-                    "fitted. The waveform was left as it was.");
-
-                return StepOutcome.Continue;
-            }
-
-            double[] equalised = Apply(source, samples, coefficients, half, stride, pad);
-
-            double residual = Residual(
-                source, symbols, coefficients, context.TimingSamples, perSymbol, half, stride, pad);
-
             // What the last accepted coefficients left, or -- on the first pass -- what the filter
             // this measurement inherited leaves, which in Run mode is the previous measurement's
             // and is doing nothing when there is none. Either way the new coefficients have to beat
@@ -193,10 +176,36 @@ namespace OpenVSA.Demod.Chain.Steps
                 ? settings.EqualiserState.Held(taps)
                 : null;
 
+            Iq[] regressors = Regressors(
+                source, symbols.Length, context.TimingSamples, perSymbol, taps, half, stride, pad);
+
             double baseline = double.IsNaN(context.EqualiserResidual)
-                ? Residual(
-                    source, symbols, inherited, context.TimingSamples, perSymbol, half, stride, pad)
+                ? Residual(regressors, symbols, inherited, taps, half)
                 : context.EqualiserResidual;
+
+            Iq[] coefficients = settings.EqualiserAlgorithm == EqualiserAlgorithm.LeastSquares
+                ? LeastSquares(regressors, symbols, taps)
+                : GradientEqualiser.Adapt(
+                    context, regressors, Start(context, inherited, taps, half), taps,
+                    symbols.Length);
+
+            if (coefficients == null)
+            {
+                // A gradient mode that refused its step size has already said so, in the terms the
+                // user can act on. Only the one-shot solution needs a word here.
+                if (settings.EqualiserAlgorithm == EqualiserAlgorithm.LeastSquares)
+                {
+                    context.Note(
+                        "The equaliser's normal equations were singular, so no coefficients " +
+                        "could be fitted. The waveform was left as it was.");
+                }
+
+                return Kept(context, source, samples, inherited, baseline, half, stride, pad);
+            }
+
+            double[] equalised = Apply(source, samples, coefficients, half, stride, pad);
+
+            double residual = Residual(regressors, symbols, coefficients, taps, half);
 
             if (!(residual < baseline * (1.0 - settings.EqualiserUpdateThreshold)))
             {
@@ -210,26 +219,7 @@ namespace OpenVSA.Demod.Chain.Steps
                         "make this measurement worse.");
                 }
 
-                // The inherited filter beat this measurement's own, so it is the one this
-                // measurement is equalised by -- otherwise Run would silently fall back to no
-                // equaliser at all on any block whose own fit came out worse than the one before.
-                // It has to be read back through steps 8 to 10 like any other, so this asks for the
-                // one re-entry that does it.
-                if (inherited != null)
-                {
-                    context.Result = Apply(source, samples, inherited, half, stride, pad);
-                    context.EqualiserCoefficients = inherited;
-                    context.EqualiserResidual = baseline;
-
-                    Absorbed(context);
-                    context.EqualiserUpdated = false;
-
-                    return StepOutcome.ReEnter;
-                }
-
-                context.EqualiserUpdated = false;
-
-                return StepOutcome.Continue;
+                return Kept(context, source, samples, inherited, baseline, half, stride, pad);
             }
 
             context.Result = equalised;
@@ -326,6 +316,76 @@ namespace OpenVSA.Demod.Chain.Steps
             return held != null && context.Pass == 1
                 ? StepOutcome.ReEnter
                 : StepOutcome.Continue;
+        }
+
+        /// <summary>
+        /// Equalises with the filter this measurement inherited, when its own fit was not taken.
+        /// </summary>
+        /// <param name="context">The chain's state.</param>
+        /// <param name="source">The padded, derotated source.</param>
+        /// <param name="samples">How long the result window is.</param>
+        /// <param name="inherited">The inherited filter, or <c>null</c> when there is none.</param>
+        /// <param name="baseline">The residual that filter leaves.</param>
+        /// <param name="half">Which tap the impulse sits on.</param>
+        /// <param name="stride">How many samples apart the taps are.</param>
+        /// <param name="pad">Where the result window starts in <paramref name="source"/>.</param>
+        /// <returns>One re-entry when an inherited filter was applied, so the metrics are computed
+        /// from symbols read off the equalised waveform; otherwise
+        /// <see cref="StepOutcome.Continue"/>.</returns>
+        /// <remarks>
+        /// Reached two ways: a fit that could not be computed at all, and a fit that came out worse
+        /// than the filter already in force. Both mean the same thing — this measurement has nothing
+        /// better to offer than what it was handed — and in neither case should Run fall back to no
+        /// equaliser at all on a block whose own fit happened to be poor.
+        /// </remarks>
+        private static StepOutcome Kept(
+            DemodContext context,
+            double[] source,
+            int samples,
+            Iq[] inherited,
+            double baseline,
+            int half,
+            int stride,
+            int pad)
+        {
+            context.EqualiserUpdated = false;
+
+            if (inherited == null)
+            {
+                return StepOutcome.Continue;
+            }
+
+            context.Result = Apply(source, samples, inherited, half, stride, pad);
+            context.EqualiserCoefficients = inherited;
+            context.EqualiserResidual = baseline;
+
+            Absorbed(context);
+
+            return StepOutcome.ReEnter;
+        }
+
+        /// <summary>Where a gradient mode starts adapting from.</summary>
+        /// <param name="context">The chain's state.</param>
+        /// <param name="inherited">The filter this measurement inherited, or <c>null</c>.</param>
+        /// <param name="taps">How many taps.</param>
+        /// <param name="half">Which tap the impulse sits on.</param>
+        /// <returns>The starting coefficients.</returns>
+        /// <remarks>
+        /// The best filter already in hand: this pass's predecessor within the measurement, else the
+        /// one carried in from the last measurement, else a unit impulse. An incremental method that
+        /// restarted from an impulse each pass would spend every pass covering the ground the last
+        /// one covered, which is the one thing an incremental method is supposed to avoid.
+        /// </remarks>
+        private static Iq[] Start(DemodContext context, Iq[] inherited, int taps, int half)
+        {
+            Iq[] running = context.EqualiserCoefficients;
+
+            if (running != null && running.Length == taps)
+            {
+                return running;
+            }
+
+            return inherited ?? Impulse(taps, half);
         }
 
         /// <summary>A filter that does nothing: one at the impulse index, zero everywhere else.</summary>
@@ -441,20 +501,21 @@ namespace OpenVSA.Demod.Chain.Steps
         }
 
         /// <summary>
-        /// Solves the regularised normal equations for the taps, at the decision instants.
+        /// Reads what every tap sees at every decision instant.
         /// </summary>
         /// <param name="source">The padded, derotated source.</param>
-        /// <param name="symbols">The ideal point for each symbol in the window.</param>
+        /// <param name="count">How many symbols the window holds.</param>
         /// <param name="timing">Where the first symbol's decision instant falls.</param>
         /// <param name="perSymbol">The internal processing rate.</param>
         /// <param name="taps">How many taps.</param>
         /// <param name="half">Which tap the reference delay sits on.</param>
         /// <param name="stride">How many samples apart the taps are.</param>
         /// <param name="pad">Where the result window starts in <paramref name="source"/>.</param>
-        /// <returns>The taps, or <c>null</c> when the equations are singular.</returns>
+        /// <returns>The tap inputs, symbol-major: <c>taps</c> values for each of
+        /// <paramref name="count"/> symbols.</returns>
         /// <remarks>
         /// <para>
-        /// <strong>Fitted where the measurement is read, and that is the whole point.</strong>
+        /// <strong>Read where the measurement is read, and that is the whole point.</strong>
         /// <c>REQ-DEM-052</c> writes the target as the reference sequence <c>r_k</c> — the same
         /// subscript the metric requirements use for the ideal SYMBOL — and this is a fit of the
         /// equaliser's output at each decision instant onto that point. Together with T/2-spaced
@@ -472,12 +533,14 @@ namespace OpenVSA.Demod.Chain.Steps
         /// </para>
         /// <para>
         /// The instants are generally not whole samples, so the source is interpolated at each of
-        /// them, with the same interpolator step 8 reads through.
+        /// them, with the same interpolator step 8 reads through. Every algorithm reads the signal
+        /// through this one matrix, which is what makes the one-shot solution and the gradient modes
+        /// answers to the same question rather than to two similar ones.
         /// </para>
         /// </remarks>
-        private static Iq[] Fit(
+        private static Iq[] Regressors(
             double[] source,
-            Iq[] symbols,
+            int count,
             double timing,
             int perSymbol,
             int taps,
@@ -485,10 +548,9 @@ namespace OpenVSA.Demod.Chain.Steps
             int stride,
             int pad)
         {
-            int count = symbols.Length;
-
-            // The regressor for every symbol and tap, built once: the matrix and the correlation
-            // both read it, and an interpolation is dear enough not to do twice.
+            // The regressor for every symbol and tap, built once. The normal equations read it
+            // twice, a gradient sweep reads it once per sweep, and the residual reads it again --
+            // and an interpolation is dear enough not to repeat.
             var regressors = new Iq[count * taps];
 
             for (int symbol = 0; symbol < count; symbol++)
@@ -501,6 +563,26 @@ namespace OpenVSA.Demod.Chain.Steps
                         Interpolator.At(source, instant - ((tap - half) * stride));
                 }
             }
+
+            return regressors;
+        }
+
+        /// <summary>
+        /// Solves the regularised normal equations for the taps (<c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <param name="regressors">The tap inputs for every symbol, symbol-major.</param>
+        /// <param name="symbols">The ideal point for each symbol in the window.</param>
+        /// <param name="taps">How many taps.</param>
+        /// <returns>The taps, or <c>null</c> when the equations are singular.</returns>
+        /// <remarks>
+        /// <c>w = (XᴴX + λI)⁻¹Xᴴd</c>, exactly and in one shot. It is internal rather than private
+        /// because <c>REQ-DEM-052</c>'s criterion is that this be the analytic solution and not an
+        /// iterate — "matches the analytic regularised solution to within 1e-9" — and a test can
+        /// only hold the shipped code to that by calling it.
+        /// </remarks>
+        internal static Iq[] LeastSquares(Iq[] regressors, Iq[] symbols, int taps)
+        {
+            int count = symbols.Length;
 
             var matrix = new Iq[taps * taps];
             var right = new Iq[taps];
@@ -533,14 +615,7 @@ namespace OpenVSA.Demod.Chain.Steps
                 right[row] = correlation;
             }
 
-            double diagonal = 0.0;
-
-            for (int tap = 0; tap < taps; tap++)
-            {
-                diagonal += matrix[(tap * taps) + tap].Magnitude;
-            }
-
-            double loading = DiagonalLoading * diagonal / taps;
+            double loading = Loading(matrix, taps);
 
             for (int tap = 0; tap < taps; tap++)
             {
@@ -549,6 +624,27 @@ namespace OpenVSA.Demod.Chain.Steps
             }
 
             return ComplexSolver.Solve(matrix, right, taps);
+        }
+
+        /// <summary>The diagonal loading the normal equations are solved with.</summary>
+        /// <param name="matrix">The unloaded normal equations.</param>
+        /// <param name="taps">How many taps.</param>
+        /// <returns>The absolute amount added to each diagonal term.</returns>
+        /// <remarks>
+        /// Internal so that a test can form the same analytic solution this step forms without
+        /// repeating the constant, which would make the test agree with a copy of the code rather
+        /// than with the code.
+        /// </remarks>
+        internal static double Loading(Iq[] matrix, int taps)
+        {
+            double diagonal = 0.0;
+
+            for (int tap = 0; tap < taps; tap++)
+            {
+                diagonal += matrix[(tap * taps) + tap].Magnitude;
+            }
+
+            return DiagonalLoading * diagonal / taps;
         }
 
         /// <summary>Convolves the padded source with the taps, producing the result window.</summary>
@@ -583,14 +679,11 @@ namespace OpenVSA.Demod.Chain.Steps
         /// <summary>
         /// How far the equaliser's output at the decision instants is from the ideal points.
         /// </summary>
-        /// <param name="source">The padded, derotated source.</param>
+        /// <param name="regressors">The tap inputs for every symbol, symbol-major.</param>
         /// <param name="symbols">The ideal point for each symbol.</param>
         /// <param name="coefficients">The taps, or <c>null</c> to measure the source untouched.</param>
-        /// <param name="timing">Where the first symbol's decision instant falls.</param>
-        /// <param name="perSymbol">The internal processing rate.</param>
+        /// <param name="taps">How many taps.</param>
         /// <param name="half">Which tap the reference delay sits on.</param>
-        /// <param name="stride">How many samples apart the taps are.</param>
-        /// <param name="pad">Where the result window starts in <paramref name="source"/>.</param>
         /// <returns>The error energy as a fraction of the reference's, which is EVM squared.</returns>
         /// <remarks>
         /// <para>
@@ -606,37 +699,37 @@ namespace OpenVSA.Demod.Chain.Steps
         /// thousand of its energy, and the old measure called that nothing -- which is how a slow
         /// divergence went unnoticed (<c>#432</c>).
         /// </para>
+        /// <para>
+        /// <strong>Every algorithm is judged by it, on the same targets.</strong> A gradient mode
+        /// adapts on its own decisions and the one-shot solution fits to step 9's, but what decides
+        /// whether a pass is taken is this one measure against this one reference — otherwise
+        /// "the fit improved" would mean a different thing for each mode, and the guarantee that
+        /// more passes cannot make a measurement worse would hold for one of them.
+        /// </para>
         /// </remarks>
         private static double Residual(
-            double[] source,
-            Iq[] symbols,
-            Iq[] coefficients,
-            double timing,
-            int perSymbol,
-            int half,
-            int stride,
-            int pad)
+            Iq[] regressors, Iq[] symbols, Iq[] coefficients, int taps, int half)
         {
             double difference = 0.0;
             double energy = 0.0;
 
             for (int symbol = 0; symbol < symbols.Length; symbol++)
             {
-                double instant = timing + (symbol * (double)perSymbol) + pad;
                 Iq got;
 
                 if (coefficients == null)
                 {
-                    got = Interpolator.At(source, instant);
+                    // The tap at the reference delay reads the source at the decision instant
+                    // itself, which is the waveform with no filter on it.
+                    got = regressors[(symbol * taps) + half];
                 }
                 else
                 {
                     got = Iq.Zero;
 
-                    for (int tap = 0; tap < coefficients.Length; tap++)
+                    for (int tap = 0; tap < taps; tap++)
                     {
-                        got = got + (coefficients[tap] *
-                            Interpolator.At(source, instant - ((tap - half) * stride)));
+                        got = got + (coefficients[tap] * regressors[(symbol * taps) + tap]);
                     }
                 }
 

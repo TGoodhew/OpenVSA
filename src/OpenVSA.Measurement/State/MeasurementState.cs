@@ -542,6 +542,31 @@ namespace OpenVSA.Measurement.State
         public double EqualiserConvergenceFactor { get; set; } =
             DemodSettings.DefaultEqualiserConvergenceFactor;
 
+        /// <summary>Which algorithm fits the coefficients (<c>REQ-DEM-052</c>).</summary>
+        public EqualiserAlgorithm EqualiserAlgorithm { get; set; } =
+            EqualiserAlgorithm.LeastSquares;
+
+        /// <summary>
+        /// How a gradient equaliser starts when its decisions cannot be trusted yet
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public EqualiserAcquisition EqualiserAcquisition { get; set; } =
+            EqualiserAcquisition.DecisionDirected;
+
+        /// <summary>
+        /// The EVM at which acquisition hands over to decision-directed adaptation, as a percentage
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public double EqualiserAcquisitionEvmPercent { get; set; } =
+            DemodSettings.DefaultEqualiserAcquisitionEvmPercent;
+
+        /// <summary>
+        /// How many times a gradient equaliser may sweep the block in one pass
+        /// (<c>REQ-DEM-052</c>).
+        /// </summary>
+        public int EqualiserAdaptationSweeps { get; set; } =
+            DemodSettings.DefaultEqualiserAdaptationSweeps;
+
         /// <summary>
         /// The coefficients this measurement's equaliser carries from one block to the next
         /// (<c>REQ-DEM-051</c>).
@@ -622,6 +647,10 @@ namespace OpenVSA.Measurement.State
                 EqualiserLengthSymbols = EqualiserLengthSymbols,
                 EqualiserMode = EqualiserMode,
                 EqualiserConvergenceFactor = EqualiserConvergenceFactor,
+                EqualiserAlgorithm = EqualiserAlgorithm,
+                EqualiserAcquisition = EqualiserAcquisition,
+                EqualiserAcquisitionEvmPercent = EqualiserAcquisitionEvmPercent,
+                EqualiserAdaptationSweeps = EqualiserAdaptationSweeps,
                 EqualiserState = EqualiserAdaptation,
             };
 
