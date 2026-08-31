@@ -414,14 +414,16 @@ namespace OpenVSA.Demod.Tests
         public void AnUnknownFormatIsRefusedByNameAndSaysWhatIsMissing()
         {
             ArgumentException refused =
-                Assert.Throws<ArgumentException>(() => Constellation.ByName("GMSK"));
+                Assert.Throws<ArgumentException>(() => Constellation.ByName("8VSB"));
 
-            Assert.Contains("GMSK", refused.Message, StringComparison.Ordinal);
+            Assert.Contains("8VSB", refused.Message, StringComparison.Ordinal);
 
-            // What GMSK is still waiting for is its pulse, and the message says so. It used to say
-            // REQ-DEM-012 instead, because the offset and differential formats were waiting too;
-            // they are not, so the message no longer sends anyone there.
+            // What is still owed needs a discriminator or a vestigial-sideband path rather than a
+            // point list, and the message says which. It named GMSK once, and then MSK, GMSK and
+            // EDGE arrived: those turned out to want a pulse the catalogue already had and a
+            // rotation the chain already did, which is why they are answered and these are not.
             Assert.Contains("frequency-keyed", refused.Message, StringComparison.Ordinal);
+            Assert.Contains("vestigial-sideband", refused.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -434,8 +436,7 @@ namespace OpenVSA.Demod.Tests
             // status rather than leaving it half true.
             string[] notYet =
             {
-                "SOQPSK", "MSK", "GMSK", "2FSK", "4FSK", "8FSK", "16FSK", "8VSB", "16VSB",
-                "DVBQAM",
+                "SOQPSK", "2FSK", "4FSK", "8FSK", "16FSK", "8VSB", "16VSB", "DVBQAM",
             };
 
             foreach (string format in notYet)
@@ -445,9 +446,239 @@ namespace OpenVSA.Demod.Tests
 
             _output.WriteLine(
                 "Still owed by REQ-DEM-010: " + string.Join(", ", notYet) +
-                " -- every one of them wants a pulse or a discriminator rather than a point list, " +
-                "which is REQ-DEM-021's. The offset and differential rows left this list on " +
-                "24 August 2026 with REQ-DEM-012.");
+                " -- the frequency-keyed ones want a discriminator rather than a decision, the " +
+                "vestigial-sideband ones a single-sideband path, SOQPSK a continuous-phase " +
+                "treatment, and DVB-QAM a quadrant-differential encoding that is not this " +
+                "catalogue's whole-symbol one. The offset and differential rows left this list on " +
+                "24 August 2026 with REQ-DEM-012; MSK, GMSK and EDGE left it on 31 August with " +
+                "REQ-DEM-010 itself, because a rotation and a pulse were all they needed and the " +
+                "chain already had both.");
+        }
+
+        [Theory]
+        [InlineData("3PI8-8PSK", PulseFilterType.Edge, 8)]
+        [InlineData("MSK1", PulseFilterType.Msk, 0)]
+        [InlineData("MSK2", PulseFilterType.Msk, 0)]
+        [InlineData("GMSK", PulseFilterType.Edge, 3)]
+        public void AFormatWhoseTransmitPulseIsNotARootRaisedCosineRoundTripsToo(
+            string name, PulseFilterType pulse, int equalisingPasses)
+        {
+            // REQ-DEM-010's criterion again, for the three formats whose transmit pulse is not a
+            // root raised cosine: EDGE's linearised c0(t), MSK's half sine and GMSK's Gaussian.
+            //
+            // 🔴 THE PULSE IS SENT AS WELL AS EXPECTED, which is what makes this a round trip and
+            // not a tautology. The generator is handed the same filter the analyser will match
+            // against -- it cannot build one, since OpenVSA.Synthesis sits outside the analysis
+            // stack and cannot reference the filter catalogue -- so the signal really carries that
+            // pulse rather than a root raised cosine the demodulator is then told to expect.
+            //
+            // 🔴 AND THE FILTERS ARE THE SAME ON BOTH SIDES, which is not what a Nyquist pair does.
+            // A root raised cosine is half of a Nyquist filter and the receiver applies the other
+            // half; these pulses are the WHOLE shaping, so the measurement filter is None and the
+            // reference is the transmit pulse itself. Matching a half-sine transmit pulse with a
+            // half-sine receive filter would be applying the shaping twice.
+            //
+            // 🔴 TWO OF THESE NEED THE EQUALISER TO MEET THE CRITERION, AND THAT IS THE FORMAT
+            // TALKING. MSK's half sine is zero at every symbol instant but its own, so it carries
+            // no intersymbol interference and the round trip is exact without one. The linearised
+            // GMSK pulse c0(t) spans about three symbols and is NOT a Nyquist pulse: it puts ISI in
+            // the signal by construction, which is the price of a constant envelope, and a real
+            // receiver for these formats equalises. Measured without it: EDGE 35.1 %rms.
+            //
+            // EDGE also needs more PASSES than the chain's default three -- 3.1 %rms at three,
+            // 0.002 at six -- because the equaliser is decision-directed and eight points seen
+            // through that ISI take more than one round of decisions to become trustworthy. GMSK's
+            // two points are decided reliably from the start, so it converges in the default three.
+            // The chain says so when it runs out: "the equaliser was still updating its
+            // coefficients when the chain reached its bound".
+            Constellation constellation = Constellation.ByName(name);
+
+            const int PerSymbol = 4;
+            const int Span = 12;
+
+            PulseFilter shaping = pulse == PulseFilterType.Edge
+                ? PulseFilter.Edge()
+                : PulseFilter.Msk();
+
+            double[] taps = shaping.Taps(PerSymbol, Span, FilterRole.Reference);
+
+            var source = new ContinuousModulatedSource
+            {
+                Scheme = SchemeFor(constellation),
+                SymbolRateHz = 1e6,
+                SampleRateHz = 16e6,
+                PulseSpanSymbols = Span,
+                TransmitPulse = taps,
+                TransmitPulseSamplesPerSymbol = PerSymbol,
+                Seed = 20260831,
+            };
+
+            var samples = new float[2 * (int)Math.Ceiling(Symbols * source.SamplesPerSymbol)];
+
+            source.Fill(samples);
+
+            // 🔴 IS IT ACTUALLY THE FORMAT? MSK is a CONSTANT-ENVELOPE modulation, and that is not
+            // a detail: it is why the format exists, since a transmitter with no envelope variation
+            // can be run at saturation. A pulse that demodulates beautifully and leaves the
+            // envelope reaching zero between symbols has produced something else, and the EVM
+            // criterion below would pass on it happily. Measured: MSK's own two-symbol pulse holds
+            // the envelope to 0.17 dB, and the one-symbol half sine it is easily confused with lets
+            // it fall to zero -- 240 dB of variation, EVM 0.000000 %rms, and not MSK.
+            //
+            // EDGE is exempt because EDGE is not constant envelope and was never meant to be: it
+            // spends that property to carry three bits a symbol instead of one, which is why its
+            // transmitter needs a linear amplifier and GMSK's does not. Measured, its envelope
+            // moves by 16.6 dB. Asserting flatness on it would have been asserting somebody else's
+            // format.
+            double flatness = EnvelopeVariationDb(samples);
+
+            _output.WriteLine(
+                name + ": envelope varies by " +
+                flatness.ToString("F2", CultureInfo.InvariantCulture) + " dB");
+
+            if (constellation.Family == ModulationFamily.Msk)
+            {
+                Assert.True(
+                    flatness < 3.0,
+                    name + "'s envelope varies by " +
+                    flatness.ToString("F2", CultureInfo.InvariantCulture) +
+                    " dB, so what was generated is not the constant-envelope modulation this " +
+                    "format is, whatever it demodulates to.");
+            }
+
+            var settings = new DemodSettings
+            {
+                Constellation = constellation,
+                SymbolRateHz = source.SymbolRateHz,
+                ResultLengthSymbols = 512,
+                FilterSymbolSpan = Span,
+                MeasurementFilter = PulseFilterType.None,
+                ReferenceFilter = pulse,
+                EqualiserEnabled = equalisingPasses > 0,
+                EqualiserLengthSymbols = 11,
+                MaxPasses = Math.Max(DemodSettings.DefaultMaxPasses, equalisingPasses),
+            };
+
+            DemodResult result = new Demodulator().Run(samples, source.SampleRateHz, settings);
+
+            _output.WriteLine(
+                name + " through " + pulse + ": " + result.Trace.SymbolCount + " symbols, EVM " +
+                result.EvmPercent.ToString("F6", CultureInfo.InvariantCulture) + " %rms, " +
+                (result.Converged ? "converged" : "NOT CONVERGED") + ", " +
+                (result.Lock.Locked ? "locked" : "NOT LOCKED"));
+
+            foreach (string notice in result.Notices)
+            {
+                _output.WriteLine("    " + notice);
+            }
+
+            Assert.True(
+                result.EvmPercent < 0.1,
+                name + " round-tripped at " +
+                result.EvmPercent.ToString("F4", CultureInfo.InvariantCulture) +
+                " %rms, and REQ-DEM-010 asks for better than 0.1 %.");
+
+            // "Recovered bits identical to transmitted bits". A differential format carries its
+            // bits in the change, so what the generator sent as data is the change too --
+            // DataSymbolAt, not SymbolAt, and the first symbol of a signal carries none.
+            var sent = new int[Symbols];
+
+            for (int symbol = 0; symbol < Symbols; symbol++)
+            {
+                sent[symbol] = constellation.IsDifferential && symbol > 0
+                    ? source.DataSymbolAt(symbol)
+                    : source.SymbolAt(symbol);
+            }
+
+            IReadOnlyList<int> recovered =
+                constellation.IsDifferential ? result.DataSymbols : result.Symbols;
+
+            // 🔴 UP TO ONE ROTATION OF THE CONSTELLATION, AND THAT IS PHYSICS RATHER THAN A
+            // TOLERANCE. A signal carrying absolute phase contains nothing that says which of its
+            // points is point zero: every rotation by a multiple of 2π/M fits the samples exactly
+            // as well, so a demodulator handed nothing but the signal cannot choose between them.
+            // EDGE shows it and QPSK does not only because this generator sends no carrier phase
+            // offset, so the identity happens to be the rotation the estimator lands on; EDGE's own
+            // turn moves the window's rotation origin away from the generator's by an amount that
+            // depends on where the window fell.
+            //
+            // What resolves it in a real measurement is a known sequence -- REQ-DEM-040's sync
+            // search, or the training sequence a real EDGE receiver correlates against. What this
+            // test can honestly claim is that the symbols are the transmitted ones under ONE
+            // rotation applied to all of them, and it says which.
+            int rotation;
+            int agreed = BestAgreement(recovered, sent, constellation.Count, out rotation);
+
+            _output.WriteLine(
+                "    " + agreed + " of " + recovered.Count + " symbols agree, at a constellation " +
+                "rotation of " + rotation + " point(s)");
+
+            Assert.Equal(recovered.Count, agreed);
+        }
+
+        [Fact]
+        public void EdgeIsStrippedBySixteenBecauseItsTurnClosesAfterSixteenSymbols()
+        {
+            // 🔴 Three sixteenths of a turn closes after SIXTEEN symbols, not after the 16/3 that
+            // one-over-the-turn gives -- and 16/3 is not a whole number, so the earlier form of the
+            // calculation refused EDGE outright as a rotation no power could strip. The two
+            // readings agree for every unit fraction, which is why π/4-DQPSK and MSK never showed
+            // it up.
+            Assert.Equal(16, Constellation.ByName("EDGE").RotationalSymmetry);
+
+            // The unit fractions, unchanged: four points and eight positions, two points and four.
+            Assert.Equal(8, Constellation.Pi4Dqpsk().RotationalSymmetry);
+            Assert.Equal(4, Constellation.ByName("MSK2").RotationalSymmetry);
+        }
+
+        [Fact]
+        public void MskAndGmskShowTheMetricsOfTheirFamilyAndNotOfTheirPoints()
+        {
+            // REQ-DEM-071 keys the error summary's rows on the family. MSK's points are BPSK's, so
+            // a family inherited from the points would have offered the I/Q origin, imbalance and
+            // quadrature rows -- which come from a linear fit of measured symbols against ideal
+            // ones, and MSK is not a linear modulation of a constellation.
+            foreach (string name in new[] { "MSK1", "MSK2", "GMSK" })
+            {
+                Constellation constellation = Constellation.ByName(name);
+
+                Assert.Equal(ModulationFamily.Msk, constellation.Family);
+
+                IReadOnlyList<string> rows =
+                    MetricApplicability.LabelsFor(constellation.Family, constellation.IsOffset);
+
+                Assert.Contains("Amp Droop", rows);
+                Assert.DoesNotContain("IQ Offset", rows);
+                Assert.DoesNotContain("IQ Quad. Error", rows);
+            }
+
+            // And EDGE is phase-shift keying, which shows all of them.
+            Assert.Equal(ModulationFamily.Psk, Constellation.ByName("EDGE").Family);
+        }
+
+        /// <summary>How far a generated signal's envelope moves, in decibels.</summary>
+        /// <param name="samples">The signal, interleaved.</param>
+        /// <returns>The ratio of the largest magnitude to the smallest, in decibels.</returns>
+        /// <remarks>
+        /// Measured away from the ends, where the pulse train is still filling and every signal's
+        /// envelope rises from nothing.
+        /// </remarks>
+        private static double EnvelopeVariationDb(float[] samples)
+        {
+            double least = double.MaxValue;
+            double most = 0.0;
+
+            for (int sample = 2000; sample < (samples.Length / 2) - 2000; sample++)
+            {
+                double i = samples[2 * sample];
+                double q = samples[(2 * sample) + 1];
+                double magnitude = Math.Sqrt((i * i) + (q * q));
+
+                least = Math.Min(least, magnitude);
+                most = Math.Max(most, magnitude);
+            }
+
+            return 20.0 * Math.Log10(most / Math.Max(least, 1e-12));
         }
 
         private static double Radius(ConstellationPoint point) =>
@@ -470,6 +701,15 @@ namespace OpenVSA.Demod.Tests
         /// up. Both ends then share one geometry, which is what makes this a test of the chain and
         /// not of the geometry — see the remarks on this class.
         /// </remarks>
+        /// <summary>The generator's view of a constellation: its points, and how it is sent.</summary>
+        /// <remarks>
+        /// 🔴 <strong>The stagger and the turn are part of the signal, not of the point list.</strong>
+        /// This helper used to hand over the points alone, which was harmless while every format it
+        /// was asked for stood still — and silently wrong the moment one did not. MSK asks for a
+        /// right angle every symbol; without it the generator sent plain BPSK, the analyser looked
+        /// for a turning constellation, and the round trip came back at 119.8 %rms. The failure was
+        /// in the fixture and it read exactly like a failure in the format.
+        /// </remarks>
         private static ModulationScheme SchemeFor(Constellation constellation)
         {
             var points = new List<SymbolPoint>(constellation.Count);
@@ -479,7 +719,56 @@ namespace OpenVSA.Demod.Tests
                 points.Add(new SymbolPoint(point.I, point.Q));
             }
 
-            return ModulationScheme.FromPoints(constellation.Name, points);
+            return ModulationScheme.FromPoints(
+                constellation.Name,
+                points,
+                constellation.IsOffset,
+                constellation.RotationPerSymbolRadians);
+        }
+
+        /// <summary>
+        /// The best agreement over both alignments a demodulation is free in: where the window
+        /// fell, and which point the constellation calls zero.
+        /// </summary>
+        /// <param name="recovered">What was demodulated.</param>
+        /// <param name="sent">What was transmitted.</param>
+        /// <param name="order">How many points the constellation has.</param>
+        /// <param name="rotation">Receives the rotation, in points, that agreed best.</param>
+        /// <returns>How many symbols agree at the best of the two.</returns>
+        /// <remarks>
+        /// <strong>Searching a freedom is not the same as excusing an error, and the difference is
+        /// how much is left over.</strong> A rotation moves every symbol by the same amount, so a
+        /// wrong constellation cannot hide in it: there are only <em>order</em> rotations, and one
+        /// of them has to account for EVERY symbol. A demodulation that had genuinely mis-decided
+        /// would agree with none of them beyond chance, which for eight points is one symbol in
+        /// eight.
+        /// </remarks>
+        private static int BestAgreement(
+            IReadOnlyList<int> recovered, int[] sent, int order, out int rotation)
+        {
+            int best = 0;
+
+            rotation = 0;
+
+            for (int turn = 0; turn < order; turn++)
+            {
+                var turned = new int[sent.Length];
+
+                for (int symbol = 0; symbol < sent.Length; symbol++)
+                {
+                    turned[symbol] = (sent[symbol] + turn) % order;
+                }
+
+                int agreed = LongestAgreement(recovered, turned);
+
+                if (agreed > best)
+                {
+                    best = agreed;
+                    rotation = turn;
+                }
+            }
+
+            return best;
         }
 
         private static int LongestAgreement(IReadOnlyList<int> recovered, int[] sent)

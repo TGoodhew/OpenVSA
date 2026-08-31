@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using OpenVSA.Dsp.Fft;
+using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Chain.Steps
@@ -112,6 +113,40 @@ namespace OpenVSA.Demod.Chain.Steps
             double symbolCycles = context.SampleRateHz <= 0.0
                 ? 0.0
                 : context.Settings.SymbolRateHz / context.SampleRateHz;
+
+            // 🔴 A CONSTANT-ENVELOPE FORMAT CANNOT BE STRIPPED THIS WAY AT ALL, AND ITS POINTS
+            // DO NOT SAY SO. StrippingQuality asks what happens to the constellation's POINTS when
+            // they are raised to a power, and MSK's points are two: they strip perfectly, and the
+            // quality gate below waves the format through. What the estimator actually raises is
+            // the WAVEFORM, and between the decision instants an MSK waveform's phase sweeps
+            // continuously through a quarter turn a symbol -- it is a frequency modulation, and the
+            // fourth power of it is not a carrier line but a pair of lines at plus and minus the
+            // symbol rate, which is exactly where this step looks for the envelope's own.
+            //
+            // Measured on a 1 Msym/s MSK signal with no carrier offset at all: the estimate came
+            // back as 250 028.7 Hz -- a quarter of the symbol rate, which is MSK's own deviation --
+            // and the demodulation that followed reported 99.9 %rms. A confident, entirely wrong
+            // answer, which is the failure this whole step is written to avoid.
+            //
+            // So the family declines rather than competes. Step 8 estimates the carrier jointly
+            // with everything else and can pull in what it starts near; what it cannot do is
+            // recover from being handed a quarter of the symbol rate as a starting point.
+            if (constellation.Family == ModulationFamily.Msk)
+            {
+                context.CoarseFrequencyHz = 0.0;
+                context.Search = search;
+
+                context.Note(
+                    "Step 3 did not estimate a carrier offset. " + constellation.Name +
+                    " has a constant envelope and a phase that sweeps continuously between symbol " +
+                    "instants, so raising it to a power leaves lines at multiples of the symbol " +
+                    "rate rather than a carrier line -- the tallest of them is the modulation's " +
+                    "own deviation, and reporting it would put the offset a quarter of a symbol " +
+                    "rate out. Step 8 starts from no offset instead, so a real one must be inside " +
+                    "what it can pull in (REQ-DEM-036).");
+
+                return StepOutcome.Continue;
+            }
 
             double quality = constellation.StrippingQuality;
 

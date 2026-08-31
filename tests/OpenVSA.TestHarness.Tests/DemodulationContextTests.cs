@@ -177,18 +177,20 @@ namespace OpenVSA.TestHarness.Tests
         {
             MeasurementState setup = Setup();
 
-            // GMSK, not 1024QAM as this test said until 24 August 2026. REQ-DEM-010's catalogue now
-            // covers every format that is a point list, 1024QAM among them, so naming one of those
-            // would assert a limitation that no longer exists. GMSK is still genuinely out of reach:
-            // it is not a point list, and it needs REQ-DEM-012's handling rather than a table entry.
-            setup.Demod.Format = "GMSK";
+            // 8VSB, and the name in this test has moved twice as the catalogue grew: 1024QAM until
+            // 24 August 2026, when REQ-DEM-010's point-list formats arrived; GMSK until 31 August,
+            // when MSK, GMSK and EDGE turned out to need only a rotation and a pulse the chain
+            // already had. What is left genuinely cannot be reached by a point list at all --
+            // vestigial sideband is a real-valued modulation with a suppressed sideband, and the
+            // frequency-keyed formats need a discriminator rather than a decision.
+            setup.Demod.Format = "8VSB";
 
             ArgumentException failure = Assert.Throws<ArgumentException>(
                 () => setup.Demod.ToSettings());
 
             _output.WriteLine(failure.Message);
 
-            Assert.Contains("GMSK", failure.Message, StringComparison.Ordinal);
+            Assert.Contains("8VSB", failure.Message, StringComparison.Ordinal);
         }
 
         [Fact]

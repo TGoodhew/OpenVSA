@@ -111,11 +111,22 @@ namespace OpenVSA.Demod.Tests
         // ---- REQ-DEM-021: the catalogue -------------------------------------------------------
 
         [Fact]
-        public void TheCatalogueHasTheNineTypesTheRequirementLists()
+        public void TheCatalogueHasTheNineTypesTheRequirementListsAndOneItImplies()
         {
-            // Root Raised Cosine, Raised Cosine, Gaussian, EDGE, Half Sine, Rectangular, Low-pass,
-            // User-defined FIR, None. Counted from the enumeration so that a type added without a
-            // requirement, or a requirement's type never added, shows up here.
+            // REQ-DEM-021's nine: Root Raised Cosine, Raised Cosine, Gaussian, EDGE, Half Sine,
+            // Rectangular, Low-pass, User-defined FIR, None. Counted from the enumeration so that a
+            // type added without a requirement, or a requirement's type never added, shows up here.
+            //
+            // 🔴 AND A TENTH THE REQUIREMENT DID NOT LIST BUT ITS NEIGHBOUR NEEDS. REQ-DEM-010
+            // requires MSK, whose linear pulse is half a cosine across TWO symbols -- not the
+            // one-symbol Half Sine, which shapes an offset format's staggered axes and, used at the
+            // bit rate, produces a waveform whose envelope reaches zero between every pair of
+            // symbols. That waveform demodulates at 0.000000 %rms and is not MSK.
+            //
+            // The catalogue already carries the exactly analogous pulse for the other format of
+            // that family: EDGE's c0(t) is the linearised GMSK pulse, listed because EDGE cannot be
+            // measured without it. MSK's is here for the same reason. #437 asks whether
+            // REQ-DEM-021's list should say ten.
             var types = new List<string>();
 
             foreach (PulseFilterType type in Enum.GetValues(typeof(PulseFilterType)))
@@ -125,7 +136,8 @@ namespace OpenVSA.Demod.Tests
 
             _output.WriteLine(string.Join(", ", types));
 
-            Assert.Equal(9, types.Count);
+            Assert.Equal(10, types.Count);
+            Assert.Contains("Msk", types);
         }
 
         [Theory]
@@ -646,6 +658,9 @@ namespace OpenVSA.Demod.Tests
             {
                 "Root Raised Cosine", "Raised Cosine", "Gaussian", "EDGE", "Half Sine",
                 "Rectangular", "Low-pass", "User-defined FIR", "None",
+
+                // The tenth, and the sentence that keeps the two half-cosines apart: see #437.
+                "MSK",
             })
             {
                 Assert.Contains(named, help, StringComparison.Ordinal);
@@ -790,6 +805,9 @@ namespace OpenVSA.Demod.Tests
 
                 case PulseFilterType.HalfSine:
                     return PulseFilter.HalfSine();
+
+                case PulseFilterType.Msk:
+                    return PulseFilter.Msk();
 
                 case PulseFilterType.Rectangular:
                     return PulseFilter.Rectangular();

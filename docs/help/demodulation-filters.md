@@ -36,17 +36,53 @@ matches *it*, and demonstrating what a mismatched pair does is a legitimate thin
 | Raised Cosine | roll-off α | The full Nyquist pulse the matched pair composes to. |
 | Gaussian | BT | The GSM/GMSK family's shaping. |
 | EDGE | — | The linearised-GMSK main pulse *c₀(t)* of 3GPP TS 45.004. **Not a Gaussian.** |
-| Half Sine | — | One half-period of a cosine across a symbol; MSK's shaping. |
+| Half Sine | — | One half-period of a cosine across **one** symbol; the shaping of an offset format's staggered axes. |
+| MSK | — | The linearised-MSK main pulse: half a cosine across **two** symbols. MSK's shaping at the bit rate. |
 | Rectangular | — | Unity across one symbol, zero outside it. |
 | Low-pass | cutoff | An ideal brick wall, which is a sinc in time. At the default cutoff of half the symbol rate it is the Nyquist sinc. |
 | User-defined FIR | taps | Your own coefficients, at a stated number of samples per symbol. |
 | None | — | No shaping at all. |
+
+**Half Sine and MSK are one factor of two apart, and it matters more than it sounds.** MSK is two
+points that turn a right angle every symbol, shaped by a half cosine spanning **two** symbol periods
+— that overlap is what makes its envelope constant, and a constant envelope is the whole reason the
+format exists. Shape the same symbols with the one-symbol Half Sine instead and the envelope falls
+to **zero at every symbol boundary**. Measured on this analyser, that signal demodulates at
+0.000000 %rms: a perfect measurement of something that is not MSK. Use **MSK** for MSK at the bit
+rate, and **Half Sine** for the staggered axes of an offset format.
 
 **EDGE is a distinct filter, not a Gaussian at some particular BT.** It is the principal component
 of the Laurent decomposition of GMSK — the pulse an EDGE transmitter actually sends its 3π/8-rotated
 8PSK symbols through. The nearest Gaussian to it is not close: sweeping BT over the whole useful
 range, the best any of them manages is a root-mean-square difference of about 0.02 against a pulse
 whose peak is 0.93. Choosing one for the other would be a measurement of the wrong thing.
+
+## Which filter a format needs
+
+Most formats are shaped by a root raised cosine and matched by another, which is why that is the
+default. Four are not, and selecting the format does not select the filter — the two are independent
+choices on purpose (a transmitter that shaped its signal some other way is a thing you may need to
+measure):
+
+| Format | Transmit pulse | Measurement filter | Reference filter |
+|---|---|---|---|
+| MSK type 1, MSK type 2 | MSK | None | MSK |
+| GMSK | EDGE (*c₀*) | None | EDGE |
+| 3π/8-8PSK (EDGE) | EDGE (*c₀*) | None | EDGE |
+
+**The measurement filter is None for all of them, and that is not an oversight.** A root raised
+cosine is *half* of a Nyquist filter and the receiver applies the other half; these pulses are the
+whole shaping, already applied by the transmitter. Matching a half-cosine transmit pulse with a
+half-cosine receive filter would apply the shaping twice.
+
+**EDGE and GMSK need the equaliser to reach their best.** The *c₀* pulse spans about three symbols
+and is not a Nyquist pulse: it puts intersymbol interference into the signal by construction, which
+is the price paid for keeping the envelope under control, and a real receiver for these formats
+equalises. Measured on this analyser with a perfect signal: EDGE reads 35.1 %rms with the equaliser
+off and 0.002 %rms with it on. EDGE also needs more passes than the default three — its eight points
+seen through that ISI take more than one round of decisions to become trustworthy — and the
+measurement says so when it runs out of them. MSK's pulse is zero at every symbol instant but its
+own, so it needs neither.
 
 ## Filter span, and what it costs
 

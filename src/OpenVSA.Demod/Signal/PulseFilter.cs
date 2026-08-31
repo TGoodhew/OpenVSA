@@ -175,6 +175,11 @@ namespace OpenVSA.Demod.Signal
             new PulseFilter(
                 PulseFilterType.Edge, DefaultAlpha, DefaultBandwidthTime, DefaultCutoff, null, 0);
 
+        /// <summary>The linearised-MSK main pulse: half a cosine across two symbols.</summary>
+        public static PulseFilter Msk() =>
+            new PulseFilter(
+                PulseFilterType.Msk, DefaultAlpha, DefaultBandwidthTime, DefaultCutoff, null, 0);
+
         /// <summary>Half sine.</summary>
         public static PulseFilter HalfSine() =>
             new PulseFilter(
@@ -327,11 +332,21 @@ namespace OpenVSA.Demod.Signal
 
                 case PulseFilterType.HalfSine:
                     // One half-period of a cosine across a symbol: unity at the centre, zero at the
-                    // symbol's edges, nothing beyond them. MSK's shaping, and the reason it is a
-                    // cosine rather than a sine is that this catalogue's filters are all written
-                    // about their own centre.
+                    // symbol's edges, nothing beyond them. The shaping of an offset format's
+                    // staggered axes, and the reason it is a cosine rather than a sine is that this
+                    // catalogue's filters are all written about their own centre.
                     return Math.Abs(symbols) <= 0.5
                         ? Math.Cos(Math.PI * symbols)
+                        : 0.0;
+
+                case PulseFilterType.Msk:
+                    // The same half cycle stretched across two symbols, which is MSK's linear pulse
+                    // at the bit rate: unity at its own instant, zero at both neighbours', and zero
+                    // beyond them. The stretch is the whole difference from HalfSine above, and it
+                    // is the difference between a constant envelope and one that reaches zero
+                    // between every pair of symbols.
+                    return Math.Abs(symbols) <= 1.0
+                        ? Math.Cos(Math.PI * symbols / 2.0)
                         : 0.0;
 
                 case PulseFilterType.Rectangular:
