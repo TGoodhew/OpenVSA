@@ -700,8 +700,6 @@ namespace OpenVSA.Demod.Signal
         public static Constellation Gmsk() =>
             Bpsk().Turned("GMSK", Math.PI / 2.0).AsFamily(ModulationFamily.Msk);
 
-        /// <summary>The same points, sent with Q staggered half a symbol behind I.</summary>
-        /// <param name="name">What the offset format is called.</param>
         /// <summary>The same points, turning by a fixed angle every symbol.</summary>
         /// <param name="name">What the turning format is called.</param>
         /// <param name="rotationPerSymbolRadians">How far the points turn between symbols.</param>
@@ -747,6 +745,9 @@ namespace OpenVSA.Demod.Signal
                 Mapping,
                 _carried);
 
+        /// <summary>The same points, sent with Q staggered half a symbol behind I.</summary>
+        /// <param name="name">What the offset format is called.</param>
+        /// <returns>The constellation.</returns>
         private Constellation Staggered(string name) =>
             new Constellation(
                 name,

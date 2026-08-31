@@ -701,6 +701,12 @@ namespace OpenVSA.Verify
             // Acquired.
             const int Blocks = 8;
 
+            // How many times the two algorithms are acquired alternately for the comparison
+            // between them. Four, which is enough for the drift between one acquisition and the
+            // next to average out and few enough to keep the whole check under a minute of bench
+            // time.
+            const int Pairs = 4;
+
             Console.WriteLine("  The equaliser, on a signal from the generator:");
 
             digital.SetDigitalModulation(
@@ -835,19 +841,50 @@ namespace OpenVSA.Verify
             // even in question, which at 0.01 and these taps is most of the decibel being tested;
             // at 0.003 it is a fraction of it. Measured on this bench at 0.01: 0.90 dB and 1.17 dB
             // on two runs, which is a measurement of the step size rather than of the algorithm.
-            configure(EqualiserMode.Run, EqualiserAlgorithm.Lms, 0.003);
+            //
+            // 🔴 AND PAIRED, BECAUSE THE BENCH DRIFTS BETWEEN ACQUISITIONS. Averaging eight blocks
+            // of one acquisition takes out the block-to-block spread and does nothing about the
+            // half-minute between one acquisition and the next: measured on three runs of this same
+            // comparison, the difference came out at 0.88, 1.17 and 1.31 dB while the unit test on
+            // identical samples reads 0.24. What moves is the level either algorithm is measuring
+            // against, not the algorithms.
+            //
+            // So the two are acquired ALTERNATELY and the comparison is made within each pair,
+            // where whatever the bench was doing at that moment is common to both and divides out.
+            // What is reported is the mean of the paired differences and their spread, which is the
+            // form in which a reader can see whether the comparison was worth making.
+            double apart = 0.0;
+            double least = double.MaxValue;
+            double most = double.MinValue;
 
-            Acquired gradient = await Acquire(frontEnd, contexts, demod, options, SpanHz, Blocks)
-                .ConfigureAwait(false);
+            for (int pair = 0; pair < Pairs; pair++)
+            {
+                configure(EqualiserMode.Run, EqualiserAlgorithm.LeastSquares, 0.003);
 
-            double apart = 20.0 * Math.Log10(gradient.MeanEvm / first.MeanEvm);
+                Acquired exact = await Acquire(frontEnd, contexts, demod, options, SpanHz)
+                    .ConfigureAwait(false);
+
+                configure(EqualiserMode.Run, EqualiserAlgorithm.Lms, 0.003);
+
+                Acquired gradient = await Acquire(frontEnd, contexts, demod, options, SpanHz)
+                    .ConfigureAwait(false);
+
+                double difference = 20.0 * Math.Log10(gradient.MeanEvm / exact.MeanEvm);
+
+                apart += difference / Pairs;
+                least = Math.Min(least, difference);
+                most = Math.Max(most, difference);
+            }
 
             wrong += EqualiserOutcome(
                 "REQ-DEM-052",
                 "LMS lands within a decibel of the exact solution",
                 apart < 1.0,
-                "LMS " + gradient + "; least squares " + first + "; means " +
-                apart.ToString("F2", CultureInfo.InvariantCulture) + " dB apart");
+                apart.ToString("F2", CultureInfo.InvariantCulture) + " dB apart, the mean of " +
+                Pairs.ToString(CultureInfo.InvariantCulture) +
+                " alternated pairs spanning " +
+                least.ToString("F2", CultureInfo.InvariantCulture) + " to " +
+                most.ToString("F2", CultureInfo.InvariantCulture) + " dB");
 
             configure(EqualiserMode.Run, EqualiserAlgorithm.Lms, 5.0);
 
