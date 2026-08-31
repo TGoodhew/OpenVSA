@@ -598,8 +598,155 @@ namespace OpenVSA.Demod.Signal
         /// </remarks>
         public static Constellation Pi4Dqpsk() => Qpsk().Differential("PI4DQPSK", Math.PI / 4.0);
 
+        /// <summary>
+        /// EDGE's 3π/8-8PSK: eight points that turn three sixteenths of a turn every symbol.
+        /// </summary>
+        /// <returns>The constellation.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>The rotation is the format, and it is not a differential encoding.</strong>
+        /// Unlike π/4-DQPSK — which turns <em>and</em> carries its bits in the change — EDGE's
+        /// symbols are absolute: the turn is applied by the transmitter to keep the trajectory away
+        /// from the origin, which is what lets a power amplifier run near saturation without the
+        /// spectral regrowth a zero crossing causes. So this turns and decides absolutely.
+        /// </para>
+        /// <para>
+        /// <strong>Sixteen positions, not eight.</strong> Three sixteenths of a turn closes after
+        /// sixteen symbols, so the signal visits every one of sixteen phases and step 3 has to raise
+        /// it to the sixteenth power to strip the modulation. That is a demanding thing to ask of a
+        /// noisy signal — the sixteenth power of a signal is the sixteenth power of its noise too —
+        /// which is a property of the format rather than of this implementation.
+        /// </para>
+        /// <para>
+        /// <strong>The pulse is the other half of EDGE and it is not here.</strong> A transmitter
+        /// shapes these symbols with the linearised-GMSK pulse <c>c₀(t)</c> of 3GPP TS 45.004,
+        /// which this build has as <see cref="PulseFilterType.Edge"/> and which is emphatically not
+        /// a Gaussian. The constellation and the filter are chosen independently
+        /// (<c>REQ-DEM-020</c>), so selecting this format does not select that pulse; a measurement
+        /// of EDGE needs both.
+        /// </para>
+        /// </remarks>
+        public static Constellation Edge() =>
+            Psk(8).Turned("3PI8-8PSK", 3.0 * Math.PI / 8.0);
+
+        /// <summary>
+        /// Minimum-shift keying, as the linear modulation it is (<c>REQ-DEM-010</c>).
+        /// </summary>
+        /// <param name="type">1 or 2, per the reference product's naming.</param>
+        /// <returns>The constellation.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">The type is neither 1 nor 2.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>MSK is π/2-BPSK, and that is a fact rather than an approximation.</strong>
+        /// Continuous-phase frequency-shift keying at a deviation of a quarter the bit rate is
+        /// exactly two antipodal points turned a right angle every symbol, shaped by a half sine.
+        /// Nothing is linearised and nothing is lost: the chain demodulates it with the machinery it
+        /// already has for turning constellations, and the half sine is
+        /// <see cref="PulseFilterType.HalfSine"/> in <c>REQ-DEM-021</c>'s catalogue.
+        /// </para>
+        /// <para>
+        /// It can equally be written as offset QPSK at half the rate with the same shaping, and the
+        /// two views recover the same bits. This one is used because it keeps the symbol rate equal
+        /// to the bit rate, which is what an operator sets on the instrument and what the reference
+        /// product's own displays count in.
+        /// </para>
+        /// <para>
+        /// 🔴 <strong>Which type is which is a convention, and the reference product does not
+        /// publish it.</strong> <c>REQ-DEM-010</c> marks the type 1 / type 2 naming <strong>[U]</strong>
+        /// — implied, not confirmed. Implemented here as: <strong>type 1 carries its bits in the
+        /// change</strong> from one symbol to the next, which is the precoded form GSM sends, and
+        /// <strong>type 2 carries them absolutely</strong>. <c>#436</c> records the choice, what
+        /// would distinguish the two on a bench, and that swapping them is one line. The distinction
+        /// is not cosmetic: read the wrong way round, every bit after the first is wrong while EVM
+        /// stays perfect.
+        /// </para>
+        /// </remarks>
+        public static Constellation Msk(int type)
+        {
+            if (type != 1 && type != 2)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(type), type,
+                    "REQ-DEM-010's catalogue has MSK type 1 and MSK type 2, and no other.");
+            }
+
+            Constellation turned = Bpsk().Turned("MSK" + type, Math.PI / 2.0);
+
+            return type == 1
+                ? turned.Differential("MSK1", Math.PI / 2.0).AsFamily(ModulationFamily.Msk)
+                : turned.AsFamily(ModulationFamily.Msk);
+        }
+
+        /// <summary>
+        /// Gaussian minimum-shift keying: MSK's geometry, shaped by a Gaussian of a stated BT.
+        /// </summary>
+        /// <returns>The constellation.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>What makes it GMSK is the pulse, and the pulse is a separate choice.</strong>
+        /// The points and the right-angle turn are MSK's; the transmitter's Gaussian premodulation
+        /// filter is <see cref="PulseFilterType.Gaussian"/> and its BT is
+        /// <c>DemodSettings.MeasurementFilterBandwidthTime</c>. <c>REQ-DEM-020</c> makes the two
+        /// filters independently selectable on purpose, so naming the format cannot silently choose
+        /// one — a measurement of GMSK is this constellation and that filter at the BT the
+        /// transmitter used, and 0.3 is GSM's.
+        /// </para>
+        /// <para>
+        /// Absolute rather than differential, matching <see cref="Msk"/> type 2. GSM precodes its
+        /// bits before the modulator, which is the same distinction MSK's two types record, and
+        /// <c>#436</c> carries it.
+        /// </para>
+        /// </remarks>
+        public static Constellation Gmsk() =>
+            Bpsk().Turned("GMSK", Math.PI / 2.0).AsFamily(ModulationFamily.Msk);
+
         /// <summary>The same points, sent with Q staggered half a symbol behind I.</summary>
         /// <param name="name">What the offset format is called.</param>
+        /// <summary>The same points, turning by a fixed angle every symbol.</summary>
+        /// <param name="name">What the turning format is called.</param>
+        /// <param name="rotationPerSymbolRadians">How far the points turn between symbols.</param>
+        /// <returns>The constellation.</returns>
+        /// <remarks>
+        /// <strong>Turning is not differential encoding, and the two are separable.</strong>
+        /// π/4-DQPSK does both, EDGE and MSK turn without it, and a format could in principle
+        /// encode differentially without turning. Keeping them apart is what lets
+        /// <see cref="Msk"/> build one type from the other by adding a single property.
+        /// </remarks>
+        private Constellation Turned(string name, double rotationPerSymbolRadians) =>
+            new Constellation(
+                name,
+                BitsPerSymbol,
+                LevelsPerAxis,
+                new List<ConstellationPoint>(_points),
+                Family,
+                IsOffset,
+                IsDifferential,
+                rotationPerSymbolRadians,
+                Mapping,
+                _carried);
+
+        /// <summary>The same constellation, declaring a different family.</summary>
+        /// <param name="family">The family to declare.</param>
+        /// <returns>The constellation.</returns>
+        /// <remarks>
+        /// MSK's points are BPSK's, and its metrics are not: <c>REQ-DEM-071</c> keys the error
+        /// summary's rows on the family, and the MSK family shows amplitude droop and hides the
+        /// I/Q origin, imbalance and quadrature rows that a linear constellation's fit produces.
+        /// So the family is stated rather than inherited from the points it was built from.
+        /// </remarks>
+        private Constellation AsFamily(ModulationFamily family) =>
+            new Constellation(
+                Name,
+                BitsPerSymbol,
+                LevelsPerAxis,
+                new List<ConstellationPoint>(_points),
+                family,
+                IsOffset,
+                IsDifferential,
+                RotationPerSymbolRadians,
+                Mapping,
+                _carried);
+
         private Constellation Staggered(string name) =>
             new Constellation(
                 name,
@@ -704,6 +851,25 @@ namespace OpenVSA.Demod.Signal
                 case "PI4DQPSK":
                 case "P4DQPSK":
                     return Pi4Dqpsk();
+
+                // Both spellings, because one is what the standard calls it and the other is what
+                // everybody calls it. Canonical() has already removed the punctuation and the
+                // Greek, so "3π/8-8PSK" arrives here as "3PI88PSK".
+                case "EDGE":
+                case "3PI88PSK":
+                    return Edge();
+
+                case "MSK":
+                case "MSK1":
+                case "MSKTYPE1":
+                    return Msk(1);
+
+                case "MSK2":
+                case "MSKTYPE2":
+                    return Msk(2);
+
+                case "GMSK":
+                    return Gmsk();
             }
 
             int order;
@@ -726,8 +892,9 @@ namespace OpenVSA.Demod.Signal
             throw new ArgumentException(
                 "No format called \"" + (name ?? "(none)") + "\" is supported. This build " +
                 "demodulates " + string.Join(", ", Names) + "; the frequency-keyed formats of " +
-                "REQ-DEM-010, its vestigial-sideband ones and the shaped members of the offset " +
-                "family are not point lists and arrive with the chain handling they need.",
+                "REQ-DEM-010 and its vestigial-sideband ones are not point lists at all — they " +
+                "need a discriminator rather than a decision — and arrive with the chain handling " +
+                "they need.",
                 nameof(name));
         }
 
@@ -799,6 +966,16 @@ namespace OpenVSA.Demod.Signal
         /// offer a user a format that demodulates to nonsense.
         /// </para>
         /// <para>
+        /// <strong>A name is not a whole measurement.</strong> MSK, GMSK and EDGE each need a
+        /// transmit pulse this catalogue does not choose for them — a half sine, a Gaussian at the
+        /// transmitter's BT, and the linearised-GMSK <c>c₀(t)</c> respectively. <c>REQ-DEM-020</c>
+        /// makes the filters an independent choice on purpose, so selecting one of these formats
+        /// with the default root raised cosine in place produces a measurement of the wrong pulse.
+        /// The help says so, and the formats are listed all the same: the alternative is a
+        /// catalogue that omits three of <c>REQ-DEM-010</c>'s families because a second setting has
+        /// to be right as well, which is true of every format in it.
+        /// </para>
+        /// <para>
         /// APSK is absent from this list and present in the catalogue: <see cref="Apsk"/> builds one
         /// from rings, and which rings is exactly what <c>REQ-DEM-010</c> leaves to the user and
         /// <c>REQ-DEM-011</c> will store. A named APSK would be a ring geometry chosen here and
@@ -829,6 +1006,10 @@ namespace OpenVSA.Demod.Signal
                 "4096QAM",
                 "16STARQAM",
                 "32STARQAM",
+                "3PI8-8PSK",
+                "MSK1",
+                "MSK2",
+                "GMSK",
             });
 
         /// <summary>
@@ -1432,6 +1613,16 @@ namespace OpenVSA.Demod.Signal
         /// away from the carrier, and step 3 would report that as the carrier offset — a confident,
         /// entirely wrong answer of Rs/2 rather than a failure.
         /// </para>
+        /// <para>
+        /// 🔴 <strong>How many symbols the turn takes to come back round is not one over the
+        /// turn.</strong> It is the smallest <em>n</em> for which <em>nθ</em> is a whole number of
+        /// turns, and those agree only when the turn is a unit fraction. EDGE's 3π/8 is three
+        /// sixteenths of a turn, so it closes after <strong>sixteen</strong> symbols and not after
+        /// the 16/3 that dividing gives — which is not a whole number at all, and the earlier form
+        /// of this method refused EDGE as a rotation no power could strip. The rotations this
+        /// catalogue actually uses are π/4, π/2 and 3π/8, and only the last distinguishes the two
+        /// readings.
+        /// </para>
         /// </remarks>
         private int WithRotation(int points)
         {
@@ -1440,19 +1631,48 @@ namespace OpenVSA.Demod.Signal
                 return points;
             }
 
-            double perTurn = (2.0 * Math.PI) / Math.Abs(RotationPerSymbolRadians);
-            int rounded = (int)Math.Round(perTurn);
+            return LeastCommonMultiple(points, SymbolsPerTurn());
+        }
 
-            if (rounded < 2 || Math.Abs(perTurn - rounded) > 1e-9)
+        /// <summary>
+        /// How many symbols the format's own rotation takes to return to where it started.
+        /// </summary>
+        /// <returns>The smallest <c>n</c> with <c>n·θ</c> a whole number of turns.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// The rotation is not a rational part of a turn, so it never returns.
+        /// </exception>
+        /// <remarks>
+        /// Searched rather than solved, because the answer is the denominator of θ/2π in lowest
+        /// terms and recovering that from a double is a continued-fraction expansion with its own
+        /// tolerance to argue about. The search has the same tolerance and no arithmetic to get
+        /// wrong, and the bound is generous: no format turns by a rational part of a turn with a
+        /// denominator in the thousands, and one that did would need a power of the signal that no
+        /// measurement could survive taking.
+        /// </remarks>
+        private int SymbolsPerTurn()
+        {
+            const double Tolerance = 1e-9;
+            const int Bound = 4096;
+
+            double turns = Math.Abs(RotationPerSymbolRadians) / (2.0 * Math.PI);
+
+            for (int symbols = 1; symbols <= Bound; symbols++)
             {
-                throw new InvalidOperationException(
-                    Name + " turns by " + RotationPerSymbolRadians.ToString(
-                        "G6", CultureInfo.InvariantCulture) +
-                    " radians a symbol, which is not a whole fraction of a turn. No power of the " +
-                    "signal strips a rotation like that, so step 3 could not find its carrier.");
+                double whole = turns * symbols;
+
+                if (Math.Abs(whole - Math.Round(whole)) < Tolerance)
+                {
+                    return symbols;
+                }
             }
 
-            return LeastCommonMultiple(points, rounded);
+            throw new InvalidOperationException(
+                Name + " turns by " + RotationPerSymbolRadians.ToString(
+                    "G6", CultureInfo.InvariantCulture) +
+                " radians a symbol, which does not come back round within " +
+                Bound.ToString(CultureInfo.InvariantCulture) +
+                " symbols and may never. No power of the signal strips a rotation like that, so " +
+                "step 3 could not find its carrier.");
         }
 
         private static int LeastCommonMultiple(int a, int b)

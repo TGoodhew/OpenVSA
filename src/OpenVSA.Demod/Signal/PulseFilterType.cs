@@ -48,7 +48,17 @@ namespace OpenVSA.Demod.Signal
         /// </remarks>
         Edge = 4,
 
-        /// <summary>Half sine: one half-period of a cosine across a symbol. MSK's shaping.</summary>
+        /// <summary>
+        /// Half sine: one half-period of a cosine across a symbol.
+        /// </summary>
+        /// <remarks>
+        /// The shaping of offset QPSK's staggered axes, and — read at half the bit rate, where a
+        /// symbol is two bits — of MSK in its offset form. It is <strong>not</strong> the pulse to
+        /// shape MSK with at the bit rate: that one spans two symbols and is <see cref="Msk"/>.
+        /// Shaping π/2-BPSK with this instead produces a waveform whose envelope reaches zero at
+        /// every symbol boundary, which demodulates perfectly and is not a constant-envelope
+        /// modulation at all.
+        /// </remarks>
         HalfSine = 5,
 
         /// <summary>Rectangular: unity across one symbol and zero outside it.</summary>
@@ -68,6 +78,30 @@ namespace OpenVSA.Demod.Signal
 
         /// <summary>Taps the user supplied, at a stated number of samples per symbol.</summary>
         UserDefined = 8,
+
+        /// <summary>
+        /// The linearised-MSK main pulse: half a cycle of a cosine across <em>two</em> symbols.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// What <see cref="Edge"/> is to GMSK, this is to MSK — the principal component of the same
+        /// decomposition, for the case where there is no Gaussian filter in front of the modulator.
+        /// Shaping π/2-BPSK with it produces a waveform whose envelope is constant to two tenths of
+        /// a decibel, which is what makes it MSK rather than something that merely demodulates like
+        /// it.
+        /// </para>
+        /// <para>
+        /// It is zero at every symbol instant but its own, so it carries no intersymbol interference
+        /// and needs no equaliser — unlike <see cref="Edge"/>, whose Gaussian origin spreads it over
+        /// about three symbols and puts ISI in the signal by construction.
+        /// </para>
+        /// <para>
+        /// Last in this enumeration because the numbers are stored in state files: a value appended
+        /// is a value no older file contains, and a file written with it is refused by name rather
+        /// than misread by an older build.
+        /// </para>
+        /// </remarks>
+        Msk = 9,
     }
 
     /// <summary>

@@ -924,6 +924,9 @@ namespace OpenVSA.Demod.Chain
                 case PulseFilterType.Edge:
                     return PulseFilter.Edge();
 
+                case PulseFilterType.Msk:
+                    return PulseFilter.Msk();
+
                 case PulseFilterType.HalfSine:
                     return PulseFilter.HalfSine();
 

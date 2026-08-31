@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 
 namespace OpenVSA.Synthesis
 {
@@ -72,7 +73,42 @@ namespace OpenVSA.Synthesis
         public double SampleRateHz { get; set; } = 12.8e6;
 
         /// <summary>The pulse shape's roll-off, from 0 to 1.</summary>
+        /// <remarks>
+        /// Ignored when <see cref="TransmitPulse"/> is set, which is a pulse of its own with its own
+        /// parameters already baked into it.
+        /// </remarks>
         public double RollOff { get; set; } = 0.35;
+
+        /// <summary>
+        /// The transmit pulse, sampled evenly, or <c>null</c> for a root raised cosine at
+        /// <see cref="RollOff"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Handed in for the reason the constellation is.</strong> This project sits outside
+        /// the analysis stack so that a transport can use it, so it cannot reference the
+        /// demodulator's filter catalogue any more than it can reference the demodulator's
+        /// constellations. <c>REQ-DEM-010</c>'s catalogue has three formats whose transmit pulse is
+        /// not a root raised cosine at all — MSK's half sine, GMSK's Gaussian, EDGE's linearised
+        /// <c>c₀(t)</c> — and generating them means being given the pulse.
+        /// </para>
+        /// <para>
+        /// The taps are the pulse sampled at <see cref="TransmitPulseSamplesPerSymbol"/> samples a
+        /// symbol, centred: tap <c>(length − 1)/2</c> is the symbol instant. That is the layout the
+        /// demodulator's own filter catalogue produces, so a caller can hand over what it will
+        /// later match against — and a round trip through a pulse the analyser does not have is a
+        /// round trip that proves nothing.
+        /// </para>
+        /// <para>
+        /// <strong>What it does not change is the symbols.</strong> Shaping is applied to the same
+        /// symbol stream at the same instants, so <see cref="SymbolAt"/> and
+        /// <see cref="DataSymbolAt"/> still say what was sent.
+        /// </para>
+        /// </remarks>
+        public double[] TransmitPulse { get; set; }
+
+        /// <summary>How many samples a symbol <see cref="TransmitPulse"/> is sampled at.</summary>
+        public int TransmitPulseSamplesPerSymbol { get; set; } = 4;
 
         /// <summary>
         /// How many symbol periods either side of centre the transmit pulse spans.
@@ -417,6 +453,11 @@ namespace OpenVSA.Synthesis
 
         private double[] Pulse()
         {
+            if (TransmitPulse != null)
+            {
+                return Supplied();
+            }
+
             if (_pulse != null && _pulseRollOff == RollOff)
             {
                 return _pulse;
@@ -434,6 +475,75 @@ namespace OpenVSA.Synthesis
 
             _pulse = pulse;
             _pulseRollOff = RollOff;
+
+            return pulse;
+        }
+
+        /// <summary>
+        /// The supplied pulse, resampled onto this source's own table.
+        /// </summary>
+        /// <returns>The table, spanning <see cref="PulseSpanSymbols"/> symbols either side.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// The supplied pulse is too short to fill the span asked for.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// Read at whatever rate it was sampled at and written at this source's table rate, by
+        /// linear interpolation between neighbouring taps. Linear is enough here and would not be
+        /// for the signal: the table is read at 256 steps a symbol, so between two neighbouring
+        /// taps of a pulse sampled at four or eight a symbol there is a factor of thirty of
+        /// oversampling, and the pulses in question are smooth by construction.
+        /// </para>
+        /// <para>
+        /// A pulse shorter than the span is refused rather than zero-padded. Padding would silently
+        /// truncate the transmit pulse and put intersymbol interference in the signal that the
+        /// analyser is then measured against — which is exactly the mistake
+        /// <see cref="PulseSpanSymbols"/>'s own remarks record costing 0.267 %rms.
+        /// </para>
+        /// </remarks>
+        private double[] Supplied()
+        {
+            double[] taps = TransmitPulse;
+            int perSymbol = TransmitPulseSamplesPerSymbol;
+
+            if (perSymbol < 1)
+            {
+                throw new InvalidOperationException(
+                    "A transmit pulse is sampled at least once a symbol; this one says " +
+                    perSymbol.ToString(CultureInfo.InvariantCulture) + ".");
+            }
+
+            double reach = (taps.Length - 1) / (2.0 * perSymbol);
+
+            if (reach < PulseSpanSymbols)
+            {
+                throw new InvalidOperationException(
+                    "The transmit pulse reaches " +
+                    reach.ToString("G4", CultureInfo.InvariantCulture) +
+                    " symbols either side of centre and the source is set to span " +
+                    PulseSpanSymbols.ToString(CultureInfo.InvariantCulture) +
+                    ". Zero-padding it would put intersymbol interference in the signal that the " +
+                    "analyser is then measured against; set PulseSpanSymbols to " +
+                    ((int)reach).ToString(CultureInfo.InvariantCulture) + " or less, or supply a " +
+                    "longer pulse.");
+            }
+
+            int steps = (2 * PulseSpanSymbols * TableStepsPerSymbol) + 1;
+            var pulse = new double[steps];
+            double centre = (taps.Length - 1) / 2.0;
+
+            for (int step = 0; step < steps; step++)
+            {
+                double t = (step / (double)TableStepsPerSymbol) - PulseSpanSymbols;
+                double at = centre + (t * perSymbol);
+                int below = (int)Math.Floor(at);
+                double fraction = at - below;
+
+                double left = below >= 0 && below < taps.Length ? taps[below] : 0.0;
+                double right = below + 1 >= 0 && below + 1 < taps.Length ? taps[below + 1] : 0.0;
+
+                pulse[step] = left + ((right - left) * fraction);
+            }
 
             return pulse;
         }
