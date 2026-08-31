@@ -75,6 +75,11 @@ namespace OpenVSA.Demod.Chain.Steps
                 return RefineFrequencyKeyed(context, result, perSymbol, count, samples);
             }
 
+            if (constellation.Family == ModulationFamily.Vsb)
+            {
+                return RefineSingleSideband(context, result, perSymbol, count, samples);
+            }
+
             // Half a symbol for an offset format, and nothing for every other: REQ-DEM-012's two
             // instants per symbol, carried through this step as one number so that every place that
             // reads the waveform at a symbol instant reads both of them or neither.
@@ -647,6 +652,371 @@ namespace OpenVSA.Demod.Chain.Steps
             }
 
             return StepOutcome.Continue;
+        }
+
+        /// <summary>
+        /// Step 8 for a vestigial-sideband format: fit on the real axis, and call the offset a
+        /// pilot.
+        /// </summary>
+        /// <param name="context">The chain's state.</param>
+        /// <param name="result">The result window.</param>
+        /// <param name="perSymbol">The internal processing rate.</param>
+        /// <param name="count">How many symbols the window holds.</param>
+        /// <param name="samples">How long the window is.</param>
+        /// <returns>Always <see cref="StepOutcome.Continue"/>.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>Half the plane carries nothing, and reading it as error would report a fault on
+        /// a perfect signal.</strong> A vestigial-sideband transmitter sends amplitude levels on one
+        /// axis; what appears on the other is the Hilbert transform of the first, which is what
+        /// suppressing a sideband produces and what makes the waveform analytic. It is not zero at
+        /// a symbol instant and it is not an error — so the measured symbol here is the REAL PART
+        /// and the imaginary part is dropped, deliberately and by name.
+        /// </para>
+        /// <para>
+        /// <strong>The carrier phase still matters, and more than it does elsewhere.</strong>
+        /// Rotating the waveform mixes the vestige into the axis that carries the data — at a phase
+        /// error of θ what is read is <c>Re(s)cos θ + Im(s)sin θ</c> — so a phase error does not
+        /// merely turn this constellation, it contaminates it. That is why the fit here estimates a
+        /// phase, where the frequency-keyed path above cannot and need not.
+        /// </para>
+        /// <para>
+        /// <strong>The offset is the pilot.</strong> Where a frequency-keyed format's DC term is a
+        /// carrier error, a VSB signal's is the constant its transmitter adds to put a carrier at
+        /// the band edge. Same arithmetic, different meaning, and <c>REQ-DEM-070</c> names the
+        /// second one Pilot Lvl.
+        /// </para>
+        /// </remarks>
+        private static StepOutcome RefineSingleSideband(
+            DemodContext context, double[] result, int perSymbol, int count, int samples)
+        {
+            DemodSettings settings = context.Settings;
+            Constellation constellation = settings.Constellation;
+
+            double timing = InitialRealTiming(
+                result, context.TimingSamples, perSymbol, samples, count);
+
+            double omega = 0.0;
+            double phase = 0.0;
+
+            // 🔴 THE PILOT HAS TO BE TAKEN OUT BEFORE THE FIRST DECISION, NOT FITTED AFTER IT. A
+            // pilot shifts the whole ladder, so decisions taken without it land a rung out -- and
+            // then the mean of (measured - decided) is near zero, because the decisions have
+            // absorbed the very thing that fit is meant to find. Measured with a pilot of 0.3 of a
+            // level and no initial estimate: the offset converged to -0.10 where it should have
+            // been +0.27, and the measurement read 11.2 %rms with 96 of 512 symbols.
+            //
+            // The mean of the raw levels is the pilot, because a data stream is balanced about zero
+            // and a pilot is not. One line, before anything is decided.
+            double offset = MeanReal(result, timing, perSymbol, count);
+            double gain = InitialRealGain(result, timing, perSymbol, count);
+
+            var measured = new Iq[count];
+            var decided = new Iq[count];
+
+            int iterations = 0;
+            bool converged = false;
+            double largest = double.MaxValue;
+
+            for (int iteration = 1; iteration <= settings.MaxRefinementIterations; iteration++)
+            {
+                iterations = iteration;
+
+                ProjectReal(
+                    result, measured, timing, omega, phase, gain, offset, perSymbol, count);
+
+                for (int symbol = 0; symbol < count; symbol++)
+                {
+                    decided[symbol] = constellation.Ideal(
+                        constellation.Decide(measured[symbol], symbol), symbol);
+                }
+
+                double difference = 0.0;
+                double product = 0.0;
+                double square = 0.0;
+
+                // The two-parameter fit for the turn: an error at symbol k is the slope times
+                // (dphase + domega.k), so the normal equations are the usual weighted sums of 1, k
+                // and k squared. One line of algebra more than the phase alone, and it is what lets
+                // a carrier offset be corrected rather than merely noticed.
+                double weightOne = 0.0;
+                double weightIndex = 0.0;
+                double weightIndexSquared = 0.0;
+                double weightError = 0.0;
+                double weightIndexError = 0.0;
+
+                for (int symbol = 0; symbol < count; symbol++)
+                {
+                    difference += measured[symbol].I - decided[symbol].I;
+                    product += measured[symbol].I * decided[symbol].I;
+                    square += decided[symbol].I * decided[symbol].I;
+
+                    // How the real part moves when the whole waveform turns. With u = v.e^-jθ,
+                    // du/dθ = -j.u, so d(Re u)/dθ = Re(-j.u) = Im(u) -- the imaginary part IS the
+                    // derivative of the real one, which is exactly why a phase error mixes the
+                    // vestige into the axis that carries the data.
+                    Iq turned = Turned(result, timing, omega, phase, gain, perSymbol, symbol);
+                    double slope = turned.Q;
+                    double error = decided[symbol].I - measured[symbol].I;
+
+                    weightOne += slope * slope;
+                    weightIndex += slope * slope * symbol;
+                    weightIndexSquared += slope * slope * symbol * symbol;
+                    weightError += slope * error;
+                    weightIndexError += slope * error * symbol;
+                }
+
+                double deltaOffset = count > 0 ? difference / count : 0.0;
+                double gainRatio = square > 0.0 && product > 0.0 ? product / square : 1.0;
+
+                double determinant =
+                    (weightOne * weightIndexSquared) - (weightIndex * weightIndex);
+
+                double deltaPhase = 0.0;
+                double deltaOmega = 0.0;
+
+                if (Math.Abs(determinant) > 1e-30)
+                {
+                    deltaPhase =
+                        ((weightError * weightIndexSquared) - (weightIndexError * weightIndex)) /
+                        determinant;
+
+                    deltaOmega =
+                        ((weightOne * weightIndexError) - (weightIndex * weightError)) /
+                        determinant;
+                }
+
+                double deltaTiming = FitRealTiming(
+                    result, measured, decided, timing, omega, phase, gain, perSymbol, count);
+
+                double limit = MaximumTimingStepSymbols * perSymbol;
+
+                if (deltaTiming > limit)
+                {
+                    deltaTiming = limit;
+                }
+                else if (deltaTiming < -limit)
+                {
+                    deltaTiming = -limit;
+                }
+
+                offset += deltaOffset * gain;
+                gain *= gainRatio;
+                phase += deltaPhase;
+                omega += deltaOmega;
+                timing = Clamp(timing + deltaTiming, samples, perSymbol, count, 0.0);
+
+                largest = Math.Max(
+                    Math.Abs(deltaOmega) / (2.0 * Math.PI),
+                    Math.Max(
+                        Math.Abs(deltaOffset),
+                        Math.Max(
+                            Math.Abs(deltaPhase),
+                            Math.Max(Math.Abs(deltaTiming), Math.Abs(gainRatio - 1.0)))));
+
+                if (largest < settings.RefinementTolerance)
+                {
+                    converged = true;
+
+                    break;
+                }
+            }
+
+            ProjectReal(result, measured, timing, omega, phase, gain, offset, perSymbol, count);
+
+            double frequencyHz = omega * settings.SymbolRateHz / (2.0 * Math.PI);
+
+            context.PassFrequencyHz = frequencyHz;
+            context.PassPhaseRadians = phase;
+            context.PassGain = gain;
+
+            context.ResidualFrequencyHz += frequencyHz;
+            context.PhaseRadians += phase;
+            context.Gain *= gain;
+            context.TimingSamples = timing;
+            context.MeasuredSymbols = measured;
+            context.PilotLevel = offset / (gain == 0.0 ? 1.0 : gain);
+
+            context.Convergence = new ConvergenceReport(
+                iterations,
+                settings.MaxRefinementIterations,
+                converged,
+                largest,
+                settings.RefinementTolerance);
+
+            if (!converged)
+            {
+                context.Note(
+                    "Step 8 reached its bound of " +
+                    settings.MaxRefinementIterations.ToString(CultureInfo.InvariantCulture) +
+                    " iterations on pass " + context.Pass.ToString(CultureInfo.InvariantCulture) +
+                    " without meeting the convergence criterion. The largest change on the last " +
+                    "iteration was " + largest.ToString("G3", CultureInfo.InvariantCulture) +
+                    ". The estimates are the ones it had got to, not the ones it was heading for.");
+            }
+
+            return StepOutcome.Continue;
+        }
+
+        /// <summary>Where the instants are, judged on the axis that carries the symbols.</summary>
+        /// <remarks>
+        /// 🔴 <strong><see cref="InitialTiming"/> reads its symbol-rate line out of the COMPLEX
+        /// envelope, and half of a vestigial-sideband signal's envelope is the vestige.</strong> The
+        /// vestige is the Hilbert transform of the data, so its own peaks do not fall where the
+        /// data's do — the line is still there and its PHASE is somebody else's, which puts the
+        /// first decisions at instants that are nobody's. The same shape of mistake the
+        /// frequency-keyed path found in the same estimator, for a different reason: there the
+        /// envelope carried no line at all, here it carries the wrong one.
+        /// </remarks>
+        private static double InitialRealTiming(
+            double[] result, double nominal, int perSymbol, int samples, int count)
+        {
+            double real = 0.0;
+            double imaginary = 0.0;
+
+            for (int sample = 0; sample < samples; sample++)
+            {
+                double value = Iq.At(result, sample).I;
+                double power = value * value;
+                double angle = -2.0 * Math.PI * sample / perSymbol;
+
+                real += power * Math.Cos(angle);
+                imaginary += power * Math.Sin(angle);
+            }
+
+            if ((real * real) + (imaginary * imaginary) < 1e-30)
+            {
+                return nominal;
+            }
+
+            double estimate = -Math.Atan2(imaginary, real) * perSymbol / (2.0 * Math.PI);
+            double shift = estimate - nominal;
+
+            shift -= perSymbol * Math.Round(shift / perSymbol);
+
+            return Clamp(nominal + shift, samples, perSymbol, count, 0.0);
+        }
+
+        /// <summary>The mean of the real axis at the decision instants.</summary>
+        /// <remarks>
+        /// For a balanced data stream the levels average to nothing and whatever is left is the
+        /// pilot, so this is the pilot before any symbol has been decided. It is also why the
+        /// estimate improves with the block length rather than with the iteration count.
+        /// </remarks>
+        private static double MeanReal(
+            double[] result, double timing, int perSymbol, int count)
+        {
+            if (count < 1)
+            {
+                return 0.0;
+            }
+
+            double total = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                total += Interpolator.At(result, timing + (symbol * perSymbol)).I;
+            }
+
+            return total / count;
+        }
+
+        /// <summary>The gain to start from, measured on the axis that carries the symbols.</summary>
+        /// <remarks>
+        /// 🔴 <strong><see cref="InitialGain"/> measures the whole complex magnitude, and half of a
+        /// vestigial-sideband signal's magnitude is the sideband vestige.</strong> Measured on a
+        /// generated 8VSB signal, the two axes carry almost the same power — 0.90 against 0.89 rms —
+        /// so the complex estimate comes out about √2 too large, the levels are read about seven
+        /// tenths of their true size, and on an eight-level ladder the first decisions land a rung
+        /// or two out. The iteration then has a wrong ladder to converge on, and it converges: 13.2
+        /// %rms with 105 of 512 symbols right, which looks like a poor signal and is a first guess
+        /// taken on the wrong axis.
+        /// </remarks>
+        private static double InitialRealGain(
+            double[] result, double timing, int perSymbol, int count)
+        {
+            double pilot = MeanReal(result, timing, perSymbol, count);
+            double power = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                // About the pilot rather than about zero: a pilot counted as level would make the
+                // ladder look bigger than it is, which is the same mistake in the other direction.
+                double real = Interpolator.At(result, timing + (symbol * perSymbol)).I - pilot;
+
+                power += real * real;
+            }
+
+            double rms = count > 0 ? Math.Sqrt(power / count) : 0.0;
+
+            return rms < 1e-15 ? 1.0 : rms;
+        }
+
+        /// <summary>The waveform at a symbol instant, with the current corrections applied.</summary>
+        private static Iq Turned(
+            double[] result,
+            double timing,
+            double omega,
+            double phase,
+            double gain,
+            int perSymbol,
+            int symbol)
+        {
+            Iq value = Interpolator.At(result, timing + (symbol * perSymbol));
+            Iq turn = Iq.FromPhase(-((omega * symbol) + phase));
+
+            return (value * turn) / gain;
+        }
+
+        /// <summary>Reads the real axis at the decision instants, less the pilot.</summary>
+        private static void ProjectReal(
+            double[] result,
+            Iq[] measured,
+            double timing,
+            double omega,
+            double phase,
+            double gain,
+            double offset,
+            int perSymbol,
+            int count)
+        {
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                Iq turned = Turned(result, timing, omega, phase, gain, perSymbol, symbol);
+
+                // The imaginary part is the sideband vestige and is dropped here, which is the one
+                // place in this chain where half a measurement is thrown away on purpose.
+                measured[symbol] = new Iq(turned.I - (offset / (gain == 0.0 ? 1.0 : gain)), 0.0);
+            }
+        }
+
+        /// <summary>How far the instants should move, judged on the real axis alone.</summary>
+        private static double FitRealTiming(
+            double[] result,
+            Iq[] measured,
+            Iq[] decided,
+            double timing,
+            double omega,
+            double phase,
+            double gain,
+            int perSymbol,
+            int count)
+        {
+            double numerator = 0.0;
+            double denominator = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                Iq slope = Interpolator.SlopeAt(result, timing + (symbol * perSymbol));
+                Iq turn = Iq.FromPhase(-((omega * symbol) + phase));
+                double real = ((slope * turn) / gain).I;
+                double error = decided[symbol].I - measured[symbol].I;
+
+                numerator += real * error;
+                denominator += real * real;
+            }
+
+            return denominator > 0.0 ? numerator / denominator : 0.0;
         }
 
         /// <summary>

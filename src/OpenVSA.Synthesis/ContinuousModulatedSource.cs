@@ -76,6 +76,9 @@ namespace OpenVSA.Synthesis
         /// </remarks>
         private double _frequencyPhase;
 
+        /// <summary>The quadrature pulse, resampled onto this source's table, or <c>null</c>.</summary>
+        private double[] _quadraturePulse;
+
         private long _samplesEmitted;
 
         /// <summary>The modulation to draw symbols from.</summary>
@@ -150,6 +153,42 @@ namespace OpenVSA.Synthesis
 
         /// <summary>How many samples a symbol <see cref="TransmitPulse"/> is sampled at.</summary>
         public int TransmitPulseSamplesPerSymbol { get; set; } = 4;
+
+        /// <summary>
+        /// The quadrature half of a single-sideband transmit pulse, or <c>null</c> for a pulse that
+        /// is the same on both axes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>What makes a signal single-sideband is that its pulse is.</strong> Suppressing
+        /// one sideband of a real signal produces the analytic signal, whose imaginary part is the
+        /// Hilbert transform of its real part — and because that operation is linear and
+        /// time-invariant, it can be done once to the PULSE instead of afterwards to the whole
+        /// waveform. A symbol stream shaped by <c>g + jĝ</c> is analytic by construction, sample by
+        /// sample, which is what lets this source stay a block-at-a-time generator.
+        /// </para>
+        /// <para>
+        /// The taps are the Hilbert transform of <see cref="TransmitPulse"/>, sampled the same way,
+        /// and it is the caller's business to produce them: this project cannot reference a
+        /// transform any more than it can reference a constellation.
+        /// </para>
+        /// <para>
+        /// <strong>Not the same thing as an offset format's stagger.</strong> There the two axes
+        /// carry different symbols half a symbol apart; here they carry the same symbols through
+        /// two halves of one pulse, and only one of the two is information.
+        /// </para>
+        /// </remarks>
+        public double[] TransmitPulseQuadrature { get; set; }
+
+        /// <summary>
+        /// A constant added to the real axis before shaping: a vestigial-sideband pilot.
+        /// </summary>
+        /// <remarks>
+        /// In the levels a demodulator recovers it is a DC offset on the ladder, and at the
+        /// transmitter it is what puts a carrier at the band edge for a receiver to lock to. Zero
+        /// for every format that does not have one.
+        /// </remarks>
+        public double PilotLevel { get; set; }
 
         /// <summary>
         /// How many symbol periods either side of centre the transmit pulse spans.
@@ -303,6 +342,10 @@ namespace OpenVSA.Synthesis
 
             double[] pulse = Pulse();
 
+            _quadraturePulse = TransmitPulseQuadrature == null
+                ? null
+                : Supplied(TransmitPulseQuadrature);
+
             int reach = PulseSpanSymbols;
             int samples = interleaved.Length / 2;
 
@@ -342,6 +385,32 @@ namespace OpenVSA.Synthesis
 
                     i += point.I * weight;
                     q += point.Q * quadratureWeight;
+                }
+
+                if (_quadraturePulse != null)
+                {
+                    // Single sideband: the same symbols through the pulse's two halves. The real
+                    // axis carries them and the imaginary axis carries the pulse's Hilbert partner,
+                    // which is what suppresses one sideband -- and the pilot rides on the real axis
+                    // where a receiver's level ladder will find it as an offset.
+                    double inPhase = 0.0;
+                    double quadrature = 0.0;
+
+                    for (long symbol = centre - reach; symbol <= centre + reach; symbol++)
+                    {
+                        if (symbol < 0)
+                        {
+                            continue;
+                        }
+
+                        double level = Transmitted(symbol).I + PilotLevel;
+
+                        inPhase += level * Weight(pulse, position - symbol);
+                        quadrature += level * Weight(_quadraturePulse, position - symbol);
+                    }
+
+                    i = inPhase;
+                    q = quadrature;
                 }
 
                 if (_scheme.IsFrequencyKeyed)
@@ -527,7 +596,7 @@ namespace OpenVSA.Synthesis
         {
             if (TransmitPulse != null)
             {
-                return Supplied();
+                return Supplied(TransmitPulse);
             }
 
             if (_pulse != null && _pulseRollOff == RollOff)
@@ -573,9 +642,9 @@ namespace OpenVSA.Synthesis
         /// <see cref="PulseSpanSymbols"/>'s own remarks record costing 0.267 %rms.
         /// </para>
         /// </remarks>
-        private double[] Supplied()
+        private double[] Supplied(double[] supplied)
         {
-            double[] taps = TransmitPulse;
+            double[] taps = supplied;
             int perSymbol = TransmitPulseSamplesPerSymbol;
 
             if (perSymbol < 1)

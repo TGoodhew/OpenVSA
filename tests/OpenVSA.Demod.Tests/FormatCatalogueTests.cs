@@ -414,16 +414,16 @@ namespace OpenVSA.Demod.Tests
         public void AnUnknownFormatIsRefusedByNameAndSaysWhatIsMissing()
         {
             ArgumentException refused =
-                Assert.Throws<ArgumentException>(() => Constellation.ByName("8VSB"));
+                Assert.Throws<ArgumentException>(() => Constellation.ByName("SOQPSK"));
 
-            Assert.Contains("8VSB", refused.Message, StringComparison.Ordinal);
+            Assert.Contains("SOQPSK", refused.Message, StringComparison.Ordinal);
 
-            // What is still owed needs a discriminator or a vestigial-sideband path rather than a
-            // point list, and the message says which. It named GMSK once, and then MSK, GMSK and
-            // EDGE arrived: those turned out to want a pulse the catalogue already had and a
-            // rotation the chain already did, which is why they are answered and these are not.
-            Assert.Contains("frequency-keyed", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("vestigial-sideband", refused.Message, StringComparison.Ordinal);
+            // The name in this test has moved four times as the catalogue grew -- 1024QAM, then
+            // GMSK, then 8VSB, now SOQPSK -- and each move is the point: the message names what is
+            // ACTUALLY still owed, so a format that has arrived cannot go on being described as
+            // missing. Two rows are left, and the message says which and why.
+            Assert.Contains("continuous-phase", refused.Message, StringComparison.Ordinal);
+            Assert.Contains("quadrant-differential", refused.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -436,7 +436,7 @@ namespace OpenVSA.Demod.Tests
             // status rather than leaving it half true.
             string[] notYet =
             {
-                "SOQPSK", "8VSB", "16VSB", "DVBQAM",
+                "SOQPSK", "DVBQAM",
             };
 
             foreach (string format in notYet)
@@ -446,13 +446,13 @@ namespace OpenVSA.Demod.Tests
 
             _output.WriteLine(
                 "Still owed by REQ-DEM-010: " + string.Join(", ", notYet) +
-                " -- the vestigial-sideband ones want a single-sideband path, SOQPSK a " +
-                "continuous-phase treatment, and DVB-QAM a quadrant-differential encoding that is " +
-                "not this catalogue's whole-symbol one. The offset and differential rows left this " +
-                "list on 24 August 2026 with REQ-DEM-012; MSK, GMSK and EDGE left it on 31 August " +
-                "with REQ-DEM-010 itself, because a rotation and a pulse were all they needed; the " +
-                "frequency-keyed ones left the same day, once step 8 was given a model in which " +
-                "the symbol is a frequency rather than a place.");
+                " -- SOQPSK wants a continuous-phase treatment and DVB-QAM a quadrant-differential " +
+                "encoding that is not this catalogue's whole-symbol one. The offset and " +
+                "differential rows left this list on 24 August 2026 with REQ-DEM-012; MSK, GMSK " +
+                "and EDGE left it on 31 August with REQ-DEM-010 itself, because a rotation and a " +
+                "pulse were all they needed; the frequency-keyed and vestigial-sideband ones left " +
+                "the same day, once step 8 was given models in which the symbol is a frequency, " +
+                "and in which half the plane carries nothing.");
         }
 
         [Theory]
@@ -946,6 +946,234 @@ namespace OpenVSA.Demod.Tests
             // And the measurement is unharmed by having asked.
             Assert.True(result.EvmPercent < 0.1);
             Assert.Null(result.EqualiserCoefficients);
+        }
+
+        [Theory]
+        [InlineData("8VSB", 0.0)]
+        [InlineData("8VSB", 0.3)]
+        [InlineData("8VSB", 1.0)]
+        [InlineData("16VSB", 0.0)]
+        public void EveryVestigialSidebandFormatRoundTripsThroughTheChain(
+            string name, double pilot)
+        {
+            // REQ-DEM-010's criterion for the rows where half the plane carries nothing. The symbol
+            // is an amplitude on ONE axis; what appears on the other is the Hilbert transform of it,
+            // which is what suppressing a sideband produces. Step 8 reads the real part and drops
+            // the imaginary one -- the only place in this chain where half a measurement is thrown
+            // away on purpose, because that half is the vestige doing its job and counting it as
+            // error would report a fault on a perfect signal.
+            //
+            // 🔴 THE PILOT IS SWEPT because a signal without one hid two bugs. At a pilot of zero
+            // this measured 0.0299 %rms and every symbol; at 0.3 it read 11.2 %rms with 96 of 512,
+            // because the pilot shifts the whole ladder and decisions taken before it is known land
+            // a rung out -- after which the fit that should find it sees a mean error of nearly
+            // nothing, the decisions having absorbed it.
+            Constellation constellation = Constellation.ByName(name);
+
+            const int Span = 20;
+            const int PerSymbol = 16;
+
+            double[] taps = PulseFilter.RootRaisedCosine(0.35)
+                .Taps(PerSymbol, Span, FilterRole.Reference);
+
+            var source = new ContinuousModulatedSource
+            {
+                Scheme = SchemeFor(constellation),
+                SymbolRateHz = 1e6,
+                SampleRateHz = 16e6,
+                PulseSpanSymbols = Span,
+                TransmitPulse = taps,
+
+                // What makes it single sideband: the pulse's Hilbert partner on the other axis.
+                TransmitPulseQuadrature = HilbertOf(taps),
+                TransmitPulseSamplesPerSymbol = PerSymbol,
+                PilotLevel = pilot,
+                Seed = 20260831,
+            };
+
+            var samples = new float[2 * (int)Math.Ceiling(Symbols * source.SamplesPerSymbol)];
+
+            source.Restart();
+            source.Fill(samples);
+
+            // 🔴 IS IT ACTUALLY ONE SIDEBAND? A double-sideband signal of the same levels
+            // demodulates just as well through this path -- measured, identically, to four decimal
+            // places -- so the round trip below cannot tell the two apart and would pass on a
+            // format nobody transmits. This is the assertion that makes it VSB.
+            double suppression = SidebandSuppressionDb(samples, source.SampleRateHz, 1e6);
+
+            _output.WriteLine(
+                name + " with a pilot of " + pilot.ToString("F2", CultureInfo.InvariantCulture) +
+                ": sideband suppression " +
+                suppression.ToString("F1", CultureInfo.InvariantCulture) + " dB");
+
+            Assert.True(
+                suppression > 15.0,
+                name + " was generated with only " +
+                suppression.ToString("F1", CultureInfo.InvariantCulture) +
+                " dB between its sidebands, so what is being demodulated is not a " +
+                "vestigial-sideband signal.");
+
+            var settings = new DemodSettings
+            {
+                Constellation = constellation,
+                SymbolRateHz = source.SymbolRateHz,
+                PointsPerSymbol = 8,
+                ResultLengthSymbols = 512,
+                FilterSymbolSpan = Span,
+                MeasurementFilter = PulseFilterType.RootRaisedCosine,
+                MeasurementFilterAlpha = 0.35,
+                ReferenceFilter = PulseFilterType.RaisedCosine,
+                ReferenceFilterAlpha = 0.35,
+            };
+
+            DemodResult result = new Demodulator().Run(samples, source.SampleRateHz, settings);
+
+            _output.WriteLine(
+                "    EVM " + result.EvmPercent.ToString("F6", CultureInfo.InvariantCulture) +
+                " %rms, " + (result.Lock.Locked ? "locked" : "NOT LOCKED") + ", carrier error " +
+                result.CarrierFrequencyErrorHz.ToString("F1", CultureInfo.InvariantCulture) + " Hz");
+
+            Assert.True(
+                result.EvmPercent < 0.1,
+                name + " round-tripped at " +
+                result.EvmPercent.ToString("F4", CultureInfo.InvariantCulture) +
+                " %rms, and REQ-DEM-010 asks for better than 0.1 %.");
+
+            var sent = new int[Symbols];
+
+            for (int symbol = 0; symbol < Symbols; symbol++)
+            {
+                sent[symbol] = source.SymbolAt(symbol);
+            }
+
+            // A level ladder has no rotational freedom, so there is nothing to search but the
+            // alignment.
+            Assert.Equal(result.Symbols.Count, LongestAgreement(result.Symbols, sent));
+        }
+
+        /// <summary>How far below the wanted sideband the other one sits, in decibels.</summary>
+        /// <param name="samples">The signal, interleaved.</param>
+        /// <param name="sampleRateHz">What it was sampled at.</param>
+        /// <param name="symbolRateHz">The symbol rate, which bounds the band that is looked at.</param>
+        /// <returns>The ratio of the louder half of the band to the quieter, in decibels.</returns>
+        private static double SidebandSuppressionDb(
+            float[] samples, double sampleRateHz, double symbolRateHz)
+        {
+            int count = samples.Length / 2;
+            int length = 1;
+
+            while (length * 2 <= count)
+            {
+                length *= 2;
+            }
+
+            var spectrum = new double[2 * length];
+
+            for (int sample = 0; sample < length; sample++)
+            {
+                Iq.Set(spectrum, sample, new Iq(samples[2 * sample], samples[(2 * sample) + 1]));
+            }
+
+            Dsp.Fft.FftProviders.Active.Forward(new Span<double>(spectrum));
+
+            double positive = 0.0;
+            double negative = 0.0;
+
+            for (int bin = 0; bin < length; bin++)
+            {
+                double hertz = (bin <= length / 2 ? bin : bin - length) * sampleRateHz / length;
+
+                if (Math.Abs(hertz) > symbolRateHz)
+                {
+                    continue;
+                }
+
+                double power = Iq.At(spectrum, bin).MagnitudeSquared;
+
+                if (hertz > 0.0)
+                {
+                    positive += power;
+                }
+                else if (hertz < 0.0)
+                {
+                    negative += power;
+                }
+            }
+
+            double louder = Math.Max(positive, negative);
+            double quieter = Math.Max(Math.Min(positive, negative), 1e-30);
+
+            return 10.0 * Math.Log10(louder / quieter);
+        }
+
+        /// <summary>
+        /// The Hilbert transform of a pulse, which is the other half of a single-sideband one.
+        /// </summary>
+        /// <param name="taps">The pulse.</param>
+        /// <returns>Its Hilbert partner, sampled the same way.</returns>
+        /// <remarks>
+        /// <para>
+        /// Computed here rather than in <c>OpenVSA.Synthesis</c> for the reason the constellation
+        /// and the pulse are handed in there: that project sits outside the analysis stack and
+        /// cannot reference a transform. Shaping a symbol stream with <c>g + jĝ</c> makes it
+        /// analytic sample by sample, which is what lets a block-at-a-time generator produce a
+        /// single-sideband signal at all.
+        /// </para>
+        /// <para>
+        /// 🔴 The inverse transform here is already scaled by 1/N — <c>IFftProvider</c> says so —
+        /// and dividing by N again produced a partner 1/512 of its proper size, a signal with 0.0 dB
+        /// of sideband suppression, and a "VSB" round trip that was measuring double sideband.
+        /// </para>
+        /// </remarks>
+        private static double[] HilbertOf(double[] taps)
+        {
+            int length = 1;
+
+            while (length < taps.Length * 2)
+            {
+                length *= 2;
+            }
+
+            var spectrum = new double[2 * length];
+
+            for (int tap = 0; tap < taps.Length; tap++)
+            {
+                Iq.Set(spectrum, tap, new Iq(taps[tap], 0.0));
+            }
+
+            Dsp.Fft.FftProviders.Active.Forward(new Span<double>(spectrum));
+
+            for (int bin = 0; bin < length; bin++)
+            {
+                Iq value = Iq.At(spectrum, bin);
+
+                if (bin == 0 || bin == length / 2)
+                {
+                    Iq.Set(spectrum, bin, Iq.Zero);
+                }
+                else if (bin < length / 2)
+                {
+                    // Minus j on the positive frequencies and plus j on the negative ones, which is
+                    // the Hilbert transform written as a filter.
+                    Iq.Set(spectrum, bin, new Iq(value.Q, -value.I));
+                }
+                else
+                {
+                    Iq.Set(spectrum, bin, new Iq(-value.Q, value.I));
+                }
+            }
+
+            Dsp.Fft.FftProviders.Active.Inverse(new Span<double>(spectrum));
+
+            var quadrature = new double[taps.Length];
+
+            for (int tap = 0; tap < taps.Length; tap++)
+            {
+                quadrature[tap] = Iq.At(spectrum, tap).I;
+            }
+
+            return quadrature;
         }
 
         /// <summary>How far a generated signal's envelope moves, in decibels.</summary>

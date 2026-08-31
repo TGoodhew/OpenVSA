@@ -145,6 +145,33 @@ namespace OpenVSA.Demod.Chain.Steps
             // What would work is the MIDPOINT OF THE TWO DEVIATION HUMPS -- their positions are
             // fixed at plus and minus a quarter of the symbol rate whatever the data does, and only
             // their heights move. #439 carries that, with the block this leaves failing.
+            // 🔴 AND A SINGLE-SIDEBAND ONE CANNOT BE STRIPPED EITHER, for a reason of its own.
+            // The spectrum of a vestigial-sideband signal is not symmetric about its carrier -- that
+            // is the definition of it -- so raising it to a power puts a line where the energy is
+            // rather than where the carrier is, and the energy is deliberately all on one side.
+            // Measured on a generated 8VSB signal with no carrier offset at all, this step returned
+            // 263 248.7 Hz on a 1 Msym/s signal, a quarter of the symbol rate, and the demodulation
+            // that followed read 13.2 %rms with 114 of 512 symbols right.
+            //
+            // A piloted VSB signal does carry a proper answer -- the pilot is a carrier, at the band
+            // edge, and finding it is a tone search rather than a power of anything -- but a pilot
+            // is optional and an unpiloted signal offers nothing. So this declines for the family
+            // and step 8, which fits a frequency on the axis that carries the data, pulls it in.
+            if (constellation.Family == ModulationFamily.Vsb)
+            {
+                context.CoarseFrequencyHz = 0.0;
+                context.Search = search;
+
+                context.Note(
+                    "Step 3 did not estimate a carrier offset. " + constellation.Name +
+                    " suppresses one of its sidebands, so its spectrum is not symmetric about its " +
+                    "carrier and raising it to a power finds where the energy is rather than where " +
+                    "the carrier is. Step 8 fits the offset on the axis that carries the symbols " +
+                    "instead, so a real one must be inside what it can pull in (REQ-DEM-036).");
+
+                return StepOutcome.Continue;
+            }
+
             if (constellation.Family == ModulationFamily.Msk)
             {
                 context.CoarseFrequencyHz = 0.0;

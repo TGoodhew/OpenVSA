@@ -201,6 +201,17 @@ namespace OpenVSA.Demod.Chain
         /// <summary>Whether the equaliser changed its coefficients enough to ask for a re-entry.</summary>
         internal bool EqualiserUpdated { get; set; }
 
+        /// <summary>
+        /// The pilot a vestigial-sideband signal carries, as a fraction of the level ladder
+        /// (<c>REQ-DEM-070</c>).
+        /// </summary>
+        /// <remarks>
+        /// A DC offset on the levels, which is what a VSB transmitter's pilot is once the levels
+        /// have been recovered. <c>NaN</c> for every format that has none, which is every other
+        /// format: the metric appears for this family alone.
+        /// </remarks>
+        internal double PilotLevel { get; set; } = double.NaN;
+
         /// <summary>Step 12's estimates.</summary>
         internal ImpairmentEstimate Impairments { get; set; }
 
