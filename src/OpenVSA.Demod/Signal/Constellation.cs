@@ -651,14 +651,19 @@ namespace OpenVSA.Demod.Signal
         /// product's own displays count in.
         /// </para>
         /// <para>
-        /// 🔴 <strong>Which type is which is a convention, and the reference product does not
-        /// publish it.</strong> <c>REQ-DEM-010</c> marks the type 1 / type 2 naming <strong>[U]</strong>
-        /// — implied, not confirmed. Implemented here as: <strong>type 1 carries its bits in the
+        /// ✅ <strong>Which type is which was settled on the bench, and type 1 is the differential
+        /// one.</strong> <c>REQ-DEM-010</c> marks the type 1 / type 2 naming <strong>[U]</strong> —
+        /// implied, not confirmed — so this was a choice until an E4438C transmitting MSK at
+        /// 500 ksym/s with a PN9 was demodulated both ways on 31 August 2026: <strong>type 1
+        /// recovered 511 of 511 bits</strong> of the sequence and type 2 explained nothing,
+        /// scoring 54.69 % against a chance level of 50. So <strong>type 1 carries its bits in the
         /// change</strong> from one symbol to the next, which is the precoded form GSM sends, and
-        /// <strong>type 2 carries them absolutely</strong>. <c>#436</c> records the choice, what
-        /// would distinguish the two on a bench, and that swapping them is one line. The distinction
-        /// is not cosmetic: read the wrong way round, every bit after the first is wrong while EVM
-        /// stays perfect.
+        /// <strong>type 2 carries them absolutely</strong>. <c>#436</c> has the run.
+        /// </para>
+        /// <para>
+        /// The distinction is invisible in the error vector and total in the bits — both readings
+        /// demodulated that signal at about 1.3 %rms — which is exactly why it took a transmitter
+        /// rather than an argument.
         /// </para>
         /// </remarks>
         public static Constellation Msk(int type)
@@ -692,13 +697,35 @@ namespace OpenVSA.Demod.Signal
         /// transmitter used, and 0.3 is GSM's.
         /// </para>
         /// <para>
-        /// Absolute rather than differential, matching <see cref="Msk"/> type 2. GSM precodes its
-        /// bits before the modulator, which is the same distinction MSK's two types record, and
-        /// <c>#436</c> carries it.
+        /// 🔴 <strong>A linear receiver has a floor on true GMSK, and it is about 5.7 %rms.</strong>
+        /// GMSK is a continuous-phase modulation; <em>c₀(t)</em> is the principal component of its
+        /// Laurent decomposition and not the whole of it, so a demodulator that matches against
+        /// <em>c₀</em> alone leaves the energy in the higher components as error. Measured against
+        /// an E4438C transmitting GMSK on 31 August 2026: <strong>5.76 %rms, with 511 of 511 bits
+        /// of the PN9 recovered</strong>. The bits are perfect and the error vector is not, which is
+        /// what that floor looks like — it is a property of the model, not of the signal or of the
+        /// implementation, and it is the number to compare a suspect transmitter against rather
+        /// than zero.
+        /// </para>
+        /// <para>
+        /// The chain's own round-trip test reads 0.002 %rms because its generator transmits
+        /// <em>c₀</em> as a linear pulse — the same approximation at both ends, which measures the
+        /// arithmetic and cannot measure the approximation. Only a transmitter can, and one did.
+        /// </para>
+        /// <para>
+        /// <strong>Differential, matching <see cref="Msk"/> type 1, and the bench is why.</strong>
+        /// GMSK is not a separate modulator: on an E4438C it is the same MSK through a Gaussian
+        /// pre-modulation filter, and that MSK was measured on 31 August 2026 to carry its bits in
+        /// the change. GSM precodes for the same reason — it is what makes a differential detector
+        /// recover the data rather than its derivative. A transmitter that does not precode is read
+        /// by setting <c>DemodSettings.DifferentialReference</c> to <c>None</c>, which is the
+        /// override that exists for exactly this.
         /// </para>
         /// </remarks>
         public static Constellation Gmsk() =>
-            Bpsk().Turned("GMSK", Math.PI / 2.0).AsFamily(ModulationFamily.Msk);
+            Bpsk().Turned("GMSK", Math.PI / 2.0)
+                .Differential("GMSK", Math.PI / 2.0)
+                .AsFamily(ModulationFamily.Msk);
 
         /// <summary>The same points, turning by a fixed angle every symbol.</summary>
         /// <param name="name">What the turning format is called.</param>

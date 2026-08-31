@@ -70,6 +70,19 @@ measure):
 | GMSK | EDGE (*c₀*) | None | EDGE |
 | 3π/8-8PSK (EDGE) | EDGE (*c₀*) | None | EDGE |
 
+**On a signal generator these are not three modulations but two settings.** The filter a generator
+applies to a Custom modulation is usually a *pre-modulation* filter — it shapes the symbol stream
+before the modulator rather than the envelope after it — so MSK through a rectangular filter is MSK,
+and the same MSK through a Gaussian filter at BbT 0.3 **is** GMSK. Do not expect to find GMSK in a
+generator's format list; measured on an E4438C, it is not there, and this is why.
+
+**Expect about 5.7 %rms on real GMSK, and expect the bits to be perfect.** GMSK's phase is
+continuous, and *c₀(t)* is the principal component of it rather than the whole: a demodulator
+matching against *c₀* alone leaves the rest as error. Measured against an E4438C: **5.76 %rms with
+511 of 511 bits of a PN9 recovered.** That number is the model's floor, not the transmitter's
+fault — it is what to compare a suspect signal against. MSK has no such floor, because MSK's linear
+pulse *is* the whole of MSK: measured on the same bench, 1.40 %rms and every bit.
+
 **The measurement filter is None for all of them, and that is not an oversight.** A root raised
 cosine is *half* of a Nyquist filter and the receiver applies the other half; these pulses are the
 whole shaping, already applied by the transmitter. Matching a half-cosine transmit pulse with a

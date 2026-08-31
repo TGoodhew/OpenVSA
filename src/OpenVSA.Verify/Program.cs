@@ -299,8 +299,16 @@ namespace OpenVSA.Verify
                 int repeats = 1,
                 DifferentialReference reference = DifferentialReference.PerFormat,
                 bool? expectRelabelling = null,
-                BitMapping mapping = BitMapping.Natural)
+                BitMapping mapping = BitMapping.Natural,
+                StimulusPulseFilter transmit = StimulusPulseFilter.RootRaisedCosine,
+                PulseFilterType measurement = PulseFilterType.RootRaisedCosine,
+                PulseFilterType? referenceFilter = null,
+                int equalisingPasses = 0)
             {
+                Transmit = transmit;
+                Measurement = measurement;
+                ReferenceFilter = referenceFilter;
+                EqualisingPasses = equalisingPasses;
                 ExpectRelabelling = expectRelabelling;
                 Mapping = mapping;
                 Format = format;
@@ -404,6 +412,32 @@ namespace OpenVSA.Verify
             /// <summary>Why that is expected, in the words the run prints.</summary>
             public string Expectation { get; }
 
+            /// <summary>
+            /// The pre-modulation filter the generator shapes with.
+            /// </summary>
+            /// <remarks>
+            /// A case of its own because on this generator it is not a refinement of the format, it
+            /// is PART of the format: the Custom subsystem's filter is a pre-modulation filter, so
+            /// MSK through a rectangular one is MSK and MSK through a Gaussian one is GMSK. There is
+            /// no GMSK entry in the instrument's format list, and this is why.
+            /// </remarks>
+            public StimulusPulseFilter Transmit { get; }
+
+            /// <summary>The analyser's receive filter.</summary>
+            public PulseFilterType Measurement { get; }
+
+            /// <summary>What shapes the ideal waveform, or <c>null</c> for the state's default.</summary>
+            public PulseFilterType? ReferenceFilter { get; }
+
+            /// <summary>How many passes to allow when the format needs the equaliser.</summary>
+            /// <remarks>
+            /// Zero for a format that does not: the linearised-GMSK pulse is not a Nyquist pulse and
+            /// puts intersymbol interference in the signal by construction, which a real receiver
+            /// for that family equalises. MSK's own pulse is zero at every symbol instant but its
+            /// own and needs none.
+            /// </remarks>
+            public int EqualisingPasses { get; }
+
             /// <inheritdoc />
             public override string ToString() =>
                 Format +
@@ -414,6 +448,9 @@ namespace OpenVSA.Verify
                 (Reference == DifferentialReference.PerFormat
                     ? string.Empty
                     : ", reference " + Reference) +
+                (Transmit == StimulusPulseFilter.RootRaisedCosine
+                    ? string.Empty
+                    : ", shaped " + Transmit) +
                 (Mirrored ? ", spectrum inverted" : string.Empty);
         }
 
@@ -550,6 +587,60 @@ namespace OpenVSA.Verify
                     true,
                     "and the same on eight points and three bits",
                     mapping: BitMapping.Gray),
+
+                // ---- REQ-DEM-010's constant-envelope rows, against a real transmitter ----------
+                //
+                // THE ONE QUESTION THESE ARE HERE TO ANSWER is #436: REQ-DEM-010 lists MSK type 1
+                // and MSK type 2 and marks the naming [U] -- implied, not confirmed -- and nothing
+                // published says which of them carries its bits in the CHANGE from one symbol to
+                // the next. This build made a choice; a transmitter can settle it. Exactly one of
+                // the next two cases will produce the PN9 sequence, and which one is the answer.
+                //
+                // The instrument shapes with a PRE-modulation filter, so a rectangular one leaves
+                // MSK as MSK. It has no GMSK format: GMSK is this same MSK through the Gaussian
+                // filter at BbT 0.3, which is the third case.
+                new DemodCase(
+                    "MSK",
+                    false,
+                    true,
+                    "REQ-DEM-010's type 1, the DIFFERENTIAL one -- the bit is the change from the " +
+                    "symbol before it, which is the precoded form GSM sends. THIS CASE IS THE " +
+                    "ANSWER TO #436: it and the next one read the same waveform two ways, and on " +
+                    "31 August 2026 this one recovered 511 of 511 bits of the PN9 while the other " +
+                    "explained nothing",
+                    demodulated: "MSK1",
+                    transmit: StimulusPulseFilter.Rectangular,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Msk),
+
+                new DemodCase(
+                    "MSK",
+                    false,
+                    false,
+                    "and type 2, the ABSOLUTE reading of the same waveform, which is the negative " +
+                    "control that makes the case above mean something. Both demodulate and both " +
+                    "report a clean EVM near 1.3 %rms -- the difference is invisible in the error " +
+                    "vector and total in the bits, which is why it took a transmitter to settle",
+                    demodulated: "MSK2",
+                    transmit: StimulusPulseFilter.Rectangular,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Msk),
+
+                new DemodCase(
+                    "MSK",
+                    false,
+                    true,
+                    "GMSK: the same modulation through this generator's GAUSSIAN pre-modulation " +
+                    "filter at BbT 0.3, which is what GMSK is and why the instrument has no GMSK " +
+                    "format of its own. Demodulated against the linearised-GMSK pulse c0(t) with " +
+                    "the equaliser on, because that pulse is not a Nyquist pulse and carries " +
+                    "intersymbol interference by construction. Differential for the same reason " +
+                    "MSK type 1 is: it is the same modulator",
+                    demodulated: "GMSK",
+                    transmit: StimulusPulseFilter.Gaussian,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Edge,
+                    equalisingPasses: 8),
             };
 
             Cases = 0;
@@ -1166,7 +1257,7 @@ namespace OpenVSA.Verify
                 options.LevelDbm,
                 scenario.Format,
                 SymbolRateHz,
-                StimulusPulseFilter.RootRaisedCosine,
+                scenario.Transmit,
                 RollOff,
                 Pattern);
 
@@ -1197,9 +1288,20 @@ namespace OpenVSA.Verify
             setup.Demod.BitMapping = scenario.Mapping;
             setup.Demod.SymbolRateHz = digital.SymbolRateHz;
             setup.Demod.ResultLengthSymbols = ResultLengthSymbols;
-            setup.Demod.MeasurementFilter = PulseFilterType.RootRaisedCosine;
+            setup.Demod.MeasurementFilter = scenario.Measurement;
             setup.Demod.MeasurementFilterAlpha = RollOff;
             setup.Demod.ReferenceFilterAlpha = RollOff;
+
+            if (scenario.ReferenceFilter.HasValue)
+            {
+                setup.Demod.ReferenceFilter = scenario.ReferenceFilter.Value;
+            }
+
+            if (scenario.EqualisingPasses > 0)
+            {
+                setup.Demod.Equaliser = true;
+                setup.Demod.EqualiserLengthSymbols = 11;
+            }
 
             var contexts = new MeasurementContextSet();
             MeasurementContext demod = contexts.Add("Demod", setup);

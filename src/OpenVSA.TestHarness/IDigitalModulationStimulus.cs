@@ -26,6 +26,26 @@ namespace OpenVSA.TestHarness
 
         /// <summary>Gaussian, for the GMSK family (<c>GAUSsian</c>).</summary>
         Gaussian,
+
+        /// <summary>
+        /// Rectangular: no shaping of the symbol stream at all (<c>RECTangle</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The one that matters for MSK, and it matters because this generator's filter is
+        /// a PRE-modulation filter.</strong> The instrument's manual is explicit: the Custom
+        /// subsystem's filter "selects the pre-modulation filter type", so for a constant-envelope
+        /// format it shapes the frequency path rather than the envelope. MSK through a rectangular
+        /// pre-modulation filter is MSK — a rectangular frequency pulse is what makes the phase
+        /// advance linearly across a symbol — and MSK through a Gaussian one is GMSK.
+        /// </para>
+        /// <para>
+        /// So the two formats this analyser distinguishes as MSK and GMSK are one modulation type
+        /// and two filters on this generator, which is worth knowing before looking for a GMSK
+        /// entry in its format list. There is not one.
+        /// </para>
+        /// </remarks>
+        Rectangular,
     }
 
     /// <summary>

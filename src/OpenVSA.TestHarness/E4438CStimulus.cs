@@ -457,11 +457,25 @@ namespace OpenVSA.TestHarness
             Send(session, ":RADio:CUSTom:SRATe " + Number(symbolRateHz));
             Send(session, ":RADio:CUSTom:FILTer " + FilterWord(filter));
 
-            // Only the Nyquist pair has a roll-off. Sending one to the Gaussian filter would leave
-            // an error in the queue for whatever ran next to be blamed for.
-            if (filter != StimulusPulseFilter.Gaussian)
+            // Only the Nyquist pair has a roll-off. Sending one to the Gaussian or the rectangular
+            // filter would leave an error in the queue for whatever ran next to be blamed for.
+            if (filter == StimulusPulseFilter.RootRaisedCosine ||
+                filter == StimulusPulseFilter.RaisedCosine)
             {
                 Send(session, ":RADio:CUSTom:ALPHa " + Number(alpha));
+            }
+
+            if (filter == StimulusPulseFilter.Gaussian)
+            {
+                Send(session, ":RADio:CUSTom:BBT " + Number(BandwidthTime));
+            }
+
+            // Stated rather than left at the reset value, because it is the whole of what MSK is:
+            // a right angle of phase across a symbol, which is a deviation of a quarter the symbol
+            // rate. The instrument resets to 90 degrees and a previous setup may not have.
+            if (string.Equals(format, "MSK", StringComparison.OrdinalIgnoreCase))
+            {
+                Send(session, ":RADio:CUSTom:MODulation:MSK:PHASe 90");
             }
 
             Send(session, ":RADio:CUSTom:DATA " + dataPattern);
@@ -474,6 +488,17 @@ namespace OpenVSA.TestHarness
 
             Refresh();
         }
+
+        /// <summary>
+        /// The bandwidth-time product the Gaussian pre-modulation filter is set to.
+        /// </summary>
+        /// <remarks>
+        /// Only the Gaussian filter has one; the instrument says so and refuses to be told
+        /// otherwise. Three tenths is GSM's, and it is the BbT the analyser's own linearised-GMSK
+        /// pulse is derived at, so it is the value at which the two ends are describing the same
+        /// signal.
+        /// </remarks>
+        public double BandwidthTime { get; set; } = 0.3;
 
         /// <inheritdoc />
         public void SetSpectrumInverted(bool inverted)
@@ -512,6 +537,9 @@ namespace OpenVSA.TestHarness
                 case StimulusPulseFilter.Gaussian:
                     return "GAUSsian";
 
+                case StimulusPulseFilter.Rectangular:
+                    return "RECTangle";
+
                 default:
                     return "RNYQuist";
             }
@@ -524,6 +552,11 @@ namespace OpenVSA.TestHarness
             if (trimmed.StartsWith("NYQ", StringComparison.Ordinal))
             {
                 return StimulusPulseFilter.RaisedCosine;
+            }
+
+            if (trimmed.StartsWith("RECT", StringComparison.Ordinal))
+            {
+                return StimulusPulseFilter.Rectangular;
             }
 
             return trimmed.StartsWith("GAUS", StringComparison.Ordinal)
