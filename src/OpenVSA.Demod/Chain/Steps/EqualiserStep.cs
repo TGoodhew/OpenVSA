@@ -59,6 +59,24 @@ namespace OpenVSA.Demod.Chain.Steps
     /// EVM peaked on the very last symbol of the window and the outer symbols carried nearly seven
     /// times the error energy of the interior.
     /// </para>
+    /// <para>
+    /// <strong>Run, Hold and Reset are about measurements, not passes.</strong>
+    /// <c>REQ-DEM-051</c>'s three modes govern what happens to the coefficients between one
+    /// measurement and the next, and <see cref="EqualiserState"/> is what carries them across.
+    /// <see cref="EqualiserMode.Run"/> fits as described above and the chain keeps the result;
+    /// <see cref="EqualiserMode.Hold"/> applies what is held and fits nothing, so successive
+    /// measurements are equalised by bit-identical taps; <see cref="EqualiserMode.Reset"/> applies
+    /// a unit impulse, which is an equaliser that leaves the waveform alone.
+    /// </para>
+    /// <para>
+    /// What Run inherits is a standard rather than a starting point. There is no starting point to
+    /// inherit — the least-squares solution is computed in one shot — so the held coefficients are
+    /// used as the residual the new fit has to beat, exactly as a previous pass's are. A block that
+    /// cannot fit better than the filter it was handed keeps that filter, which is what stops one
+    /// bad measurement from undoing a good one; and because each measurement still fits its own
+    /// filter from its own samples, the coefficients change from measurement to measurement, which
+    /// is what the requirement asks Run to be observable by.
+    /// </para>
     /// </remarks>
     internal sealed class EqualiserStep : IChainStep
     {
@@ -103,7 +121,12 @@ namespace OpenVSA.Demod.Chain.Steps
             int perSymbol = settings.PointsPerSymbol;
             int samples = Iq.Count(result);
             int taps = settings.EqualiserTaps;
-            int half = taps / 2;
+
+            // REQ-DEM-051's impulse position: the centre while the filter is short, and a fixed
+            // pre-cursor reach once it is long, so further length is spent on delay spread. The fit
+            // reads it as the reference delay -- which tap of the filter the decision instant lines
+            // up with -- and it is the index the unit impulse of Reset sits at.
+            int half = settings.EqualiserImpulseIndex;
 
             // Half a symbol, which is T/2 spacing at whatever internal rate the chain is running.
             int stride = Math.Max(1, perSymbol / 2);
@@ -117,6 +140,14 @@ namespace OpenVSA.Demod.Chain.Steps
 
             double[] source = Derotate(
                 context, context.EqualiserSource, samples + (2 * pad), pad, perSymbol);
+
+            // Hold and Reset do not fit, so they are answered before anything that needs symbols:
+            // a measurement too poor to decide symbols still has a held filter applied to it, which
+            // is the whole point of holding one.
+            if (settings.EqualiserMode != EqualiserMode.Run)
+            {
+                return Frozen(context, source, samples, taps, half, stride, pad);
+            }
 
             // EVERY symbol in the window, with no guard. The fit's targets are the decided ideal
             // POINTS rather than a regenerated waveform, so there is no stretch of the window where
@@ -153,12 +184,18 @@ namespace OpenVSA.Demod.Chain.Steps
             double residual = Residual(
                 source, symbols, coefficients, context.TimingSamples, perSymbol, half, stride, pad);
 
-            // What the last accepted coefficients left, or -- on the first pass -- what leaving the
-            // waveform alone leaves. Either way the new coefficients have to beat something real:
-            // an equaliser that cannot improve on doing nothing should do nothing.
+            // What the last accepted coefficients left, or -- on the first pass -- what the filter
+            // this measurement inherited leaves, which in Run mode is the previous measurement's
+            // and is doing nothing when there is none. Either way the new coefficients have to beat
+            // something real: an equaliser that cannot improve on what it was handed should not
+            // replace it.
+            Iq[] inherited = context.Pass == 1 && settings.EqualiserState != null
+                ? settings.EqualiserState.Held(taps)
+                : null;
+
             double baseline = double.IsNaN(context.EqualiserResidual)
                 ? Residual(
-                    source, symbols, null, context.TimingSamples, perSymbol, half, stride, pad)
+                    source, symbols, inherited, context.TimingSamples, perSymbol, half, stride, pad)
                 : context.EqualiserResidual;
 
             if (!(residual < baseline * (1.0 - settings.EqualiserUpdateThreshold)))
@@ -173,6 +210,23 @@ namespace OpenVSA.Demod.Chain.Steps
                         "make this measurement worse.");
                 }
 
+                // The inherited filter beat this measurement's own, so it is the one this
+                // measurement is equalised by -- otherwise Run would silently fall back to no
+                // equaliser at all on any block whose own fit came out worse than the one before.
+                // It has to be read back through steps 8 to 10 like any other, so this asks for the
+                // one re-entry that does it.
+                if (inherited != null)
+                {
+                    context.Result = Apply(source, samples, inherited, half, stride, pad);
+                    context.EqualiserCoefficients = inherited;
+                    context.EqualiserResidual = baseline;
+
+                    Absorbed(context);
+                    context.EqualiserUpdated = false;
+
+                    return StepOutcome.ReEnter;
+                }
+
                 context.EqualiserUpdated = false;
 
                 return StepOutcome.Continue;
@@ -182,16 +236,128 @@ namespace OpenVSA.Demod.Chain.Steps
             context.EqualiserCoefficients = coefficients;
             context.EqualiserResidual = residual;
 
-            // Everything step 8 estimated is now part of the waveform rather than a correction
-            // waiting to be applied to it. The derotation above took out the accumulated total, not
-            // this pass's share, because the source it was applied to is the untouched original.
-            context.PassFrequencyHz = 0.0;
-            context.PassPhaseRadians = 0.0;
-            context.PassGain = 1.0;
+            Absorbed(context);
 
             context.EqualiserUpdated = true;
 
             return StepOutcome.ReEnter;
+        }
+
+        /// <summary>
+        /// Applies the coefficients a non-adapting mode calls for, and fits nothing.
+        /// </summary>
+        /// <param name="context">The chain's state.</param>
+        /// <param name="source">The padded, derotated source.</param>
+        /// <param name="samples">How long the result window is.</param>
+        /// <param name="taps">How many taps.</param>
+        /// <param name="half">Which tap the impulse sits on.</param>
+        /// <param name="stride">How many samples apart the taps are.</param>
+        /// <param name="pad">Where the result window starts in <paramref name="source"/>.</param>
+        /// <returns>One re-entry when a held filter was applied, so that the symbols the metrics
+        /// are computed from are read off the equalised waveform; otherwise
+        /// <see cref="StepOutcome.Continue"/>.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>Hold applies, it does not abstain.</strong> Held coefficients are put on every
+        /// measurement — that is what makes Hold useful on a signal whose channel is known and whose
+        /// individual blocks are too poor to fit from. Only
+        /// <see cref="DemodSettings.EqualiserEnabled"/> switches the equaliser off.
+        /// </para>
+        /// <para>
+        /// <strong>Reset is a unit impulse, and so is a Hold with nothing held.</strong> Both
+        /// produce a filter that returns the waveform unchanged, which is the honest thing for an
+        /// equaliser that has never adapted; the waveform still goes through the convolution rather
+        /// than around it, so the two paths cannot differ by so much as a rounding.
+        /// </para>
+        /// <para>
+        /// 🔴 <strong>Applying a filter is not enough on its own.</strong> Steps 12 to 14 read the
+        /// symbols step 9 decided, not the waveform this step writes, so a filter applied here
+        /// reaches the reported numbers only by way of the re-entry that has steps 8 to 10 read the
+        /// equalised waveform again. Measured before this was understood, Hold applied the right
+        /// coefficients and reported EVM to the last decimal place of the uncorrected measurement —
+        /// which looks exactly like an equaliser that is not applying what it holds, and is not.
+        /// </para>
+        /// <para>
+        /// One re-entry and no more. The filter is fitted from the untouched original either way, so
+        /// a second application produces the same waveform and the same numbers at the cost of the
+        /// pass it took; and a mode that cannot move its coefficients has nothing for a further pass
+        /// to converge towards. A unit impulse asks for no re-entry at all, because a waveform it
+        /// has not changed cannot change the symbols read from it.
+        /// </para>
+        /// </remarks>
+        private static StepOutcome Frozen(
+            DemodContext context,
+            double[] source,
+            int samples,
+            int taps,
+            int half,
+            int stride,
+            int pad)
+        {
+            DemodSettings settings = context.Settings;
+
+            Iq[] held = settings.EqualiserMode == EqualiserMode.Hold &&
+                settings.EqualiserState != null
+                    ? settings.EqualiserState.Held(taps)
+                    : null;
+
+            Iq[] coefficients = held;
+
+            if (coefficients == null)
+            {
+                coefficients = Impulse(taps, half);
+
+                if (settings.EqualiserMode == EqualiserMode.Hold)
+                {
+                    context.Note(
+                        "The equaliser is on Hold with no coefficients of the current length to " +
+                        "hold, so it applied a unit impulse and left the waveform alone. Run it " +
+                        "once at this filter length to give Hold something to freeze.");
+                }
+            }
+
+            context.Result = Apply(source, samples, coefficients, half, stride, pad);
+            context.EqualiserCoefficients = coefficients;
+
+            Absorbed(context);
+
+            context.EqualiserUpdated = false;
+
+            return held != null && context.Pass == 1
+                ? StepOutcome.ReEnter
+                : StepOutcome.Continue;
+        }
+
+        /// <summary>A filter that does nothing: one at the impulse index, zero everywhere else.</summary>
+        /// <param name="taps">How many taps.</param>
+        /// <param name="half">Which tap the impulse sits on.</param>
+        /// <returns>The coefficients.</returns>
+        internal static Iq[] Impulse(int taps, int half)
+        {
+            var coefficients = new Iq[taps];
+
+            for (int tap = 0; tap < taps; tap++)
+            {
+                coefficients[tap] = tap == half ? new Iq(1.0, 0.0) : Iq.Zero;
+            }
+
+            return coefficients;
+        }
+
+        /// <summary>
+        /// Records that the chain's estimates are now in the waveform rather than pending on it.
+        /// </summary>
+        /// <remarks>
+        /// Everything step 8 estimated has been taken out by <see cref="Derotate"/>, so it is part
+        /// of the waveform the later steps read rather than a correction still waiting to be
+        /// applied to it. The derotation takes out the accumulated total, not this pass's share,
+        /// because the source it is applied to is the untouched original.
+        /// </remarks>
+        private static void Absorbed(DemodContext context)
+        {
+            context.PassFrequencyHz = 0.0;
+            context.PassPhaseRadians = 0.0;
+            context.PassGain = 1.0;
         }
 
         /// <summary>

@@ -58,9 +58,22 @@ namespace OpenVSA.Demod.Help
         /// </remarks>
         public const string ErrorMetrics = "demodulation-error-metrics";
 
+        /// <summary>
+        /// The equaliser's controls, and what its filter length buys (<c>REQ-DEM-051</c>,
+        /// <c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-DEM-052</c> instructs that the length-to-tap-count relationship be stated where
+        /// the user will meet it, calling it "a frequent source of confusion", and
+        /// <c>REQ-DEM-051</c>'s three modes are distinctions no control label can carry on its own —
+        /// Hold in particular still applies its coefficients, which is not what "hold" suggests to
+        /// everyone who reads it.
+        /// </remarks>
+        public const string Equaliser = "demodulation-equaliser";
+
         private static readonly ReadOnlyCollection<string> Topics =
             new ReadOnlyCollection<string>(
-                new List<string> { ProcessingOrder, Filters, ErrorMetrics });
+                new List<string> { ProcessingOrder, Filters, ErrorMetrics, Equaliser });
 
         /// <summary>Every topic that ships, by name.</summary>
         public static IReadOnlyList<string> Names => Topics;

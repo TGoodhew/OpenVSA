@@ -71,6 +71,19 @@ namespace OpenVSA.Demod.Chain
         public const int DefaultEqualiserLengthSymbols = 11;
 
         /// <summary>
+        /// The LMS step size when nothing says otherwise (<c>REQ-DEM-051</c>).
+        /// </summary>
+        /// <remarks>
+        /// A hundredth. Small enough to sit far inside <c>REQ-DEM-052</c>'s stability bound for the
+        /// unit-power signal the chain normalises to at any usable tap count, and large enough to
+        /// converge within the few hundred symbols of a result window. It is a starting point rather
+        /// than a recommendation: an LMS step size is a trade between how fast the filter converges
+        /// and how much gradient noise it carries once it has, and only the user knows which of
+        /// those matters for the signal in front of them.
+        /// </remarks>
+        public const double DefaultEqualiserConvergenceFactor = 0.01;
+
+        /// <summary>
         /// The default filter span, in symbols either side of centre (<c>REQ-DEM-023</c>).
         /// </summary>
         /// <remarks>
@@ -508,6 +521,83 @@ namespace OpenVSA.Demod.Chain
         public int EqualiserTaps => 2 * EqualiserLengthSymbols;
 
         /// <summary>
+        /// Which tap of the equaliser carries its impulse — the reference delay
+        /// (<c>REQ-DEM-051</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The documented behaviour, and the law that produces it.</strong>
+        /// <c>REQ-DEM-051</c> requires that "for short filter lengths the impulse sits at the filter
+        /// centre" and that "as length grows the impulse moves proportionally towards the start of
+        /// the filter to accommodate channels with large delay spread". This index is
+        /// <c>min(centre, pre-cursor reach)</c>: while the filter is short the two halves are equal
+        /// and the impulse is central; once it is longer than twice the pre-cursor reach, every
+        /// further tap is added <em>after</em> the impulse, so its index stops growing while the
+        /// filter's length keeps growing and its position as a fraction of the filter falls towards
+        /// the start.
+        /// </para>
+        /// <para>
+        /// <strong>Why length beyond the knee belongs after the impulse.</strong> The two sides of
+        /// an equaliser buy different things. Taps before the impulse invert what is anticausal, and
+        /// the only anticausal thing the chain knows about is the composite pulse itself, whose
+        /// reach is <see cref="FilterSymbolSpan"/> symbols either side of centre by construction.
+        /// Taps after it invert the channel's delay spread — an echo at some delay, and the
+        /// decaying series that undoes it — which is unbounded and is the reason a user lengthens
+        /// the filter at all. So the pre-cursor side is capped at what the pulse needs
+        /// (<c>2 · FilterSymbolSpan</c> taps, since the taps are half a symbol apart) and the rest
+        /// of the length goes where the delay spread is.
+        /// </para>
+        /// <para>
+        /// 🔴 The reference product publishes the behaviour and not the law, so where the knee sits
+        /// is this build's choice: <c>#434</c> records it, with the alternative — a smooth ratio
+        /// falling from a half towards a fixed fraction — and what would have to change to adopt it.
+        /// What is <em>not</em> a choice is the trend: a fixed-centre equaliser cannot accommodate a
+        /// delay spread longer than half its filter no matter how long the filter is made, because
+        /// half of every tap added goes in front of an impulse that has nothing to do there.
+        /// </para>
+        /// </remarks>
+        public int EqualiserImpulseIndex =>
+            Math.Min(EqualiserTaps / 2, 2 * FilterSymbolSpan);
+
+        /// <summary>
+        /// What the equaliser does with its coefficients between measurements
+        /// (<c>REQ-DEM-051</c>).
+        /// </summary>
+        public EqualiserMode EqualiserMode { get; set; } = EqualiserMode.Run;
+
+        /// <summary>
+        /// The equaliser's memory between measurements, or <c>null</c> when it has none.
+        /// </summary>
+        /// <remarks>
+        /// Without one, every measurement starts from nothing and
+        /// <see cref="EqualiserMode.Hold"/> has nothing to hold — which is the right behaviour for a
+        /// single demodulation of a captured record, and the wrong one for a live measurement
+        /// repeating on a signal. The owner of a repeating measurement creates one state object and
+        /// hands the same instance to every settings object it builds.
+        /// </remarks>
+        public EqualiserState EqualiserState { get; set; }
+
+        /// <summary>
+        /// The LMS step size µ (<c>REQ-DEM-051</c>, <c>REQ-DEM-052</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The reference product calls this the <em>convergence factor</em>. It is the step size of
+        /// the gradient update, so it has meaning only for the LMS mode <c>REQ-DEM-052</c> retains
+        /// for behavioural parity; the least-squares solution this chain fits by default is exact
+        /// and has no step size at all, which is that requirement's reason for preferring it.
+        /// </para>
+        /// <para>
+        /// What counts as a safe value depends on the signal's power and the tap count, so it is not
+        /// bounded here beyond being positive: <c>REQ-DEM-052</c>'s bound <c>0 &lt; µ &lt; 2/(L·Px)</c>
+        /// can only be evaluated once a measurement has samples to take <c>Px</c> from, and that is
+        /// where it is enforced.
+        /// </para>
+        /// </remarks>
+        public double EqualiserConvergenceFactor { get; set; } =
+            DefaultEqualiserConvergenceFactor;
+
+        /// <summary>
         /// How much the equaliser must change the waveform for it to ask for a re-entry.
         /// </summary>
         /// <remarks>
@@ -689,6 +779,12 @@ namespace OpenVSA.Demod.Chain
             Require(
                 EqualiserLengthSymbols >= 1,
                 "The equaliser's filter is at least one symbol long (REQ-DEM-051).");
+
+            Require(
+                EqualiserConvergenceFactor > 0.0,
+                "The equaliser's convergence factor is a positive step size; " +
+                EqualiserConvergenceFactor.ToString("G6", CultureInfo.InvariantCulture) +
+                " would make LMS stand still or walk backwards (REQ-DEM-051).");
 
             Require(
                 EqualiserUpdateThreshold >= 0.0 && EqualiserUpdateThreshold < 1.0,
