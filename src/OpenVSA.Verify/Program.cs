@@ -304,8 +304,10 @@ namespace OpenVSA.Verify
                 StimulusPulseFilter transmit = StimulusPulseFilter.RootRaisedCosine,
                 PulseFilterType measurement = PulseFilterType.RootRaisedCosine,
                 PulseFilterType? referenceFilter = null,
-                int equalisingPasses = 0)
+                int equalisingPasses = 0,
+                int pointsPerSymbol = 0)
             {
+                PointsPerSymbol = pointsPerSymbol;
                 Transmit = transmit;
                 Measurement = measurement;
                 ReferenceFilter = referenceFilter;
@@ -429,6 +431,17 @@ namespace OpenVSA.Verify
 
             /// <summary>What shapes the ideal waveform, or <c>null</c> for the state's default.</summary>
             public PulseFilterType? ReferenceFilter { get; }
+
+            /// <summary>
+            /// The internal rate the format needs, or zero for the chain's default.
+            /// </summary>
+            /// <remarks>
+            /// A frequency-keyed format reads its symbol off the instantaneous frequency, which is
+            /// a difference between neighbouring samples: four points a symbol leaves that
+            /// difference to be taken across a quarter of a symbol, and the level it lands on is
+            /// then an average over that quarter rather than a reading at an instant.
+            /// </remarks>
+            public int PointsPerSymbol { get; }
 
             /// <summary>How many passes to allow when the format needs the equaliser.</summary>
             /// <remarks>
@@ -626,6 +639,93 @@ namespace OpenVSA.Verify
                     transmit: StimulusPulseFilter.Rectangular,
                     measurement: PulseFilterType.None,
                     referenceFilter: PulseFilterType.Msk),
+
+                // ---- REQ-DEM-010's frequency-keyed rows -----------------------------------
+                //
+                // The symbol is the instantaneous FREQUENCY here, so step 8 discriminates before it
+                // reads one. What that costs in convention is nothing: a level ladder has no
+                // rotational freedom, so unlike every phase-keyed case above there is no rotation
+                // for the bit comparison to search.
+                //
+                // A RECTANGULAR pre-modulation filter, so the phase advances linearly across a
+                // symbol -- plain continuous-phase FSK, and the same shape the round trips in
+                // FormatCatalogueTests generate.
+                new DemodCase(
+                    "FSK2",
+                    false,
+                    true,
+                    "two frequencies, at a deviation of half the symbol rate",
+                    demodulated: "2FSK",
+                    transmit: StimulusPulseFilter.Rectangular,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Rectangular,
+                    pointsPerSymbol: 16),
+
+                // 🔴 ABOVE TWO LEVELS THIS INSTRUMENT LABELS THEM ITS OWN WAY, and the bench
+                // measured which way on 31 August 2026. OpenVSA numbers the levels in order, most
+                // negative deviation first, which is REQ-DEM-011's documented natural mapping. The
+                // E4438C does not: its SIGN bit picks the half and the remaining bits count from
+                // the OUTSIDE IN, so on eight levels its symbols 4..7 are the deviations +7, +5,
+                // +3, +1 in that order. On four levels that happens to coincide with a Gray code
+                // and above four it does not, which is why the pair below exists and why the
+                // relabelling line is the assertion for the rest.
+                //
+                // Same claim as P4DQPSK's and D8PSK's: the bits are not the sequence, and exactly
+                // one relabelling accounts for EVERY symbol. That is the difference between a
+                // convention and a defect.
+                new DemodCase(
+                    "FSK4",
+                    false,
+                    false,
+                    "four levels, read with OpenVSA's natural numbering: the bits will NOT be the " +
+                    "sequence, and one relabelling will account for every symbol of it",
+                    demodulated: "4FSK",
+                    transmit: StimulusPulseFilter.Rectangular,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Rectangular,
+                    pointsPerSymbol: 16,
+                    expectRelabelling: true),
+
+                new DemodCase(
+                    "FSK4",
+                    false,
+                    true,
+                    "the same waveform under a Gray labelling, which on FOUR levels is the one " +
+                    "this instrument uses -- so the bits should now BE the sequence. Same signal, " +
+                    "same decisions, same EVM: only which bits the levels are said to carry",
+                    demodulated: "4FSK",
+                    transmit: StimulusPulseFilter.Rectangular,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Rectangular,
+                    pointsPerSymbol: 16,
+                    mapping: BitMapping.Gray),
+
+                new DemodCase(
+                    "FSK8",
+                    false,
+                    false,
+                    "eight, where the instrument's labelling stops agreeing with a Gray code: " +
+                    "measured, its symbols 4 to 7 are the deviations +7, +5, +3, +1 in that order",
+                    demodulated: "8FSK",
+                    transmit: StimulusPulseFilter.Rectangular,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Rectangular,
+                    pointsPerSymbol: 16,
+                    expectRelabelling: true),
+
+                new DemodCase(
+                    "FSK16",
+                    false,
+                    false,
+                    "and sixteen, whose levels are a fifteenth of the deviation range apart -- " +
+                    "close enough that a few symbols a block land on a neighbour, which is why the " +
+                    "relabelling is asked to account for 98 % of them rather than all",
+                    demodulated: "16FSK",
+                    transmit: StimulusPulseFilter.Rectangular,
+                    measurement: PulseFilterType.None,
+                    referenceFilter: PulseFilterType.Rectangular,
+                    pointsPerSymbol: 16,
+                    expectRelabelling: true),
 
                 new DemodCase(
                     "MSK",
@@ -1550,6 +1650,11 @@ namespace OpenVSA.Verify
             {
                 setup.Demod.Equaliser = true;
                 setup.Demod.EqualiserLengthSymbols = 11;
+            }
+
+            if (scenario.PointsPerSymbol > 0)
+            {
+                setup.Demod.PointsPerSymbol = scenario.PointsPerSymbol;
             }
 
             var contexts = new MeasurementContextSet();

@@ -436,7 +436,7 @@ namespace OpenVSA.Demod.Tests
             // status rather than leaving it half true.
             string[] notYet =
             {
-                "SOQPSK", "2FSK", "4FSK", "8FSK", "16FSK", "8VSB", "16VSB", "DVBQAM",
+                "SOQPSK", "8VSB", "16VSB", "DVBQAM",
             };
 
             foreach (string format in notYet)
@@ -446,13 +446,13 @@ namespace OpenVSA.Demod.Tests
 
             _output.WriteLine(
                 "Still owed by REQ-DEM-010: " + string.Join(", ", notYet) +
-                " -- the frequency-keyed ones want a discriminator rather than a decision, the " +
-                "vestigial-sideband ones a single-sideband path, SOQPSK a continuous-phase " +
-                "treatment, and DVB-QAM a quadrant-differential encoding that is not this " +
-                "catalogue's whole-symbol one. The offset and differential rows left this list on " +
-                "24 August 2026 with REQ-DEM-012; MSK, GMSK and EDGE left it on 31 August with " +
-                "REQ-DEM-010 itself, because a rotation and a pulse were all they needed and the " +
-                "chain already had both.");
+                " -- the vestigial-sideband ones want a single-sideband path, SOQPSK a " +
+                "continuous-phase treatment, and DVB-QAM a quadrant-differential encoding that is " +
+                "not this catalogue's whole-symbol one. The offset and differential rows left this " +
+                "list on 24 August 2026 with REQ-DEM-012; MSK, GMSK and EDGE left it on 31 August " +
+                "with REQ-DEM-010 itself, because a rotation and a pulse were all they needed; the " +
+                "frequency-keyed ones left the same day, once step 8 was given a model in which " +
+                "the symbol is a frequency rather than a place.");
         }
 
         [Theory]
@@ -772,6 +772,180 @@ namespace OpenVSA.Demod.Tests
                 worst < 1e-3,
                 "Interpolation moved a tone it should have carried by " +
                 worst.ToString("E3", CultureInfo.InvariantCulture) + ".");
+        }
+
+        [Theory]
+        [InlineData("2FSK", 0.25)]
+        [InlineData("2FSK", 0.5)]
+        [InlineData("4FSK", 0.5)]
+        [InlineData("8FSK", 0.75)]
+        [InlineData("16FSK", 1.0)]
+        public void EveryFrequencyKeyedFormatRoundTripsThroughTheChain(
+            string name, double deviationPerSymbolRate)
+        {
+            // REQ-DEM-010's criterion for the rows that are not a constellation at all. The symbol
+            // is the instantaneous FREQUENCY, so step 8 discriminates before it reads one and fits
+            // a different model: where zero is (the carrier offset), how far a level is (the
+            // deviation) and the timing. There is no carrier phase in it -- a constant phase is
+            // invisible to a discriminator -- which is why this family cannot be given one.
+            //
+            // 🔴 THE DEVIATION IS SWEPT BECAUSE ONE VALUE OF IT HID EVERY BUG. At a quarter of the
+            // symbol rate 2FSK demodulated perfectly while 4FSK at a half returned 260 symbols of
+            // 512, 8FSK at three quarters 171, and 16FSK at one 89 -- because the timing estimator
+            // reads a symbol-rate line out of the ENVELOPE, and these signals have none. A single
+            // narrow-deviation case would have passed and shipped that.
+            Constellation constellation = Constellation.ByName(name);
+
+            const int Span = 12;
+            const int PerSymbol = 8;
+
+            var source = new ContinuousModulatedSource
+            {
+                Scheme = SchemeFor(constellation).Deviating(deviationPerSymbolRate),
+                SymbolRateHz = 1e6,
+                SampleRateHz = 32e6,
+                PulseSpanSymbols = Span,
+
+                // A rectangular FREQUENCY pulse, so the phase advances linearly across a symbol.
+                // That is plain continuous-phase FSK, and it is what a generator's pre-modulation
+                // filter set to Rectangle produces.
+                TransmitPulse = PulseFilter.Rectangular().Taps(PerSymbol, Span, FilterRole.Reference),
+                TransmitPulseSamplesPerSymbol = PerSymbol,
+                Seed = 20260831,
+            };
+
+            var samples = new float[2 * (int)Math.Ceiling(Symbols * source.SamplesPerSymbol)];
+
+            source.Restart();
+            source.Fill(samples);
+
+            // Constant envelope, which is what a frequency-keyed transmitter sends and what makes
+            // the envelope useless for timing.
+            double flatness = EnvelopeVariationDb(samples);
+
+            Assert.True(
+                flatness < 1.0,
+                name + "'s envelope varies by " +
+                flatness.ToString("F2", CultureInfo.InvariantCulture) +
+                " dB, so what was generated is not a frequency modulation.");
+
+            var settings = new DemodSettings
+            {
+                Constellation = constellation,
+                SymbolRateHz = source.SymbolRateHz,
+                PointsPerSymbol = 16,
+                ResultLengthSymbols = 512,
+                FilterSymbolSpan = Span,
+                MeasurementFilter = PulseFilterType.None,
+                ReferenceFilter = PulseFilterType.Rectangular,
+            };
+
+            DemodResult result = new Demodulator().Run(samples, source.SampleRateHz, settings);
+
+            _output.WriteLine(
+                name + " at a deviation of " +
+                deviationPerSymbolRate.ToString("F2", CultureInfo.InvariantCulture) +
+                " symbol rates: envelope " +
+                flatness.ToString("F2", CultureInfo.InvariantCulture) + " dB, EVM " +
+                result.EvmPercent.ToString("F6", CultureInfo.InvariantCulture) + " %rms, " +
+                (result.Lock.Locked ? "locked" : "NOT LOCKED") + ", carrier error " +
+                result.CarrierFrequencyErrorHz.ToString("F1", CultureInfo.InvariantCulture) + " Hz");
+
+            Assert.True(
+                result.EvmPercent < 0.1,
+                name + " round-tripped at " +
+                result.EvmPercent.ToString("F4", CultureInfo.InvariantCulture) +
+                " %rms, and REQ-DEM-010 asks for better than 0.1 %.");
+
+            var sent = new int[Symbols];
+
+            for (int symbol = 0; symbol < Symbols; symbol++)
+            {
+                sent[symbol] = source.SymbolAt(symbol);
+            }
+
+            // No rotation to search: a level ladder has no rotational freedom, which is one thing
+            // frequency keying gives back.
+            Assert.Equal(result.Symbols.Count, LongestAgreement(result.Symbols, sent));
+        }
+
+        [Fact]
+        public void AFrequencyKeyedFormatShowsTheMetricsItsFamilyHasAndNoOthers()
+        {
+            // REQ-DEM-071's own example of the failing case: "an inapplicable row appearing
+            // (magnitude error on FSK, say) fails". A constant-envelope frequency modulation has no
+            // amplitude to be in error and no constellation phase to compare.
+            Constellation constellation = Constellation.ByName("4FSK");
+
+            Assert.Equal(ModulationFamily.Fsk, constellation.Family);
+
+            IReadOnlyList<string> rows =
+                MetricApplicability.LabelsFor(constellation.Family, constellation.IsOffset);
+
+            foreach (string absent in new[]
+            {
+                "Mag Err", "Phase Err", "IQ Offset", "IQ Gain Imbalance", "IQ Quad. Error",
+            })
+            {
+                Assert.DoesNotContain(absent, rows);
+            }
+
+            Assert.Contains("EVM", rows);
+            Assert.Contains("Freq Err", rows);
+        }
+
+        [Fact]
+        public void TheEqualiserDeclinesAFormatItCannotFitAFilterFor()
+        {
+            // An equaliser fits a linear filter between the measured waveform and the ideal
+            // symbols. For a frequency-keyed format those are quantities of different kinds -- a
+            // waveform and a set of frequency levels -- and what relates them is the discriminator,
+            // which is not linear. Fitting one anyway would report a channel response for a channel
+            // nobody has.
+            Constellation constellation = Constellation.ByName("2FSK");
+
+            const int Span = 12;
+            const int PerSymbol = 8;
+
+            var source = new ContinuousModulatedSource
+            {
+                Scheme = SchemeFor(constellation).Deviating(0.25),
+                SymbolRateHz = 1e6,
+                SampleRateHz = 32e6,
+                PulseSpanSymbols = Span,
+                TransmitPulse = PulseFilter.Rectangular().Taps(PerSymbol, Span, FilterRole.Reference),
+                TransmitPulseSamplesPerSymbol = PerSymbol,
+                Seed = 20260831,
+            };
+
+            var samples = new float[2 * (int)Math.Ceiling(Symbols * source.SamplesPerSymbol)];
+
+            source.Restart();
+            source.Fill(samples);
+
+            DemodResult result = new Demodulator().Run(
+                samples,
+                source.SampleRateHz,
+                new DemodSettings
+                {
+                    Constellation = constellation,
+                    SymbolRateHz = source.SymbolRateHz,
+                    PointsPerSymbol = 16,
+                    ResultLengthSymbols = 512,
+                    FilterSymbolSpan = Span,
+                    MeasurementFilter = PulseFilterType.None,
+                    ReferenceFilter = PulseFilterType.Rectangular,
+                    EqualiserEnabled = true,
+                });
+
+            Assert.Contains(
+                result.Notices,
+                notice => notice.IndexOf(
+                    "carries its symbols as frequency", StringComparison.Ordinal) >= 0);
+
+            // And the measurement is unharmed by having asked.
+            Assert.True(result.EvmPercent < 0.1);
+            Assert.Null(result.EqualiserCoefficients);
         }
 
         /// <summary>How far a generated signal's envelope moves, in decibels.</summary>

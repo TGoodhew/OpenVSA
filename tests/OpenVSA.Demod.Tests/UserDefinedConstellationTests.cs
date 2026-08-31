@@ -219,17 +219,42 @@ namespace OpenVSA.Demod.Tests
         [Theory]
         [InlineData("32QAM")]
         [InlineData("16STARQAM")]
-        [InlineData("OOK")]
         public void GrayIsRefusedWhereThereIsNoOneGrayCode(string name)
         {
-            // A cross QAM's points do not form a grid, a star's rings are not one cycle, and OOK is
-            // neither. Returning some permutation anyway would be inventing a standard, so the
-            // request is refused and the message says what to do instead.
+            // A cross QAM's points do not form a grid and a star's rings are not one cycle.
+            // Returning some permutation anyway would be inventing a standard, so the request is
+            // refused and the message says what to do instead.
+            //
+            // 🔴 OOK left this list on 31 August 2026, when the frequency-keyed formats taught the
+            // catalogue what a LEVEL LADDER is. It had been refused for being neither a ring nor a
+            // grid, which was true and was not the question: its two points are ordered along an
+            // axis, and an ordered set has a Gray code. On two symbols that code is the identity,
+            // so what OOK now accepts is the labelling it already had -- see
+            // AGrayCodeOnTwoLevelsIsTheOneItAlreadyHad.
             InvalidOperationException refused = Assert.Throws<InvalidOperationException>(
                 () => Constellation.ByName(name).WithMapping(BitMapping.Gray));
 
             Assert.Contains("table", refused.Message, StringComparison.Ordinal);
             _output.WriteLine(name + ": " + refused.Message);
+        }
+
+        [Fact]
+        public void AGrayCodeOnTwoLevelsIsTheOneItAlreadyHad()
+        {
+            // What "Gray" means on an ordered set of two: neighbouring symbols differ in one bit,
+            // and with one bit each there is only one way for that to be true. Asserted rather than
+            // assumed, because the alternative to refusing a request is answering it correctly.
+            Constellation gray = Constellation.ByName("OOK").WithMapping(BitMapping.Gray);
+            Constellation natural = Constellation.ByName("OOK");
+
+            for (int symbol = 0; symbol < natural.Count; symbol++)
+            {
+                Assert.Equal(natural.CarriedBy(symbol), gray.CarriedBy(symbol));
+            }
+
+            _output.WriteLine(
+                "OOK's Gray labelling is its natural one: " +
+                gray.CarriedBy(0) + ", " + gray.CarriedBy(1));
         }
 
         [Fact]

@@ -56,14 +56,55 @@ namespace OpenVSA.Synthesis
         private double[] _pulse;
         private double _pulseRollOff = double.NaN;
 
+        /// <summary>
+        /// The phase a frequency-keyed signal has accumulated since <see cref="Restart"/>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>The one thing about this source that is not a pure function of the sample
+        /// index</strong>, and it cannot be: a continuous-phase modulation's phase is the integral
+        /// of everything it has sent, so the sample at index n genuinely depends on every symbol
+        /// before it. <see cref="SymbolAt"/> stays pure — what the transmitter sends is still
+        /// decided per index — and only the phase carries forward.
+        /// </para>
+        /// <para>
+        /// What that costs is one property: a block produced on its own differs from the same block
+        /// produced after its predecessors <em>by a constant phase</em>. Nothing measures that. A
+        /// real acquisition starts at an arbitrary phase for the same reason, and every estimator
+        /// in the chain has to be indifferent to it already.
+        /// </para>
+        /// </remarks>
+        private double _frequencyPhase;
+
         private long _samplesEmitted;
 
         /// <summary>The modulation to draw symbols from.</summary>
         /// <exception cref="ArgumentNullException">The value is null.</exception>
+        /// <summary>Recomputes what the scheme's outermost level is.</summary>
+        private void MeasurePeakLevel()
+        {
+            double peak = 0.0;
+
+            if (_scheme != null)
+            {
+                foreach (SymbolPoint point in _scheme.IdealPoints)
+                {
+                    peak = Math.Max(peak, Math.Abs(point.I));
+                }
+            }
+
+            _peakLevel = peak > 0.0 ? peak : 1.0;
+        }
+
         public ModulationScheme Scheme
         {
             get { return _scheme; }
-            set { _scheme = value ?? throw new ArgumentNullException(nameof(value)); }
+            set
+            {
+                _scheme = value ?? throw new ArgumentNullException(nameof(value));
+
+                MeasurePeakLevel();
+            }
         }
 
         /// <summary>The symbol rate, in symbols per second.</summary>
@@ -215,7 +256,21 @@ namespace OpenVSA.Synthesis
         public double SamplesPerSymbol => SampleRateHz / SymbolRateHz;
 
         /// <summary>Starts the signal again from its beginning.</summary>
-        public void Restart() => _samplesEmitted = 0;
+        public void Restart()
+        {
+            _samplesEmitted = 0;
+            _frequencyPhase = 0.0;
+        }
+
+        /// <summary>
+        /// The largest level the scheme's points reach, for scaling a deviation onto them.
+        /// </summary>
+        /// <remarks>
+        /// The points arrive normalised to unit mean power, so their outermost level is whatever
+        /// that normalisation left rather than a round number. A deviation is quoted as the PEAK,
+        /// so the ladder is divided by its own top rung before the deviation multiplies it.
+        /// </remarks>
+        private double _peakLevel = 1.0;
 
         /// <summary>
         /// Fills a buffer with the next stretch of the signal.
@@ -287,6 +342,23 @@ namespace OpenVSA.Synthesis
 
                     i += point.I * weight;
                     q += point.Q * quadratureWeight;
+                }
+
+                if (_scheme.IsFrequencyKeyed)
+                {
+                    // 🔴 THE SHAPED SUM IS A FREQUENCY, NOT A PLACE. Everything above built it the
+                    // same way -- the symbols' levels through the transmit pulse -- and what
+                    // differs is what it is then done with: a frequency-keyed transmitter
+                    // INTEGRATES it into a phase and sends a constant envelope, where a linear one
+                    // sends the sum itself. The pulse is therefore the FREQUENCY pulse, which is
+                    // what a generator's "pre-modulation filter" means and why a rectangular one
+                    // gives plain CPFSK and a Gaussian one gives GFSK.
+                    _frequencyPhase +=
+                        2.0 * Math.PI * _scheme.DeviationPerSymbolRate * (i / _peakLevel) /
+                        perSymbol;
+
+                    i = Math.Cos(_frequencyPhase);
+                    q = Math.Sin(_frequencyPhase);
                 }
 
                 double angle = (turnPerSample * index) + PhaseRadians;

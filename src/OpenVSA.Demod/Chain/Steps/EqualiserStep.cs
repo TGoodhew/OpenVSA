@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Chain.Steps
@@ -117,6 +118,23 @@ namespace OpenVSA.Demod.Chain.Steps
                 context.IdealWaveform, DemodStep.ReferenceRegeneration, DemodStep.Equaliser);
 
             DemodSettings settings = context.Settings;
+
+            if (settings.Constellation.Family == ModulationFamily.Fsk)
+            {
+                // The equaliser fits a linear filter that takes the measured waveform onto the
+                // ideal SYMBOLS. For a frequency-keyed format those symbols are levels of
+                // instantaneous frequency, and no linear filter on the waveform maps onto them --
+                // the relationship between the two is the discriminator, which is not linear. A
+                // filter fitted between them would be fitted between quantities of different kinds
+                // and would report a channel response for a channel nobody has.
+                context.Note(
+                    "The equaliser did not run: " + settings.Constellation.Name +
+                    " carries its symbols as frequency, and an equaliser fits a linear filter " +
+                    "between a waveform and a constellation. Those are not linearly related for a " +
+                    "frequency-keyed format, so there is nothing for it to fit.");
+
+                return StepOutcome.Continue;
+            }
 
             int perSymbol = settings.PointsPerSymbol;
             int samples = Iq.Count(result);

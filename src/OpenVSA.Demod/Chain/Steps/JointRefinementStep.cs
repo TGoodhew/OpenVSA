@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Chain.Steps
@@ -68,6 +69,11 @@ namespace OpenVSA.Demod.Chain.Steps
             int perSymbol = settings.PointsPerSymbol;
             int count = context.ResultSymbolCount;
             int samples = Iq.Count(result);
+
+            if (constellation.Family == ModulationFamily.Fsk)
+            {
+                return RefineFrequencyKeyed(context, result, perSymbol, count, samples);
+            }
 
             // Half a symbol for an offset format, and nothing for every other: REQ-DEM-012's two
             // instants per symbol, carried through this step as one number so that every place that
@@ -482,6 +488,368 @@ namespace OpenVSA.Demod.Chain.Steps
         /// symbol's worth of the residual carrier — and only then does one contribute its I and the
         /// other its Q.
         /// </remarks>
+        /// <summary>
+        /// Step 8 for a frequency-keyed format: discriminate, then fit deviation, offset and timing.
+        /// </summary>
+        /// <param name="context">The chain's state.</param>
+        /// <param name="result">The result window.</param>
+        /// <param name="perSymbol">The internal processing rate.</param>
+        /// <param name="count">How many symbols the window holds.</param>
+        /// <param name="samples">How long the window is.</param>
+        /// <returns>Always <see cref="StepOutcome.Continue"/>.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>A different model, because a different thing carries the symbol.</strong> The
+        /// linear path above fits a carrier frequency, a carrier phase, a gain and a timing offset,
+        /// because those four are what stand between a phase-keyed signal and its constellation.
+        /// For frequency keying the list is shorter and not the same: the symbol is the
+        /// instantaneous FREQUENCY, so what stands between the signal and its levels is
+        /// <strong>where zero is</strong> (a carrier offset, which shifts every level equally),
+        /// <strong>how far a level is</strong> (the deviation, which scales them) and the timing.
+        /// Carrier phase does not appear at all — a constant phase is invisible to a
+        /// discriminator, which is why this family needs no phase estimate and cannot be given one.
+        /// </para>
+        /// <para>
+        /// <strong>The discriminator is one line and the whole of the difference.</strong>
+        /// <c>arg(w[n]·conj(w[n−1]))</c> is how far the phase turned between two samples, which is
+        /// the frequency; scaled to cycles per symbol it is directly comparable with the level
+        /// ladder <see cref="Constellation.Fsk"/> lays down. Everything after this step then works
+        /// unchanged: the decisions are nearest-level on the real axis, the reference is those
+        /// levels, and <c>REQ-DEM-071</c> already knows which metrics a frequency-keyed format has
+        /// no meaning for.
+        /// </para>
+        /// <para>
+        /// <strong>The deviation is the gain, and that is why it is a measurement.</strong> The
+        /// constellation's levels are normalised, so the scale the fit recovers IS the signal's peak
+        /// deviation as a fraction of the symbol rate — <c>REQ-DEM-070</c>'s FSK deviation, read off
+        /// the signal rather than echoed back from a setting.
+        /// </para>
+        /// </remarks>
+        private static StepOutcome RefineFrequencyKeyed(
+            DemodContext context, double[] result, int perSymbol, int count, int samples)
+        {
+            DemodSettings settings = context.Settings;
+            Constellation constellation = settings.Constellation;
+
+            double[] frequency = Discriminate(result, samples, perSymbol);
+
+            double timing = InitialFrequencyTiming(
+                frequency, context.TimingSamples, perSymbol, samples, count);
+
+            // The mean of the discriminated signal IS the carrier offset, because the level ladder
+            // is symmetric about zero and a block of a few hundred symbols visits it evenly enough.
+            // Starting from it rather than from nothing matters: the offset and the deviation are
+            // fitted against decisions, and decisions taken with the levels displaced by half a
+            // step are wrong in a way the fit will happily converge to and keep.
+            double offset = Mean(frequency, timing, perSymbol, count);
+            double gain = InitialDeviation(
+                frequency, timing, offset, perSymbol, count, constellation);
+
+            var measured = new Iq[count];
+            var decided = new Iq[count];
+
+            int iterations = 0;
+            bool converged = false;
+            double largest = double.MaxValue;
+
+            for (int iteration = 1; iteration <= settings.MaxRefinementIterations; iteration++)
+            {
+                iterations = iteration;
+
+                ProjectFrequency(frequency, measured, timing, offset, gain, perSymbol, count);
+
+                for (int symbol = 0; symbol < count; symbol++)
+                {
+                    decided[symbol] = constellation.Ideal(
+                        constellation.Decide(measured[symbol], symbol), symbol);
+                }
+
+                double difference = 0.0;
+                double product = 0.0;
+                double square = 0.0;
+
+                for (int symbol = 0; symbol < count; symbol++)
+                {
+                    difference += measured[symbol].I - decided[symbol].I;
+                    product += measured[symbol].I * decided[symbol].I;
+                    square += decided[symbol].I * decided[symbol].I;
+                }
+
+                // Where zero is: the mean of what is left over once the levels are accounted for,
+                // which is the carrier offset expressed in the discriminator's own units.
+                double deltaOffset = count > 0 ? difference / count : 0.0;
+
+                // How far a level is: the scale that best takes the decided ladder onto the
+                // measured one, which is the same least-squares ratio the linear path fits.
+                double gainRatio = square > 0.0 && product > 0.0 ? product / square : 1.0;
+
+                double deltaTiming = FitFrequencyTiming(
+                    frequency, measured, decided, timing, offset, gain, perSymbol, count);
+
+                double limit = MaximumTimingStepSymbols * perSymbol;
+
+                if (deltaTiming > limit)
+                {
+                    deltaTiming = limit;
+                }
+                else if (deltaTiming < -limit)
+                {
+                    deltaTiming = -limit;
+                }
+
+                offset += deltaOffset * gain;
+                gain *= gainRatio;
+                timing = Clamp(timing + deltaTiming, samples, perSymbol, count, 0.0);
+
+                largest = Math.Max(
+                    Math.Abs(deltaOffset),
+                    Math.Max(Math.Abs(deltaTiming), Math.Abs(gainRatio - 1.0)));
+
+                if (largest < settings.RefinementTolerance)
+                {
+                    converged = true;
+
+                    break;
+                }
+            }
+
+            ProjectFrequency(frequency, measured, timing, offset, gain, perSymbol, count);
+
+            // The offset is in cycles per symbol, which is the discriminator's unit: a carrier that
+            // is one symbol rate high turns the phase by a whole turn every symbol.
+            double frequencyHz = offset * settings.SymbolRateHz;
+
+            context.PassFrequencyHz = frequencyHz;
+            context.PassPhaseRadians = 0.0;
+            context.PassGain = gain;
+
+            context.ResidualFrequencyHz += frequencyHz;
+            context.Gain *= gain;
+            context.TimingSamples = timing;
+            context.MeasuredSymbols = measured;
+
+            context.Convergence = new ConvergenceReport(
+                iterations,
+                settings.MaxRefinementIterations,
+                converged,
+                largest,
+                settings.RefinementTolerance);
+
+            if (!converged)
+            {
+                context.Note(
+                    "Step 8 reached its bound of " +
+                    settings.MaxRefinementIterations.ToString(CultureInfo.InvariantCulture) +
+                    " iterations on pass " + context.Pass.ToString(CultureInfo.InvariantCulture) +
+                    " without meeting the convergence criterion. The largest change on the last " +
+                    "iteration was " + largest.ToString("G3", CultureInfo.InvariantCulture) +
+                    ". The estimates are the ones it had got to, not the ones it was heading for.");
+            }
+
+            return StepOutcome.Continue;
+        }
+
+        /// <summary>
+        /// Where the symbol instants are, for a signal whose envelope says nothing.
+        /// </summary>
+        /// <param name="frequency">The discriminated signal.</param>
+        /// <param name="nominal">Where step 7 put the first symbol.</param>
+        /// <param name="perSymbol">The internal processing rate.</param>
+        /// <param name="samples">How long the window is.</param>
+        /// <param name="count">How many symbols it holds.</param>
+        /// <returns>The first symbol instant, in samples.</returns>
+        /// <remarks>
+        /// <para>
+        /// 🔴 <strong><see cref="InitialTiming"/> reads a symbol-rate line out of the envelope, and
+        /// a frequency-keyed signal has no envelope.</strong> That estimator is the right one for a
+        /// pulse-shaped format, whose amplitude dips between symbols and so carries a line at the
+        /// symbol rate; a constant-envelope one has <c>|w|²</c> flat to the noise, and what comes
+        /// back is the angle of whatever numerical residue is left. Measured before this existed:
+        /// 2FSK at a deviation of a quarter the symbol rate demodulated perfectly and everything
+        /// wider failed — 4FSK at half returned 260 of 512 symbols, 8FSK 171, 16FSK 89, each with
+        /// a large spurious carrier offset, because the fit converged on decisions taken at
+        /// instants that were nobody's.
+        /// </para>
+        /// <para>
+        /// <strong>What does carry the line is the discriminated signal's own movement.</strong> An
+        /// FSK signal holds a level across a symbol and changes between symbols, so the energy of
+        /// the CHANGE peaks at the boundaries — one peak a symbol, which is a line at the symbol
+        /// rate whose phase says where the boundaries are. The instants are half a symbol from
+        /// them.
+        /// </para>
+        /// </remarks>
+        private static double InitialFrequencyTiming(
+            double[] frequency, double nominal, int perSymbol, int samples, int count)
+        {
+            double real = 0.0;
+            double imaginary = 0.0;
+
+            for (int sample = 1; sample < samples; sample++)
+            {
+                double change = Iq.At(frequency, sample).I - Iq.At(frequency, sample - 1).I;
+                double energy = change * change;
+                double angle = -2.0 * Math.PI * sample / perSymbol;
+
+                real += energy * Math.Cos(angle);
+                imaginary += energy * Math.Sin(angle);
+            }
+
+            if ((real * real) + (imaginary * imaginary) < 1e-30)
+            {
+                return nominal;
+            }
+
+            // The angle locates the boundaries; the instants are half a symbol later.
+            double estimate =
+                (-Math.Atan2(imaginary, real) * perSymbol / (2.0 * Math.PI)) + (perSymbol / 2.0);
+
+            double shift = estimate - nominal;
+
+            shift -= perSymbol * Math.Round(shift / perSymbol);
+
+            return Clamp(nominal + shift, samples, perSymbol, count, 0.0);
+        }
+
+        /// <summary>The mean of the discriminated signal at the decision instants.</summary>
+        private static double Mean(
+            double[] frequency, double timing, int perSymbol, int count)
+        {
+            if (count < 1)
+            {
+                return 0.0;
+            }
+
+            double total = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                total += Interpolator.At(frequency, timing + (symbol * perSymbol)).I;
+            }
+
+            return total / count;
+        }
+
+        /// <summary>
+        /// The waveform's instantaneous frequency, in cycles per symbol, as a real signal.
+        /// </summary>
+        /// <param name="result">The result window.</param>
+        /// <param name="samples">How long it is.</param>
+        /// <param name="perSymbol">The internal processing rate.</param>
+        /// <returns>One value per sample, carried in the real part.</returns>
+        /// <remarks>
+        /// Carried as a complex array with nothing in the imaginary part so that the same
+        /// interpolator reads it at fractional instants as reads the waveform everywhere else — a
+        /// symbol instant is no more likely to fall on a sample here than it is anywhere else in the
+        /// chain. The first sample has no predecessor to have turned from, so it repeats the second.
+        /// </remarks>
+        private static double[] Discriminate(double[] result, int samples, int perSymbol)
+        {
+            var frequency = new double[2 * samples];
+
+            for (int sample = 1; sample < samples; sample++)
+            {
+                Iq turn = Iq.At(result, sample) * Iq.At(result, sample - 1).Conjugate();
+                double radians = Math.Atan2(turn.Q, turn.I);
+
+                Iq.Set(
+                    frequency,
+                    sample,
+                    new Iq(radians * perSymbol / (2.0 * Math.PI), 0.0));
+            }
+
+            if (samples > 1)
+            {
+                Iq.Set(frequency, 0, Iq.At(frequency, 1));
+            }
+
+            return frequency;
+        }
+
+        /// <summary>The deviation to start from: the measured spread against the level ladder's.</summary>
+        private static double InitialDeviation(
+            double[] frequency,
+            double timing,
+            double offset,
+            int perSymbol,
+            int count,
+            Constellation constellation)
+        {
+            double measured = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                // About the offset, not about zero: a carrier error would otherwise be counted as
+                // deviation, and the two would be estimated as one number.
+                double value =
+                    Interpolator.At(frequency, timing + (symbol * perSymbol)).I - offset;
+
+                measured += value * value;
+            }
+
+            measured = count > 0 ? Math.Sqrt(measured / count) : 0.0;
+
+            double ideal = 0.0;
+
+            for (int point = 0; point < constellation.Count; point++)
+            {
+                ideal += constellation.Ideal(point).I * constellation.Ideal(point).I;
+            }
+
+            ideal = constellation.Count > 0 ? Math.Sqrt(ideal / constellation.Count) : 1.0;
+
+            return ideal > 0.0 && measured > 0.0 ? measured / ideal : 1.0;
+        }
+
+        /// <summary>Reads the discriminated signal at the decision instants.</summary>
+        private static void ProjectFrequency(
+            double[] frequency,
+            Iq[] measured,
+            double timing,
+            double offset,
+            double gain,
+            int perSymbol,
+            int count)
+        {
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                double value = Interpolator.At(frequency, timing + (symbol * perSymbol)).I;
+
+                measured[symbol] = new Iq((value - offset) / gain, 0.0);
+            }
+        }
+
+        /// <summary>How far the decision instants should move, for a frequency-keyed format.</summary>
+        /// <remarks>
+        /// The same least-squares step the linear path takes, on the discriminated signal: how far
+        /// the instants must move for the slope to close the gap between what was measured and what
+        /// was decided.
+        /// </remarks>
+        private static double FitFrequencyTiming(
+            double[] frequency,
+            Iq[] measured,
+            Iq[] decided,
+            double timing,
+            double offset,
+            double gain,
+            int perSymbol,
+            int count)
+        {
+            double numerator = 0.0;
+            double denominator = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                double slope =
+                    Interpolator.SlopeAt(frequency, timing + (symbol * perSymbol)).I / gain;
+                double error = decided[symbol].I - measured[symbol].I;
+
+                numerator += slope * error;
+                denominator += slope * slope;
+            }
+
+            return denominator > 0.0 ? numerator / denominator : 0.0;
+        }
+
         private static void Project(
             double[] result,
             Iq[] measured,
