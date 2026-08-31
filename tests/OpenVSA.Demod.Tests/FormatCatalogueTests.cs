@@ -557,6 +557,16 @@ namespace OpenVSA.Demod.Tests
                 EqualiserEnabled = equalisingPasses > 0,
                 EqualiserLengthSymbols = 11,
                 MaxPasses = Math.Max(DemodSettings.DefaultMaxPasses, equalisingPasses),
+
+                // 🔴 AT THE INTERNAL RATE THE FORMAT ASKS FOR, WHICH FOR MSK IS NOT THE DEFAULT.
+                // Step 4 band-limits as it resamples -- it must, or everything above the new
+                // Nyquist folds back in -- and step 10 regenerates the ideal waveform at that same
+                // rate from the pulse's full shape. A constant-envelope format's sidelobes decay as
+                // a power law rather than stopping, so at four points a symbol the measurement
+                // loses what the reference keeps and the difference is reported as error: measured,
+                // 5.5 %rms at four, 2.3 at eight, 1.1 at sixteen, nothing measurable at thirty-two.
+                // The chain says so in a notice; this asks for what it recommends.
+                PointsPerSymbol = constellation.RecommendedPointsPerSymbol,
             };
 
             DemodResult result = new Demodulator().Run(samples, source.SampleRateHz, settings);
@@ -654,6 +664,114 @@ namespace OpenVSA.Demod.Tests
 
             // And EDGE is phase-shift keying, which shows all of them.
             Assert.Equal(ModulationFamily.Psk, Constellation.ByName("EDGE").Family);
+        }
+
+        [Fact]
+        public void DecimatingBandLimitsRatherThanFoldingWhatItCannotCarry()
+        {
+            // 🔴 THE BENCH FOUND THIS AND NOTHING ELSE COULD HAVE. Step 4 resamples to the internal
+            // rate, and it used not to band-limit on the way down -- the reasoning recorded there
+            // was that the acquisition has already band-limited the signal, so nothing above the
+            // new Nyquist survives but noise. True of a pulse-shaped format, false of a
+            // constant-envelope one, whose sidelobes decay as a power law rather than stopping.
+            //
+            // Measured against an E4438C transmitting MSK into a 6.7 MHz analyser bandwidth,
+            // decimating 30 samples a symbol to four: EVM came back QUANTISED at about 1.3, 4.5 or
+            // 9.2 %rms depending on where each block's sampling phase happened to fall, on a signal
+            // every bit of which was recovered. Quantised, because which aliases land where is set
+            // by the resampling phase and by nothing else -- a fingerprint no amount of noise
+            // produces. With the filter: 1.21 to 1.28 %rms across six blocks.
+            //
+            // What is asserted here is the property the fix rests on rather than the EVM it
+            // produced: a tone above the output's Nyquist must be ATTENUATED, not folded back to
+            // some other frequency where it becomes signal.
+            const int Samples = 8000;
+            const double Ratio = 0.25;
+
+            // Three quarters of the INPUT Nyquist, which is three times the output's: it cannot be
+            // represented after decimating, so it must not appear after decimating.
+            const double CyclesPerSample = 0.375;
+
+            var input = new double[2 * Samples];
+
+            for (int sample = 0; sample < Samples; sample++)
+            {
+                double angle = 2.0 * Math.PI * CyclesPerSample * sample;
+
+                input[2 * sample] = Math.Cos(angle);
+                input[(2 * sample) + 1] = Math.Sin(angle);
+            }
+
+            double[] output = Interpolator.Resample(input, Ratio);
+            int count = Iq.Count(output);
+
+            double energy = 0.0;
+
+            // Away from the ends, where every kernel is still filling.
+            for (int sample = 200; sample < count - 200; sample++)
+            {
+                energy += Iq.At(output, sample).MagnitudeSquared;
+            }
+
+            double amplitude = Math.Sqrt(energy / (count - 400));
+
+            _output.WriteLine(
+                "a tone at " + CyclesPerSample.ToString("F3", CultureInfo.InvariantCulture) +
+                " cycles/sample, decimated by " +
+                (1.0 / Ratio).ToString("F0", CultureInfo.InvariantCulture) + ": amplitude " +
+                amplitude.ToString("E3", CultureInfo.InvariantCulture) + " of the 1.0 it went in at");
+
+            Assert.True(
+                amplitude < 0.01,
+                "A tone three times the output's Nyquist frequency came through decimation at an " +
+                "amplitude of " + amplitude.ToString("E3", CultureInfo.InvariantCulture) +
+                ", so it was folded into the band rather than filtered out of it.");
+        }
+
+        [Fact]
+        public void InterpolatingIsNotBandLimitedByTheDecimatingFilter()
+        {
+            // The other half of the claim: nothing folds when the rate goes UP, so nothing is
+            // filtered. Interpolation carries the band it is given, and the decimating kernel is
+            // not applied to it.
+            //
+            // Measured a fifth of the way to the input's sample rate -- two fifths of its Nyquist
+            // frequency -- because that is where the interpolator itself is exact. Nearer its
+            // Nyquist the windowed sinc rolls off on its own account, by about two per cent at
+            // three quarters of the way and four at eight tenths, which is a property of the
+            // interpolator rather than of anything this test is about.
+            const int Samples = 4000;
+            const double Ratio = 4.0;
+            const double CyclesPerSample = 0.2;
+
+            var input = new double[2 * Samples];
+
+            for (int sample = 0; sample < Samples; sample++)
+            {
+                double angle = 2.0 * Math.PI * CyclesPerSample * sample;
+
+                input[2 * sample] = Math.Cos(angle);
+                input[(2 * sample) + 1] = Math.Sin(angle);
+            }
+
+            double[] output = Interpolator.Resample(input, Ratio);
+            int count = Iq.Count(output);
+            double worst = 0.0;
+
+            for (int sample = 400; sample < count - 400; sample++)
+            {
+                worst = Math.Max(worst, Math.Abs(Iq.At(output, sample).Magnitude - 1.0));
+            }
+
+            _output.WriteLine(
+                "interpolated by " + Ratio.ToString("F0", CultureInfo.InvariantCulture) +
+                ": amplitude within " + worst.ToString("E3", CultureInfo.InvariantCulture) +
+                " of unity");
+
+            Assert.True(
+                worst < 1e-3,
+                "Interpolation moved a tone it should have carried by " +
+                worst.ToString("E3", CultureInfo.InvariantCulture) + ".");
         }
 
         /// <summary>How far a generated signal's envelope moves, in decibels.</summary>

@@ -107,11 +107,34 @@ namespace OpenVSA.Demod.Signal
         /// <returns>A new buffer at the new rate.</returns>
         /// <exception cref="ArgumentOutOfRangeException">The ratio is not positive.</exception>
         /// <remarks>
-        /// <strong>No anti-alias filter on the way down.</strong> This is stated rather than
-        /// overlooked: the chain resamples a signal that the acquisition's own decimation has
-        /// already band-limited, and by the time step 4 runs the only thing outside the symbol
-        /// bandwidth is noise. A general-purpose resampler would need the filter, and the polyphase
-        /// decimator of <c>OpenVSA.Dsp</c> is where that work already lives.
+        /// <para>
+        /// <strong>The kernel narrows when the rate comes down, which is the anti-alias filter.</strong>
+        /// Decimation folds everything between the new Nyquist frequency and the old one back into
+        /// the band, so a decimating resampler has to band-limit before it picks its samples. It is
+        /// the same windowed sinc as <see cref="At"/> with its cutoff moved from the input's Nyquist
+        /// to the output's: the zero crossings spread by <c>1/ratio</c>, the support spreads with
+        /// them, and the whole is scaled to keep unity gain at DC. Interpolating upward needs none of
+        /// that, and gets none: at a ratio of one or more this is exactly <see cref="At"/>.
+        /// </para>
+        /// <para>
+        /// 🔴 <strong>It used not to, and the assumption behind that was wrong for a whole family of
+        /// formats.</strong> The reasoning recorded here was that the acquisition's own decimation
+        /// has already band-limited the signal, so nothing above the internal Nyquist survives but
+        /// noise. That holds for a pulse-shaped format — a root raised cosine at α = 0.35 is empty
+        /// above 0.7 of the symbol rate — and it is false for a constant-envelope one, whose
+        /// spectrum decays as a power law rather than stopping. Measured against an E4438C
+        /// transmitting MSK at 500 ksym/s into a 6.7 MHz analyser bandwidth, decimating 30 samples a
+        /// symbol to four folded its sidelobes into the band: EVM came back <strong>quantised</strong>
+        /// at about 1.3, 4.5 or 9.2 %rms depending on where the block's sampling phase happened to
+        /// fall, on a signal every bit of which was recovered correctly. Quantised, because which
+        /// aliases land where is set by the resampling phase and nothing else — a fingerprint no
+        /// amount of noise produces.
+        /// </para>
+        /// <para>
+        /// The noise argument was also an argument for the filter rather than against it: folding
+        /// three megahertz of noise into one raises the error vector of every format, not just the
+        /// ones with sidelobes.
+        /// </para>
         /// </remarks>
         internal static double[] Resample(double[] interleaved, double ratio)
         {
@@ -131,11 +154,47 @@ namespace OpenVSA.Demod.Signal
 
             var resampled = new double[2 * output];
 
+            if (ratio >= 1.0)
+            {
+                // Interpolating: nothing folds, so the full-bandwidth kernel is the right one.
+                for (int sample = 0; sample < output; sample++)
+                {
+                    Iq.Set(resampled, sample, At(interleaved, sample / ratio));
+                }
+
+                return resampled;
+            }
+
+            // Decimating: the cutoff moves to the output's Nyquist and the support widens to match,
+            // so the kernel still spans HalfLength cycles of its own sinc.
+            int half = (int)Math.Ceiling(HalfLength / ratio);
+
             for (int sample = 0; sample < output; sample++)
             {
-                Iq value = At(interleaved, sample / ratio);
+                double position = sample / ratio;
+                int centre = (int)Math.Floor(position);
+                double fraction = position - centre;
 
-                Iq.Set(resampled, sample, value);
+                double i = 0.0;
+                double q = 0.0;
+
+                for (int tap = -half + 1; tap <= half; tap++)
+                {
+                    int index = centre + tap;
+
+                    if (index < 0 || index >= samples)
+                    {
+                        continue;
+                    }
+
+                    double offset = (tap - fraction) * ratio;
+                    double weight = ratio * Sinc(offset) * Window(offset);
+
+                    i += weight * interleaved[2 * index];
+                    q += weight * interleaved[(2 * index) + 1];
+                }
+
+                Iq.Set(resampled, sample, new Iq(i, q));
             }
 
             return resampled;

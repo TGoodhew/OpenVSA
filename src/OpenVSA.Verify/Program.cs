@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenVSA.Core;
 using OpenVSA.Demod.Chain;
 using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
@@ -749,6 +750,254 @@ namespace OpenVSA.Verify
 
                 return wrong == 0 ? 0 : 1;
             }
+        }
+
+        /// <summary>
+        /// One acquisition of MSK, demodulated several ways, to find out what makes an absolute
+        /// reading of it unstable.
+        /// </summary>
+        /// <returns>Zero: this is an experiment and reports rather than judges.</returns>
+        /// <remarks>
+        /// <para>
+        /// <strong>The point is that it is ONE block.</strong> The demodulation cross-check acquires
+        /// separately for each case, so a difference between two of its cases can be a difference
+        /// between two acquisitions of a drifting bench — which is what made the equaliser's
+        /// algorithm comparison unreadable until it was paired. Here every reading is of the same
+        /// samples, so anything that differs between them is the settings and nothing else.
+        /// </para>
+        /// </remarks>
+        private static async Task<int> MskProbe(Options options)
+        {
+            const double SymbolRateHz = 500e3;
+            const double SpanHz = 5e6;
+            const int Blocks = 6;
+
+            Console.WriteLine("OpenVSA MSK probe");
+            Console.WriteLine("  analyser  " + options.AnalyserResource);
+            Console.WriteLine("  generator " + options.GeneratorResource);
+            Console.WriteLine();
+
+            using (var frontEnd = new E4406AFrontEnd(options.AnalyserResource, null))
+            using (IStimulusSource stimulus = CreateStimulus(options))
+            {
+                var digital = stimulus as IDigitalModulationStimulus;
+
+                if (digital == null)
+                {
+                    Console.WriteLine("  " + stimulus.DisplayName + " offers no digital modulation.");
+
+                    return 2;
+                }
+
+                await frontEnd.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
+                stimulus.Connect();
+
+                digital.SetDigitalModulation(
+                    options.CenterFrequencyHz,
+                    options.LevelDbm,
+                    "MSK",
+                    SymbolRateHz,
+                    StimulusPulseFilter.Rectangular,
+                    0.35,
+                    "PN9");
+
+                digital.SetSpectrumInverted(false);
+                stimulus.SetOutput(true);
+
+                Console.WriteLine(
+                    "  transmitting MSK at " +
+                    (SymbolRateHz / 1e3).ToString("F1", CultureInfo.InvariantCulture) +
+                    " ksym/s, rectangular pre-modulation filter, PN9");
+                Console.WriteLine();
+
+                try
+                {
+                    for (int block = 0; block < Blocks; block++)
+                    {
+                        float[] samples;
+                        double sampleRateHz;
+
+                        using (IqBlock acquired =
+                            await AcquireBlock(frontEnd, options, SpanHz).ConfigureAwait(false))
+                        {
+                            if (acquired == null)
+                            {
+                                Console.WriteLine("  no block arrived.");
+
+                                return 2;
+                            }
+
+                            samples = acquired.GetSamples().ToArray();
+                            sampleRateHz = acquired.SampleRateHz;
+                        }
+
+                        Console.WriteLine(
+                            "  block " + (block + 1).ToString(CultureInfo.InvariantCulture) + ", " +
+                            (samples.Length / 2).ToString(CultureInfo.InvariantCulture) +
+                            " samples at " +
+                            (sampleRateHz / 1e6).ToString("F3", CultureInfo.InvariantCulture) +
+                            " MS/s:");
+
+                        // The same block at a range of internal rates. What varies with the rate
+                        // is how much of a constant-envelope format's spectrum the internal band
+                        // holds, and what used to vary with nothing at all was the resampling
+                        // phase -- which is what the anti-alias filter took out.
+                        foreach (int perSymbol in new[] { 4, 8, 16, 32 })
+                        {
+                            Report("MSK1", samples, sampleRateHz, SymbolRateHz, perSymbol);
+                        }
+
+                        Report("MSK2", samples, sampleRateHz, SymbolRateHz, 32);
+
+                        Console.WriteLine();
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        digital.StopDigitalModulation();
+                        stimulus.SetOutput(false);
+                    }
+                    catch (Exception failure)
+                    {
+                        Console.WriteLine("  COULD NOT RESTORE THE SOURCE: " + failure.Message);
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        /// <summary>Demodulates one block as one format and says what came out.</summary>
+        private static void Report(
+            string format,
+            float[] samples,
+            double sampleRateHz,
+            double symbolRateHz,
+            int perSymbol)
+        {
+            var setup = new DemodState
+            {
+                Format = format,
+                SymbolRateHz = symbolRateHz,
+                PointsPerSymbol = perSymbol,
+                ResultLengthSymbols = 512,
+                MeasurementFilter = PulseFilterType.None,
+                ReferenceFilter = PulseFilterType.Msk,
+            };
+
+            DemodResult result = new Demodulator().Run(samples, sampleRateHz, setup.ToSettings());
+
+            Console.WriteLine(
+                "    " + (format + " at " +
+                    perSymbol.ToString(CultureInfo.InvariantCulture) +
+                    " pts/sym").PadRight(20) + " EVM " +
+                result.EvmPercent.ToString("F4", CultureInfo.InvariantCulture).PadLeft(8) +
+                " %rms, peak " +
+                Peak(result).ToString("F2", CultureInfo.InvariantCulture).PadLeft(7) +
+                " % at symbol " + PeakAt(result).ToString(CultureInfo.InvariantCulture).PadLeft(4) +
+                ", carrier " +
+                result.CarrierFrequencyErrorHz.ToString("F1", CultureInfo.InvariantCulture) +
+                " Hz, " + (result.Converged ? "converged" : "NOT CONVERGED") + " in " +
+                result.Passes.Count + ", " + (result.Lock.Locked ? "locked" : "NOT LOCKED") +
+                ", " + Outliers(result).ToString(CultureInfo.InvariantCulture) +
+                " symbol(s) over 25 %");
+        }
+
+        /// <summary>The peak error vector, as a percentage.</summary>
+        private static double Peak(DemodResult result)
+        {
+            foreach (ErrorMetric metric in result.Summary.Metrics)
+            {
+                if (string.Equals(metric.Label, "EVM", StringComparison.Ordinal))
+                {
+                    return metric.Peak;
+                }
+            }
+
+            return double.NaN;
+        }
+
+        /// <summary>Which symbol the peak error vector was at.</summary>
+        private static int PeakAt(DemodResult result)
+        {
+            foreach (ErrorMetric metric in result.Summary.Metrics)
+            {
+                if (string.Equals(metric.Label, "EVM", StringComparison.Ordinal))
+                {
+                    return metric.PeakSymbol;
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// How many symbols carry an error vector over a quarter of the reference magnitude.
+        /// </summary>
+        /// <remarks>
+        /// The question the EVM figure cannot answer: whether a reading is uniformly poor or is a
+        /// good reading with a handful of symbols badly wrong. Nine per cent rms over 512 symbols is
+        /// what about one badly wrong symbol looks like, and it is what a rounding error never looks
+        /// like.
+        /// </remarks>
+        private static int Outliers(DemodResult result)
+        {
+            SymbolTrace trace = result.Trace;
+            int over = 0;
+
+            for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
+            {
+                ConstellationPoint measured = trace.Measured[symbol];
+                ConstellationPoint ideal = trace.Ideal[symbol];
+
+                double i = measured.I - ideal.I;
+                double q = measured.Q - ideal.Q;
+
+                if (Math.Sqrt((i * i) + (q * q)) > 0.25)
+                {
+                    over++;
+                }
+            }
+
+            return over;
+        }
+
+        /// <summary>One acquired block, after the settling ones.</summary>
+        private static async Task<IqBlock> AcquireBlock(
+            E4406AFrontEnd frontEnd, Options options, double spanHz)
+        {
+            AcquisitionPlan plan = frontEnd.Negotiate(
+                new AcquisitionRequest(options.CenterFrequencyHz, spanHz, 32768, 0.0));
+
+            await frontEnd.ConfigureAsync(plan, CancellationToken.None).ConfigureAwait(false);
+            await frontEnd.ArmAsync(CancellationToken.None).ConfigureAwait(false);
+
+            IqBlock kept = null;
+
+            try
+            {
+                for (int frame = 0; frame <= VerificationRunner.SettlingFrames; frame++)
+                {
+                    IqBlock block = await frontEnd.AcquireNextAsync(CancellationToken.None)
+                        .ConfigureAwait(false);
+
+                    if (block == null)
+                    {
+                        break;
+                    }
+
+                    kept?.Dispose();
+                    kept = block;
+                }
+            }
+            finally
+            {
+                await frontEnd.AbortAsync().ConfigureAwait(false);
+            }
+
+            return kept;
         }
 
         /// <summary>How many equaliser cases the last run added to the count.</summary>
@@ -1915,6 +2164,11 @@ namespace OpenVSA.Verify
                 return ProbeModulation(options);
             }
 
+            if (options.MskProbe)
+            {
+                return await MskProbe(options).ConfigureAwait(false);
+            }
+
             if (options.CheckDemodulation)
             {
                 return await DemodCheck(options).ConfigureAwait(false);
@@ -2082,6 +2336,9 @@ namespace OpenVSA.Verify
 
             public bool Exercise { get; private set; }
 
+            /// <summary>Whether to run the MSK probe rather than the cross-check.</summary>
+            public bool MskProbe { get; set; }
+
             /// <summary>Whether to list what is on the bus and stop.</summary>
             public bool ListResources { get; private set; }
 
@@ -2154,6 +2411,10 @@ namespace OpenVSA.Verify
 
                         case "--probe-modulation":
                             options.ProbeModulation = true;
+                            break;
+
+                        case "--msk-probe":
+                            options.MskProbe = true;
                             break;
 
                         case "--demod-check":

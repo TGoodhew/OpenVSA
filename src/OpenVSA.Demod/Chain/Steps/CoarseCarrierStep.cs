@@ -131,6 +131,20 @@ namespace OpenVSA.Demod.Chain.Steps
             // So the family declines rather than competes. Step 8 estimates the carrier jointly
             // with everything else and can pull in what it starts near; what it cannot do is
             // recover from being handed a quarter of the symbol rate as a starting point.
+            //
+            // 🔴 TWO ESTIMATORS WERE TRIED IN ITS PLACE AND BOTH ARE WORSE, which is why this
+            // declines rather than substituting something. A constant-envelope spectrum is
+            // symmetric about its carrier, so its power CENTROID looks like the answer -- and it
+            // is the mean instantaneous frequency, which for MSK is a quarter of the symbol rate
+            // times the data's own imbalance. Measured on a 4000-symbol block with no carrier
+            // offset at all, that came to -2.483 kHz on a 1 Msym/s signal, consistently, and the
+            // demodulation that followed read 105 %rms. An estimator that measures the DATA is
+            // worse than none: it is wrong on every block rather than on one in twenty-four, and
+            // it is wrong in a way that looks like an answer.
+            //
+            // What would work is the MIDPOINT OF THE TWO DEVIATION HUMPS -- their positions are
+            // fixed at plus and minus a quarter of the symbol rate whatever the data does, and only
+            // their heights move. #439 carries that, with the block this leaves failing.
             if (constellation.Family == ModulationFamily.Msk)
             {
                 context.CoarseFrequencyHz = 0.0;

@@ -759,6 +759,49 @@ namespace OpenVSA.Demod.Chain
             }
         }
 
+        /// <summary>
+        /// What to say about an internal rate too low for the format, or <c>null</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>What is outside the internal band is lost from the measurement and kept in the
+        /// reference.</strong> Step 4 resamples to <see cref="PointsPerSymbol"/> and band-limits as
+        /// it does — it must, or everything above the new Nyquist folds back in — while step 10
+        /// regenerates the ideal waveform at that same rate from the pulse's full shape. For a
+        /// pulse-shaped format the two agree, because there is nothing out there to disagree about.
+        /// For a constant-envelope one there is, and the difference is reported as error in a
+        /// measurement where nothing is wrong.
+        /// </para>
+        /// <para>
+        /// Advice rather than a refusal, and the same shape as
+        /// <see cref="ResultLengthAdvice"/>: the measurement runs, the bits come back, and the
+        /// figure that is affected is the error vector.
+        /// </para>
+        /// </remarks>
+        public string PointsPerSymbolAdvice
+        {
+            get
+            {
+                int wanted = Constellation.RecommendedPointsPerSymbol;
+
+                if (PointsPerSymbol >= wanted)
+                {
+                    return null;
+                }
+
+                return "An internal rate of " +
+                    PointsPerSymbol.ToString(CultureInfo.InvariantCulture) +
+                    " points a symbol is below the " +
+                    wanted.ToString(CultureInfo.InvariantCulture) + " recommended for " +
+                    Constellation.Name + ". Its spectrum does not stop at the edge of that band -- " +
+                    "a constant-envelope modulation's sidelobes decay as a power law -- so what " +
+                    "falls outside is filtered out of the measurement and left in the reference it " +
+                    "is compared against. Measured on this chain: 5.5 %rms at four points a " +
+                    "symbol, 2.3 at eight, 1.1 at sixteen and nothing measurable at thirty-two. " +
+                    "The symbols and bits are unaffected.";
+            }
+        }
+
         /// <summary>Checks the settings hold together, before anything is measured with them.</summary>
         /// <exception cref="ArgumentException">A setting is outside its range.</exception>
         public void Validate()

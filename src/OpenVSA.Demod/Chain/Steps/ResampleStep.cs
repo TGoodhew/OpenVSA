@@ -45,6 +45,16 @@ namespace OpenVSA.Demod.Chain.Steps
                     ". Interpolating up recovers nothing the acquisition did not capture.");
             }
 
+            string advice = context.Settings.PointsPerSymbolAdvice;
+
+            if (advice != null)
+            {
+                // Said here because this is the step that band-limits: what the internal rate
+                // excludes is excluded on this line, and a caller reading a puzzling error vector
+                // should be told so where it happens.
+                context.Note(advice);
+            }
+
             context.Working = Interpolator.Resample(search, ratio);
             context.ResampleRatio = ratio;
 
