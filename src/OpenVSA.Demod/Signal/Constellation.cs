@@ -24,7 +24,8 @@ namespace OpenVSA.Demod.Signal
     /// rather than the phase, and the DVB QAMs carry only their QUADRANT that way; EDGE turns the
     /// constellation by 3π/8 every symbol; FSK is not a constellation at all and VSB is barely one.
     /// That work is <c>REQ-DEM-012</c>'s and <c>REQ-DEM-021</c>'s. One row is still owed — SOQPSK,
-    /// which is a continuous-phase modulation — and <see cref="ByName"/> says so when asked.
+    /// whose ternary excitation is not what Laurent's decomposition describes, so it is a
+    /// detector rather than a constellation — and <see cref="ByName"/> says so when asked.
     /// </para>
     /// <para>
     /// <strong>Unit mean power.</strong> The points are scaled so the mean of their squared
@@ -1269,9 +1270,13 @@ namespace OpenVSA.Demod.Signal
             throw new ArgumentException(
                 "No format called \"" + (name ?? "(none)") + "\" is supported. This build " +
                 "demodulates " + string.Join(", ", Names) + ". One row of REQ-DEM-010's " +
-                "catalogue is still owed: SOQPSK, which is a continuous-phase modulation rather " +
-                "than a shaped one. It will arrive with the chain handling it needs rather than " +
-                "as a name that demodulates to nonsense.",
+                "catalogue is still owed: SOQPSK, whose excitation is ternary — IRIG 106 " +
+                "Chapter 2, equation 2-10 — so the Laurent decomposition that puts MSK and GMSK " +
+                "here as linear pulses does not describe it. Measured, that model is exact on a " +
+                "binary alphabet and 14 %rms wrong on this one, on the same pulse. What it needs " +
+                "is a detector over the modulation's phase states or a PAM pulse taken from the " +
+                "literature, and both are decisions rather than omissions. " +
+                "evidence/req-dem-010/ has the measurement.",
                 nameof(name));
         }
 
@@ -1360,7 +1365,8 @@ namespace OpenVSA.Demod.Signal
         /// read by models step 8 was given for them. A name reaches this list when the handling it
         /// needs is in place, never before: listing one without it would offer a user a format that
         /// demodulates to nonsense. SOQPSK is the row that is still owed, and it is absent for
-        /// exactly that reason.
+        /// exactly that reason: <c>evidence/req-dem-010/</c> measures the linear model of it at
+        /// 13 %rms, against 0.000000 % for the same construction on a binary alphabet.
         /// </para>
         /// <para>
         /// <strong>A name is not a whole measurement.</strong> MSK, GMSK and EDGE each need a

@@ -1,0 +1,79 @@
+SOQPSK-TG -- IRIG Standard 106-15 (Part 1), Chapter 2, subclause 2.4.3.2
+Table 2-4:  rho = 0.70   B = 1.25   T1 = 1.5   T2 = 0.50
+The frequency pulse spans +/- 2.0 bit periods, so Laurent's L = 4
+Amplitude A from equation 2-8 (the integral is pi/2): 1.955098159467113
+
+Symmetry of c0 about its centre:   7.468e-06
+Peak of c0, at its centre:         0.998983017370036
+Energy of c0:                      0.999107363649439
+
+c0 at 8 samples per bit period, over +/- 2.5:
+
+  -2.5000  -0.000000000000000
+  -2.3750  0.000004156456192
+  -2.2500  0.000017538026678
+  -2.1250  0.000008615669187
+  -2.0000  -0.000022058031964
+  -1.8750  -0.000636479325521
+  -1.7500  -0.004234427324692
+  -1.6250  -0.014853342673728
+  -1.5000  -0.034140166461999
+  -1.3750  -0.055431071058354
+  -1.2500  -0.062931251582388
+  -1.1250  -0.038355377734336
+  -1.0000  0.031866435721659
+  -0.8750  0.153549513502020
+  -0.7500  0.321973403116930
+  -0.6250  0.517237943012628
+  -0.5000  0.705454582721659
+  -0.3750  0.852899936231206
+  -0.2500  0.944319531082057
+  -0.1250  0.987369536245178
+  +0.0000  0.998983017370036
+  +0.1250  0.987369536252647
+  +0.2500  0.944319530980506
+  +0.3750  0.852899936343369
+  +0.5000  0.705454582721658
+  +0.6250  0.517237943128274
+  +0.7500  0.321973402836728
+  +0.8750  0.153549513576018
+  +1.0000  0.031866435515559
+  +1.1250  -0.038355377839299
+  +1.2500  -0.062931251667331
+  +1.3750  -0.055431070639790
+  +1.5000  -0.034140166830141
+  +1.6250  -0.014853342744993
+  +1.7500  -0.004234427339565
+  +1.8750  -0.000636479340013
+  +2.0000  -0.000022058042444
+  +2.1250  0.000008615714489
+  +2.2500  0.000017538030959
+  +2.3750  0.000004156495792
+  +2.5000  -0.000000000000000
+
+THE CONTROL: a rectangular frequency pulse of one bit period, where Laurent's
+decomposition has a single term and is exact.
+
+  binary impulses in {-1, +1}, which is MSK EVM  0.000000 %rms   model envelope varies  0.000 dB
+  ternary impulses from equation 2-10    EVM 14.169142 %rms   model envelope varies  3.010 dB
+
+  203 of the 400 impulses are zero -- the phase holds for that bit, and the two
+  neighbouring pulse tails add in phase rather than in quadrature. Root two is
+  3.010 dB, which is what the model's envelope does on a waveform whose envelope
+  is constant by definition.
+
+AND THE SAME THING ON SOQPSK-TG'S OWN PULSE:
+
+  SOQPSK-TG, ternary, L = 4              EVM 13.209747 %rms   model envelope varies  3.569 dB
+
+  True waveform's envelope varies by 3.857e-15 dB, as a CPM's must.
+
+CONCLUSION. Laurent's decomposition is a statement about BINARY continuous-phase
+modulation. SOQPSK's excitation is ternary by definition, so the pulse OpenVSA
+would shape and match does not describe the signal, and no choice of pulse fixes
+it -- the control shows the same construction exact on a binary alphabet and
+wrong by 14 %rms on the ternary one, on the same pulse. Demodulating SOQPSK needs
+either a detector over the modulation's phase states, which the 14-step chain of
+REQ-DEM-001 has no place for, or the ternary PAM decomposition, whose pulse comes
+from the literature rather than from this standard. Both are decisions rather than
+implementations, so the catalogue refuses the name and says which.

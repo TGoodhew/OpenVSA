@@ -422,7 +422,7 @@ namespace OpenVSA.Demod.Tests
             // GMSK, then 8VSB, now SOQPSK -- and each move is the point: the message names what is
             // ACTUALLY still owed, so a format that has arrived cannot go on being described as
             // missing. One row is left, and the message says which and why.
-            Assert.Contains("continuous-phase", refused.Message, StringComparison.Ordinal);
+            Assert.Contains("ternary", refused.Message, StringComparison.Ordinal);
 
             // And DVB-QAM, which this message named as missing until 31 August 2026, is answered
             // rather than described.
@@ -450,8 +450,11 @@ namespace OpenVSA.Demod.Tests
 
             _output.WriteLine(
                 "Still owed by REQ-DEM-010: " + string.Join(", ", notYet) +
-                " -- SOQPSK wants a continuous-phase treatment, which is a detector rather than a " +
-                "constellation. The offset and differential rows left this list on 24 August 2026 " +
+                " -- its excitation is ternary, so the Laurent decomposition that put MSK and " +
+                "GMSK here does not describe it: measured, that model is exact on a binary " +
+                "alphabet and 13 %rms wrong on SOQPSK-TG (evidence/req-dem-010/). It is a " +
+                "detector rather than a constellation. " +
+                "The offset and differential rows left this list on 24 August 2026 " +
                 "with REQ-DEM-012; MSK, GMSK and EDGE left it on 31 August with REQ-DEM-010 " +
                 "itself, because a rotation and a pulse were all they needed; the frequency-keyed " +
                 "and vestigial-sideband ones left the same day, once step 8 was given models in " +
