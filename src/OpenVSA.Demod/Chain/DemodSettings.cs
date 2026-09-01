@@ -825,11 +825,21 @@ namespace OpenVSA.Demod.Chain
                 "would put the second of them between two samples on every symbol; an even rate " +
                 "puts it on one.");
 
+            // TWO GEOMETRIES SATISFY THIS, AND NEITHER IMPLIES THE OTHER. A whole-symbol
+            // difference is a subtraction of indices around one ring; a quadrant difference is a
+            // right-angle turn that has to carry the points onto themselves, which a square or
+            // cross QAM does and a ring of eight does not. What is refused is a differential decode
+            // FORCED on to a format built for neither -- REQ-DEM-012 makes the reference
+            // selectable, and DifferentialReference.PreviousSymbol on a plain 64QAM would subtract
+            // two table indices and report a well-formed bit stream that meant nothing, at an EVM
+            // beyond reproach.
             Require(
-                !DecodesDifferentially || Constellation.IsIndexedRing,
-                "A differential decode reads the change from one symbol to the next as a change " +
-                "of phase, so it needs a constellation whose symbol values run around one ring. " +
-                Constellation.Name + "'s do not, and subtracting two of them would give a " +
+                !DecodesDifferentially || Constellation.IsIndexedRing ||
+                Constellation.DifferentialCoding == DifferentialCoding.Quadrant,
+                "A differential decode reads the change from one symbol to the next. " +
+                Constellation.Name + " is neither a ring whose symbol values run around it, so " +
+                "that a difference of two of them is a change of phase, nor a format that carries " +
+                "its quadrant that way — so subtracting two of its symbols would give a " +
                 "well-formed bit stream that meant nothing.");
             Require(ResultLengthSymbols >= 4, "A Result Length of fewer than 4 symbols cannot be fitted to.");
             Require(SearchStartSample >= 0, "The Search Length window starts at or after the first sample.");

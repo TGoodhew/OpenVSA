@@ -17,12 +17,15 @@ namespace OpenVSA.Demod.Signal
     /// <c>REQ-DEM-001</c> did not already build, which is why they are here and finished.
     /// </para>
     /// <para>
-    /// <strong>What is deliberately not here.</strong> The rest of <c>REQ-DEM-010</c>'s table is not
-    /// point lists. Offset formats sample the two axes half a symbol apart; differential ones carry
-    /// their bits in the change of phase rather than the phase; EDGE turns the constellation by
-    /// 3π/8 every symbol; FSK is not a constellation at all and VSB is barely one. Each needs the
-    /// chain to do something different, which is <c>REQ-DEM-012</c>'s and <c>REQ-DEM-021</c>'s work,
-    /// and each arrives with that rather than as a name in a list that demodulates to nonsense.
+    /// <strong>What is here that a point list alone does not answer.</strong> The rest of
+    /// <c>REQ-DEM-010</c>'s table needs the chain to do something as well, and each row arrived with
+    /// it rather than as a name in a list that demodulates to nonsense. Offset formats sample the
+    /// two axes half a symbol apart; differential ones carry their bits in the change of phase
+    /// rather than the phase, and the DVB QAMs carry only their QUADRANT that way; EDGE turns the
+    /// constellation by 3π/8 every symbol; FSK is not a constellation at all and VSB is barely one.
+    /// That work is <c>REQ-DEM-012</c>'s and <c>REQ-DEM-021</c>'s. One row is still owed — SOQPSK,
+    /// whose ternary excitation is not what Laurent's decomposition describes, so it is a
+    /// detector rather than a constellation — and <see cref="ByName"/> says so when asked.
     /// </para>
     /// <para>
     /// <strong>Unit mean power.</strong> The points are scaled so the mean of their squared
@@ -58,6 +61,9 @@ namespace OpenVSA.Demod.Signal
 
         private double _stripping = double.NaN;
 
+        /// <summary>Where each point lands when the whole constellation turns a right angle.</summary>
+        private int[] _quarterTurn;
+
         private Constellation(
             string name,
             int bitsPerSymbol,
@@ -65,7 +71,7 @@ namespace OpenVSA.Demod.Signal
             IList<ConstellationPoint> points,
             ModulationFamily family,
             bool isOffset,
-            bool isDifferential = false,
+            DifferentialCoding differential = DifferentialCoding.None,
             double rotationPerSymbolRadians = 0.0,
             BitMapping mapping = BitMapping.Natural,
             int[] carried = null)
@@ -75,7 +81,7 @@ namespace OpenVSA.Demod.Signal
             LevelsPerAxis = levelsPerAxis;
             Family = family;
             IsOffset = isOffset;
-            IsDifferential = isDifferential;
+            DifferentialCoding = differential;
             RotationPerSymbolRadians = rotationPerSymbolRadians;
             Mapping = mapping;
             _carried = carried;
@@ -125,7 +131,21 @@ namespace OpenVSA.Demod.Signal
         /// is only what it follows when it is left to the format.
         /// </para>
         /// </remarks>
-        public bool IsDifferential { get; }
+        public bool IsDifferential => DifferentialCoding != DifferentialCoding.None;
+
+        /// <summary>
+        /// How much of a symbol is carried in the change from the one before it
+        /// (<c>REQ-DEM-012</c>).
+        /// </summary>
+        /// <remarks>
+        /// <strong>Which is not the same question as whether.</strong> A whole-symbol differential
+        /// format subtracts two indices around a ring; a quadrant-differential one takes only the
+        /// quadrant as a difference and reads the point within it absolutely. Decoding either as
+        /// the other gives a well-formed bit stream that means nothing, at an EVM beyond reproach —
+        /// the decisions are the same decisions, and only their reading differs. See
+        /// <see cref="OpenVSA.Demod.Signal.DifferentialCoding"/> for what each one is.
+        /// </remarks>
+        public DifferentialCoding DifferentialCoding { get; }
 
         /// <summary>
         /// How far the constellation is turned between one symbol and the next, in radians.
@@ -447,6 +467,43 @@ namespace OpenVSA.Demod.Signal
 
             return FromPoints(order + "QAM", points, LevelsIn(points), ModulationFamily.Qam);
         }
+
+        /// <summary>
+        /// The quadrature amplitude modulation of the DVB cable and terrestrial standards: the same
+        /// points, with the quadrant carried differentially.
+        /// </summary>
+        /// <param name="order">How many points; a power of two, at least four.</param>
+        /// <returns>The constellation.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// The order is not a power of two of at least four.
+        /// </exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>The geometry is <see cref="Qam"/>'s, and only the reading differs.</strong>
+        /// ITU-T J.83 Annex A — DVB-C, and DVB-T's constellations with it — sends the same square
+        /// and cross grids everything else does, and encodes the top two bits as the CHANGE of
+        /// quadrant while the rest label the point within the quadrant absolutely. So this is not a
+        /// new point list; it is a reading applied to one, and a measurement of a DVB signal
+        /// against plain <c>64QAM</c> has an EVM beyond reproach and a bit stream that means
+        /// nothing.
+        /// </para>
+        /// <para>
+        /// <strong>Why a standard would do this.</strong> A square constellation looks exactly like
+        /// itself turned by a right angle, so nothing in the signal says which of the four
+        /// rotations a receiver has landed on — the freedom every absolute format in this catalogue
+        /// leaves its round-trip test to search. Encoding the quadrant as a difference makes the
+        /// data the same under all four, so a demodulator that locks in the "wrong" quadrant
+        /// recovers the right bits anyway and no phase reference has to be transmitted.
+        /// </para>
+        /// <para>
+        /// The standard's orders are 16, 32, 64, 128 and 256, which are the five
+        /// <see cref="Names"/> offers. Any order <see cref="Qam"/> builds is accepted, because the
+        /// encoding depends on the geometry having quadrants rather than on how many points are in
+        /// them — and the guard is what checks that, rather than a list of blessed orders.
+        /// </para>
+        /// </remarks>
+        public static Constellation DvbQam(int order) =>
+            Qam(order).QuadrantDifferential("DVB-" + order + "QAM");
 
         /// <summary>One ring of an amplitude-and-phase constellation.</summary>
         /// <remarks>
@@ -937,7 +994,7 @@ namespace OpenVSA.Demod.Signal
                 new List<ConstellationPoint>(_points),
                 Family,
                 IsOffset,
-                IsDifferential,
+                DifferentialCoding,
                 rotationPerSymbolRadians,
                 Mapping,
                 _carried);
@@ -959,7 +1016,7 @@ namespace OpenVSA.Demod.Signal
                 new List<ConstellationPoint>(_points),
                 family,
                 IsOffset,
-                IsDifferential,
+                DifferentialCoding,
                 RotationPerSymbolRadians,
                 Mapping,
                 _carried);
@@ -975,7 +1032,7 @@ namespace OpenVSA.Demod.Signal
                 new List<ConstellationPoint>(_points),
                 Family,
                 true,
-                IsDifferential,
+                DifferentialCoding,
                 RotationPerSymbolRadians);
 
         /// <summary>The same points, carrying their bits in the change from symbol to symbol.</summary>
@@ -1003,8 +1060,43 @@ namespace OpenVSA.Demod.Signal
                 new List<ConstellationPoint>(_points),
                 Family,
                 IsOffset,
-                true,
+                DifferentialCoding.WholeSymbol,
                 rotationPerSymbolRadians);
+        }
+
+        /// <summary>
+        /// The same points, carrying their QUADRANT in the change from symbol to symbol and the
+        /// point within that quadrant absolutely.
+        /// </summary>
+        /// <param name="name">What the format is called.</param>
+        /// <returns>The constellation.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// A right-angle turn does not carry the points onto themselves, or one of them sits on an
+        /// axis, so a quadrant is not something this constellation has.
+        /// </exception>
+        /// <remarks>
+        /// <strong>The guard is a different guard from <see cref="RequireRing"/>, and that is why
+        /// there are two.</strong> A whole-symbol difference needs the index to run around a
+        /// circle; this one needs a right-angle turn to permute the points among themselves, which
+        /// a square or cross QAM does and a ring of eight does not. Neither condition implies the
+        /// other, and either kind of difference taken on a geometry that does not support it
+        /// produces a perfectly well-formed bit stream that means nothing.
+        /// </remarks>
+        private Constellation QuadrantDifferential(string name)
+        {
+            RequireQuadrants(name);
+
+            return new Constellation(
+                name,
+                BitsPerSymbol,
+                LevelsPerAxis,
+                new List<ConstellationPoint>(_points),
+                Family,
+                IsOffset,
+                DifferentialCoding.Quadrant,
+                RotationPerSymbolRadians,
+                Mapping,
+                _carried);
         }
 
         /// <summary>Checks the points are one ring, indexed around it.</summary>
@@ -1017,6 +1109,51 @@ namespace OpenVSA.Demod.Signal
                     name + " would carry its bits in the change from one symbol to the next, " +
                     "which is a change of phase — so its points have to be one ring with the " +
                     "symbol value running around it, and " + Name + "'s are not.");
+            }
+        }
+
+        /// <summary>Checks a right angle carries the points onto themselves, none being on an axis.</summary>
+        /// <param name="name">The name of the format being built, for the message.</param>
+        private void RequireQuadrants(string name)
+        {
+            const double Tolerance = 1e-9;
+
+            for (int symbol = 0; symbol < _points.Count; symbol++)
+            {
+                ConstellationPoint point = _points[symbol];
+
+                if (Math.Abs(point.I) < Tolerance || Math.Abs(point.Q) < Tolerance)
+                {
+                    throw new InvalidOperationException(
+                        name + " would carry its quadrant in the change from one symbol to the " +
+                        "next, and " + Name + " has a point on an axis, which is in no quadrant.");
+                }
+            }
+
+            var reached = new bool[_points.Count];
+
+            for (int symbol = 0; symbol < _points.Count; symbol++)
+            {
+                ConstellationPoint point = _points[symbol];
+
+                // A right angle anticlockwise: (i, q) becomes (-q, i).
+                int turned = Decide(-point.Q, point.I);
+                ConstellationPoint landed = _points[turned];
+
+                bool exact =
+                    Math.Abs(landed.I + point.Q) < Tolerance &&
+                    Math.Abs(landed.Q - point.I) < Tolerance;
+
+                if (!exact || reached[turned])
+                {
+                    throw new InvalidOperationException(
+                        name + " would carry its quadrant in the change from one symbol to the " +
+                        "next, so turning " + Name + " by a right angle has to land every point " +
+                        "on another of its points — and point " +
+                        symbol.ToString(CultureInfo.InvariantCulture) + " does not.");
+                }
+
+                reached[turned] = true;
             }
         }
 
@@ -1092,6 +1229,17 @@ namespace OpenVSA.Demod.Signal
                     return Gmsk();
             }
 
+            // Before the plain QAM parse for readability rather than for necessity: "DVB16QAM" has
+            // no number in front of the suffix and "16DVBQAM" has "16DVB", so neither is a name
+            // OrderBefore(..., "QAM") can read.
+            int dvb;
+
+            if (OrderBetween(wanted, "DVB", "QAM", out dvb) ||
+                OrderBefore(wanted, "DVBQAM", out dvb))
+            {
+                return DvbQam(dvb);
+            }
+
             if (OrderBefore(wanted, "FSK", out int levels))
             {
                 return Fsk(levels);
@@ -1121,11 +1269,14 @@ namespace OpenVSA.Demod.Signal
 
             throw new ArgumentException(
                 "No format called \"" + (name ?? "(none)") + "\" is supported. This build " +
-                "demodulates " + string.Join(", ", Names) + ". Two rows of REQ-DEM-010's " +
-                "catalogue are still owed: SOQPSK, which is a continuous-phase modulation rather " +
-                "than a shaped one, and DVB-QAM, whose quadrant-differential encoding is not this " +
-                "catalogue's whole-symbol kind. Both arrive with the chain handling they need " +
-                "rather than as a name that demodulates to nonsense.",
+                "demodulates " + string.Join(", ", Names) + ". One row of REQ-DEM-010's " +
+                "catalogue is still owed: SOQPSK, whose excitation is ternary — IRIG 106 " +
+                "Chapter 2, equation 2-10 — so the Laurent decomposition that puts MSK and GMSK " +
+                "here as linear pulses does not describe it. Measured, that model is exact on a " +
+                "binary alphabet and 14 %rms wrong on this one, on the same pulse. What it needs " +
+                "is a detector over the modulation's phase states or a PAM pulse taken from the " +
+                "literature, and both are decisions rather than omissions. " +
+                "evidence/req-dem-010/ has the measurement.",
                 nameof(name));
         }
 
@@ -1167,6 +1318,26 @@ namespace OpenVSA.Demod.Signal
             return canonical.ToString();
         }
 
+        /// <summary>Reads the order out of the middle of a name like <c>DVB256QAM</c>.</summary>
+        /// <remarks>
+        /// Two spellings reach here for one format — <c>DVB-256QAM</c>, which is how the standards
+        /// write it, and <c>256DVBQAM</c>, which is how a menu sorted by order would. Both are
+        /// parsed rather than listed, for the reason the orders themselves are: a list is somewhere
+        /// a name can be added without a factory answering it.
+        /// </remarks>
+        private static bool OrderBetween(
+            string name, string prefix, string suffix, out int order)
+        {
+            order = 0;
+
+            if (!name.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return OrderBefore(name.Substring(prefix.Length), suffix, out order);
+        }
+
         /// <summary>Reads the order off the front of a name like <c>256QAM</c>.</summary>
         private static bool OrderBefore(string name, string suffix, out int order)
         {
@@ -1187,14 +1358,15 @@ namespace OpenVSA.Demod.Signal
         /// <summary>The names <see cref="ByName"/> answers to.</summary>
         /// <remarks>
         /// <para>
-        /// The formats of <c>REQ-DEM-010</c> that the chain can demodulate as it stands: those whose
-        /// only requirement is a point list, and — since <c>REQ-DEM-012</c> — the offset and
-        /// differential members of the phase-keyed family, whose points are a point list and whose
-        /// difference is in when and against what they are decided. The rest of that catalogue —
-        /// EDGE's rotation, FSK, VSB, MSK, GMSK and the shaped offset formats — are not point lists
-        /// at all. They need a pulse this build does not have or a discriminator rather than a
-        /// decision, and that handling is <c>REQ-DEM-021</c>'s. Listing them here without it would
-        /// offer a user a format that demodulates to nonsense.
+        /// Every format of <c>REQ-DEM-010</c> this build demodulates: those whose only requirement
+        /// is a point list, and the ones that needed the chain to do something as well — the offset
+        /// and differential members of the phase-keyed family, the DVB QAMs' quadrant difference,
+        /// EDGE's rotation, and FSK, VSB, MSK and GMSK, which are not point lists at all and are
+        /// read by models step 8 was given for them. A name reaches this list when the handling it
+        /// needs is in place, never before: listing one without it would offer a user a format that
+        /// demodulates to nonsense. SOQPSK is the row that is still owed, and it is absent for
+        /// exactly that reason: <c>evidence/req-dem-010/</c> measures the linear model of it at
+        /// 13 %rms, against 0.000000 % for the same construction on a binary alphabet.
         /// </para>
         /// <para>
         /// <strong>A name is not a whole measurement.</strong> MSK, GMSK and EDGE each need a
@@ -1237,6 +1409,11 @@ namespace OpenVSA.Demod.Signal
                 "4096QAM",
                 "16STARQAM",
                 "32STARQAM",
+                "DVB-16QAM",
+                "DVB-32QAM",
+                "DVB-64QAM",
+                "DVB-128QAM",
+                "DVB-256QAM",
                 "3PI8-8PSK",
                 "2FSK",
                 "4FSK",
@@ -1483,9 +1660,85 @@ namespace OpenVSA.Demod.Signal
             RequireSymbol(symbol, nameof(symbol));
             RequireSymbol(previous, nameof(previous));
 
+            // A quadrant-differential format's change is not a subtraction of indices, because only
+            // PART of the symbol is a change. Turn this symbol back by the quadrant the previous
+            // one was in: what it lands on is a point of this same constellation, whose quadrant is
+            // the CHANGE of quadrant and whose place within that quadrant is this symbol's own
+            // place within its. The pair the standard sends, written as one point — so the
+            // labelling that follows is the format's own labelling of it, exactly as it is for the
+            // ring below, and nothing downstream has to learn a second kind of answer.
+            if (DifferentialCoding == DifferentialCoding.Quadrant)
+            {
+                return TurnedBy(symbol, (4 - QuadrantOf(previous)) % 4);
+            }
+
             int difference = (symbol - previous) % _points.Count;
 
             return difference < 0 ? difference + _points.Count : difference;
+        }
+
+        /// <summary>Which quadrant a point sits in, counted anticlockwise from the first.</summary>
+        /// <param name="symbol">The point, by its position in <see cref="Points"/>.</param>
+        /// <returns>0 for (+, +), 1 for (-, +), 2 for (-, -), 3 for (+, -).</returns>
+        /// <remarks>
+        /// Numbered so that a right angle anticlockwise adds one, which is what makes this and
+        /// <see cref="TurnedBy"/> agree. Only meaningful on a constellation whose points are all
+        /// off the axes, which is what <c>RequireQuadrants</c> is for.
+        /// </remarks>
+        private int QuadrantOf(int symbol)
+        {
+            ConstellationPoint point = _points[symbol];
+
+            if (point.I > 0.0)
+            {
+                return point.Q > 0.0 ? 0 : 3;
+            }
+
+            return point.Q > 0.0 ? 1 : 2;
+        }
+
+        /// <summary>Where a point lands when the constellation turns by whole right angles.</summary>
+        /// <param name="symbol">The point, by its position in <see cref="Points"/>.</param>
+        /// <param name="quarters">How many right angles anticlockwise, 0 to 3.</param>
+        /// <returns>The point it lands on.</returns>
+        private int TurnedBy(int symbol, int quarters)
+        {
+            int[] turn = QuarterTurn();
+            int landed = symbol;
+
+            for (int applied = 0; applied < quarters; applied++)
+            {
+                landed = turn[landed];
+            }
+
+            return landed;
+        }
+
+        /// <summary>The permutation one right angle applies to the points.</summary>
+        /// <remarks>
+        /// Computed once and kept, like <c>_symmetry</c> and <c>_stripping</c>: it is a property of
+        /// the point list, it costs a decision per point to build, and a quadrant-differential
+        /// decode wants it on every symbol of every block.
+        /// </remarks>
+        private int[] QuarterTurn()
+        {
+            if (_quarterTurn != null)
+            {
+                return _quarterTurn;
+            }
+
+            var turn = new int[_points.Count];
+
+            for (int symbol = 0; symbol < _points.Count; symbol++)
+            {
+                ConstellationPoint point = _points[symbol];
+
+                turn[symbol] = Decide(-point.Q, point.I);
+            }
+
+            _quarterTurn = turn;
+
+            return turn;
         }
 
         /// <summary>
@@ -1618,7 +1871,7 @@ namespace OpenVSA.Demod.Signal
                 new List<ConstellationPoint>(_points),
                 Family,
                 IsOffset,
-                IsDifferential,
+                DifferentialCoding,
                 RotationPerSymbolRadians,
                 mapping,
                 carried);

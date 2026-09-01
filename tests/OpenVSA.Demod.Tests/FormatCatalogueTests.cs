@@ -27,14 +27,14 @@ namespace OpenVSA.Demod.Tests
     /// done for each. See <c>evidence/req-e44-007/</c>.
     /// </para>
     /// <para>
-    /// <strong>The formats absent from these tests are absent from the product.</strong> The
-    /// frequency-keyed, vestigial-sideband and shaped-offset rows of the requirement are not point
-    /// lists and the chain cannot demodulate them yet; they arrive with <c>REQ-DEM-021</c>. A test
-    /// that skipped them quietly would leave the catalogue looking complete, so
-    /// <see cref="TheCatalogueSaysWhichRowsOfTheRequirementItDoesNotYetCover"/> names them instead.
-    /// The offset and differential rows were among them until <c>REQ-DEM-012</c> arrived on
-    /// 24 August 2026; <c>DifferentialAndOffsetTests</c> is where those are exercised, because what
-    /// they need proving is not the point list.
+    /// <strong>The formats absent from these tests are absent from the product.</strong> A test
+    /// that skipped a row quietly would leave the catalogue looking complete, so
+    /// <see cref="TheCatalogueSaysWhichRowsOfTheRequirementItDoesNotYetCover"/> names what is still
+    /// owed instead — SOQPSK, and nothing else. The offset and differential rows were among them
+    /// until <c>REQ-DEM-012</c> arrived on 24 August 2026, and <c>DifferentialAndOffsetTests</c> is
+    /// where those are exercised because what they need proving is not the point list; the
+    /// frequency-keyed, vestigial-sideband and quadrant-differential rows joined the tests here on
+    /// 31 August, each with the chain handling it needed.
     /// </para>
     /// </remarks>
     public class FormatCatalogueTests
@@ -421,9 +421,13 @@ namespace OpenVSA.Demod.Tests
             // The name in this test has moved four times as the catalogue grew -- 1024QAM, then
             // GMSK, then 8VSB, now SOQPSK -- and each move is the point: the message names what is
             // ACTUALLY still owed, so a format that has arrived cannot go on being described as
-            // missing. Two rows are left, and the message says which and why.
-            Assert.Contains("continuous-phase", refused.Message, StringComparison.Ordinal);
-            Assert.Contains("quadrant-differential", refused.Message, StringComparison.Ordinal);
+            // missing. One row is left, and the message says which and why.
+            Assert.Contains("ternary", refused.Message, StringComparison.Ordinal);
+
+            // And DVB-QAM, which this message named as missing until 31 August 2026, is answered
+            // rather than described.
+            Assert.Equal("DVB-64QAM", Constellation.ByName("DVB-64QAM").Name);
+            Assert.Equal("DVB-64QAM", Constellation.ByName("64dvbqam").Name);
         }
 
         [Fact]
@@ -436,7 +440,7 @@ namespace OpenVSA.Demod.Tests
             // status rather than leaving it half true.
             string[] notYet =
             {
-                "SOQPSK", "DVBQAM",
+                "SOQPSK",
             };
 
             foreach (string format in notYet)
@@ -446,13 +450,17 @@ namespace OpenVSA.Demod.Tests
 
             _output.WriteLine(
                 "Still owed by REQ-DEM-010: " + string.Join(", ", notYet) +
-                " -- SOQPSK wants a continuous-phase treatment and DVB-QAM a quadrant-differential " +
-                "encoding that is not this catalogue's whole-symbol one. The offset and " +
-                "differential rows left this list on 24 August 2026 with REQ-DEM-012; MSK, GMSK " +
-                "and EDGE left it on 31 August with REQ-DEM-010 itself, because a rotation and a " +
-                "pulse were all they needed; the frequency-keyed and vestigial-sideband ones left " +
-                "the same day, once step 8 was given models in which the symbol is a frequency, " +
-                "and in which half the plane carries nothing.");
+                " -- its excitation is ternary, so the Laurent decomposition that put MSK and " +
+                "GMSK here does not describe it: measured, that model is exact on a binary " +
+                "alphabet and 13 %rms wrong on SOQPSK-TG (evidence/req-dem-010/). It is a " +
+                "detector rather than a constellation. " +
+                "The offset and differential rows left this list on 24 August 2026 " +
+                "with REQ-DEM-012; MSK, GMSK and EDGE left it on 31 August with REQ-DEM-010 " +
+                "itself, because a rotation and a pulse were all they needed; the frequency-keyed " +
+                "and vestigial-sideband ones left the same day, once step 8 was given models in " +
+                "which the symbol is a frequency, and in which half the plane carries nothing; and " +
+                "the DVB QAMs left it once the difference a differential format takes was allowed " +
+                "to be a quadrant rather than a whole symbol.");
         }
 
         [Theory]
@@ -1050,6 +1058,349 @@ namespace OpenVSA.Demod.Tests
             // A level ladder has no rotational freedom, so there is nothing to search but the
             // alignment.
             Assert.Equal(result.Symbols.Count, LongestAgreement(result.Symbols, sent));
+        }
+
+        [Theory]
+        [InlineData("DVB-16QAM")]
+        [InlineData("DVB-32QAM")]
+        [InlineData("DVB-64QAM")]
+        [InlineData("DVB-128QAM")]
+        [InlineData("DVB-256QAM")]
+        public void AQuadrantDifferenceIsTheChangeOfQuadrantAndThePointWithinIt(string name)
+        {
+            // WHAT THE STANDARD SAYS, CHECKED ON EVERY PAIR OF SYMBOLS. ITU-T J.83 Annex A encodes
+            // the top two bits as the CHANGE of quadrant and the rest as the point within the
+            // quadrant, absolutely. Constellation.DifferenceFrom answers with that pair written as
+            // one point of the same constellation -- which is the form the rest of the chain
+            // already handles -- and this is what says the two descriptions are the same thing.
+            //
+            // The arithmetic here is deliberately not the arithmetic there: this rotates
+            // COORDINATES and searches for the point that results, where the constellation applies
+            // a permutation table it built once. A bug in either would have to be present in both
+            // to survive.
+            Constellation constellation = Constellation.ByName(name);
+
+            for (int previous = 0; previous < constellation.Count; previous++)
+            {
+                for (int symbol = 0; symbol < constellation.Count; symbol++)
+                {
+                    int difference = constellation.DifferenceFrom(symbol, previous);
+
+                    int expectedQuadrant =
+                        (QuadrantOf(constellation, symbol) -
+                         QuadrantOf(constellation, previous) + 4) % 4;
+
+                    Assert.Equal(expectedQuadrant, QuadrantOf(constellation, difference));
+
+                    Assert.Equal(
+                        WithinQuadrant(constellation, symbol),
+                        WithinQuadrant(constellation, difference));
+                }
+            }
+
+            // AND THEREFORE IT IS THE SAME UNDER EVERY RIGHT ANGLE, which is the whole reason the
+            // format exists. A square constellation is its own image under a quarter turn, so a
+            // demodulator cannot tell which of the four it has locked to; turning BOTH symbols adds
+            // one to both quadrants and leaves the change alone, and leaves each point where it sat
+            // within its quadrant. Exhaustive over the pairs and the four turns rather than
+            // sampled, because it either holds for all of them or the format does not work.
+            for (int quarters = 1; quarters < 4; quarters++)
+            {
+                for (int previous = 0; previous < constellation.Count; previous++)
+                {
+                    for (int symbol = 0; symbol < constellation.Count; symbol++)
+                    {
+                        Assert.Equal(
+                            constellation.DifferenceFrom(symbol, previous),
+                            constellation.DifferenceFrom(
+                                TurnedBy(constellation, symbol, quarters),
+                                TurnedBy(constellation, previous, quarters)));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void APlainQamRefusesTheDifferenceThatWouldMeanNothing()
+        {
+            // REQ-DEM-012 makes the reference SELECTABLE, so a user can ask for a differential
+            // decode of a format that has not got one. Asked for on a plain 64QAM it would subtract
+            // two table indices -- arithmetic on positions in a grid, which is not a change of
+            // anything -- and report a well-formed bit stream that meant nothing, at an EVM beyond
+            // reproach, because the decisions themselves would be perfectly good.
+            //
+            // 🔴 THE GUARD USED TO SAY "one ring", AND THAT WAS ABOUT TO BECOME WRONG. The DVB
+            // QAMs are differentially decoded and their points are a grid, so a condition stated as
+            // "the points run around a circle" would have refused the one format that most needs
+            // the difference taken. Two geometries satisfy it now, and neither implies the other.
+            var settings = new DemodSettings
+            {
+                Constellation = Constellation.Qam(64),
+                SymbolRateHz = 1e6,
+                DifferentialReference = DifferentialReference.PreviousSymbol,
+            };
+
+            ArgumentException wrong = Assert.Throws<ArgumentException>(() => settings.Validate());
+
+            Assert.Contains("meant nothing", wrong.Message, StringComparison.Ordinal);
+
+            // The same setting on the DVB form of the same points is accepted, because there the
+            // change is a thing the format has.
+            new DemodSettings
+            {
+                Constellation = Constellation.DvbQam(64),
+                SymbolRateHz = 1e6,
+                DifferentialReference = DifferentialReference.PreviousSymbol,
+            }.Validate();
+        }
+
+        [Theory]
+        [InlineData("DVB-16QAM")]
+        [InlineData("DVB-32QAM")]
+        [InlineData("DVB-64QAM")]
+        [InlineData("DVB-128QAM")]
+        [InlineData("DVB-256QAM")]
+        public void EveryQuadrantDifferentialFormatRoundTripsThroughTheChain(string name)
+        {
+            // REQ-DEM-010's criterion for the DVB rows. The points are a QAM's and the chain needs
+            // nothing new to decide them -- what is under test is that the DATA comes back, which
+            // for these formats is not the symbol.
+            Constellation constellation = Constellation.ByName(name);
+
+            var source = new ContinuousModulatedSource
+            {
+                Scheme = SchemeFor(constellation),
+                SymbolRateHz = 1e6,
+                SampleRateHz = 16e6,
+                RollOff = 0.35,
+                PulseSpanSymbols = 20,
+                Seed = 20260831,
+            };
+
+            var samples = new float[2 * (int)Math.Ceiling(Symbols * source.SamplesPerSymbol)];
+
+            source.Fill(samples);
+
+            var settings = new DemodSettings
+            {
+                Constellation = constellation,
+                SymbolRateHz = source.SymbolRateHz,
+                ResultLengthSymbols = 512,
+                FilterSymbolSpan = source.PulseSpanSymbols,
+                MeasurementFilter = PulseFilterType.RootRaisedCosine,
+                MeasurementFilterAlpha = source.RollOff,
+                ReferenceFilterAlpha = source.RollOff,
+            };
+
+            DemodResult result = new Demodulator().Run(samples, source.SampleRateHz, settings);
+
+            _output.WriteLine(
+                name + ": " + result.Trace.SymbolCount + " symbols, EVM " +
+                result.EvmPercent.ToString("F6", CultureInfo.InvariantCulture) + " %rms, " +
+                result.DataSymbols.Count + " of them carrying data");
+
+            Assert.True(
+                result.EvmPercent < 0.1,
+                name + " demodulated at " + result.EvmPercent + " %rms, which is not under 0.1 %.");
+
+            // What the generator sent as DATA. The generator sends points; what those points carry
+            // is the format's business, and DifferenceFrom is the format saying so -- pinned to the
+            // standard's own words by
+            // AQuadrantDifferenceIsTheChangeOfQuadrantAndThePointWithinIt, which is why using it
+            // here is composition rather than circularity.
+            var sent = new int[Symbols - 1];
+
+            for (int symbol = 1; symbol < Symbols; symbol++)
+            {
+                sent[symbol - 1] = constellation.CarriedBy(
+                    constellation.DifferenceFrom(
+                        source.SymbolAt(symbol), source.SymbolAt(symbol - 1)));
+            }
+
+            // NO ROTATION IS SEARCHED, and that is the claim. Every absolute format in this file
+            // needs BestAgreement because nothing in the signal says which point is point zero;
+            // these do not, because the data is the same under all four rotations a square
+            // constellation is free in. Only the window alignment is left to find.
+            Assert.Equal(
+                result.DataSymbols.Count, LongestAgreement(result.DataSymbols, sent));
+        }
+
+        [Fact]
+        public void TheDataSurvivesTurningTheWholeSignalThroughEachRightAngle()
+        {
+            // 🔴 IS IT ACTUALLY THE FORMAT? A quadrant-differential decode of an UNROTATED signal
+            // recovers the right bits, and so would a good many wrong implementations. The property
+            // the standard is buying is that a receiver which locks to any of the four rotations
+            // gets the same data, so this turns the waveform itself and demands exactly that.
+            //
+            // A right angle is applied EXACTLY -- (i, q) becomes (-q, i), a swap and a sign, with no
+            // arithmetic that could round -- so any difference in the answers is the demodulation's
+            // and not the fixture's.
+            Constellation constellation = Constellation.DvbQam(64);
+
+            var source = new ContinuousModulatedSource
+            {
+                Scheme = SchemeFor(constellation),
+                SymbolRateHz = 1e6,
+                SampleRateHz = 16e6,
+                RollOff = 0.35,
+                PulseSpanSymbols = 20,
+                Seed = 20260831,
+            };
+
+            var upright = new float[2 * (int)Math.Ceiling(Symbols * source.SamplesPerSymbol)];
+
+            source.Fill(upright);
+
+            var settings = new DemodSettings
+            {
+                Constellation = constellation,
+                SymbolRateHz = source.SymbolRateHz,
+                ResultLengthSymbols = 512,
+                FilterSymbolSpan = source.PulseSpanSymbols,
+                MeasurementFilter = PulseFilterType.RootRaisedCosine,
+                MeasurementFilterAlpha = source.RollOff,
+                ReferenceFilterAlpha = source.RollOff,
+            };
+
+            var sent = new int[Symbols - 1];
+
+            for (int symbol = 1; symbol < Symbols; symbol++)
+            {
+                sent[symbol - 1] = constellation.CarriedBy(
+                    constellation.DifferenceFrom(
+                        source.SymbolAt(symbol), source.SymbolAt(symbol - 1)));
+            }
+
+            IReadOnlyList<int> firstSymbols = null;
+
+            for (int quarters = 0; quarters < 4; quarters++)
+            {
+                var turned = new float[upright.Length];
+
+                for (int sample = 0; sample < upright.Length; sample += 2)
+                {
+                    float i = upright[sample];
+                    float q = upright[sample + 1];
+
+                    for (int applied = 0; applied < quarters; applied++)
+                    {
+                        float rotated = -q;
+
+                        q = i;
+                        i = rotated;
+                    }
+
+                    turned[sample] = i;
+                    turned[sample + 1] = q;
+                }
+
+                DemodResult result =
+                    new Demodulator().Run(turned, source.SampleRateHz, settings);
+
+                int moved = 0;
+
+                if (firstSymbols == null)
+                {
+                    firstSymbols = result.Symbols;
+                }
+                else
+                {
+                    for (int symbol = 0;
+                        symbol < Math.Min(firstSymbols.Count, result.Symbols.Count);
+                        symbol++)
+                    {
+                        if (firstSymbols[symbol] != result.Symbols[symbol])
+                        {
+                            moved++;
+                        }
+                    }
+                }
+
+                _output.WriteLine(
+                    "Turned by " + (90 * quarters) + " degrees: EVM " +
+                    result.EvmPercent.ToString("F6", CultureInfo.InvariantCulture) + " %rms, " +
+                    moved + " of " + result.Symbols.Count +
+                    " decisions differ from the upright signal's");
+
+                Assert.True(
+                    result.EvmPercent < 0.1,
+                    "Turned by " + (90 * quarters) + " degrees, DVB-64QAM demodulated at " +
+                    result.EvmPercent + " %rms.");
+
+                // AND THE DECISIONS REALLY DID MOVE, which is what stops the assertion above
+                // from being vacuous. If the phase fit quietly undid the turn -- and a decision
+                // directed fit on a four-fold symmetric constellation could -- every rotation
+                // would decide the same symbols and the data would agree for a reason that had
+                // nothing to do with the encoding. Measured: 512 of 512 decisions differ at each
+                // of the three turns, and the recovered data is the same at all four.
+                Assert.Equal(
+                    quarters == 0 ? 0 : result.Symbols.Count, moved);
+
+                Assert.Equal(
+                    result.DataSymbols.Count, LongestAgreement(result.DataSymbols, sent));
+            }
+        }
+
+        /// <summary>Which quadrant a point sits in, counted anticlockwise from the first.</summary>
+        /// <param name="constellation">The constellation.</param>
+        /// <param name="symbol">The point.</param>
+        /// <returns>0 for (+, +), 1 for (-, +), 2 for (-, -), 3 for (+, -).</returns>
+        private static int QuadrantOf(Constellation constellation, int symbol)
+        {
+            ConstellationPoint point = constellation.Points[symbol];
+
+            if (point.I > 0.0)
+            {
+                return point.Q > 0.0 ? 0 : 3;
+            }
+
+            return point.Q > 0.0 ? 1 : 2;
+        }
+
+        /// <summary>Where a point sits within its own quadrant, as an index into the first one.</summary>
+        /// <param name="constellation">The constellation.</param>
+        /// <param name="symbol">The point.</param>
+        /// <returns>The point of the first quadrant this one lands on when turned back.</returns>
+        private static int WithinQuadrant(Constellation constellation, int symbol) =>
+            TurnedBy(constellation, symbol, (4 - QuadrantOf(constellation, symbol)) % 4);
+
+        /// <summary>Where a point lands when the constellation turns by whole right angles.</summary>
+        /// <param name="constellation">The constellation.</param>
+        /// <param name="symbol">The point.</param>
+        /// <param name="quarters">How many right angles anticlockwise.</param>
+        /// <returns>The point it lands on.</returns>
+        /// <remarks>
+        /// Rotates the COORDINATES and searches for the point that results, which is not how
+        /// <c>Constellation</c> does it. That is the point of having it here.
+        /// </remarks>
+        private static int TurnedBy(Constellation constellation, int symbol, int quarters)
+        {
+            ConstellationPoint point = constellation.Points[symbol];
+            double i = point.I;
+            double q = point.Q;
+
+            for (int applied = 0; applied < quarters; applied++)
+            {
+                double rotated = -q;
+
+                q = i;
+                i = rotated;
+            }
+
+            for (int index = 0; index < constellation.Count; index++)
+            {
+                ConstellationPoint candidate = constellation.Points[index];
+
+                if (Math.Abs(candidate.I - i) < 1e-9 && Math.Abs(candidate.Q - q) < 1e-9)
+                {
+                    return index;
+                }
+            }
+
+            throw new InvalidOperationException(
+                constellation.Name + " turned point " + symbol + " by " + (90 * quarters) +
+                " degrees and landed nowhere, so it is not carried onto itself by a right angle.");
         }
 
         /// <summary>How far below the wanted sideband the other one sits, in decibels.</summary>
