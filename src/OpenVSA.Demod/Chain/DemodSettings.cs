@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
@@ -259,6 +259,71 @@ namespace OpenVSA.Demod.Chain
 
         /// <summary>How many symbols the Result Length window holds (<c>REQ-DEM-031</c>).</summary>
         public int ResultLengthSymbols { get; set; } = 256;
+
+        /// <summary>
+        /// The Result Length an offset format allows without <see cref="LowSnrEnhancement"/>
+        /// (<c>REQ-DEM-013</c>).
+        /// </summary>
+        public const int OffsetResultLengthLimit = 2048;
+
+        /// <summary>
+        /// The Result Length an offset format allows with <see cref="LowSnrEnhancement"/>
+        /// (<c>REQ-DEM-013</c>).
+        /// </summary>
+        public const int LowSnrResultLengthLimit = 40000;
+
+        /// <summary>
+        /// Extends the Result Length an offset format allows, for low-SNR work
+        /// (<c>REQ-DEM-013</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Why offset formats have a shorter limit at all.</strong> They are demodulated at
+        /// two instants per symbol rather than one — <c>REQ-DEM-012</c>'s stagger — so a Result
+        /// Length costs twice the estimator work and twice the state of a non-offset format of the
+        /// same length. The reference product draws its default limit where that cost stops being
+        /// free, and offers this option for the case where the length is worth paying for.
+        /// </para>
+        /// <para>
+        /// <strong>What it buys, and it is not accuracy.</strong> A longer analysis does not make
+        /// the EVM of a given signal lower; it makes the ESTIMATE of it steadier. The error metrics
+        /// are statistics over the symbols in the window, so their standard error falls as the
+        /// square root of the count — which is what lets a low-SNR signal be measured at all rather
+        /// than reported as a different number on every sweep.
+        /// </para>
+        /// <para>
+        /// <strong>Off by default</strong>, because the limit it lifts is the reference product's
+        /// default and a user who has not asked for a 40 000-symbol analysis should not silently
+        /// get the memory and the seconds one costs.
+        /// </para>
+        /// <para>
+        /// It has no effect on a non-offset format, which was never subject to the shorter limit.
+        /// Setting it there is not an error — a measurement's settings are carried between formats
+        /// and refusing it would make changing format fail for a reason the user did not cause.
+        /// </para>
+        /// </remarks>
+        public bool LowSnrEnhancement { get; set; }
+
+        /// <summary>
+        /// The longest Result Length these settings allow (<c>REQ-DEM-013</c>).
+        /// </summary>
+        /// <remarks>
+        /// Computed rather than stored, so it cannot fall out of step with
+        /// <see cref="LowSnrEnhancement"/> or with the format. A display asks this rather than
+        /// reproducing the rule.
+        /// </remarks>
+        public int MaximumResultLengthSymbols
+        {
+            get
+            {
+                if (Constellation == null || !Constellation.IsOffset)
+                {
+                    return LowSnrResultLengthLimit;
+                }
+
+                return LowSnrEnhancement ? LowSnrResultLengthLimit : OffsetResultLengthLimit;
+            }
+        }
 
         /// <summary>Which measurement filter is applied at step 5 (<c>REQ-DEM-021</c>).</summary>
         /// <remarks>
@@ -842,6 +907,22 @@ namespace OpenVSA.Demod.Chain
                 "its quadrant that way — so subtracting two of its symbols would give a " +
                 "well-formed bit stream that meant nothing.");
             Require(ResultLengthSymbols >= 4, "A Result Length of fewer than 4 symbols cannot be fitted to.");
+
+            // REQ-DEM-013. Refused rather than silently truncated, which is the failure the
+            // requirement's own criterion is written to catch: a limit that accepts 40 000 symbols
+            // and analyses 2 048 of them reports an EVM as steady as the short window's and calls
+            // it the long one's, and nothing downstream could tell.
+            Require(
+                ResultLengthSymbols <= MaximumResultLengthSymbols,
+                Constellation.Name + " is demodulated at two instants per symbol (REQ-DEM-012), " +
+                "so its Result Length is limited to " +
+                OffsetResultLengthLimit.ToString(CultureInfo.InvariantCulture) +
+                " symbols. This asks for " +
+                ResultLengthSymbols.ToString(CultureInfo.InvariantCulture) +
+                ". Turn on the low SNR enhancement (REQ-DEM-013) to allow up to " +
+                LowSnrResultLengthLimit.ToString(CultureInfo.InvariantCulture) +
+                ": it buys a steadier estimate on a weak signal, at the memory and the time a " +
+                "window that long costs.");
             Require(SearchStartSample >= 0, "The Search Length window starts at or after the first sample.");
             Require(SearchLengthSymbols >= 0, "A Search Length of zero means the rest of Main Time.");
 
