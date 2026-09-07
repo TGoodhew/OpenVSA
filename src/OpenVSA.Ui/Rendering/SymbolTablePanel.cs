@@ -62,8 +62,18 @@ namespace OpenVSA.Ui.Rendering
         public TextBlock StreamPortion => _stream;
 
         /// <summary>The highlight behind a selected symbol (<c>REQ-DEM-083</c>).</summary>
-        public System.Windows.Media.Brush SelectionBrush { get; set; } =
-            System.Windows.Media.Brushes.White;
+        /// <remarks>
+        /// The chrome's own selection colours rather than colours of this panel's choosing: the
+        /// stream is text in a themed control, and <c>REQ-UI-083</c> is that every themed value
+        /// resolves through a resource dictionary keyed by name. Resolved when the run is built, so
+        /// a theme change repaints the highlight with everything else.
+        /// </remarks>
+        public object SelectionBackgroundKey { get; set; } =
+            Theming.ChromeKeys.SelectionBackground;
+
+        /// <summary>The text colour of a selected symbol (<c>REQ-DEM-083</c>).</summary>
+        public object SelectionForegroundKey { get; set; } =
+            Theming.ChromeKeys.SelectionForeground;
 
         /// <summary>
         /// Where the selected symbol is in the rendered stream, or
@@ -335,11 +345,13 @@ namespace OpenVSA.Ui.Rendering
             int length = Math.Min(SelectionPosition.Length, Math.Max(0, stream.Length - start));
 
             _stream.Inlines.Add(new Run(stream.Substring(0, start)));
-            _stream.Inlines.Add(new Run(stream.Substring(start, length))
-            {
-                Background = SelectionBrush,
-                Foreground = System.Windows.Media.Brushes.Black,
-            });
+
+            var highlighted = new Run(stream.Substring(start, length));
+
+            highlighted.SetResourceReference(TextElement.BackgroundProperty, SelectionBackgroundKey);
+            highlighted.SetResourceReference(TextElement.ForegroundProperty, SelectionForegroundKey);
+
+            _stream.Inlines.Add(highlighted);
             _stream.Inlines.Add(new Run(stream.Substring(start + length)));
         }
 
