@@ -40,6 +40,53 @@ namespace OpenVSA.Demod.Results
     /// something meaningful in each format.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Where a symbol starts in the rendered symbol table (<c>REQ-DEM-083</c>).
+    /// </summary>
+    public readonly struct SymbolPosition
+    {
+        /// <summary>Creates a position.</summary>
+        /// <param name="row">Which row, from zero.</param>
+        /// <param name="column">Which column of the row, gutter and group spaces included.</param>
+        /// <param name="startCharacter">The offset into the ungrouped stream.</param>
+        /// <param name="length">How many characters the symbol spells to.</param>
+        public SymbolPosition(int row, int column, int startCharacter, int length)
+        {
+            Row = row;
+            Column = column;
+            StartCharacter = startCharacter;
+            Length = length;
+        }
+
+        /// <summary>No such symbol.</summary>
+        public static SymbolPosition NotFound => new SymbolPosition(-1, -1, -1, 0);
+
+        /// <summary>Which row, from zero.</summary>
+        public int Row { get; }
+
+        /// <summary>Which column of the row, gutter and group spaces included.</summary>
+        public int Column { get; }
+
+        /// <summary>The offset into the ungrouped stream.</summary>
+        /// <remarks>
+        /// The gutter's own value counts these, so this is what a display's gutter arithmetic and
+        /// this position have in common.
+        /// </remarks>
+        public int StartCharacter { get; }
+
+        /// <summary>How many characters the symbol spells to.</summary>
+        public int Length { get; }
+
+        /// <summary>Whether the symbol was found.</summary>
+        public bool IsFound => Row >= 0;
+
+        /// <inheritdoc />
+        public override string ToString() =>
+            IsFound
+                ? "row " + Row + ", column " + Column + ", " + Length + " character(s)"
+                : "not found";
+    }
+
     public static class SymbolTable
     {
         /// <summary>How many characters make a group (<c>REQ-UI-052</c>).</summary>
@@ -163,6 +210,156 @@ namespace OpenVSA.Demod.Results
         /// </para>
         /// </remarks>
         public static int GutterValue(int row, int charactersPerRow) => row * charactersPerRow;
+
+        /// <summary>
+        /// Where a symbol is in the rendered table (<c>REQ-DEM-083</c>).
+        /// </summary>
+        /// <param name="symbols">The decided symbol values.</param>
+        /// <param name="symbol">Which symbol.</param>
+        /// <param name="bitsPerSymbol">Bits one symbol carries.</param>
+        /// <param name="format">How the symbols are spelled.</param>
+        /// <param name="charactersPerRow">Characters of stream to a row.</param>
+        /// <returns>Where it starts, or <see cref="SymbolPosition.NotFound"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="symbols"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>The widths are walked, not multiplied.</strong> In binary a symbol is
+        /// <paramref name="bitsPerSymbol"/> characters and its start is a multiplication. In
+        /// hexadecimal it is not: <see cref="Spell"/> writes a symbol with
+        /// <c>ToString("X")</c>, so a six-bit symbol is one digit up to 15 and two above it, and
+        /// where symbol <em>k</em> starts depends on the values of the symbols before it. Anything
+        /// that assumed one character per symbol would be right for QPSK and 16-QAM and off by a
+        /// growing amount for everything wider — which is exactly the off-by-one this
+        /// requirement's criterion is written to catch.
+        /// </para>
+        /// <para>
+        /// A symbol may also straddle a row: a row holds a whole number of groups of eight and a
+        /// symbol carries three bits for 8-PSK, so its characters can end one row and begin the
+        /// next. <see cref="SymbolPosition.Length"/> is the whole symbol's; the row and column are
+        /// where it starts.
+        /// </para>
+        /// </remarks>
+        public static SymbolPosition Locate(
+            IReadOnlyList<int> symbols,
+            int symbol,
+            int bitsPerSymbol,
+            SymbolTableFormat format,
+            int charactersPerRow = 32)
+        {
+            if (symbols == null)
+            {
+                throw new ArgumentNullException(nameof(symbols));
+            }
+
+            if (symbol < 0 || symbol >= symbols.Count || charactersPerRow < GroupSize ||
+                charactersPerRow % GroupSize != 0 || ReasonAgainst(format, bitsPerSymbol) != null)
+            {
+                return SymbolPosition.NotFound;
+            }
+
+            int start = 0;
+
+            for (int before = 0; before < symbol; before++)
+            {
+                start += Width(symbols[before], bitsPerSymbol, format);
+            }
+
+            int length = Width(symbols[symbol], bitsPerSymbol, format);
+
+            return new SymbolPosition(
+                start / charactersPerRow,
+                ColumnOf(start % charactersPerRow),
+                start,
+                length);
+        }
+
+        /// <summary>
+        /// Which symbol a character of the rendered table belongs to (<c>REQ-DEM-083</c>).
+        /// </summary>
+        /// <param name="symbols">The decided symbol values.</param>
+        /// <param name="row">Which row, from zero.</param>
+        /// <param name="column">Which column of the row, gutter and group spaces included.</param>
+        /// <param name="bitsPerSymbol">Bits one symbol carries.</param>
+        /// <param name="format">How the symbols are spelled.</param>
+        /// <param name="charactersPerRow">Characters of stream to a row.</param>
+        /// <returns>The symbol, or −1 for the gutter, a group space or past the end.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="symbols"/> is null.</exception>
+        public static int SymbolAt(
+            IReadOnlyList<int> symbols,
+            int row,
+            int column,
+            int bitsPerSymbol,
+            SymbolTableFormat format,
+            int charactersPerRow = 32)
+        {
+            if (symbols == null)
+            {
+                throw new ArgumentNullException(nameof(symbols));
+            }
+
+            if (row < 0 || charactersPerRow < GroupSize || charactersPerRow % GroupSize != 0 ||
+                ReasonAgainst(format, bitsPerSymbol) != null)
+            {
+                return -1;
+            }
+
+            int within = CharacterOf(column);
+
+            if (within < 0 || within >= charactersPerRow)
+            {
+                return -1;
+            }
+
+            int wanted = (row * charactersPerRow) + within;
+            int at = 0;
+
+            for (int symbol = 0; symbol < symbols.Count; symbol++)
+            {
+                int width = Width(symbols[symbol], bitsPerSymbol, format);
+
+                if (wanted < at + width)
+                {
+                    return symbol;
+                }
+
+                at += width;
+            }
+
+            return -1;
+        }
+
+        /// <summary>How many characters a symbol takes in a format.</summary>
+        private static int Width(int symbol, int bitsPerSymbol, SymbolTableFormat format) =>
+            format == SymbolTableFormat.Hexadecimal
+                ? symbol.ToString("X", CultureInfo.InvariantCulture).Length
+                : bitsPerSymbol;
+
+        /// <summary>The column a character of a row is drawn at.</summary>
+        /// <remarks>
+        /// The gutter, the separator, and one extra space at each group boundary — the same
+        /// arithmetic <see cref="Render"/> builds the row with, written once so the two cannot
+        /// disagree about where a character is.
+        /// </remarks>
+        private static int ColumnOf(int within) =>
+            GutterWidth + 1 + within + (within / GroupSize);
+
+        /// <summary>The character of a row a column holds, or −1 for gutter or spacing.</summary>
+        private static int CharacterOf(int column)
+        {
+            int offset = column - (GutterWidth + 1);
+
+            if (offset < 0)
+            {
+                return -1;
+            }
+
+            // Every group of eight is followed by a space, so a group occupies nine columns and the
+            // ninth of each is not a character.
+            int group = offset / (GroupSize + 1);
+            int inGroup = offset % (GroupSize + 1);
+
+            return inGroup == GroupSize ? -1 : (group * GroupSize) + inGroup;
+        }
 
         /// <summary>
         /// The whole stream as one string, without gutters, grouping or rows.

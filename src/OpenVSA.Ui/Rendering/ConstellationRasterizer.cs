@@ -92,6 +92,11 @@ namespace OpenVSA.Ui.Rendering
         /// The density accumulator the symbols are drawn through, or null to draw them as points.
         /// </summary>
         public ConstellationDensity Density { get; set; }
+
+        /// <summary>
+        /// The symbol to ring, or <see cref="SymbolSelection.None"/> (<c>REQ-DEM-083</c>).
+        /// </summary>
+        public int Selected { get; set; } = SymbolSelection.None;
     }
 
     /// <summary>
@@ -292,8 +297,113 @@ namespace OpenVSA.Ui.Rendering
                 }
             }
 
+            // The selection goes on top of everything, including the density: the point of it is to
+            // find one symbol in a cloud, and a cloud drawn over it would be the cloud winning.
+            bool selectionDrawn = false;
+
+            if (options.Selected >= 0 && options.Selected < trace.SymbolCount)
+            {
+                ConstellationPoint chosen = trace.Measured[options.Selected];
+
+                DrawSelection(
+                    surface,
+                    XFor(chosen.I, extent, area),
+                    YFor(chosen.Q, extent, area),
+                    area,
+                    colours.Selection);
+
+                selectionDrawn = true;
+            }
+
             return new ConstellationRender(
-                trace.SymbolCount, segments, overlays, boundaryCells, densityCells);
+                trace.SymbolCount, segments, overlays, boundaryCells, densityCells,
+                selectionDrawn);
+        }
+
+        /// <summary>Half the width of the ring drawn round a selected symbol.</summary>
+        public const int SelectionRadius = 7;
+
+        /// <summary>
+        /// Which symbol a point of the display is nearest (<c>REQ-DEM-083</c>).
+        /// </summary>
+        /// <param name="trace">The result.</param>
+        /// <param name="area">The rectangle the constellation was drawn in.</param>
+        /// <param name="x">The column pointed at.</param>
+        /// <param name="y">The row pointed at.</param>
+        /// <param name="extent">
+        /// The value at the edge of the area; non-positive takes it from the result, as the render
+        /// does.
+        /// </param>
+        /// <param name="within">
+        /// How far, in cells, a symbol may be and still be the one pointed at.
+        /// </param>
+        /// <returns>The symbol, or <see cref="SymbolSelection.None"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="trace"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>Nearest in cells, not in constellation units.</strong> What a user is pointing
+        /// at is a place on the screen, and two symbols the same distance apart in the plane are
+        /// not the same distance apart on a display that has been rescaled. Measuring where they
+        /// were drawn is measuring what they are pointing at.
+        /// </para>
+        /// <para>
+        /// <strong>Ties go to the earlier symbol,</strong> deterministically, so that pointing at
+        /// the same place twice selects the same symbol twice. A crowded constellation puts many
+        /// symbols in one cell and there is no way to choose between them from a click; what there
+        /// is a way to do is choose the same one every time.
+        /// </para>
+        /// </remarks>
+        public static int SymbolNear(
+            SymbolTrace trace, PixelRect area, int x, int y, double extent = 0.0,
+            int within = SelectionRadius)
+        {
+            if (trace == null)
+            {
+                throw new ArgumentNullException(nameof(trace));
+            }
+
+            double scale = extent > 0.0 ? extent : Extent(trace);
+
+            int nearest = SymbolSelection.None;
+            long closest = (long)within * within;
+
+            for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
+            {
+                ConstellationPoint measured = trace.Measured[symbol];
+
+                long dx = XFor(measured.I, scale, area) - x;
+                long dy = YFor(measured.Q, scale, area) - y;
+                long distance = (dx * dx) + (dy * dy);
+
+                if (distance < closest)
+                {
+                    closest = distance;
+                    nearest = symbol;
+                }
+            }
+
+            return nearest;
+        }
+
+        private static void DrawSelection(
+            PixelSurface surface, int x, int y, PixelRect area, PlotColor colour)
+        {
+            // A ring, open in the middle for the same reason an ideal state is: the symbol it
+            // points at has to stay visible, and a marker that covers it answers "which one" by
+            // hiding the answer.
+            const int Steps = 48;
+
+            for (int step = 0; step < Steps; step++)
+            {
+                double angle = 2.0 * Math.PI * step / Steps;
+
+                Plot(
+                    surface,
+                    x + (int)Math.Round(SelectionRadius * Math.Cos(angle)),
+                    y + (int)Math.Round(SelectionRadius * Math.Sin(angle)),
+                    area,
+                    colour);
+            }
         }
 
         /// <summary>How far a symbol landed from its ideal state.</summary>
@@ -548,13 +658,15 @@ namespace OpenVSA.Ui.Rendering
     public readonly struct ConstellationRender
     {
         internal ConstellationRender(
-            int symbols, int segments, int overlays, int boundaryCells, int densityCells)
+            int symbols, int segments, int overlays, int boundaryCells, int densityCells,
+            bool selectionDrawn = false)
         {
             SymbolsDrawn = symbols;
             SegmentsDrawn = segments;
             OverlaysDrawn = overlays;
             BoundaryCells = boundaryCells;
             DensityCells = densityCells;
+            SelectionDrawn = selectionDrawn;
         }
 
         /// <summary>How many symbol points were drawn.</summary>
@@ -580,10 +692,14 @@ namespace OpenVSA.Ui.Rendering
         /// </remarks>
         public int DensityCells { get; }
 
+        /// <summary>Whether a selected symbol was ringed (<c>REQ-DEM-083</c>).</summary>
+        public bool SelectionDrawn { get; }
+
         /// <inheritdoc />
         public override string ToString() =>
             SymbolsDrawn + " symbols, " + SegmentsDrawn + " segments, " + OverlaysDrawn +
-            " ideals, " + BoundaryCells + " boundary cells, " + DensityCells + " density cells";
+            " ideals, " + BoundaryCells + " boundary cells, " + DensityCells + " density cells" +
+            (SelectionDrawn ? ", one selected" : string.Empty);
     }
 
     /// <summary>
@@ -605,6 +721,13 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>The colour of the inter-symbol trajectory, in the IQ/vector format.</summary>
         public PlotColor Trajectory { get; set; } = new PlotColor(0x40, 0x80, 0xC0);
+
+        /// <summary>The colour of the ring round the selected symbol (<c>REQ-DEM-083</c>).</summary>
+        /// <remarks>
+        /// White, and deliberately not any of the others: a selection has to be findable in a cloud
+        /// coloured by error magnitude, where every colour of the map is already in use.
+        /// </remarks>
+        public PlotColor Selection { get; set; } = PlotColor.White;
 
         /// <summary>The colour of the decision-boundary overlay (<c>REQ-DEM-082</c>).</summary>
         /// <remarks>

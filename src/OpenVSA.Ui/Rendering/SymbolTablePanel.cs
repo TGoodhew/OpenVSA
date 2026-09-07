@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using OpenVSA.Demod.Results;
 
 namespace OpenVSA.Ui.Rendering
@@ -34,6 +35,7 @@ namespace OpenVSA.Ui.Rendering
         private MeasurementProvenance _provenance;
         private SymbolTableFormat _format = SymbolTableFormat.Binary;
         private int _charactersPerRow = 32;
+        private SymbolSelection _selection;
 
         /// <summary>Creates an empty panel.</summary>
         public SymbolTablePanel()
@@ -58,6 +60,74 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>The detected symbol stream, the bottom portion.</summary>
         public TextBlock StreamPortion => _stream;
+
+        /// <summary>The highlight behind a selected symbol (<c>REQ-DEM-083</c>).</summary>
+        public System.Windows.Media.Brush SelectionBrush { get; set; } =
+            System.Windows.Media.Brushes.White;
+
+        /// <summary>
+        /// Where the selected symbol is in the rendered stream, or
+        /// <see cref="SymbolPosition.NotFound"/>.
+        /// </summary>
+        /// <remarks>
+        /// Reported so the criterion — "selecting symbol <em>k</em> highlights ... for symbol
+        /// <em>k</em> specifically, which an off-by-one selection fails" — can be checked against a
+        /// position rather than against a screenshot.
+        /// </remarks>
+        public SymbolPosition SelectionPosition { get; private set; } = SymbolPosition.NotFound;
+
+        /// <summary>
+        /// The symbol selection this panel shows and sets (<c>REQ-DEM-083</c>), or null.
+        /// </summary>
+        public SymbolSelection Selection
+        {
+            get { return _selection; }
+
+            set
+            {
+                if (ReferenceEquals(_selection, value))
+                {
+                    return;
+                }
+
+                if (_selection != null)
+                {
+                    _selection.Changed -= OnSelectionChanged;
+                }
+
+                _selection = value;
+
+                if (_selection != null)
+                {
+                    _selection.Changed += OnSelectionChanged;
+                }
+
+                Refresh();
+            }
+        }
+
+        /// <summary>
+        /// Selects the symbol a character of the stream belongs to (<c>REQ-DEM-083</c>).
+        /// </summary>
+        /// <param name="row">Which row of the stream, from zero.</param>
+        /// <param name="column">Which column of that row.</param>
+        /// <returns>The symbol selected, or <see cref="SymbolSelection.None"/>.</returns>
+        public int SelectAt(int row, int column)
+        {
+            if (_selection == null || _trace == null)
+            {
+                return SymbolSelection.None;
+            }
+
+            int symbol = SymbolTable.SymbolAt(
+                _trace.Symbols, row, column, _trace.BitsPerSymbol, _format, _charactersPerRow);
+
+            _selection.Select(symbol);
+
+            return symbol;
+        }
+
+        private void OnSelectionChanged(object sender, EventArgs e) => Refresh();
 
         /// <summary>
         /// How many portions this trace has.
@@ -84,6 +154,10 @@ namespace OpenVSA.Ui.Rendering
                     // exclusion, and binary always works.
                     _format = SymbolTableFormat.Binary;
                 }
+
+                // REQ-DEM-083: a selection outside the new result is cleared rather than left
+                // pointing past the end of it.
+                _selection?.Update(_trace);
 
                 Refresh();
             }
@@ -235,7 +309,59 @@ namespace OpenVSA.Ui.Rendering
             IReadOnlyList<string> rows = SymbolTable.Render(
                 _trace.Symbols, _trace.BitsPerSymbol, _format, _charactersPerRow);
 
-            _stream.Text = string.Join(Environment.NewLine, rows);
+            string stream = string.Join(Environment.NewLine, rows);
+
+            SelectionPosition = _selection == null || !_selection.HasSelection
+                ? SymbolPosition.NotFound
+                : SymbolTable.Locate(
+                    _trace.Symbols, _selection.Selected, _trace.BitsPerSymbol, _format,
+                    _charactersPerRow);
+
+            _stream.Text = stream;
+            _stream.Inlines.Clear();
+
+            if (!SelectionPosition.IsFound)
+            {
+                _stream.Text = stream;
+                return;
+            }
+
+            // The stream is rebuilt as three runs so the selected symbol's own characters carry the
+            // highlight, rather than the whole row. REQ-DEM-083 asks for "position in the eye" and
+            // "the corresponding point"; the table's equivalent of a point is the characters that
+            // spell the symbol, and highlighting the row would answer a coarser question than the
+            // one asked.
+            int start = OffsetIn(rows, SelectionPosition);
+            int length = Math.Min(SelectionPosition.Length, Math.Max(0, stream.Length - start));
+
+            _stream.Inlines.Add(new Run(stream.Substring(0, start)));
+            _stream.Inlines.Add(new Run(stream.Substring(start, length))
+            {
+                Background = SelectionBrush,
+                Foreground = System.Windows.Media.Brushes.Black,
+            });
+            _stream.Inlines.Add(new Run(stream.Substring(start + length)));
+        }
+
+        /// <summary>
+        /// Where a position lands in the joined text, spacing and line breaks included.
+        /// </summary>
+        /// <remarks>
+        /// The characters of a symbol are contiguous in the ungrouped stream and not in the
+        /// rendered text — a group space or a line break can fall inside one — so this converts
+        /// through the rows rather than by arithmetic on the stream offset. A symbol split by a
+        /// break has the first part of it highlighted, which is where it starts.
+        /// </remarks>
+        private static int OffsetIn(IReadOnlyList<string> rows, SymbolPosition position)
+        {
+            int offset = 0;
+
+            for (int row = 0; row < position.Row && row < rows.Count; row++)
+            {
+                offset += rows[row].Length + Environment.NewLine.Length;
+            }
+
+            return offset + position.Column;
         }
 
         private static TextBlock Portion() => new TextBlock

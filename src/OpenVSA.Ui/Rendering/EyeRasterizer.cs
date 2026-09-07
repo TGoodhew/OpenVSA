@@ -159,7 +159,8 @@ namespace OpenVSA.Ui.Rendering
             double lengthSymbols,
             EyeColours colours,
             double scale = 0.0,
-            bool persistence = false)
+            bool persistence = false,
+            int selected = -1)
         {
             if (surface == null)
             {
@@ -266,7 +267,42 @@ namespace OpenVSA.Ui.Rendering
 
             int peak = Paint(surface, area, traversals, colours, persistence);
 
-            return new EyeRender(folds, lines, truncated, peak);
+            // The selected symbol's own fold, over the top of the rest (REQ-DEM-083). Drawn from
+            // the same walk as the eye it sits in — a second piece of fold arithmetic here is a
+            // second chance to be half a symbol out, and it would be out only for the highlight,
+            // which is the hardest kind of disagreement to notice.
+            bool selectionDrawn = false;
+
+            if (selected >= 0 && selected < trace.DecisionSampleIndices.Count)
+            {
+                int centre = trace.DecisionSampleIndices[selected];
+                int previousX = int.MinValue;
+                int previousY = 0;
+
+                for (int at = centre - half; at <= centre + half; at++)
+                {
+                    if (at < 0 || at >= trace.SampleCount)
+                    {
+                        continue;
+                    }
+
+                    double offsetSymbols = (at - centre) / (double)trace.SamplesPerSymbol;
+
+                    int x = XForSymbolOffset(offsetSymbols, lengthSymbols, area);
+                    int y = YForValue(Value(trace, at, component), extent, area);
+
+                    if (previousX != int.MinValue)
+                    {
+                        DrawLine(surface, area, previousX, previousY, x, y, colours.Selection);
+                    }
+
+                    previousX = x;
+                    previousY = y;
+                    selectionDrawn = true;
+                }
+            }
+
+            return new EyeRender(folds, lines, truncated, peak, selectionDrawn);
         }
 
         /// <summary>
@@ -362,6 +398,48 @@ namespace OpenVSA.Ui.Rendering
         /// waveform doubles back along read as denser than one it passes once. Bresenham, so the
         /// cells counted are the ones a drawn line would have inked and no others.
         /// </remarks>
+        /// <summary>Walks a segment, inking each cell it passes through.</summary>
+        /// <remarks>
+        /// The same walk as <see cref="CountLine"/>, writing colour instead of counting, so the
+        /// selected fold lands on exactly the cells its own fold contributed to the eye.
+        /// </remarks>
+        private static void DrawLine(
+            PixelSurface surface, PixelRect area, int x0, int y0, int x1, int y1, PlotColor colour)
+        {
+            int dx = Math.Abs(x1 - x0);
+            int dy = -Math.Abs(y1 - y0);
+            int sx = x0 < x1 ? 1 : -1;
+            int sy = y0 < y1 ? 1 : -1;
+            int error = dx + dy;
+
+            while (true)
+            {
+                if (area.Contains(x0, y0))
+                {
+                    surface.SetPixel(x0, y0, colour);
+                }
+
+                if (x0 == x1 && y0 == y1)
+                {
+                    return;
+                }
+
+                int twice = 2 * error;
+
+                if (twice >= dy)
+                {
+                    error += dy;
+                    x0 += sx;
+                }
+
+                if (twice <= dx)
+                {
+                    error += dx;
+                    y0 += sy;
+                }
+            }
+        }
+
         private static void CountLine(
             int[] traversals, PixelRect area, int x0, int y0, int x1, int y1)
         {
@@ -403,12 +481,15 @@ namespace OpenVSA.Ui.Rendering
     /// <summary>What an eye render actually drew.</summary>
     public readonly struct EyeRender
     {
-        internal EyeRender(int folds, int referenceLines, int truncatedFolds, int peakTraversals)
+        internal EyeRender(
+            int folds, int referenceLines, int truncatedFolds, int peakTraversals,
+            bool selectionDrawn = false)
         {
             Folds = folds;
             ReferenceLines = referenceLines;
             TruncatedFolds = truncatedFolds;
             PeakTraversals = peakTraversals;
+            SelectionDrawn = selectionDrawn;
         }
 
         /// <summary>
@@ -443,10 +524,14 @@ namespace OpenVSA.Ui.Rendering
         /// </remarks>
         public int PeakTraversals { get; }
 
+        /// <summary>Whether the selected symbol's fold was drawn over the eye.</summary>
+        public bool SelectionDrawn { get; }
+
         /// <inheritdoc />
         public override string ToString() =>
             Folds + " folds (" + TruncatedFolds + " truncated), " + ReferenceLines +
-            " reference lines, peak " + PeakTraversals;
+            " reference lines, peak " + PeakTraversals +
+            (SelectionDrawn ? ", one selected" : string.Empty);
     }
 
     /// <summary>The colours an eye draws with.</summary>
@@ -457,6 +542,13 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>The vertical reference lines at the symbol positions.</summary>
         public PlotColor ReferenceLine { get; set; } = new PlotColor(0x50, 0x50, 0x5C);
+
+        /// <summary>The selected symbol's fold (<c>REQ-DEM-083</c>).</summary>
+        /// <remarks>
+        /// White, matching the constellation's selection ring: one selection shown on two displays
+        /// should look like one selection.
+        /// </remarks>
+        public PlotColor Selection { get; set; } = PlotColor.White;
 
         /// <summary>
         /// How bright a cell the waveform crossed just once is, as a fraction of
