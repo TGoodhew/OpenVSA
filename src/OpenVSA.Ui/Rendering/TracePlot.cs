@@ -104,6 +104,7 @@ namespace OpenVSA.Ui.Rendering
         private IdealStateOverlay _idealStates = IdealStateOverlay.Crosshair;
         private EyeComponent _eyeComponent = EyeComponent.InPhase;
         private double _eyeLength = EyeRasterizer.DefaultLengthSymbols;
+        private bool _eyePersistence;
 
         private TraceAccumulator _accumulator = TraceAccumulator.None;
         private Spectrogram _history;
@@ -630,6 +631,30 @@ namespace OpenVSA.Ui.Rendering
             }
         }
 
+        /// <summary>
+        /// Whether an eye shades its paths by how often they are taken (<c>REQ-DEM-081</c>).
+        /// </summary>
+        /// <remarks>
+        /// Optional, and off by default: the shading is an aid to reading a crowded eye, and a
+        /// sparse one reads better without it. Turning it on and off changes the colours the eye is
+        /// drawn in and not the shape it draws, which is the requirement's own criterion.
+        /// </remarks>
+        public bool EyePersistence
+        {
+            get { return _eyePersistence; }
+
+            set
+            {
+                if (_eyePersistence == value)
+                {
+                    return;
+                }
+
+                _eyePersistence = value;
+                Redraw(_snapshot);
+            }
+        }
+
         /// <summary>Whether this plot is drawing a demodulation result rather than a spectrum.</summary>
         public bool IsShowingResult =>
             _resultKind != ResultTraceKind.None && _result != null && _result.SymbolCount > 0;
@@ -669,7 +694,8 @@ namespace OpenVSA.Ui.Rendering
 
                 case ResultTraceKind.Eye:
                     LastEyeRender = EyeRasterizer.Render(
-                        _surface, graticule, _result, _eyeComponent, _eyeLength, EyeColours);
+                        _surface, graticule, _result, _eyeComponent, _eyeLength, EyeColours,
+                        0.0, _eyePersistence);
                     break;
             }
         }
