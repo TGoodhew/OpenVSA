@@ -25,6 +25,75 @@ namespace OpenVSA.Ui.Rendering
         Circle,
     }
 
+    /// <summary>What decides a measured symbol's colour (<c>REQ-DEM-082</c>).</summary>
+    public enum SymbolColouring
+    {
+        /// <summary>The symbol colour, or the modulation type's (<c>REQ-UI-050</c>).</summary>
+        Fixed = 0,
+
+        /// <summary>
+        /// The colour map, indexed by how far the symbol landed from its ideal state.
+        /// </summary>
+        /// <remarks>
+        /// The point of it is that a constellation shows you <em>where</em> the symbols are and not
+        /// <em>which</em> ones are wrong: a symbol that missed its state by a quarter of the
+        /// spacing sits in the middle of its own cloud and looks like every other symbol in it.
+        /// Colouring by error magnitude puts the answer on the display the error summary gives as a
+        /// single number.
+        /// </remarks>
+        ByErrorMagnitude,
+    }
+
+    /// <summary>
+    /// What to draw on a constellation besides the symbols (<c>REQ-UI-050</c>,
+    /// <c>REQ-DEM-082</c>).
+    /// </summary>
+    /// <remarks>
+    /// <strong>An object rather than more parameters.</strong> <c>REQ-DEM-082</c> adds four
+    /// independent things to a call that already took three, and a seven-argument render is one
+    /// where the call sites stop being readable and a transposed pair of booleans compiles.
+    /// </remarks>
+    public sealed class ConstellationOptions
+    {
+        /// <summary>How the ideal states are overlaid.</summary>
+        public IdealStateOverlay IdealStates { get; set; } = IdealStateOverlay.None;
+
+        /// <summary>Whether the symbols are joined in time order — the IQ/vector format.</summary>
+        public bool Connect { get; set; }
+
+        /// <summary>
+        /// The value drawn at the edge of the area; a non-positive value takes it from the result.
+        /// </summary>
+        /// <remarks>
+        /// Worth fixing when <see cref="DecisionBoundaries"/> is set: a scale that follows the data
+        /// moves the boundary mask with it, and the mask is the expensive thing to recompute.
+        /// </remarks>
+        public double Scale { get; set; }
+
+        /// <summary>What decides a measured symbol's colour.</summary>
+        public SymbolColouring Colouring { get; set; } = SymbolColouring.Fixed;
+
+        /// <summary>
+        /// The error magnitude drawn at the top of the colour map; non-positive takes it from the
+        /// result's own worst symbol.
+        /// </summary>
+        /// <remarks>
+        /// Taken from the result by default so that a clean signal still shows its own structure
+        /// rather than one flat colour at the bottom of the map. Set it to compare two measurements
+        /// against each other, where a per-result scale would make the worse one look like the
+        /// better one.
+        /// </remarks>
+        public double ErrorFullScale { get; set; }
+
+        /// <summary>The decision-boundary overlay, or null to draw none.</summary>
+        public DecisionBoundaries DecisionBoundaries { get; set; }
+
+        /// <summary>
+        /// The density accumulator the symbols are drawn through, or null to draw them as points.
+        /// </summary>
+        public ConstellationDensity Density { get; set; }
+    }
+
     /// <summary>
     /// Draws a constellation or an IQ/vector trace (<c>REQ-UI-050</c>).
     /// </summary>
@@ -77,7 +146,36 @@ namespace OpenVSA.Ui.Rendering
             ConstellationColours colours,
             IdealStateOverlay overlay,
             bool connect,
-            double scale = 0.0)
+            double scale = 0.0) =>
+            Render(
+                surface, area, trace, colours,
+                new ConstellationOptions
+                {
+                    IdealStates = overlay,
+                    Connect = connect,
+                    Scale = scale,
+                });
+
+        /// <summary>
+        /// Draws a result, with the overlays and rendering of <c>REQ-DEM-082</c>.
+        /// </summary>
+        /// <param name="surface">The surface to draw on.</param>
+        /// <param name="area">The rectangle to draw in; usually the graticule.</param>
+        /// <param name="trace">The demodulated result.</param>
+        /// <param name="colours">What to draw each part with.</param>
+        /// <param name="options">What to draw besides the symbols.</param>
+        /// <exception cref="ArgumentNullException">An argument is null.</exception>
+        /// <remarks>
+        /// The order is deepest reference first: decision boundaries, then ideal states, then the
+        /// trajectory, then the symbols. Each layer is a reference for the one above it, so the
+        /// data ends up on top of everything drawn to explain it.
+        /// </remarks>
+        public static ConstellationRender Render(
+            PixelSurface surface,
+            PixelRect area,
+            SymbolTrace trace,
+            ConstellationColours colours,
+            ConstellationOptions options)
         {
             if (surface == null)
             {
@@ -94,20 +192,32 @@ namespace OpenVSA.Ui.Rendering
                 throw new ArgumentNullException(nameof(colours));
             }
 
-            if (area.Width <= 0 || area.Height <= 0)
+            if (options == null)
             {
-                return new ConstellationRender(0, 0, 0);
+                throw new ArgumentNullException(nameof(options));
             }
 
-            double extent = scale > 0.0 ? scale : Extent(trace);
+            if (area.Width <= 0 || area.Height <= 0)
+            {
+                return new ConstellationRender(0, 0, 0, 0, 0);
+            }
 
-            // The ideal states first, so a measured symbol sitting on one is drawn over it rather
+            double extent = options.Scale > 0.0 ? options.Scale : Extent(trace);
+
+            // Under everything: the regions the decision is made in.
+            int boundaryCells = options.DecisionBoundaries == null
+                ? 0
+                : options.DecisionBoundaries.Draw(
+                    surface, area, trace, extent, colours.DecisionBoundary);
+
+            // The ideal states next, so a measured symbol sitting on one is drawn over it rather
             // than under it — the overlay is a reference and the data is the subject.
+            IdealStateOverlay overlay = options.IdealStates;
             int overlays = 0;
 
             if (overlay != IdealStateOverlay.None)
             {
-                foreach (ConstellationPoint ideal in DistinctIdeals(trace))
+                foreach (ConstellationPoint ideal in IdealStates(trace))
                 {
                     int x = XFor(ideal.I, extent, area);
                     int y = YFor(ideal.Q, extent, area);
@@ -132,7 +242,7 @@ namespace OpenVSA.Ui.Rendering
 
             int segments = 0;
 
-            if (connect)
+            if (options.Connect)
             {
                 for (int symbol = 1; symbol < trace.SymbolCount; symbol++)
                 {
@@ -150,17 +260,80 @@ namespace OpenVSA.Ui.Rendering
                 }
             }
 
-            for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
+            int densityCells = 0;
+
+            if (options.Density != null)
             {
-                ConstellationPoint measured = trace.Measured[symbol];
+                // Through the accumulator rather than as points. Every symbol is still drawn — it
+                // is counted into a cell instead of painted into one — so REQ-UI-050's "one point
+                // per symbol" still holds and SymbolsDrawn still means what it meant.
+                options.Density.Accumulate(trace, extent, area);
 
-                int x = XFor(measured.I, extent, area);
-                int y = YFor(measured.Q, extent, area);
+                densityCells = options.Density.Paint(surface, area, colours.Symbol);
+            }
+            else
+            {
+                double fullScale = options.Colouring == SymbolColouring.ByErrorMagnitude
+                    ? (options.ErrorFullScale > 0.0 ? options.ErrorFullScale : WorstError(trace))
+                    : 0.0;
 
-                DrawSymbol(surface, x, y, area, colours.For(trace, symbol));
+                for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
+                {
+                    ConstellationPoint measured = trace.Measured[symbol];
+
+                    int x = XFor(measured.I, extent, area);
+                    int y = YFor(measured.Q, extent, area);
+
+                    PlotColor colour = options.Colouring == SymbolColouring.ByErrorMagnitude
+                        ? colours.ForError(Error(trace, symbol), fullScale)
+                        : colours.For(trace, symbol);
+
+                    DrawSymbol(surface, x, y, area, colour);
+                }
             }
 
-            return new ConstellationRender(trace.SymbolCount, segments, overlays);
+            return new ConstellationRender(
+                trace.SymbolCount, segments, overlays, boundaryCells, densityCells);
+        }
+
+        /// <summary>How far a symbol landed from its ideal state.</summary>
+        /// <param name="trace">The result.</param>
+        /// <param name="symbol">Which symbol.</param>
+        public static double Error(SymbolTrace trace, int symbol)
+        {
+            if (trace == null)
+            {
+                throw new ArgumentNullException(nameof(trace));
+            }
+
+            ConstellationPoint error = trace.ErrorAt(symbol);
+
+            return Math.Sqrt((error.I * error.I) + (error.Q * error.Q));
+        }
+
+        /// <summary>The largest error in a result.</summary>
+        /// <param name="trace">The result.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="trace"/> is null.</exception>
+        /// <remarks>
+        /// The default top of the error colour map. A result with no error at all returns zero and
+        /// the map is not used, because a ramp with no range to spread over would put an exact
+        /// signal somewhere arbitrary on it.
+        /// </remarks>
+        public static double WorstError(SymbolTrace trace)
+        {
+            if (trace == null)
+            {
+                throw new ArgumentNullException(nameof(trace));
+            }
+
+            double worst = 0.0;
+
+            for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
+            {
+                worst = Math.Max(worst, Error(trace, symbol));
+            }
+
+            return worst;
         }
 
         /// <summary>Where a value on the I axis lands.</summary>
@@ -209,22 +382,71 @@ namespace OpenVSA.Ui.Rendering
         private static double Reach(ConstellationPoint point) =>
             Math.Max(Math.Abs(point.I), Math.Abs(point.Q));
 
-        /// <summary>The ideal states actually used, each once.</summary>
-        private static IEnumerable<ConstellationPoint> DistinctIdeals(SymbolTrace trace)
+        /// <summary>
+        /// The ideal states a result actually uses, each once, ordered by I then Q.
+        /// </summary>
+        /// <param name="trace">The result.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="trace"/> is null.</exception>
+        /// <remarks>
+        /// <para>
+        /// <strong>Bit-exact, and it used to be a formatted string.</strong> The states were found
+        /// by keying a set on <c>ConstellationPoint.ToString()</c>, which formats two doubles to
+        /// three places. That is two allocations and two number formats per symbol, on a scan run
+        /// once for the ideal-state overlay and again for the decision boundaries — a hundred
+        /// thousand symbols spent about 150 ms a frame in <c>double.ToString</c> and nothing else.
+        /// It was also wrong at the top of the range: three decimal places merge two states of a
+        /// 4096-QAM that are a thousandth apart, so the display would draw one overlay where the
+        /// decision has two regions.
+        /// </para>
+        /// <para>
+        /// Ordered so that a state's index is a property of the constellation rather than of the
+        /// order the symbols happened to arrive in, which is what lets
+        /// <see cref="DecisionBoundaries"/> compare one scan's states against the last one's.
+        /// </para>
+        /// </remarks>
+        public static ConstellationPoint[] IdealStates(SymbolTrace trace)
         {
-            var seen = new HashSet<string>(StringComparer.Ordinal);
+            if (trace == null)
+            {
+                throw new ArgumentNullException(nameof(trace));
+            }
+
+            var seen = new HashSet<long>();
+            var states = new List<ConstellationPoint>();
 
             for (int symbol = 0; symbol < trace.SymbolCount; symbol++)
             {
                 ConstellationPoint ideal = trace.Ideal[symbol];
-                string key = ideal.ToString();
+
+                long key = BitConverter.DoubleToInt64Bits(ideal.I) ^
+                    RotateLeft(BitConverter.DoubleToInt64Bits(ideal.Q));
 
                 if (seen.Add(key))
                 {
-                    yield return ideal;
+                    states.Add(ideal);
                 }
             }
+
+            states.Sort((left, right) =>
+            {
+                int byI = left.I.CompareTo(right.I);
+
+                return byI != 0 ? byI : left.Q.CompareTo(right.Q);
+            });
+
+            return states.ToArray();
         }
+
+        /// <summary>
+        /// Turns the second half of a key so that <c>(a, b)</c> and <c>(b, a)</c> differ.
+        /// </summary>
+        /// <remarks>
+        /// A plain exclusive-or of the two bit patterns collides for every point on the diagonal's
+        /// mirror — <c>(1, −1)</c> and <c>(−1, 1)</c> hash alike — which for a QAM is half the
+        /// constellation.
+        /// </remarks>
+        private static long RotateLeft(long bits) =>
+            (long)(((ulong)bits << 32) | ((ulong)bits >> 32));
 
         private static void DrawSymbol(
             PixelSurface surface, int x, int y, PixelRect area, PlotColor colour)
@@ -325,11 +547,14 @@ namespace OpenVSA.Ui.Rendering
     /// </remarks>
     public readonly struct ConstellationRender
     {
-        internal ConstellationRender(int symbols, int segments, int overlays)
+        internal ConstellationRender(
+            int symbols, int segments, int overlays, int boundaryCells, int densityCells)
         {
             SymbolsDrawn = symbols;
             SegmentsDrawn = segments;
             OverlaysDrawn = overlays;
+            BoundaryCells = boundaryCells;
+            DensityCells = densityCells;
         }
 
         /// <summary>How many symbol points were drawn.</summary>
@@ -341,9 +566,24 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>How many ideal states were overlaid.</summary>
         public int OverlaysDrawn { get; }
 
+        /// <summary>How many cells the decision-boundary overlay occupied; zero when off.</summary>
+        public int BoundaryCells { get; }
+
+        /// <summary>
+        /// How many cells the density rendering painted; zero when the symbols were drawn as
+        /// points.
+        /// </summary>
+        /// <remarks>
+        /// Far fewer than <see cref="SymbolsDrawn"/> once the constellation is crowded, which is
+        /// the whole reason <c>REQ-DEM-082</c> offers it for large symbol counts: the work stops
+        /// scaling with the symbols and starts scaling with the display.
+        /// </remarks>
+        public int DensityCells { get; }
+
         /// <inheritdoc />
         public override string ToString() =>
-            SymbolsDrawn + " symbols, " + SegmentsDrawn + " segments, " + OverlaysDrawn + " ideals";
+            SymbolsDrawn + " symbols, " + SegmentsDrawn + " segments, " + OverlaysDrawn +
+            " ideals, " + BoundaryCells + " boundary cells, " + DensityCells + " density cells";
     }
 
     /// <summary>
@@ -365,6 +605,57 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>The colour of the inter-symbol trajectory, in the IQ/vector format.</summary>
         public PlotColor Trajectory { get; set; } = new PlotColor(0x40, 0x80, 0xC0);
+
+        /// <summary>The colour of the decision-boundary overlay (<c>REQ-DEM-082</c>).</summary>
+        /// <remarks>
+        /// Dimmer than the ideal-state overlay, which is itself dimmer than the symbols. The
+        /// boundary covers far more of the display than either, so at equal weight it would be the
+        /// loudest thing on a constellation rather than the quietest.
+        /// </remarks>
+        public PlotColor DecisionBoundary { get; set; } = new PlotColor(0x38, 0x38, 0x44);
+
+        /// <summary>
+        /// The map a symbol's error magnitude is coloured through (<c>REQ-DEM-082</c>).
+        /// </summary>
+        /// <remarks>
+        /// <c>REQ-UI-024</c>'s map, for the same reason the density heat map uses it: one idea, one
+        /// map, and a user who has chosen how magnitude reads has chosen it here too.
+        /// </remarks>
+        public SpectrogramColourMap ErrorMap { get; set; } = SpectrogramColourMap.Default;
+
+        /// <summary>
+        /// The colour a symbol takes for its error magnitude.
+        /// </summary>
+        /// <param name="magnitude">How far the symbol landed from its ideal state.</param>
+        /// <param name="fullScale">The magnitude at the top of the map.</param>
+        /// <remarks>
+        /// Linear, unlike the density ramps. A density spans three or four decades and has to be
+        /// compressed to be read; error magnitudes span rather less than one, and compressing them
+        /// would flatten the difference between a symbol at the decision boundary and one at its
+        /// ideal state — which is the difference the colouring exists to show.
+        /// </remarks>
+        public PlotColor ForError(double magnitude, double fullScale)
+        {
+            SpectrogramColourMap map = ErrorMap;
+
+            if (map == null || fullScale <= 0.0 || double.IsNaN(magnitude))
+            {
+                return Symbol;
+            }
+
+            double share = magnitude / fullScale;
+
+            if (share < 0.0)
+            {
+                share = 0.0;
+            }
+            else if (share > 1.0)
+            {
+                share = 1.0;
+            }
+
+            return map.At(share);
+        }
 
         /// <summary>
         /// The <c>Mod Type N</c> colours, for a mixed-modulation result.

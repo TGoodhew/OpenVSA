@@ -105,6 +105,9 @@ namespace OpenVSA.Ui.Rendering
         private EyeComponent _eyeComponent = EyeComponent.InPhase;
         private double _eyeLength = EyeRasterizer.DefaultLengthSymbols;
         private bool _eyePersistence;
+        private SymbolColouring _symbolColouring = SymbolColouring.Fixed;
+        private bool _showDecisionBoundaries;
+        private ConstellationDensity _density;
 
         private TraceAccumulator _accumulator = TraceAccumulator.None;
         private Spectrogram _history;
@@ -598,6 +601,71 @@ namespace OpenVSA.Ui.Rendering
         /// <summary>The colours a constellation draws with.</summary>
         public ConstellationColours ConstellationColours { get; } = new ConstellationColours();
 
+        /// <summary>What decides a measured symbol's colour (<c>REQ-DEM-082</c>).</summary>
+        public SymbolColouring SymbolColouring
+        {
+            get { return _symbolColouring; }
+
+            set
+            {
+                if (_symbolColouring == value)
+                {
+                    return;
+                }
+
+                _symbolColouring = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// Whether the decision boundaries are drawn under the constellation
+        /// (<c>REQ-DEM-082</c>).
+        /// </summary>
+        public bool ShowDecisionBoundaries
+        {
+            get { return _showDecisionBoundaries; }
+
+            set
+            {
+                if (_showDecisionBoundaries == value)
+                {
+                    return;
+                }
+
+                _showDecisionBoundaries = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>The decision-boundary overlay, and its cache.</summary>
+        public DecisionBoundaries DecisionBoundaries { get; } = new DecisionBoundaries();
+
+        /// <summary>
+        /// The density accumulator the symbols are drawn through, or null to draw them as points
+        /// (<c>REQ-DEM-082</c>).
+        /// </summary>
+        /// <remarks>
+        /// Null by default: persistence and the heat map are what a crowded constellation wants,
+        /// and drawing a hundred symbols through an accumulator would tell you only that a hundred
+        /// cells hold one symbol each.
+        /// </remarks>
+        public ConstellationDensity ConstellationDensity
+        {
+            get { return _density; }
+
+            set
+            {
+                if (ReferenceEquals(_density, value))
+                {
+                    return;
+                }
+
+                _density = value;
+                Redraw(_snapshot);
+            }
+        }
+
         /// <summary>The colours an eye draws with.</summary>
         public EyeColours EyeColours { get; } = new EyeColours();
 
@@ -688,8 +756,15 @@ namespace OpenVSA.Ui.Rendering
                         graticule,
                         _result,
                         ConstellationColours,
-                        _idealStates,
-                        _resultKind == ResultTraceKind.IqVector);
+                        new ConstellationOptions
+                        {
+                            IdealStates = _idealStates,
+                            Connect = _resultKind == ResultTraceKind.IqVector,
+                            Colouring = _symbolColouring,
+                            DecisionBoundaries =
+                                _showDecisionBoundaries ? DecisionBoundaries : null,
+                            Density = _density,
+                        });
                     break;
 
                 case ResultTraceKind.Eye:
