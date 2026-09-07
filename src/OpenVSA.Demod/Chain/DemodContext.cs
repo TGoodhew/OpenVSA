@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
@@ -102,6 +102,31 @@ namespace OpenVSA.Demod.Chain
 
         /// <summary>How many symbols the Result Length window holds.</summary>
         internal int ResultSymbolCount { get; set; }
+
+        /// <summary>
+        /// Step 7's pre-demodulation window: 1.2 x the Result Length (<c>REQ-DEM-032</c>).
+        /// </summary>
+        /// <remarks>
+        /// Written by step 7 and read by nothing else in the chain. That isolation is the
+        /// criterion's "result traces are unaffected" made structural rather than asserted: no
+        /// later step can see this, so no later step can be changed by it.
+        /// </remarks>
+        internal double[] PreDemod { get; set; }
+
+        /// <summary>Where <see cref="PreDemod"/> starts within <see cref="Working"/>, in samples.</summary>
+        internal int PreDemodStartSample { get; set; }
+
+        /// <summary>
+        /// Where the first result symbol sits within <see cref="PreDemod"/>, in samples.
+        /// </summary>
+        /// <remarks>
+        /// What lets a display draw the Result Length window's extent on the wider trace, which is
+        /// the whole use of the wider trace: seeing what was excluded, and where.
+        /// </remarks>
+        internal int PreDemodResultOffsetSamples { get; set; }
+
+        /// <summary>How many symbols <see cref="PreDemod"/> spans, which need not be whole.</summary>
+        internal double PreDemodSymbolSpan { get; set; }
 
         /// <summary>
         /// The residual carrier frequency, in hertz, accumulated across the passes and on top of

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -78,11 +78,13 @@ namespace OpenVSA.Demod.Chain
             IList<ConstellationPoint> equaliser,
             LockReport lockReport,
             MeasurementProvenance provenance,
-            ChannelResponse channel)
+            ChannelResponse channel,
+            PreDemodWaveform preDemod)
         {
             Lock = lockReport;
             Provenance = provenance;
             ChannelResponse = channel;
+            PreDemod = preDemod;
 
             _reference = reference ?? new float[0];
             _equaliser = equaliser == null
@@ -103,6 +105,18 @@ namespace OpenVSA.Demod.Chain
 
         /// <summary>The result trace: the constellation, the symbols and the samples behind them.</summary>
         public SymbolTrace Trace { get; }
+
+        /// <summary>
+        /// The pre-demodulation window, 20 % wider than the Result Length (<c>REQ-DEM-032</c>).
+        /// </summary>
+        /// <remarks>
+        /// Always present on a demodulation that produced a result window, because the criterion
+        /// asks that the result be the same whether or not a pre-demodulation trace is displayed
+        /// and the surest way to keep that promise is to give the display nothing to switch. Null
+        /// only where step 7 could not cut a window at all, which is a record too short to have
+        /// produced a result either.
+        /// </remarks>
+        public PreDemodWaveform PreDemod { get; }
 
         /// <summary>
         /// The waveform quality factor (<c>REQ-DEM-068</c>), or <c>NaN</c> when there was nothing to

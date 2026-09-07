@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using OpenVSA.Demod.Chain.Steps;
@@ -385,7 +385,44 @@ namespace OpenVSA.Demod.Chain
                 Points(context.EqualiserCoefficients),
                 judgement,
                 provenance,
-                channel);
+                channel,
+                PreDemod(context, settings));
+        }
+
+        /// <summary>
+        /// Packages step 7's pre-demodulation window for the result (<c>REQ-DEM-032</c>).
+        /// </summary>
+        /// <param name="context">The finished chain state.</param>
+        /// <param name="settings">What was asked for.</param>
+        /// <returns>The window, or <c>null</c> where step 7 could not cut one.</returns>
+        /// <remarks>
+        /// Widened to <c>float</c> here rather than in step 7, to match
+        /// <see cref="SymbolTrace.Samples"/>: the two waveforms are drawn by the same displays and
+        /// a difference in width between them would be a difference in what the pixels mean.
+        /// </remarks>
+        private static PreDemodWaveform PreDemod(DemodContext context, DemodSettings settings)
+        {
+            double[] window = context.PreDemod;
+
+            if (window == null || window.Length == 0)
+            {
+                return null;
+            }
+
+            var samples = new float[window.Length];
+
+            for (int index = 0; index < window.Length; index++)
+            {
+                samples[index] = (float)window[index];
+            }
+
+            return new PreDemodWaveform(
+                samples,
+                settings.PointsPerSymbol,
+                settings.SymbolRateHz,
+                context.PreDemodResultOffsetSamples,
+                context.ResultSymbolCount,
+                context.PreDemodSymbolSpan);
         }
     }
 }

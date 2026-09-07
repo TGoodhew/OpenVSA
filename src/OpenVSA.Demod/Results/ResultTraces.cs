@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using OpenVSA.Demod.Chain;
@@ -58,7 +58,14 @@ namespace OpenVSA.Demod.Results
     /// <summary>What a trace's horizontal axis counts.</summary>
     public enum ResultTraceDomain
     {
-        /// <summary>Samples of the result window.</summary>
+        /// <summary>
+        /// Samples of the analysed window.
+        /// </summary>
+        /// <remarks>
+        /// Which window is the trace's own business: a result trace's samples are the Result
+        /// Length's, a pre-demodulation trace's are the 20 % wider window of <c>REQ-DEM-032</c>.
+        /// The domain says what the axis counts, not how much of it there is.
+        /// </remarks>
         Sample = 0,
 
         /// <summary>Symbols of the result.</summary>
@@ -171,9 +178,39 @@ namespace OpenVSA.Demod.Results
     /// </remarks>
     public static class ResultTraces
     {
+        /// <summary>
+        /// <c>REQ-DEM-080</c>'s catalogue, written out rather than enumerated.
+        /// </summary>
+        /// <remarks>
+        /// <strong>It used to be <c>Enum.GetValues</c>, and that was a trap waiting for the next
+        /// trace family.</strong> The requirement's criteria close this list at fifteen and a test
+        /// asserts the count, so any member added to <see cref="ResultTrace"/> for some other
+        /// purpose would have joined the catalogue silently and turned that assertion into a
+        /// statement about the enum rather than about the requirement. <c>REQ-DEM-032</c>'s
+        /// pre-demodulation traces are the family that would have done it; they live in
+        /// <see cref="PreDemodTraces"/>, in an enum of their own, and this list is now the
+        /// requirement's own list rather than a reflection of the type.
+        /// </remarks>
         private static readonly ReadOnlyCollection<ResultTrace> Catalogue =
             new ReadOnlyCollection<ResultTrace>(
-                new List<ResultTrace>((ResultTrace[])Enum.GetValues(typeof(ResultTrace))));
+                new List<ResultTrace>
+                {
+                    ResultTrace.IqMeasuredTime,
+                    ResultTrace.IqReferenceTime,
+                    ResultTrace.Constellation,
+                    ResultTrace.IqVector,
+                    ResultTrace.EyeI,
+                    ResultTrace.EyeQ,
+                    ResultTrace.Trellis,
+                    ResultTrace.ErrorVectorTime,
+                    ResultTrace.ErrorVectorSpectrum,
+                    ResultTrace.MagnitudeError,
+                    ResultTrace.PhaseError,
+                    ResultTrace.SymbolTable,
+                    ResultTrace.ErrorSummary,
+                    ResultTrace.EqualiserImpulseResponse,
+                    ResultTrace.ChannelFrequencyResponse,
+                });
 
         /// <summary>Every trace the catalogue lists.</summary>
         public static IReadOnlyList<ResultTrace> All => Catalogue;

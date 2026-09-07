@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using OpenVSA.Demod.Signal;
 
@@ -162,7 +162,103 @@ namespace OpenVSA.Demod.Chain.Steps
             context.ResultSymbolCount = count;
             context.TimingSamples = offset;
 
+            TakePreDemodWindow(context, working, first, count, perSymbol);
+
             return StepOutcome.Continue;
+        }
+
+        /// <summary>
+        /// Cuts the pre-demodulation window: 1.2 x the Result Length (<c>REQ-DEM-032</c>).
+        /// </summary>
+        /// <param name="context">The chain's state.</param>
+        /// <param name="working">The waveform at the internal processing rate.</param>
+        /// <param name="first">The first symbol instant, in samples of <paramref name="working"/>.</param>
+        /// <param name="count">How many symbols the result window actually holds.</param>
+        /// <param name="perSymbol">Samples per symbol at the internal rate.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>Cut unconditionally, and that is the point.</strong> The criterion asks that the
+        /// result be identical "whether or not a pre-demodulation trace is displayed", and the way
+        /// to make that true is to leave the display no say in it. There is no flag here and no
+        /// flag in the settings: every demodulation carries this window, the displays choose what
+        /// to draw from a result that already has both, and the two can no more disagree than a
+        /// number can differ from itself. A conditional cut would be cheaper on the runs where
+        /// nobody looks, and would put the criterion at the mercy of a code path.
+        /// </para>
+        /// <para>
+        /// <strong>Proportional, not padded.</strong> The extra is 0.2 of the symbols actually
+        /// analysed, split evenly either side, so the factor holds at every Result Length rather
+        /// than at the one it was tuned on. It is taken from the ACHIEVED count rather than the
+        /// setting: where a short record forced the result window down, 1.2 x what was analysed is
+        /// the honest statement, and 1.2 x what was asked for would describe a window neither trace
+        /// has.
+        /// </para>
+        /// <para>
+        /// <strong>Either side by preference, because the transitions are at both ends.</strong> A
+        /// burst has a leading ramp and a trailing one, and a window extended only forwards would
+        /// show one and hide the other -- which reads as an asymmetric transmitter rather than an
+        /// asymmetric window.
+        /// </para>
+        /// <para>
+        /// <strong>But the SPAN is the requirement and the symmetry is only a preference, so what
+        /// one end cannot take the other one does.</strong> This is not a corner case: with no sync
+        /// pattern and no burst the result window starts at the measurement filter's transient,
+        /// which is a few tens of samples into the waveform, and there is nowhere near a tenth of a
+        /// Result Length in front of it. Splitting evenly and clamping gave 1.19 at 64 symbols
+        /// falling to 1.12 at 384 -- a factor that drifts with the Result Length, which is exactly
+        /// what the criterion checks several lengths to catch. Redistributing holds 1.2 wherever
+        /// the record has the samples anywhere.
+        /// </para>
+        /// <para>
+        /// Clamped only when the whole record is too short. Then the window takes what there is: a
+        /// shorter pre-demodulation trace is a true statement about a short record, and refusing to
+        /// produce one would lose the result over a trace that only decorates it.
+        /// <see cref="DemodContext.PreDemodSymbolSpan"/> reports what was actually spanned, so a
+        /// display never has to assume the factor it asked for is the factor it got.
+        /// </para>
+        /// </remarks>
+        private static void TakePreDemodWindow(
+            DemodContext context, double[] working, int first, int count, int perSymbol)
+        {
+            int samples = Iq.Count(working);
+            int last = first + ((count - 1) * perSymbol);
+
+            // THE WHOLE WINDOW IS SIZED, NOT THE PADDING. The Result Length is count symbols, which
+            // is count * perSymbol samples; the result window itself holds one sample fewer than
+            // that per end symbol, spanning (count - 1) symbols and a sample. Adding 0.2 of a
+            // Result Length to THAT gives 1.2 x count minus three quarters of a symbol -- 1.191 at
+            // 64 symbols against 1.199 at 384, a factor that creeps with the Result Length for a
+            // reason that has nothing to do with the requirement. Asking for 1.2 x count symbols
+            // outright and making the padding the remainder gives 1.200 at every length.
+            int wanted = (int)Math.Round(1.2 * count * perSymbol);
+            int extra = Math.Max(0, wanted - (last - first + 1));
+
+            int before = Math.Min(extra / 2, first);
+            int after = Math.Min(extra - before, Math.Max(0, samples - last - 1));
+
+            // Whatever the trailing end could not take, offer back to the leading end, and vice
+            // versa. One pass each way is enough: the second offer can only be limited by a bound
+            // the first already respected.
+            before = Math.Min(before + (extra - before - after), first);
+            after = Math.Min(extra - before, Math.Max(0, samples - last - 1));
+
+            int begin = first - before;
+            int end = Math.Min(samples, last + after + 1);
+            int length = end - begin;
+
+            if (length <= 0)
+            {
+                return;
+            }
+
+            var window = new double[2 * length];
+
+            Array.Copy(working, 2 * begin, window, 0, 2 * length);
+
+            context.PreDemod = window;
+            context.PreDemodStartSample = begin;
+            context.PreDemodResultOffsetSamples = first - begin;
+            context.PreDemodSymbolSpan = (double)length / perSymbol;
         }
 
         /// <remarks>
