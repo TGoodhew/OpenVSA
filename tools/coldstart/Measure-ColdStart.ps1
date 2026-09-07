@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Measures REQ-NFR-025  -  cold start to first trace  -  on a machine that has just had OpenVSA
     installed for the first time (issue #410).
@@ -127,7 +127,29 @@ if (-not $shell) {
 
 Say "shell        : $shell"
 Say "file version : $((Get-Item $shell).VersionInfo.FileVersion)"
-Say "installed    : $((Get-Item $shell).CreationTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+Say "built        : $((Get-Item $shell).LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+
+# The file's own timestamps are the BUILD, not the install: the MSI copies the payload and the
+# copy carries the build's times with it. The first log taken with this harness said
+# "installed 2026-08-08" for an MSI that had been run three weeks later, which is the sort of
+# wrong that gets believed. The install date belongs to Windows, so it is asked.
+$installedOn = $null
+
+foreach ($hive in @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
+    try {
+        $entry = Get-ItemProperty $hive -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -like 'OpenVSA*' } | Select-Object -First 1
+
+        if ($entry -and $entry.InstallDate) {
+            $installedOn = $entry.InstallDate
+            break
+        }
+    } catch { }
+}
+
+Say "installed    : $(if ($installedOn) { $installedOn } else { 'not recorded by Windows' })"
 
 # ---------------------------------------------------------------------------------------------
 # THE MEASUREMENT IS ONLY VALID IF THE SHELL HAS NEVER RUN HERE.
@@ -160,12 +182,67 @@ Section 'Native images (NGen)'
 $ngen = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\ngen.exe'
 
 if (Test-Path $ngen) {
-    $display = & $ngen display OpenVSA 2>&1 | Out-String
-    $native = $display -match 'OpenVSA'
+    # ---------------------------------------------------------------------------------------
+    # EVERY assembly beside the shell, not just the one called OpenVSA.
+    #
+    # This used to ask `ngen display OpenVSA` and report the answer as though it covered the
+    # installation. It does not: ngen matches a PARTIAL ASSEMBLY NAME, and a partial name still
+    # has to match the simple name exactly -- so "OpenVSA" says nothing whatever about
+    # OpenVSA.Core, OpenVSA.Dsp, or the 21.7 MB of Syncfusion that the start-up path spends most
+    # of its time reading. The v0.1.1 log read like a clean bill of health and was silent on
+    # everything that mattered.
+    #
+    # The installer's NativeImage element runs `ngen install` on the shell, whose documented
+    # behaviour is to take the dependency closure with it. Documented is not measured, and this
+    # is the measurement: what is asked for here is the LIST OF ASSEMBLIES THAT WERE MISSED,
+    # because that list is the difference between a cold start that jits 20 MB and one that
+    # does not.
+    # ---------------------------------------------------------------------------------------
+    $payload = Get-ChildItem -Path (Split-Path $shell) -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -eq '.dll' -or $_.Extension -eq '.exe' }
 
-    Say "ngen display OpenVSA -> $(if ($native) { 'native images present' } else { 'NONE' })"
-    foreach ($line in ($display -split "`r?`n" | Where-Object { $_.Trim() })) { Say "  $line" }
+    $withImage = New-Object System.Collections.Generic.List[string]
+    $without = New-Object System.Collections.Generic.List[string]
+    $unmanaged = New-Object System.Collections.Generic.List[string]
 
+    foreach ($file in $payload) {
+        $simple = [IO.Path]::GetFileNameWithoutExtension($file.Name)
+
+        try {
+            [Reflection.AssemblyName]::GetAssemblyName($file.FullName) | Out-Null
+        } catch {
+            # Native code -- OpenVSA.Fft.Native.dll is the one that matters. Not a candidate for
+            # a native image because it already is one, and counting it as "missed" would be a
+            # false alarm on every run.
+            $unmanaged.Add($simple)
+            continue
+        }
+
+        $one = & $ngen display $simple 2>&1 | Out-String
+
+        if ($one -match 'not installed' -or $one -notmatch [regex]::Escape($simple)) {
+            $without.Add($simple)
+        } else {
+            $withImage.Add($simple)
+        }
+    }
+
+    $native = $withImage.Count -gt 0
+
+    Say "payload assemblies : $($payload.Count) beside the shell"
+    Say "native images      : $($withImage.Count) present, $($without.Count) missing, $($unmanaged.Count) unmanaged"
+
+    if ($without.Count -gt 0) {
+        Say ''
+        Say 'NO NATIVE IMAGE (these are jitted on the cold launch):'
+        foreach ($name in $without) { Say "  $name" }
+    }
+
+    if ($unmanaged.Count -gt 0) {
+        Say "unmanaged (native already): $($unmanaged -join ', ')"
+    }
+
+    Say ''
     $queued = & $ngen queue status 2>&1 | Out-String
     foreach ($line in ($queued -split "`r?`n" | Where-Object { $_.Trim() })) { Say "  $line" }
 

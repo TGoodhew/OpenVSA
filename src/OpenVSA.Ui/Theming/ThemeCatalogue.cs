@@ -1,6 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
 using Syncfusion.SfSkinManager;
@@ -301,24 +302,68 @@ namespace OpenVSA.Ui.Theming
 
             if (string.Equals(theme.Skin, "FluentDark", StringComparison.Ordinal))
             {
-                SfSkinManager.RegisterThemeSettings(
-                    theme.Skin,
-                    new FluentDarkThemeSettings
-                    {
-                        PrimaryBackground = accent,
-                        PrimaryColorForeground = onAccent,
-                    });
+                RegisterDarkAccent(theme.Skin, accent, onAccent);
             }
             else if (string.Equals(theme.Skin, "FluentLight", StringComparison.Ordinal))
             {
-                SfSkinManager.RegisterThemeSettings(
-                    theme.Skin,
-                    new FluentLightThemeSettings
-                    {
-                        PrimaryBackground = accent,
-                        PrimaryColorForeground = onAccent,
-                    });
+                RegisterLightAccent(theme.Skin, accent, onAccent);
             }
+        }
+
+        /// <summary>Registers the dark skin's accent. See the remarks on the light one.</summary>
+        /// <param name="skin">The skin's name.</param>
+        /// <param name="accent">The accent brush.</param>
+        /// <param name="onAccent">What is drawn on top of the accent.</param>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void RegisterDarkAccent(string skin, Brush accent, Brush onAccent)
+        {
+            SfSkinManager.RegisterThemeSettings(
+                skin,
+                new FluentDarkThemeSettings
+                {
+                    PrimaryBackground = accent,
+                    PrimaryColorForeground = onAccent,
+                });
+        }
+
+        /// <summary>
+        /// Registers the light skin's accent.
+        /// </summary>
+        /// <param name="skin">The skin's name.</param>
+        /// <param name="accent">The accent brush.</param>
+        /// <param name="onAccent">What is drawn on top of the accent.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>A method of its own, and not inlined, for <c>REQ-NFR-025</c>.</strong> These two
+        /// bodies used to be the arms of one <c>if</c> inside <see cref="RegisterAccent"/>, and the
+        /// jit resolves every type a method names when it compiles that method — not when the arm
+        /// runs. So applying <em>either</em> theme loaded <em>both</em>
+        /// <c>Syncfusion.Themes.FluentDark.WPF.dll</c> and
+        /// <c>Syncfusion.Themes.FluentLight.WPF.dll</c>: 4.47 MB each, one millisecond apart in the
+        /// assembly load order, and one of them for a skin the shell was not drawing.
+        /// </para>
+        /// <para>
+        /// Splitting them puts each type behind a call that is only made for its own skin, and
+        /// <see cref="MethodImplOptions.NoInlining"/> is what keeps it that way — inlined back into
+        /// the caller, both arms would be in one method body again and the loads would return
+        /// with them. That is the whole reason the attribute is here; it is not a hint.
+        /// </para>
+        /// <para>
+        /// Measured on the start-up path: the unused theme assembly no longer loads at all. The
+        /// cost it was adding is a cold read, so it does not show in a warm launch — see the
+        /// cold-start log in <c>artifacts/coldstart/</c> and issue #410.
+        /// </para>
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void RegisterLightAccent(string skin, Brush accent, Brush onAccent)
+        {
+            SfSkinManager.RegisterThemeSettings(
+                skin,
+                new FluentLightThemeSettings
+                {
+                    PrimaryBackground = accent,
+                    PrimaryColorForeground = onAccent,
+                });
         }
 
         /// <summary>
