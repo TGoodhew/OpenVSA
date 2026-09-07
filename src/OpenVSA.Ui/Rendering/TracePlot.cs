@@ -104,6 +104,11 @@ namespace OpenVSA.Ui.Rendering
         private IdealStateOverlay _idealStates = IdealStateOverlay.Crosshair;
         private EyeComponent _eyeComponent = EyeComponent.InPhase;
         private double _eyeLength = EyeRasterizer.DefaultLengthSymbols;
+        private bool _eyePersistence;
+        private SymbolColouring _symbolColouring = SymbolColouring.Fixed;
+        private bool _showDecisionBoundaries;
+        private ConstellationDensity _density;
+        private SymbolSelection _selection;
 
         private TraceAccumulator _accumulator = TraceAccumulator.None;
         private Spectrogram _history;
@@ -254,6 +259,16 @@ namespace OpenVSA.Ui.Rendering
         /// Pixel columns across the graticule: what a <see cref="RenderMarshal"/> must decimate to.
         /// </summary>
         public int GraticuleColumns => _layout == null ? 0 : _layout.Graticule.Width;
+
+        /// <summary>
+        /// The rectangle the traces are drawn in, in the surface's own coordinates.
+        /// </summary>
+        /// <remarks>
+        /// What <see cref="SelectAt"/> hit-tests within, and what a caller needs to work out where
+        /// a given symbol was drawn — the reverse of the mapping <see cref="SelectAt"/> applies.
+        /// </remarks>
+        public PixelRect GraticuleArea =>
+            _layout == null ? new PixelRect(0, 0, 0, 0) : _layout.Graticule;
 
         /// <summary>The colours of <c>REQ-UI-010</c>'s zones.</summary>
         /// <exception cref="ArgumentNullException">The value is null.</exception>
@@ -583,6 +598,12 @@ namespace OpenVSA.Ui.Rendering
             set
             {
                 _result = value;
+
+                // REQ-DEM-083: the selection survives a measurement update if the symbol still
+                // exists and clears if it does not. Reconciled before the redraw, so a shorter
+                // result never draws a highlight for a symbol it no longer has.
+                _selection?.Update(_result);
+
                 Redraw(_snapshot);
             }
         }
@@ -596,6 +617,71 @@ namespace OpenVSA.Ui.Rendering
 
         /// <summary>The colours a constellation draws with.</summary>
         public ConstellationColours ConstellationColours { get; } = new ConstellationColours();
+
+        /// <summary>What decides a measured symbol's colour (<c>REQ-DEM-082</c>).</summary>
+        public SymbolColouring SymbolColouring
+        {
+            get { return _symbolColouring; }
+
+            set
+            {
+                if (_symbolColouring == value)
+                {
+                    return;
+                }
+
+                _symbolColouring = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// Whether the decision boundaries are drawn under the constellation
+        /// (<c>REQ-DEM-082</c>).
+        /// </summary>
+        public bool ShowDecisionBoundaries
+        {
+            get { return _showDecisionBoundaries; }
+
+            set
+            {
+                if (_showDecisionBoundaries == value)
+                {
+                    return;
+                }
+
+                _showDecisionBoundaries = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>The decision-boundary overlay, and its cache.</summary>
+        public DecisionBoundaries DecisionBoundaries { get; } = new DecisionBoundaries();
+
+        /// <summary>
+        /// The density accumulator the symbols are drawn through, or null to draw them as points
+        /// (<c>REQ-DEM-082</c>).
+        /// </summary>
+        /// <remarks>
+        /// Null by default: persistence and the heat map are what a crowded constellation wants,
+        /// and drawing a hundred symbols through an accumulator would tell you only that a hundred
+        /// cells hold one symbol each.
+        /// </remarks>
+        public ConstellationDensity ConstellationDensity
+        {
+            get { return _density; }
+
+            set
+            {
+                if (ReferenceEquals(_density, value))
+                {
+                    return;
+                }
+
+                _density = value;
+                Redraw(_snapshot);
+            }
+        }
 
         /// <summary>The colours an eye draws with.</summary>
         public EyeColours EyeColours { get; } = new EyeColours();
@@ -630,6 +716,95 @@ namespace OpenVSA.Ui.Rendering
             }
         }
 
+        /// <summary>
+        /// Whether an eye shades its paths by how often they are taken (<c>REQ-DEM-081</c>).
+        /// </summary>
+        /// <remarks>
+        /// Optional, and off by default: the shading is an aid to reading a crowded eye, and a
+        /// sparse one reads better without it. Turning it on and off changes the colours the eye is
+        /// drawn in and not the shape it draws, which is the requirement's own criterion.
+        /// </remarks>
+        public bool EyePersistence
+        {
+            get { return _eyePersistence; }
+
+            set
+            {
+                if (_eyePersistence == value)
+                {
+                    return;
+                }
+
+                _eyePersistence = value;
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// The symbol selection this plot shows and sets (<c>REQ-DEM-083</c>), or null.
+        /// </summary>
+        /// <remarks>
+        /// Shared with the symbol table and with any other plot showing the same measurement — one
+        /// selection, several surfaces, which is what "and vice versa" asks for. Setting it
+        /// subscribes; the plot redraws when the selection moves and never writes to it except from
+        /// <see cref="SelectAt"/>.
+        /// </remarks>
+        public SymbolSelection Selection
+        {
+            get { return _selection; }
+
+            set
+            {
+                if (ReferenceEquals(_selection, value))
+                {
+                    return;
+                }
+
+                if (_selection != null)
+                {
+                    _selection.Changed -= OnSelectionChanged;
+                }
+
+                _selection = value;
+
+                if (_selection != null)
+                {
+                    _selection.Changed += OnSelectionChanged;
+                }
+
+                Redraw(_snapshot);
+            }
+        }
+
+        /// <summary>
+        /// Selects the symbol nearest a point of the display (<c>REQ-DEM-083</c>).
+        /// </summary>
+        /// <param name="x">The column pointed at.</param>
+        /// <param name="y">The row pointed at.</param>
+        /// <returns>The symbol selected, or <see cref="SymbolSelection.None"/>.</returns>
+        /// <remarks>
+        /// Only from a constellation or vector format: an eye's horizontal axis is a symbol's worth
+        /// of time with every symbol folded onto it, so a point of it belongs to every symbol at
+        /// once and answering with one of them would be a guess.
+        /// </remarks>
+        public int SelectAt(int x, int y)
+        {
+            if (_selection == null || !IsShowingResult ||
+                (_resultKind != ResultTraceKind.Constellation &&
+                 _resultKind != ResultTraceKind.IqVector))
+            {
+                return SymbolSelection.None;
+            }
+
+            int symbol = ConstellationRasterizer.SymbolNear(_result, _layout.Graticule, x, y);
+
+            _selection.Select(symbol);
+
+            return symbol;
+        }
+
+        private void OnSelectionChanged(object sender, EventArgs e) => Redraw(_snapshot);
+
         /// <summary>Whether this plot is drawing a demodulation result rather than a spectrum.</summary>
         public bool IsShowingResult =>
             _resultKind != ResultTraceKind.None && _result != null && _result.SymbolCount > 0;
@@ -663,13 +838,25 @@ namespace OpenVSA.Ui.Rendering
                         graticule,
                         _result,
                         ConstellationColours,
-                        _idealStates,
-                        _resultKind == ResultTraceKind.IqVector);
+                        new ConstellationOptions
+                        {
+                            IdealStates = _idealStates,
+                            Connect = _resultKind == ResultTraceKind.IqVector,
+                            Colouring = _symbolColouring,
+                            DecisionBoundaries =
+                                _showDecisionBoundaries ? DecisionBoundaries : null,
+                            Density = _density,
+                            Selected = _selection == null
+                                ? SymbolSelection.None
+                                : _selection.Selected,
+                        });
                     break;
 
                 case ResultTraceKind.Eye:
                     LastEyeRender = EyeRasterizer.Render(
-                        _surface, graticule, _result, _eyeComponent, _eyeLength, EyeColours);
+                        _surface, graticule, _result, _eyeComponent, _eyeLength, EyeColours,
+                        0.0, _eyePersistence,
+                        _selection == null ? SymbolSelection.None : _selection.Selected);
                     break;
             }
         }

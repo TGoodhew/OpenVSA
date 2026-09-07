@@ -479,6 +479,336 @@ namespace OpenVSA.Ui.Tests
     }
 
     /// <summary>
+    /// <c>REQ-DEM-081</c>: how the eye is built, rather than how it is laid out.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>Why these live beside <c>REQ-UI-051</c>'s.</strong> <c>REQ-DEM-081</c>'s own
+    /// criterion ends by deferring to it — "the rendered eye satisfies <c>REQ-UI-051</c>'s centring
+    /// and reference-line criteria" — and <c>REQ-DEM-080</c> settled that the fold belongs to the
+    /// display and what a result owes it is the period to fold on. So construction and layout are
+    /// the same code, and these are the clauses layout does not cover: that every symbol in the
+    /// Result Length contributes a fold, and what persistence shading may and may not change.
+    /// </para>
+    /// </remarks>
+    public class EyeConstructionTests
+    {
+        private readonly ITestOutputHelper _output;
+
+        /// <summary>Takes xunit's output sink.</summary>
+        /// <param name="output">Where measured figures are written.</param>
+        public EyeConstructionTests(ITestOutputHelper output)
+        {
+            _output = output;
+        }
+
+        [Fact]
+        public void EveryFoldTheResultLengthImpliesIsBuiltAtEveryEyeLength()
+        {
+            // "The eye is built from the measured waveform across the whole Result Length, folded
+            // on the symbol clock — the trace count equals the number of folds the Result Length
+            // and eye length imply, so a partial build fails."
+            SymbolTrace trace = ConstellationTests.Result(ModulationScheme.Qam16(), 200);
+
+            // The implied count comes from the result, not from the render, so the assertion below
+            // is against something other than itself.
+            Assert.Equal(trace.SymbolCount, EyeRasterizer.ExpectedFolds(trace));
+
+            var area = new PixelRect(10, 10, 300, 220);
+
+            foreach (double length in new[] { 0.1, 0.5, 2.0, 6.0, 10.0 })
+            {
+                var surface = new PixelSurface(320, 240);
+
+                EyeRender drawn = EyeRasterizer.Render(
+                    surface, area, trace, EyeComponent.InPhase, length, new EyeColours());
+
+                _output.WriteLine(length.ToString("0.0") + " symbols: " + drawn);
+
+                Assert.Equal(EyeRasterizer.ExpectedFolds(trace), drawn.Folds);
+            }
+        }
+
+        [Fact]
+        public void AFoldClippedByTheCaptureIsReportedRatherThanDropped()
+        {
+            // The way to pass the count above while still building a partial eye is to drop the
+            // folds whose window runs off the end of the capture. So they are built, counted, and
+            // said to be clipped separately.
+            //
+            // Built by hand rather than generated: SyntheticSymbolSource leads and trails every
+            // burst by PulseSpanSymbols symbols, so its first decision instant has six symbols of
+            // waveform in front of it and even a ten-symbol eye never reaches the edge. A capture
+            // that begins at the first symbol — which is what a Result Length aligned to the burst
+            // gives you — is the case this clause is about, and it has to be constructed.
+            const int PerSymbol = 8;
+            const int Symbols = 10;
+
+            var samples = new float[Symbols * PerSymbol * 2];
+            var decisions = new List<int>();
+            var symbols = new List<int>();
+            var points = new List<ConstellationPoint>();
+
+            for (int symbol = 0; symbol < Symbols; symbol++)
+            {
+                decisions.Add(symbol * PerSymbol);
+                symbols.Add(symbol % 2);
+                points.Add(new ConstellationPoint(symbol % 2 == 0 ? 1.0 : -1.0, 0.0));
+
+                for (int at = 0; at < PerSymbol; at++)
+                {
+                    samples[((symbol * PerSymbol) + at) * 2] = symbol % 2 == 0 ? 1.0f : -1.0f;
+                }
+            }
+
+            var trace = new SymbolTrace(
+                "BPSK", 1, 2, symbols, points, points, decisions, samples, PerSymbol, 1.0e6);
+
+            var area = new PixelRect(10, 10, 300, 220);
+
+            EyeRender shortEye = EyeRasterizer.Render(
+                new PixelSurface(320, 240), area, trace, EyeComponent.InPhase, 0.5,
+                new EyeColours());
+
+            EyeRender longEye = EyeRasterizer.Render(
+                new PixelSurface(320, 240), area, trace, EyeComponent.InPhase, 4.0,
+                new EyeColours());
+
+            _output.WriteLine("half a symbol: " + shortEye);
+            _output.WriteLine("four symbols:  " + longEye);
+
+            // Every symbol of the Result Length is a fold at both lengths — that is the clause
+            // above, and it must not be bought back by dropping the clipped ones.
+            Assert.Equal(EyeRasterizer.ExpectedFolds(trace), shortEye.Folds);
+            Assert.Equal(EyeRasterizer.ExpectedFolds(trace), longEye.Folds);
+
+            // The capture is not symmetric about the decisions and the counts show it: the first
+            // instant is sample 0 with nothing in front of it, while the last is sample 72 with
+            // seven samples behind it. So a half-symbol eye, reaching two samples either side,
+            // clips only the leading fold. A four-symbol eye reaches two symbols, which is the
+            // first two instants at the front and the last two at the back.
+            Assert.Equal(1, shortEye.TruncatedFolds);
+            Assert.Equal(4, longEye.TruncatedFolds);
+
+            Assert.True(
+                longEye.TruncatedFolds < longEye.Folds,
+                "Every fold was clipped, so the capture is too short for this to say anything.");
+        }
+
+        [Fact]
+        public void TheEyeLengthDefaultsToTwoSymbols()
+        {
+            // "Eye length defaults to 2 symbols and is configurable over the REQ-UI-051 range."
+            // The range is REQ-UI-051's and asserted there; the default is this requirement's.
+            Assert.Equal(2.0, EyeRasterizer.DefaultLengthSymbols);
+            Assert.True(EyeRasterizer.IsLengthAllowed(EyeRasterizer.DefaultLengthSymbols));
+        }
+
+        [Fact]
+        public void PersistenceMakesAFrequentlyTraversedPathDenserThanARareOne()
+        {
+            // "Persistence shading, when on, makes frequently traversed paths visibly denser than
+            // rare ones." Read off the rendered frame: with the shading on the eye is drawn in a
+            // spread of brightnesses, and with it off in exactly one.
+            SymbolTrace trace = ConstellationTests.Result(ModulationScheme.Qam16(), 400);
+
+            var area = new PixelRect(10, 10, 300, 220);
+
+            var plain = new PixelSurface(320, 240);
+            var shaded = new PixelSurface(320, 240);
+
+            var colours = new EyeColours();
+
+            EyeRasterizer.Render(plain, area, trace, EyeComponent.InPhase, 2.0, colours);
+
+            EyeRender drawn = EyeRasterizer.Render(
+                shaded, area, trace, EyeComponent.InPhase, 2.0, colours, 0.0, true);
+
+            _output.WriteLine("shaded: " + drawn);
+
+            Assert.True(
+                drawn.PeakTraversals > 1,
+                "No cell was crossed more than once, so there is no density to shade.");
+
+            var plainLevels = new HashSet<double>();
+            var shadedLevels = new HashSet<double>();
+
+            double brightest = 0.0;
+            double dimmest = double.MaxValue;
+
+            foreach (Cell cell in Eye(plain, shaded, area, colours))
+            {
+                plainLevels.Add(cell.PlainLuminance);
+                shadedLevels.Add(cell.ShadedLuminance);
+
+                brightest = Math.Max(brightest, cell.ShadedLuminance);
+                dimmest = Math.Min(dimmest, cell.ShadedLuminance);
+            }
+
+            _output.WriteLine(
+                "unshaded brightnesses " + plainLevels.Count + ", shaded " + shadedLevels.Count +
+                ", from " + dimmest.ToString("0.0") + " to " + brightest.ToString("0.0"));
+
+            Assert.Single(plainLevels);
+
+            Assert.True(
+                shadedLevels.Count > 8,
+                "The shading produced " + shadedLevels.Count + " brightnesses, which is not a " +
+                "density scale.");
+
+            Assert.True(
+                brightest > dimmest * 2.0,
+                "The densest path is not visibly denser than the rarest: " + brightest + " against " +
+                dimmest + ".");
+        }
+
+        [Fact]
+        public void MoreTraversalsIsNeverADimmerCell()
+        {
+            // The shading has to be monotonic or "denser" means nothing: a cell crossed more often
+            // than another must never be drawn dimmer than it. Asserted on the mapping rather than
+            // on a frame, because a frame only ever exercises the counts that signal happened to
+            // produce.
+            var colours = new EyeColours();
+
+            double previous = -1.0;
+
+            for (int traversals = 1; traversals <= 1000; traversals++)
+            {
+                double luminance = Luminance(colours.ForTraversals(traversals, 1000));
+
+                Assert.True(
+                    luminance >= previous,
+                    traversals + " traversals is dimmer than " + (traversals - 1) + ": " +
+                    luminance + " against " + previous + ".");
+
+                previous = luminance;
+            }
+
+            // And a cell crossed once is dim but not absent — an eye whose rare paths are invisible
+            // has thrown away the outliers that are the reason to look at one.
+            PlotColor rare = colours.ForTraversals(1, 1000);
+
+            Assert.True(
+                Luminance(rare) > 0.0,
+                "A path taken once was drawn as nothing, so the outliers are gone.");
+
+            Assert.True(
+                Luminance(rare) < Luminance(colours.Trace),
+                "A path taken once is drawn as brightly as one taken a thousand times.");
+        }
+
+        [Fact]
+        public void TurningPersistenceOffLeavesTheEyesGeometryUnchanged()
+        {
+            // "...and turning it off leaves the eye's geometry unchanged." Geometry is which cells
+            // carry ink, so the two frames must ink exactly the same set and differ only in what
+            // colour they put there.
+            SymbolTrace trace = ConstellationTests.Result(ModulationScheme.Qam16(), 400);
+
+            var area = new PixelRect(10, 10, 300, 220);
+
+            var plain = new PixelSurface(320, 240);
+            var shaded = new PixelSurface(320, 240);
+
+            var colours = new EyeColours();
+
+            EyeRender without = EyeRasterizer.Render(
+                plain, area, trace, EyeComponent.InPhase, 2.0, colours, 0.0, false);
+
+            EyeRender with = EyeRasterizer.Render(
+                shaded, area, trace, EyeComponent.InPhase, 2.0, colours, 0.0, true);
+
+            Assert.Equal(without.Folds, with.Folds);
+            Assert.Equal(without.ReferenceLines, with.ReferenceLines);
+            Assert.Equal(without.TruncatedFolds, with.TruncatedFolds);
+
+            int inked = 0;
+            int differed = 0;
+
+            for (int y = area.Y; y < area.Bottom; y++)
+            {
+                for (int x = area.X; x < area.Right; x++)
+                {
+                    PlotColor a = plain.GetPixel(x, y);
+                    PlotColor b = shaded.GetPixel(x, y);
+
+                    bool aInked = a.R != 0 || a.G != 0 || a.B != 0;
+                    bool bInked = b.R != 0 || b.G != 0 || b.B != 0;
+
+                    Assert.True(
+                        aInked == bInked,
+                        "Persistence changed the geometry at " + x + "," + y + ": inked " + aInked +
+                        " without it and " + bInked + " with it.");
+
+                    if (!aInked)
+                    {
+                        continue;
+                    }
+
+                    inked++;
+
+                    if (!a.Equals(b))
+                    {
+                        differed++;
+                    }
+                }
+            }
+
+            _output.WriteLine(
+                inked + " inked cells, " + differed + " of them a different colour with the " +
+                "shading on");
+
+            Assert.True(inked > 0, "Nothing was drawn, so the comparison says nothing.");
+
+            // The frames are the same shape, so the test has to show the shading did something at
+            // all — otherwise "unchanged geometry" would pass for a persistence switch that is not
+            // wired up.
+            Assert.True(
+                differed > 0,
+                "The shading changed no colours, so it is not doing anything.");
+        }
+
+        private readonly struct Cell
+        {
+            internal Cell(double plain, double shaded)
+            {
+                PlainLuminance = plain;
+                ShadedLuminance = shaded;
+            }
+
+            internal double PlainLuminance { get; }
+
+            internal double ShadedLuminance { get; }
+        }
+
+        /// <summary>The cells the eye itself inked, excluding the reference lines under it.</summary>
+        private static IEnumerable<Cell> Eye(
+            PixelSurface plain, PixelSurface shaded, PixelRect area, EyeColours colours)
+        {
+            for (int y = area.Y; y < area.Bottom; y++)
+            {
+                for (int x = area.X; x < area.Right; x++)
+                {
+                    PlotColor unshaded = plain.GetPixel(x, y);
+
+                    // The reference lines are drawn first and in their own colour, so a cell still
+                    // carrying that colour is line rather than waveform.
+                    if (!unshaded.Equals(colours.Trace))
+                    {
+                        continue;
+                    }
+
+                    yield return new Cell(Luminance(unshaded), Luminance(shaded.GetPixel(x, y)));
+                }
+            }
+        }
+
+        private static double Luminance(PlotColor colour) =>
+            (0.2126 * colour.R) + (0.7152 * colour.G) + (0.0722 * colour.B);
+    }
+
+    /// <summary>
     /// <c>REQ-UI-052</c>: the symbol table and error summary are one trace, split top and bottom.
     /// </summary>
     /// <remarks>

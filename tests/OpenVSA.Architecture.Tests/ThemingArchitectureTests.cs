@@ -159,7 +159,12 @@ namespace OpenVSA.Architecture.Tests
         /// </remarks>
         private static readonly string[] KeysAwaitingStyling =
         {
-            ChromeKeys.SelectionBackground,
+            // Empty, and the list is kept rather than deleted: it is the mechanism by which a key
+            // may be declared before anything paints with it, and the test below is what stops an
+            // entry outliving its reason. SelectionBackground came off it when REQ-DEM-083 gave the
+            // symbol table's selected symbol a highlight to paint — which is the first thing in the
+            // shell to want a selection background, and the reason the key existed unconsumed since
+            // #408.
         };
 
         [Fact]
