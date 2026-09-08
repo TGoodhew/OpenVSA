@@ -45,6 +45,39 @@ Demodulating SOQPSK needs one of two things, and both are decisions:
 Until one is chosen, `Constellation.ByName` refuses the name and says which — rather than answering
 with a constellation that would report a respectable EVM against a signal it does not describe.
 
+## A third route was proposed, measured, and is gone
+
+`soqpsk-equalised.py` asks the question the two routes above leave open, and which nobody had
+measured: **OpenVSA has an equaliser, so is the 13.21 % just intersymbol interference?** If it were,
+SOQPSK would demodulate as offset QPSK through `c0` — a pulse taken entirely from the standard — with
+no trellis, no change to `REQ-DEM-001`, and no literature pulse. That would have settled #440 without
+either decision.
+
+It does not work, and the experiment is built so that failure is conclusive: what is fitted is the
+**least-squares FIR solved in closed form over the whole record, with perfect knowledge of the true
+waveform.** No adaptive algorithm can beat that, and OpenVSA's decision-directed LMS on one block
+cannot come close.
+
+| equaliser | EVM |
+|---|---|
+| none | 13.2189 %rms |
+| 33-tap least squares | 11.9152 %rms |
+| 65-tap | 11.4115 %rms |
+| 129-tap | **10.9130 %rms** |
+
+**Seventeen per cent of the error removed, and eleven per cent still there.** More taps do not help,
+and the reason is structural rather than a matter of length: the ternary alphabet's zeros make
+adjacent pulse tails add *in phase*, and **which** symbols do that depends on the data. A linear
+filter applies the same response to every symbol by definition, so it cannot undo an error that
+changes with the symbol sequence.
+
+The script carries its own control — a binary alphabet through a rectangular pulse, which is MSK and
+where Laurent is exact. It reads **0.0000 %rms before and after the fit**, so the fitter is not
+manufacturing improvement. Without that control the 17 % could have been the code fitting noise.
+
+So the two routes above are still the only two. This measurement removes a third rather than adding
+one, which is worth having: nobody need propose it again.
+
 ## The pulse is ready when the decision is made
 
 `soqpsk-pulse.py` is not only a refutation. The frequency pulse, the amplitude, the phase integral

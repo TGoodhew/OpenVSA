@@ -1,0 +1,42 @@
+SOQPSK-TG -- IRIG Standard 106-15 (Part 1), Chapter 2, subclause 2.4.3.2
+2000 bits at 32 samples a bit; guard 12 bits at each end.
+
+CONTROL -- MSK, where the linear model is exact and there is nothing to fix:
+
+  binary impulses, rectangular pulse
+    unequalised                    0.0000 %rms
+       3-tap least squares         0.0000 %rms   (nothing to remove)
+       5-tap least squares         0.0000 %rms   (nothing to remove)
+       9-tap least squares         0.0000 %rms   (nothing to remove)
+      17-tap least squares         0.0000 %rms   (nothing to remove)
+      33-tap least squares         0.0000 %rms   (nothing to remove)
+      65-tap least squares         0.0000 %rms   (nothing to remove)
+     129-tap least squares         0.0000 %rms   (nothing to remove)
+
+THE QUESTION -- SOQPSK-TG's own pulse, ternary impulses from equation 2-10:
+
+    the model's envelope varies 3.569 dB on a waveform that is constant by
+    definition, which is the mismatch the equaliser is being asked to remove.
+
+  ternary impulses, SOQPSK-TG pulse
+    unequalised                   13.2189 %rms
+       3-tap least squares        13.1902 %rms   ( 99.8 % of the error left)
+       5-tap least squares        13.0483 %rms   ( 98.7 % of the error left)
+       9-tap least squares        12.8754 %rms   ( 97.4 % of the error left)
+      17-tap least squares        12.8370 %rms   ( 97.1 % of the error left)
+      33-tap least squares        11.9152 %rms   ( 90.1 % of the error left)
+      65-tap least squares        11.4115 %rms   ( 86.3 % of the error left)
+     129-tap least squares        10.9130 %rms   ( 82.6 % of the error left)
+
+VERDICT
+
+  Best any linear equaliser could do: 10.9130 %rms.
+
+  The mismatch is NOT linear intersymbol interference and no equaliser removes
+  it. That follows from what it is: the ternary alphabet's zeros make adjacent
+  pulse tails add in phase, and WHICH symbols do that depends on the data. A
+  linear filter applies the same response to every symbol by definition, so it
+  cannot undo an error that changes with the symbol sequence.
+
+  So the standard-derived c0 does not give a demodulator, and #440's two routes
+  are still the only two. This measurement removes the third.
