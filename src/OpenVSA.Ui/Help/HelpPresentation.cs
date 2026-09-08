@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using OpenVSA.Demod.Help;
@@ -29,9 +29,26 @@ namespace OpenVSA.Ui.Help
     {
         /// <summary>The topic the help keys show.</summary>
         /// <remarks>
-        /// One topic ships, so there is nothing to choose between. When there are several, what
-        /// decides is a help system with an index and a context, and this constant is where that
-        /// decision will announce that it has to be made.
+        /// <para>
+        /// <strong>🔴 The decision this constant existed to announce is now due.</strong> Its
+        /// remark used to read "one topic ships, so there is nothing to choose between", and that
+        /// was already untrue at four topics. <see cref="HelpTopics.Names"/> now lists SIX —
+        /// <c>REQ-DEM-010a</c>'s analog page and <c>REQ-DEM-032</c>'s result-window page joined the
+        /// four — and F1 shows this one. <strong>Five shipped topics are unreachable from the
+        /// shell.</strong>
+        /// </para>
+        /// <para>
+        /// Not fixed here, and the reason is a boundary rather than an oversight:
+        /// <c>REQ-UI-061</c> fixes the menu bar's contents as an exact list with a test that fails
+        /// the build if anything is added, so a Help submenu listing the topics is that
+        /// requirement's business and not this file's. What choosing between topics really needs is
+        /// an index and a context — a help system — which is <c>REQ-UI</c> work nobody has specified
+        /// yet.
+        /// </para>
+        /// <para>
+        /// Until then the pages are readable in <c>docs/help/</c> and embedded in the assembly, so
+        /// nothing is lost; it is the shell's route to them that is missing. Recorded in #441.
+        /// </para>
         /// </remarks>
         internal const string DefaultTopic = HelpTopics.ProcessingOrder;
 

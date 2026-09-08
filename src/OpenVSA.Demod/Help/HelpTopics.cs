@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -71,9 +71,58 @@ namespace OpenVSA.Demod.Help
         /// </remarks>
         public const string Equaliser = "demodulation-equaliser";
 
+        /// <summary>
+        /// AM, FM and PM: the detectors, what is measured, and the interpretations
+        /// (<c>REQ-DEM-010a</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>REQ-DEM-010a</c> does not itself ask for a help page. This one exists because two of
+        /// the numbers it asks for could not be produced without deciding something the
+        /// specification left open, and a decision that changes a measurement belongs where the
+        /// person reading the measurement will meet it — not only in an issue comment.
+        /// </para>
+        /// <para>
+        /// <strong>The two are the analysis window and the residual definition.</strong> A Hann
+        /// window's sidelobes would cap SINAD near 40 dB and no detector whatever could then meet
+        /// the requirement's 60; Blackman-Harris was chosen for that reason and the page says so.
+        /// And "residual FM/AM" is named as a result without being defined, so the page states what
+        /// this build removes to arrive at it.
+        /// </para>
+        /// </remarks>
+        public const string Analog = "demodulation-analog";
+
+        /// <summary>
+        /// The Result Length, the 20 % wider pre-demodulation window, and the offset-format limit
+        /// (<c>REQ-DEM-032</c>, <c>REQ-DEM-013</c>, <c>REQ-DEM-031</c>).
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Same reasoning as <see cref="Analog"/>. <c>REQ-DEM-032</c> gives Spectrum and
+        /// Instantaneous Spectrum the SAME window, so what distinguishes them had to be decided —
+        /// this build makes it the estimator, averaged against not averaged, and the page says that
+        /// is a reading rather than a specification.
+        /// </para>
+        /// <para>
+        /// It also carries two things a user would otherwise have to discover: that displaying a
+        /// pre-demodulation trace cannot change a result, and that a short Result Length reads about
+        /// 1.4 % higher than a long one because of where the result window starts rather than
+        /// because of its length.
+        /// </para>
+        /// </remarks>
+        public const string ResultWindow = "demodulation-result-window";
+
         private static readonly ReadOnlyCollection<string> Topics =
             new ReadOnlyCollection<string>(
-                new List<string> { ProcessingOrder, Filters, ErrorMetrics, Equaliser });
+                new List<string>
+                {
+                    ProcessingOrder,
+                    Filters,
+                    ErrorMetrics,
+                    Equaliser,
+                    Analog,
+                    ResultWindow,
+                });
 
         /// <summary>Every topic that ships, by name.</summary>
         public static IReadOnlyList<string> Names => Topics;

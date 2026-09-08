@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>OpenVSA.Demod</RootNamespace>
@@ -36,6 +36,12 @@
     </EmbeddedResource>
     <EmbeddedResource Include="..\..\docs\help\demodulation-equaliser.md">
       <LogicalName>OpenVSA.Demod.Help.demodulation-equaliser.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\docs\help\demodulation-analog.md">
+      <LogicalName>OpenVSA.Demod.Help.demodulation-analog.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\docs\help\demodulation-result-window.md">
+      <LogicalName>OpenVSA.Demod.Help.demodulation-result-window.md</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 
