@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 
@@ -173,11 +173,26 @@ namespace OpenVSA.Demod.Results
                 case "Phase Err":
                     return family != ModulationFamily.Fsk;
 
-                // REQ-DEM-066 and REQ-DEM-067: the origin offset, the axis imbalance and the
-                // quadrature error all come from one linear fit of the measured symbols against
-                // the ideal ones. FSK and MSK are not linear modulations of a constellation, so
-                // there is no such fit to read them out of.
+                // REQ-DEM-066: THE ORIGIN OFFSET IS MSK'S TOO, and this row used to say otherwise.
+                //
+                // It was grouped with the three below on the reasoning that "FSK and MSK are not
+                // linear modulations of a constellation, so there is no such fit to read them out
+                // of" -- which is sound for REQ-DEM-067's imbalance and skew, and is the opposite
+                // of what REQ-DEM-066 says. That requirement singles MSK out BY NAME, and singles
+                // it out precisely because the offset IS computed for it: "computed at symbol
+                // times, except for MSK, which uniquely uses all points rather than only symbol
+                // instants". The weakness of a symbol-instant fit on four clusters is the reason
+                // for the exception, not a reason to drop the metric.
+                //
+                // So the row was hidden on the one format whose handling the requirement stops to
+                // describe. FSK stays out: REQ-DEM-066 says nothing about it, and inventing a
+                // reading for a format the requirement passes over would be the same mistake in
+                // the other direction.
                 case "IQ Offset":
+                    return family != ModulationFamily.Fsk;
+
+                // REQ-DEM-067: the axis imbalance and the quadrature error do come from a linear
+                // fit of measured symbols against ideal ones, and FSK and MSK have no such fit.
                 case "IQ Gain Imbalance":
                 case "IQ Quad. Error":
                 case "IQ Timing Skew":

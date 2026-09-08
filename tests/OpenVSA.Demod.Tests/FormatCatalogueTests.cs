@@ -653,9 +653,22 @@ namespace OpenVSA.Demod.Tests
         public void MskAndGmskShowTheMetricsOfTheirFamilyAndNotOfTheirPoints()
         {
             // REQ-DEM-071 keys the error summary's rows on the family. MSK's points are BPSK's, so
-            // a family inherited from the points would have offered the I/Q origin, imbalance and
-            // quadrature rows -- which come from a linear fit of measured symbols against ideal
-            // ones, and MSK is not a linear modulation of a constellation.
+            // a family inherited from the points would have offered the imbalance and quadrature
+            // rows -- which come from a linear fit of measured symbols against ideal ones, and MSK
+            // is not a linear modulation of a constellation.
+            //
+            // 🔴 BUT THE ORIGIN OFFSET IS MSK'S, AND THIS TEST USED TO ASSERT IT WAS NOT.
+            // "DoesNotContain IQ Offset" was here beside the quadrature row, on the same reasoning,
+            // and REQ-DEM-066 says the opposite in as many words: computed at symbol times,
+            // "except for MSK, which uniquely uses all points rather than only symbol instants".
+            // The requirement stops to describe MSK's handling precisely because the metric IS
+            // computed for it -- a symbol-instant fit on four clusters is weak, which is a reason
+            // to fit differently and not a reason to drop the row.
+            //
+            // So the assertion was encoding a misreading, and the table it was guarding hid the
+            // metric on the one format the requirement singles out. Both are corrected; the
+            // imbalance and quadrature rows are untouched, because REQ-DEM-067 really does have no
+            // fit to read them out of here.
             foreach (string name in new[] { "MSK1", "MSK2", "GMSK" })
             {
                 Constellation constellation = Constellation.ByName(name);
@@ -666,9 +679,19 @@ namespace OpenVSA.Demod.Tests
                     MetricApplicability.LabelsFor(constellation.Family, constellation.IsOffset);
 
                 Assert.Contains("Amp Droop", rows);
-                Assert.DoesNotContain("IQ Offset", rows);
+                Assert.Contains("IQ Offset", rows);
+                Assert.DoesNotContain("IQ Gain Imbalance", rows);
                 Assert.DoesNotContain("IQ Quad. Error", rows);
             }
+
+            // FSK keeps all four out: REQ-DEM-066 says nothing about it, and reading MSK's
+            // exception across to a format the requirement passes over would be the same mistake
+            // in the other direction.
+            IReadOnlyList<string> fsk =
+                MetricApplicability.LabelsFor(ModulationFamily.Fsk, false);
+
+            Assert.DoesNotContain("IQ Offset", fsk);
+            Assert.DoesNotContain("IQ Quad. Error", fsk);
 
             // And EDGE is phase-shift keying, which shows all of them.
             Assert.Equal(ModulationFamily.Psk, Constellation.ByName("EDGE").Family);

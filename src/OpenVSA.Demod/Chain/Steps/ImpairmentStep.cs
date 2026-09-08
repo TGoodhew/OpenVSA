@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
 
 namespace OpenVSA.Demod.Chain.Steps
@@ -168,15 +169,177 @@ namespace OpenVSA.Demod.Chain.Steps
                 ? 0.0
                 : 20.0 * Math.Log10(gainQ / gainI);
 
+            double offsetI = alongI[2];
+            double offsetQ = alongQ[2];
+
+            // REQ-DEM-066's exception, and the only place in the chain where a metric is computed
+            // off a different point set from its neighbours.
+            if (context.Settings.Constellation.Family == ModulationFamily.Msk)
+            {
+                AllPointOffset(context, count, ref offsetI, ref offsetQ);
+            }
+
             context.Impairments = new ImpairmentEstimate(
-                alongI[2],
-                alongQ[2],
+                offsetI,
+                offsetQ,
                 imbalanceDb,
                 skewRadians * 180.0 / Math.PI,
                 Droop(measured, ideal, count),
                 rotationRadians * 180.0 / Math.PI);
 
             return StepOutcome.Continue;
+        }
+
+        /// <summary>
+        /// Re-fits the origin offset over every sample rather than the symbol instants, for MSK
+        /// (<c>REQ-DEM-066</c>).
+        /// </summary>
+        /// <param name="context">The chain's state.</param>
+        /// <param name="count">How many symbols the result holds.</param>
+        /// <param name="offsetI">The symbol-instant estimate, replaced on success.</param>
+        /// <param name="offsetQ">The symbol-instant estimate, replaced on success.</param>
+        /// <remarks>
+        /// <para>
+        /// <strong>The requirement singles MSK out, and the geometry says why.</strong> Carrier
+        /// feedthrough is a constant added to the trajectory, and what an estimator has to work
+        /// with is how many independent directions that trajectory visits. A QAM constellation's
+        /// symbol instants are spread over the plane, so a handful of them pins a constant down.
+        /// MSK's are not: its symbol instants land on FOUR points and its information lives in the
+        /// continuous path between them. Fitting a constant to four clusters leans on how the
+        /// block's symbols happened to be distributed among them, which is the same dependence on
+        /// symbol statistics that the fitted constant was introduced to escape at symbol times.
+        /// </para>
+        /// <para>
+        /// Every sample visits the whole circle, so the offset is determined by the shape of the
+        /// path rather than by which symbols were sent. At MSK's 32 samples a symbol that is 32
+        /// times the data for one number.
+        /// </para>
+        /// <para>
+        /// <strong>Only the offset.</strong> <c>REQ-DEM-067</c>'s gain imbalance, skew and rotation
+        /// stay on the symbol instants where that requirement puts them. This replaces two of the
+        /// six fitted numbers and leaves four alone: two fits rather than one, and only for MSK.
+        /// </para>
+        /// <para>
+        /// <strong>The measured samples are corrected the way step 8 corrected the symbols</strong>
+        /// — the same de-rotation and the same gain — because the ideal waveform they are fitted
+        /// against was regenerated from decided symbols with those corrections already taken out.
+        /// Fitting a corrected reference against an uncorrected measurement would report the
+        /// carrier phase as an origin offset.
+        /// </para>
+        /// <para>
+        /// The ends are left out. Step 10 regenerates the ideal on the result's own grid, so its
+        /// first and last samples carry a pulse still filling; the fit runs between the first and
+        /// last symbol instants, where both waveforms are fully formed.
+        /// </para>
+        /// </remarks>
+        private static void AllPointOffset(
+            DemodContext context, int count, ref double offsetI, ref double offsetQ)
+        {
+            double[] result = context.Result;
+            double[] idealWaveform = context.IdealWaveform;
+
+            if (result == null || idealWaveform == null || count < 2)
+            {
+                return;
+            }
+
+            DemodSettings settings = context.Settings;
+            int perSymbol = settings.PointsPerSymbol;
+            double timing = context.TimingSamples;
+
+            int available = Math.Min(Iq.Count(result), Iq.Count(idealWaveform));
+            int first = Math.Max(0, (int)Math.Ceiling(timing));
+            int last = Math.Min(
+                available - 1, (int)Math.Floor(timing + ((count - 1) * perSymbol)));
+
+            int points = last - first + 1;
+
+            if (points < 4)
+            {
+                return;
+            }
+
+            double omega = settings.SymbolRateHz <= 0.0
+                ? 0.0
+                : 2.0 * Math.PI * context.PassFrequencyHz / settings.SymbolRateHz;
+
+            double phase = context.PassPhaseRadians;
+            double gain = context.PassGain == 0.0 ? 1.0 : context.PassGain;
+
+            double sumII = 0.0;
+            double sumIQ = 0.0;
+            double sumQQ = 0.0;
+            double sumI = 0.0;
+            double sumQ = 0.0;
+
+            double crossIx = 0.0;
+            double crossQx = 0.0;
+            double sumX = 0.0;
+            double crossIy = 0.0;
+            double crossQy = 0.0;
+            double sumY = 0.0;
+
+            for (int sample = first; sample <= last; sample++)
+            {
+                Iq raw = Iq.At(result, sample);
+                Iq turn = Iq.FromPhase(
+                    -(((omega * (sample - timing)) / perSymbol) + phase));
+
+                Iq corrected = (raw * turn) / gain;
+                Iq reference = Iq.At(idealWaveform, sample);
+
+                double i = reference.I;
+                double q = reference.Q;
+                double x = corrected.I;
+                double y = corrected.Q;
+
+                sumII += i * i;
+                sumIQ += i * q;
+                sumQQ += q * q;
+                sumI += i;
+                sumQ += q;
+
+                crossIx += i * x;
+                crossQx += q * x;
+                sumX += x;
+
+                crossIy += i * y;
+                crossQy += q * y;
+                sumY += y;
+            }
+
+            double[] alongI;
+            double[] alongQ;
+
+            // Both, not short-circuited, for the reason the symbol-instant fit above states: the
+            // two solves share a Gram matrix, so either both succeed or neither does, and an &&
+            // leaves the second output unassigned. Written as && here first, and the compiler
+            // caught it -- which is the second time this file has had to say so.
+            bool fittedI = Solve(
+                sumII, sumIQ, sumI, sumIQ, sumQQ, sumQ, sumI, sumQ, points,
+                crossIx, crossQx, sumX, out alongI);
+
+            bool fittedQ = Solve(
+                sumII, sumIQ, sumI, sumIQ, sumQQ, sumQ, sumI, sumQ, points,
+                crossIy, crossQy, sumY, out alongQ);
+
+            bool fitted = fittedI && fittedQ;
+
+            if (!fitted)
+            {
+                // The trajectory did not exercise both axes independently over this block. The
+                // symbol-instant estimate stands: it is the weaker one the requirement moves away
+                // from, and it is better than none.
+                context.Note(
+                    "REQ-DEM-066 computes MSK's IQ offset over every sample rather than the " +
+                    "symbol instants, and this block's waveform did not separate the two axes. " +
+                    "The offset reported is the symbol-instant estimate.");
+
+                return;
+            }
+
+            offsetI = alongI[2];
+            offsetQ = alongQ[2];
         }
 
         /// <summary>
