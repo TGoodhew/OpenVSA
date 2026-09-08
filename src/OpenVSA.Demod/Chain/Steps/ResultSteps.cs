@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
@@ -142,6 +142,13 @@ namespace OpenVSA.Demod.Chain.Steps
                 "Time Offset",
                 "s",
                 internalRateHz <= 0.0 ? 0.0 : context.TimingSamples / internalRateHz));
+
+            // REQ-DEM-070's frequency-keyed pair. Added unconditionally and filtered by the
+            // applicability table below, the way every other format-specific row is: a row that
+            // decided for itself whether to appear would be a second opinion about applicability,
+            // and REQ-DEM-071 wants exactly one.
+            computed.Add(new ErrorMetric("FSK Dev", "Hz", context.FskDeviationHz));
+            computed.Add(new ErrorMetric("FSK Err", "%", context.FskErrorPercent));
 
             // The rows the format shows, not just the ones this build can fill in: REQ-DEM-071
             // wants a table whose shape follows the format, with NAN where a metric applies and has

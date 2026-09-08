@@ -237,6 +237,23 @@ namespace OpenVSA.Demod.Chain
         /// </remarks>
         internal double PilotLevel { get; set; } = double.NaN;
 
+        /// <summary>
+        /// The peak frequency deviation step 8 fitted, in hertz (<c>REQ-DEM-070</c>).
+        /// </summary>
+        /// <remarks>
+        /// Written only by the frequency-keyed path, because it is the only one that has a
+        /// deviation to report: an FSK level ladder IS a set of frequencies, and the scale that
+        /// takes the ideal ladder onto the measured one is the deviation. <see cref="double.NaN"/>
+        /// everywhere else, so a display cannot mistake "not measured" for zero.
+        /// </remarks>
+        internal double FskDeviationHz { get; set; } = double.NaN;
+
+        /// <summary>
+        /// How far the discriminated levels sat from the decided ones, as a percentage
+        /// (<c>REQ-DEM-070</c>).
+        /// </summary>
+        internal double FskErrorPercent { get; set; } = double.NaN;
+
         /// <summary>Step 12's estimates.</summary>
         internal ImpairmentEstimate Impairments { get; set; }
 

@@ -205,14 +205,28 @@ namespace OpenVSA.Demod.Tests
         public void TheCatalogueUsesTheRequirementsOwnLabels()
         {
             // REQ-UI-053's list, asserted as literals there and honoured here. Every label the
-            // table can show is one of them, or is SNR (MER), which REQ-DEM-069 spells out and that
-            // list omits.
+            // table can show is one of them, or is one of the three a REQ-DEM requirement names
+            // outright and that list omits: SNR (MER) from REQ-DEM-069, and FSK deviation and FSK
+            // error from REQ-DEM-070.
+            //
+            // The exceptions are named constants rather than literals so that admitting one is a
+            // declaration in the catalogue and not a quiet edit here. Each is in REQ-UI-053's own
+            // house style -- short, truncated, no space where one can be avoided -- so the layout
+            // requirement is honoured even where its enumeration is not; the list wants these rows
+            // adding when the specification is next revised.
+            var admitted = new HashSet<string>
+            {
+                MetricApplicability.SignalToNoise,
+                MetricApplicability.FskDeviation,
+                MetricApplicability.FskError,
+            };
+
             foreach (string label in MetricApplicability.AllLabels)
             {
                 Assert.True(
-                    ErrorSummary.Labels.Contains(label) ||
-                        label == MetricApplicability.SignalToNoise,
-                    label + " is not one of REQ-UI-053's labels.");
+                    ErrorSummary.Labels.Contains(label) || admitted.Contains(label),
+                    label + " is not one of REQ-UI-053's labels, and is not one of the three " +
+                    "exceptions a REQ-DEM requirement names.");
             }
         }
 

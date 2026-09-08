@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using OpenVSA.Demod.Results;
 using OpenVSA.Demod.Signal;
@@ -632,6 +632,56 @@ namespace OpenVSA.Demod.Chain.Steps
             context.Gain *= gain;
             context.TimingSamples = timing;
             context.MeasuredSymbols = measured;
+
+            // REQ-DEM-070's two frequency-keyed metrics, taken from the fit that has just finished
+            // rather than measured again afterwards.
+            //
+            // THE DEVIATION IS THE GAIN. The discriminator works in cycles per symbol -- a carrier
+            // one symbol rate high turns the phase a whole turn each symbol -- and the ideal ladder
+            // stands on the odd integers, so the outermost level is (levels - 1). The scale that
+            // best takes that ladder onto the measured one, times the outermost level, times the
+            // symbol rate, is the peak deviation in hertz. Reading it off the fit rather than
+            // remeasuring means the deviation reported cannot disagree with the levels the symbols
+            // were decided against.
+            // THE OUTERMOST IDEAL POINT, ASKED FOR RATHER THAN DERIVED FROM THE LEVEL COUNT.
+            //
+            // Written first as (LevelsPerAxis - 1), which is where the ladder -(M-1)..+(M-1) puts
+            // its outer level -- and the constellation's points are RMS-NORMALISED, so that is not
+            // where they actually sit. Measured: 4FSK read 2.2357x its injected deviation and 8FSK
+            // 4.5818x, which are sqrt(5) and sqrt(21) -- the rms of {1,3} and of {1,3,5,7}, exactly
+            // the normalising factor. 2FSK passed throughout, because a two-level ladder has an rms
+            // of one and the normalisation is the identity there: the bug was invisible on the
+            // simplest case and grew with the order.
+            double outermost = 1.0;
+
+            foreach (ConstellationPoint point in constellation.Points)
+            {
+                outermost = Math.Max(outermost, Math.Abs(point.I));
+            }
+
+            context.FskDeviationHz = gain * outermost * settings.SymbolRateHz;
+
+            // FSK error: how far the discriminated instants sat from the levels they were decided
+            // to, in the ladder's own units, as a percentage of the peak deviation.
+            //
+            // 🔴 THE NORMALISATION IS A READING. REQ-DEM-070 names "FSK error" and does not define
+            // what it is a percentage OF. Peak deviation is the choice here, because it is the
+            // quantity beside it in the same requirement and the one a user has in mind; an rms
+            // normalisation would give a number smaller by root two for four levels and by more
+            // above that, and the two conventions are not distinguishable from a single reading.
+            // Documented in the analog and result-window help alongside the other open readings.
+            double residual = 0.0;
+
+            for (int symbol = 0; symbol < count; symbol++)
+            {
+                double error = measured[symbol].I - decided[symbol].I;
+
+                residual += error * error;
+            }
+
+            context.FskErrorPercent = count == 0
+                ? double.NaN
+                : Math.Sqrt(residual / count) / outermost * 100.0;
 
             context.Convergence = new ConvergenceReport(
                 iterations,

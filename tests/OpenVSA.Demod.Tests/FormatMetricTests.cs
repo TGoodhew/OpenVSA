@@ -247,26 +247,27 @@ namespace OpenVSA.Demod.Tests
         }
 
         [Fact]
-        public void TheThreeMetricsThisCatalogueCannotYetShowAreNamed()
+        public void TheOneMetricThisCatalogueCannotYetShowIsNamed()
         {
             // 🔴 Not a test of behaviour -- a record of what REQ-DEM-070 asks for that cannot be
             // delivered against this catalogue, so that it is visible here rather than only in an
-            // issue. FSK error and FSK deviation need an FSK format and pilot level needs a VSB one;
-            // Constellation has PSK, QAM, APSK, ASK and Custom. #125 is the format catalogue.
+            // issue. It used to name THREE, and the reason it named two of them has since gone:
+            // "FSK error and FSK deviation need an FSK format ... Constellation has PSK, QAM,
+            // APSK, ASK and Custom". Constellation.Fsk(order) exists now, so the blocker is spent
+            // and both metrics are computed from step 8's frequency-keyed fit.
             //
-            // The applicability table already knows about the families, so the rows will appear the
-            // moment the formats do -- and will read NAN until the metrics behind them exist, which
-            // is REQ-DEM-071's own distinction between "does not apply" and "not measured".
-            Assert.DoesNotContain("FSK Err", MetricApplicability.AllLabels);
-            Assert.DoesNotContain("FSK Dev", MetricApplicability.AllLabels);
+            // What is still owed is pilot level, which needs a VSB format to select. #125 is the
+            // format catalogue.
+            Assert.Contains(MetricApplicability.FskError, MetricApplicability.AllLabels);
+            Assert.Contains(MetricApplicability.FskDeviation, MetricApplicability.AllLabels);
 
             // Pilot level HAS a row, and reads NAN, because VSB is a family the table knows even
-            // though the catalogue has no VSB format to select.
+            // though the catalogue has no VSB format to select. That is REQ-DEM-071's own
+            // distinction between "does not apply" and "not measured".
             Assert.Contains("Pilot Lvl", MetricApplicability.AllLabels);
 
             _output.WriteLine(
-                "still owed by REQ-DEM-070: FSK error and FSK deviation (need an FSK format), " +
-                "pilot level (needs a VSB format). See #125.");
+                "still owed by REQ-DEM-070: pilot level (needs a VSB format). See #125.");
         }
 
         private static ErrorMetric Row(DemodResult result, string label) =>

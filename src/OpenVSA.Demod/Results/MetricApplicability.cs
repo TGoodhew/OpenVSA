@@ -88,6 +88,34 @@ namespace OpenVSA.Demod.Results
         /// <summary>The signal-to-noise metric's label (<c>REQ-DEM-069</c>).</summary>
         public const string SignalToNoise = "SNR (MER)";
 
+        /// <summary>
+        /// Peak frequency deviation, which <c>REQ-DEM-070</c> names and <c>REQ-UI-053</c> omits.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Two requirements, and they do not quite meet.</strong> <c>REQ-DEM-070</c>
+        /// requires FSK deviation and FSK error "where applicable to the selected format";
+        /// <c>REQ-UI-053</c> enumerates the row labels the error summary may use and neither is in
+        /// its list. Omitting the metrics would break a P1 requirement that names them outright, so
+        /// they are admitted with labels in <c>REQ-UI-053</c>'s own house style — short, truncated,
+        /// no space where one can be avoided, the style that gives <c>Carr Ofst</c> rather than
+        /// "Carrier Offset".
+        /// </para>
+        /// <para>
+        /// <strong>This is the precedent the catalogue already set</strong>, not a new liberty:
+        /// <see cref="SignalToNoise"/> is admitted the same way, because <c>REQ-DEM-069</c> spells
+        /// it out and <c>REQ-UI-053</c>'s list omits it too. Named as constants so the exception is
+        /// a declaration in one place rather than three string literals in three tests.
+        /// </para>
+        /// <para>
+        /// The enumerated list wants these two rows adding when the specification is next revised.
+        /// </para>
+        /// </remarks>
+        public const string FskDeviation = "FSK Dev";
+
+        /// <summary>FSK error. See <see cref="FskDeviation"/> for why the label is not in the list.</summary>
+        public const string FskError = "FSK Err";
+
         private static readonly ReadOnlyCollection<string> Order =
             new ReadOnlyCollection<string>(new List<string>
             {
@@ -104,6 +132,8 @@ namespace OpenVSA.Demod.Results
                 "IQ Quad. Error",
                 "IQ Timing Skew",
                 "Amp Droop",
+                "FSK Dev",
+                "FSK Err",
                 "Pilot Lvl",
                 SignalToNoise,
                 "RSSI",
@@ -125,6 +155,8 @@ namespace OpenVSA.Demod.Results
                 { "IQ Quad. Error", "deg" },
                 { "IQ Timing Skew", "s" },
                 { "Amp Droop", "dB/sym" },
+                { "FSK Dev", "Hz" },
+                { "FSK Err", "%" },
                 { "Pilot Lvl", "dB" },
                 { SignalToNoise, "dB" },
                 { "RSSI", "dBm" },
@@ -201,6 +233,15 @@ namespace OpenVSA.Demod.Results
                 // REQ-DEM-070 scopes amplitude droop to the "MSK/GSM class".
                 case "Amp Droop":
                     return family == ModulationFamily.Msk;
+
+                // REQ-DEM-070 scopes these two to "FSK formats". MSK is frequency-keyed too and
+                // is deliberately NOT included: the requirement names FSK, MSK's deviation is
+                // fixed at half the symbol rate by the definition of the format rather than being
+                // a property of a transmitter worth measuring, and its own row in that requirement
+                // is amplitude droop.
+                case "FSK Dev":
+                case "FSK Err":
+                    return family == ModulationFamily.Fsk;
 
                 // REQ-DEM-070: pilot level is VSB's.
                 case "Pilot Lvl":
