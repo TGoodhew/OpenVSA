@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -589,7 +589,18 @@ namespace OpenVSA.Benchmarks
             Console.WriteLine("Each runs for " + WindowedMeasurements.MeasurementWindow.TotalSeconds + " s with a live dispatcher.");
             Console.WriteLine();
 
-            IList<TargetMeasurement> measurements = WindowedMeasurements.Run();
+            var measured = new List<TargetMeasurement>(WindowedMeasurements.Run());
+
+            // REQ-NFR-022 and -023, which sat at AwaitingPhase until the Phase 2 demodulator
+            // existed. They take no dispatcher and no window: a demodulation is a function of its
+            // samples, so it is timed by calling it.
+            Console.WriteLine();
+            Console.WriteLine("Measuring the demodulation targets of REQ-NFR-022 and -023.");
+            Console.WriteLine();
+
+            measured.AddRange(DemodMeasurements.Run());
+
+            IList<TargetMeasurement> measurements = measured;
 
             foreach (TargetMeasurement m in measurements)
             {

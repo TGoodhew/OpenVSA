@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -33,7 +33,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenVSA.Demod\OpenVSA.Demod.csproj" />
     <ProjectReference Include="..\..\src\OpenVSA.Dsp\OpenVSA.Dsp.csproj" />
+    <ProjectReference Include="..\..\src\OpenVSA.Synthesis\OpenVSA.Synthesis.csproj" />
     <ProjectReference Include="..\..\src\OpenVSA.Ui\OpenVSA.Ui.csproj" />
     <ProjectReference Include="..\OpenVSA.PerformanceGate\OpenVSA.PerformanceGate.csproj" />
   </ItemGroup>
